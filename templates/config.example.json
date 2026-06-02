@@ -6,11 +6,11 @@
   "port": 4178,
   "naming": "{date}-{slug}-spec.html",
 
+  "_sections_note": "Use ONE pattern. additionalRequiredSections APPENDS to the built-in defaults (shown active below). requiredSections REPLACES the whole list (shown as an inactive alternative). Don't combine them.",
   "additionalRequiredSections": ["glossary"],
-  "_requiredSections_note": "Set requiredSections to REPLACE the default list; use additionalRequiredSections to APPEND one.",
-  "requiredSections": [
+  "_requiredSections_alternative": [
     "tldr", "overview", "goals", "design", "decisions",
-    "impl-plan", "task-tracker", "impl-decisions", "deviations", "tradeoffs"
+    "impl-plan", "task-tracker", "impl-decisions", "deviations", "tradeoffs", "glossary"
   ],
 
   "cadence": { "onePRPerStage": true, "tddRequired": true },
