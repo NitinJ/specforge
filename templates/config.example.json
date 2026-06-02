@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy to <project>/.specforge/config.json to override SpecForge defaults. All keys are optional.",
+
+  "specsDir": "~/work/myproject/specs",
+  "defaultTheme": "dark",
+  "port": 4178,
+  "naming": "{date}-{slug}-spec.html",
+
+  "_sections_note": "Use ONE pattern. additionalRequiredSections APPENDS to the built-in defaults (shown active below). requiredSections REPLACES the whole list (shown as an inactive alternative). Don't combine them.",
+  "additionalRequiredSections": ["glossary"],
+  "_requiredSections_alternative": [
+    "tldr", "overview", "goals", "design", "decisions",
+    "impl-plan", "task-tracker", "impl-decisions", "deviations", "tradeoffs", "glossary"
+  ],
+
+  "cadence": { "onePRPerStage": true, "tddRequired": true },
+  "trackComments": false
+}
