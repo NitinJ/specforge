@@ -58,3 +58,24 @@ learn the real port.
 
 - Print the server URL and the spec URL. Mention that edits to the spec file
   live-reload the page, and the task tracker renders live from the plan.
+
+## Watch mode (optional, hands-free)
+
+If the user wants replies to appear **while they're away** (not just while a
+session is live), start the server with `--watch`:
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/server/start.mjs" --project "<project-root>" --watch &
+```
+
+Watch mode polls the inbox and, when a batch is submitted, drains it by spawning
+a headless `claude -p` in the project — so review happens unattended.
+
+Requirements / notes:
+- The `claude` CLI must be on `PATH` (override with `SPECFORGE_CLAUDE_BIN`).
+- For fully unattended edits, the headless run needs permission to edit files and
+  run the comment CLI. Pass extra Claude flags via `SPECFORGE_WATCH_CLAUDE_ARGS`
+  (e.g. a permission mode) if your setup prompts.
+- Default poll interval is 90s; override with `--watch-interval <seconds>`.
+- Without `--watch`, the **Stop hook** still auto-injects review while a session
+  is live, and the drain fallback catches batches on the next turn.
