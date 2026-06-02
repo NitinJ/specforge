@@ -1,0 +1,86 @@
+/* SpecForge review layer — injected onto served specs. Uses the spec's own theme
+   variables (--panel/--ink/--line/--accent/...) with safe fallbacks. */
+
+:root {
+  --sf-panel: var(--panel, #171a21);
+  --sf-panel2: var(--panel2, #1d212b);
+  --sf-ink: var(--ink, #e6e8ee);
+  --sf-muted: var(--muted, #9aa3b2);
+  --sf-line: var(--line, #2a2f3a);
+  --sf-accent: var(--accent, #6ea8fe);
+  --sf-green: var(--green, #3fb950);
+  --sf-amber: var(--amber, #d29922);
+  --sf-red: var(--red, #f85149);
+}
+
+.sf-live {
+  position: fixed; left: 14px; bottom: 12px; z-index: 40;
+  font: 11px/1.4 ui-monospace, Menlo, monospace; color: var(--sf-muted);
+  background: rgba(0,0,0,.35); border: 1px solid var(--sf-line);
+  border-radius: 999px; padding: 3px 9px;
+}
+
+/* anchored highlights in the document */
+.sf-anchor { background: color-mix(in srgb, var(--sf-amber) 32%, transparent); border-radius: 2px; cursor: pointer; }
+.sf-anchor.moved { background: none; border-bottom: 2px dotted var(--sf-amber); cursor: pointer; }
+.sf-anchor.sf-active { background: color-mix(in srgb, var(--sf-amber) 55%, transparent); }
+section.sf-section-hl { box-shadow: inset 3px 0 0 var(--sf-amber); }
+section.sf-section-hl.sf-active { box-shadow: inset 3px 0 0 var(--sf-accent); }
+
+/* selection CTA */
+.sf-cta {
+  position: absolute; z-index: 50; transform: translate(-50%, 6px);
+  background: var(--sf-accent); color: #08101f; border: none; border-radius: 8px;
+  font: 600 12px/1 -apple-system, system-ui, sans-serif; padding: 7px 11px; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35);
+}
+
+/* sidebar */
+#sf-sidebar {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 340px; z-index: 45;
+  background: var(--sf-panel); border-left: 1px solid var(--sf-line);
+  color: var(--sf-ink); display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform .18s ease;
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+#sf-sidebar.open { transform: translateX(0); }
+.sf-side-head { padding: 14px 16px; border-bottom: 1px solid var(--sf-line); display: flex; align-items: center; gap: 8px; }
+.sf-side-head b { font-size: 14px; } .sf-side-head b span { color: var(--sf-accent); }
+.sf-side-head .sf-count { color: var(--sf-muted); font-size: 12px; }
+.sf-filter { margin-left: auto; display: flex; gap: 4px; }
+.sf-filter button { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 999px; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+.sf-filter button.on { color: var(--sf-ink); border-color: var(--sf-accent); }
+.sf-threads { overflow-y: auto; padding: 8px 12px 90px; flex: 1; }
+.sf-thread { border: 1px solid var(--sf-line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; background: var(--sf-panel2); cursor: pointer; }
+.sf-thread.sf-active { border-color: var(--sf-accent); }
+.sf-thread.state-resolved { opacity: .55; }
+.sf-thread .sf-meta { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--sf-muted); margin-bottom: 6px; }
+.sf-badge { border: 1px solid var(--sf-line); border-radius: 999px; padding: 0 7px; font-size: 10.5px; }
+.sf-badge.precise { color: var(--sf-green); } .sf-badge.moved { color: var(--sf-amber); }
+.sf-badge.section { color: var(--sf-muted); } .sf-badge.orphaned { color: var(--sf-red); }
+.sf-comment { border-top: 1px dashed var(--sf-line); padding: 6px 0; }
+.sf-comment:first-of-type { border-top: none; }
+.sf-comment .who { font-weight: 700; font-size: 11px; }
+.sf-comment .who.claude { color: var(--sf-accent); }
+.sf-comment .body { white-space: pre-wrap; }
+.sf-acts { display: flex; gap: 8px; margin-top: 6px; }
+.sf-acts button { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 6px; font-size: 11px; padding: 3px 8px; cursor: pointer; }
+.sf-acts button:hover { color: var(--sf-ink); border-color: var(--sf-accent); }
+.sf-reply textarea, .sf-compose textarea {
+  width: 100%; box-sizing: border-box; background: var(--sf-panel); color: var(--sf-ink);
+  border: 1px solid var(--sf-line); border-radius: 8px; padding: 8px; font: inherit; resize: vertical; min-height: 56px;
+}
+
+/* compose popover */
+#sf-compose { position: fixed; right: 360px; z-index: 50; width: 300px; background: var(--sf-panel); border: 1px solid var(--sf-line); border-radius: 10px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+#sf-compose .q { font-size: 12px; color: var(--sf-muted); border-left: 2px solid var(--sf-amber); padding-left: 8px; margin-bottom: 8px; max-height: 60px; overflow: auto; }
+
+/* toggle + batch bar */
+#sf-toggle { position: fixed; top: 16px; right: 16px; z-index: 46; background: var(--sf-panel); border: 1px solid var(--sf-line); color: var(--sf-ink); border-radius: 999px; padding: 7px 13px; font: 600 12px/1 system-ui, sans-serif; cursor: pointer; }
+#sf-toggle .n { color: var(--sf-accent); }
+#sf-batchbar { position: fixed; bottom: 0; right: 0; width: 340px; z-index: 47; background: var(--sf-panel2); border-left: 1px solid var(--sf-line); border-top: 1px solid var(--sf-line); padding: 10px 14px; display: none; align-items: center; gap: 10px; }
+#sf-batchbar.show { display: flex; }
+#sf-batchbar .c { font-size: 12px; color: var(--sf-muted); }
+#sf-batchbar button { margin-left: auto; background: var(--sf-accent); color: #08101f; border: none; border-radius: 8px; font: 600 12px/1 system-ui, sans-serif; padding: 8px 14px; cursor: pointer; }
+.sf-primary { background: var(--sf-accent); color: #08101f; border: none; border-radius: 8px; font: 600 12px/1 system-ui; padding: 7px 12px; cursor: pointer; }
+.sf-ghost { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 8px; font-size: 12px; padding: 7px 10px; cursor: pointer; }

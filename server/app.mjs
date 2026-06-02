@@ -6,6 +6,11 @@ import { readFileSync, watch } from 'node:fs';
 import { buildIndex, resolveSpec } from '../lib/paths.mjs';
 import { getTitle, getStatus } from '../lib/spec.mjs';
 import { injectReviewLayer } from './inject.mjs';
+import { serveStatic } from './static.mjs';
+import {
+  sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
+  handleCommentReply, handleCommentResolve,
+} from './api.mjs';
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -111,16 +116,40 @@ export function createApp(config) {
   return http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const path = url.pathname;
-    if (req.method !== 'GET') return send(res, 405, 'text/plain', 'method not allowed');
+    const method = req.method;
 
-    if (path === '/' ) return send(res, 200, 'text/html; charset=utf-8', renderIndex(specsDir));
-    if (path === '/healthz') return send(res, 200, 'text/plain; charset=utf-8', 'ok');
-    if (path === '/events') {
-      const id = url.searchParams.get('spec') || '';
-      return serveEvents(specsDir, id, req, res);
+    // --- Comments API ---
+    const list = path.match(/^\/api\/spec\/([\w-]+)\/comments$/);
+    if (list) {
+      if (method === 'GET') return handleCommentsGet(specsDir, list[1], res);
+      if (method === 'POST') {
+        return readJsonBody(req)
+          .then((b) => handleCommentCreate(specsDir, list[1], b, res))
+          .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
     }
-    const sm = path.match(/^\/spec\/([\w-]+)$/);
-    if (sm) return serveSpec(specsDir, sm[1], res);
+    const reply = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/reply$/);
+    if (reply && method === 'POST') {
+      return readJsonBody(req)
+        .then((b) => handleCommentReply(specsDir, reply[1], reply[2], b, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+    const resolve = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/resolve$/);
+    if (resolve && method === 'POST') {
+      return handleCommentResolve(specsDir, resolve[1], resolve[2], res);
+    }
+
+    // --- GET-only routes ---
+    if (method === 'GET') {
+      if (path === '/') return send(res, 200, 'text/html; charset=utf-8', renderIndex(specsDir));
+      if (path === '/healthz') return send(res, 200, 'text/plain; charset=utf-8', 'ok');
+      if (path === '/events') return serveEvents(specsDir, url.searchParams.get('spec') || '', req, res);
+      const sm = path.match(/^\/spec\/([\w-]+)$/);
+      if (sm) return serveSpec(specsDir, sm[1], res);
+      const pub = path.match(/^\/public\/([\w.-]+)$/);
+      if (pub) return serveStatic(pub[1], res);
+    }
 
     return send(res, 404, 'text/plain; charset=utf-8', 'not found');
   });
