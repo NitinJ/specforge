@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# test / coverage
+coverage/
+*.lcov
+
+# logs
+*.log
+npm-debug.log*
+
+# os / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# specforge runtime state (per-project comment stores, never committed from the plugin repo)
+.specforge/
