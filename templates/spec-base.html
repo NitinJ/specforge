@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — Spec</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 1px 0 rgba(255,255,255,.02), 0 8px 24px rgba(0,0,0,.28);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#ffffff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#fbfaf7; --panel:#ffffff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+      --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+      --code:#f1efe9; --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,kbd{font-family:var(--mono);font-size:.88em;background:var(--code);
+    border:1px solid var(--line);border-radius:5px;padding:.08em .38em}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:13px;line-height:1.55}
+  pre code{background:none;border:none;padding:0}
+
+  .layout{display:grid;grid-template-columns:264px minmax(0,1fr);gap:0;max-width:1280px;margin:0 auto}
+  nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+    padding:28px 16px 60px 24px;border-right:1px solid var(--line);font-size:13.5px}
+  nav.toc .brand{font-weight:700;font-size:15px;letter-spacing:.2px;margin-bottom:4px}
+  nav.toc .brand span{color:var(--accent)}
+  nav.toc .tag-mini{color:var(--muted);font-size:11.5px;margin-bottom:18px;display:block}
+  nav.toc a{display:block;color:var(--muted);padding:4px 8px;border-radius:6px;border-left:2px solid transparent}
+  nav.toc a:hover{color:var(--ink);text-decoration:none;background:var(--panel)}
+  nav.toc a.active{color:var(--ink);border-left-color:var(--accent);background:var(--panel)}
+
+  main{padding:40px 48px 120px;min-width:0}
+  h1{font-size:30px;line-height:1.25;margin:0 0 10px}
+  h2{font-size:21px;margin:48px 0 14px;padding-top:10px;border-top:1px solid var(--line)}
+  h2:first-of-type{border-top:none;margin-top:18px}
+  h3{font-size:16.5px;margin:26px 0 8px}
+  h4{font-size:14px;margin:18px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  .sub{color:var(--muted);font-size:14px}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px;margin:16px 0;box-shadow:var(--shadow)}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+
+  .tag{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel);vertical-align:middle;line-height:1.5}
+  .tag.accent{color:var(--accent)} .tag.good{color:var(--green)} .tag.warn{color:var(--amber)}
+  .tag.bad{color:var(--red)} .tag.todo{color:var(--muted)} .tag.done{color:var(--green)}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 12px;border:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);font-weight:600}
+
+  .callout{border-left:3px solid var(--accent);background:var(--panel);border-radius:0 10px 10px 0;
+    padding:12px 16px;margin:16px 0}
+  .callout.warn{border-left-color:var(--amber)} .callout.good{border-left-color:var(--green)}
+
+  .toggle{position:fixed;top:16px;right:20px;z-index:30;background:var(--panel);
+    border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:7px 14px;
+    font-size:12.5px;cursor:pointer;box-shadow:var(--shadow)}
+  .toggle:hover{border-color:var(--accent)}
+
+  ol.sf-stages{list-style:none;padding-left:0}
+  li[data-sf-stage]{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;margin:12px 0;box-shadow:var(--shadow)}
+  li[data-sf-stage]>.sh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  li[data-sf-stage]>.sh h3{margin:0;font-size:15.5px}
+  ul.sf-tasks{list-style:none;padding-left:4px;margin:10px 0 2px}
+  li[data-sf-task]{margin:6px 0;font-size:14px}
+  li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margin:2px 0 0 20px}
+  .footnote{color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<button class="toggle" id="themeToggle">◐ theme</button>
+<div class="layout">
+
+<nav class="toc">
+  <div class="brand"><span>Spec</span>Forge</div>
+  <span class="tag-mini">{{STATUS}}</span>
+  <a href="#tldr">TL;DR</a>
+  <a href="#overview">1 · Overview</a>
+  <a href="#goals">2 · Goals &amp; non-goals</a>
+  <a href="#design">3 · Design</a>
+  <a href="#decisions">4 · Decisions</a>
+  <a href="#open-questions">5 · Open questions</a>
+  <a href="#impl-plan">6 · Implementation plan</a>
+  <a href="#task-tracker">7 · Task tracker</a>
+  <a href="#impl-decisions">8 · Design decisions (impl)</a>
+  <a href="#deviations">9 · Deviations</a>
+  <a href="#tradeoffs">10 · Tradeoffs</a>
+  <a href="#appendix">Appendix</a>
+</nav>
+
+<main>
+  <h1>{{TITLE}}</h1>
+  <p class="sub">Spec · {{DATE}} · status: <span class="tag accent">{{STATUS}}</span> · owner: {{OWNER}}</p>
+
+  <section id="tldr" data-sf-section>
+    <div class="panel">
+      <h4 style="margin-top:0">TL;DR</h4>
+      <p style="margin-bottom:0">{{ Three-to-five line summary of the problem and the proposed solution. }}</p>
+    </div>
+  </section>
+
+  <section id="overview" data-sf-section>
+    <h2>1 · Overview</h2>
+    <p>{{ What is this, and why now? The problem and its context. }}</p>
+  </section>
+
+  <section id="goals" data-sf-section>
+    <h2>2 · Goals &amp; non-goals</h2>
+    <h4>Goals</h4>
+    <ul><li>{{ A concrete, verifiable goal. }}</li></ul>
+    <h4>Non-goals</h4>
+    <ul><li>{{ Something explicitly out of scope. }}</li></ul>
+  </section>
+
+  <section id="design" data-sf-section>
+    <h2>3 · Design</h2>
+    <p>{{ The solution: architecture, components, data flow. Use panels, tables, and diagrams. }}</p>
+  </section>
+
+  <section id="decisions" data-sf-section>
+    <h2>4 · Decisions</h2>
+    <table>
+      <thead><tr><th style="width:42px">#</th><th>Decision</th><th>Choice</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td>D1</td><td>{{ The question. }}</td><td>{{ The choice. }}</td><td>{{ Why. }}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="open-questions" data-sf-section>
+    <h2>5 · Open questions</h2>
+    <ul>
+      <li><strong>Q1 — <span class="tag warn">open</span></strong> {{ An unresolved question. Mark resolved/dropped once settled. }}</li>
+    </ul>
+  </section>
+
+  <section id="impl-plan" data-sf-section>
+    <h2>6 · Implementation plan</h2>
+    <p class="sub">Stages &amp; Tasks. One stage = one PR. Tests-first.</p>
+    <ol class="sf-stages">
+      <li data-sf-stage="1" data-sf-pr="">
+        <div class="sh"><h3>Stage 1 — {{ Stage name }}</h3><span class="tag todo">todo</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="1.1" data-sf-status="todo">{{ A task. }}<span class="verify">verify: {{ how you'll know it's done }}</span></li>
+          <li data-sf-task="1.2" data-sf-status="todo">{{ A task. }}<span class="verify">verify: {{ how you'll know it's done }}</span></li>
+        </ul>
+      </li>
+    </ol>
+  </section>
+
+  <section id="task-tracker" data-sf-section>
+    <h2>7 · Task tracker</h2>
+    <p class="sub">Projection of <code>data-sf-status</code> across the plan. Rendered live when served; the table below is the authoring-time snapshot.</p>
+    <table>
+      <thead><tr><th>Stage</th><th>PR</th><th>Tasks</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>1 · {{ Stage name }}</td><td>—</td><td>1.1, 1.2</td><td><span class="tag todo">todo</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="impl-decisions" data-sf-section>
+    <h2>8 · Design decisions (implementation time)</h2>
+    <p class="sub">Filled during implementation: choices made where the spec was ambiguous.</p>
+    <ul><li class="footnote">— none yet —</li></ul>
+  </section>
+
+  <section id="deviations" data-sf-section>
+    <h2>9 · Deviations</h2>
+    <p class="sub">Filled during implementation: intentional departures from the spec, and why.</p>
+    <ul><li class="footnote">— none yet —</li></ul>
+  </section>
+
+  <section id="tradeoffs" data-sf-section>
+    <h2>10 · Tradeoffs</h2>
+    <p class="sub">Filled during implementation: alternatives considered and why the chosen path won.</p>
+    <ul><li class="footnote">— none yet —</li></ul>
+  </section>
+
+  <section id="appendix" data-sf-section>
+    <h2>Appendix</h2>
+    <p class="sub">References, glossary, links.</p>
+  </section>
+
+  <p class="footnote" style="margin-top:40px">Authored with SpecForge · {{DATE}}</p>
+</main>
+</div>
+
+<script>
+  // Theme toggle — persists choice; respects OS preference until overridden.
+  (function(){
+    var root=document.documentElement, key="specforge-theme";
+    var saved=localStorage.getItem(key);
+    if(saved){root.setAttribute("data-theme",saved);}
+    var btn=document.getElementById("themeToggle");
+    if(btn){btn.addEventListener("click",function(){
+      var cur=root.getAttribute("data-theme")==="light"?"light":"dark";
+      var next=cur==="light"?"dark":"light";
+      root.setAttribute("data-theme",next);localStorage.setItem(key,next);
+    });}
+  })();
+  // TOC scroll-spy.
+  (function(){
+    var links=[].slice.call(document.querySelectorAll("nav.toc a"));
+    var map={};links.forEach(function(a){map[a.getAttribute("href").slice(1)]=a;});
+    var obs=new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(e.isIntersecting){
+          links.forEach(function(l){l.classList.remove("active");});
+          var a=map[e.target.id];if(a)a.classList.add("active");
+        }
+      });
+    },{rootMargin:"-10% 0px -80% 0px",threshold:0});
+    Object.keys(map).forEach(function(id){var el=document.getElementById(id);if(el)obs.observe(el);});
+  })();
+</script>
+</body>
+</html>
