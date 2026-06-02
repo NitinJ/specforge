@@ -51,3 +51,21 @@ test('never throws / never loses a comment across the degradation ladder', () =>
     assert.ok(['precise', 'moved', 'section', 'orphaned'].includes(r.status));
   }
 });
+
+test('toText decodes numeric and named typographic entities', () => {
+  assert.equal(toText('<p>foo&mdash;bar</p>'), 'foo—bar');
+  assert.equal(toText('<p>&#8220;quote&#8221;</p>'), '“quote”');
+  assert.equal(toText('<p>&#x2014;</p>'), '—');
+});
+
+test('precise when the spec stores an entity but the selection is decoded', () => {
+  const html = wrap('see section&mdash;two now');
+  const r = resolveAnchor(html, { sectionId: 's1', quote: { exact: 'section—two' } });
+  assert.equal(r.status, 'precise');
+});
+
+test('moved span does not balloon across the whole section', () => {
+  const html = wrap('the ' + 'word '.repeat(20) + 'lazy end'); // "the" early, "lazy" far away
+  const r = resolveAnchor(html, { sectionId: 's1', quote: { exact: 'the brown lazy' } });
+  assert.equal(r.status, 'section'); // scattered survivors → reject, fall back to section
+});

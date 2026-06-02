@@ -130,13 +130,15 @@ export function createApp(config) {
       return sendJson(res, 405, { error: 'method not allowed' });
     }
     const reply = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/reply$/);
-    if (reply && method === 'POST') {
+    if (reply) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return readJsonBody(req)
         .then((b) => handleCommentReply(specsDir, reply[1], reply[2], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
     const resolve = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/resolve$/);
-    if (resolve && method === 'POST') {
+    if (resolve) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleCommentResolve(specsDir, resolve[1], resolve[2], res);
     }
 

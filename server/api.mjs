@@ -69,7 +69,10 @@ export function handleCommentCreate(specsDir, id, body, res) {
   const store = loadStore(specsDir, id, spec.relPath);
   let thread;
   try {
-    thread = createThread(store, { anchor: body.anchor, body: body.body, author: body.author || 'human' });
+    // The public HTTP API is human-only. Agent (claude) replies are written
+    // directly to the store by the review-spec skill, never over HTTP — so a
+    // client-supplied `author` is ignored to prevent forged claude comments.
+    thread = createThread(store, { anchor: body.anchor, body: body.body, author: 'human' });
   } catch (e) {
     return sendJson(res, 400, { error: e.message });
   }
@@ -84,7 +87,8 @@ export function handleCommentReply(specsDir, id, tid, body, res) {
   const store = loadStore(specsDir, id, spec.relPath);
   let comment;
   try {
-    comment = addComment(store, tid, { body: body.body, author: body.author || 'human' });
+    // Human-only (see handleCommentCreate): ignore any client-supplied author.
+    comment = addComment(store, tid, { body: body.body, author: 'human' });
   } catch (e) {
     return sendJson(res, 400, { error: e.message });
   }

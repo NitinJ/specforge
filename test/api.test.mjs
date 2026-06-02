@@ -44,7 +44,7 @@ test('comments API: create → persist → get with resolution', async () => {
   });
 });
 
-test('comments API: reply (claude) flips to replied; resolve sets resolved', async () => {
+test('comments API is human-only: a forged claude reply is stored as human; resolve works', async () => {
   const { dir, id } = specsDirWith();
   await withServer(dir, async (base) => {
     const created = await postJSON(base, `/api/spec/${id}/comments`, { anchor, body: 'q' });
@@ -53,12 +53,21 @@ test('comments API: reply (claude) flips to replied; resolve sets resolved', asy
     const reply = await postJSON(base, `/api/spec/${id}/comments/${tid}/reply`, { body: 'a', author: 'claude' });
     assert.equal(reply.status, 201);
     let data = await (await fetch(`${base}/api/spec/${id}/comments`)).json();
-    assert.equal(data.threads[0].state, 'replied');
+    assert.equal(data.threads[0].comments[1].author, 'human'); // forged author ignored
+    assert.equal(data.threads[0].state, 'open'); // human reply does not flip to replied
 
     const res = await postJSON(base, `/api/spec/${id}/comments/${tid}/resolve`, {});
     assert.equal(res.status, 200);
     data = await (await fetch(`${base}/api/spec/${id}/comments`)).json();
     assert.equal(data.threads[0].state, 'resolved');
+  });
+});
+
+test('reply/resolve reject non-POST with 405', async () => {
+  const { dir, id } = specsDirWith();
+  await withServer(dir, async (base) => {
+    assert.equal((await fetch(`${base}/api/spec/${id}/comments/th_x/reply`)).status, 405);
+    assert.equal((await fetch(`${base}/api/spec/${id}/comments/th_x/resolve`)).status, 405);
   });
 });
 
