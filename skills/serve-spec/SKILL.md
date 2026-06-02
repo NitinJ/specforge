@@ -15,36 +15,46 @@ is zero-dependency Node — no install step.
 
 `${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory.
 
-## 1. Resolve specs dir + port
+## 1. Resolve specs dir
 
 - Default specs dir is `<project>/specs`; honor `<project>/.specforge/config.json`
-  (`specsDir`, `port`) if present. Default port is `4178`.
+  (`specsDir`, `port`) if present.
 
-## 2. Ensure the server is running (idempotent)
+## 2. Find the running server (if any)
 
-- Check health: `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:<port>/healthz`.
-- If it does **not** return `200`, start the server in the background:
+The server advertises its actual bound address at
+`<specsDir>/.specforge/server.json` (`{ "port", "pid", "url" }`). **Always read
+the bound port from this file — it may differ from the configured port after a
+collision fallback.**
 
-  ```
-  node "${CLAUDE_PLUGIN_ROOT}/server/start.mjs" --project "<project-root>" &
-  ```
+- If `server.json` exists, health-check its port:
+  `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:<bound-port>/healthz`.
+- If that returns `200`, the server is already up — reuse it (skip to step 4).
 
-  It prints the bound URL (it falls back to the next port if `<port>` is taken —
-  use the printed port). Give it ~1s, then re-check health.
+## 3. Start the server (only if not already running)
 
-## 3. Open the spec
+```
+node "${CLAUDE_PLUGIN_ROOT}/server/start.mjs" --project "<project-root>" &
+```
 
-- If the user named a spec file, get its URL:
+Give it ~1s, then read `<specsDir>/.specforge/server.json` for the bound port and
+health-check it. Do **not** loop spawning more servers — read the state file to
+learn the real port.
+
+## 4. Open the spec
+
+- If the user named a spec file, get its URL (this reads `server.json` for you,
+  so the port is always correct):
 
   ```
   node "${CLAUDE_PLUGIN_ROOT}/server/start.mjs" --project "<project-root>" --resolve "<spec-file>"
   ```
 
-  Otherwise use the index URL `http://127.0.0.1:<port>/`.
-- Open it in the browser (`xdg-open` / `open` / `start`), or just print the URL
-  for the user to click.
+  Otherwise use the index URL `http://127.0.0.1:<bound-port>/`.
+- Open it in the browser (`xdg-open` / `open` / `start`), or print the URL for the
+  user to click.
 
-## 4. Report
+## 5. Report
 
 - Print the server URL and the spec URL. Mention that edits to the spec file
   live-reload the page, and the task tracker renders live from the plan.

@@ -9,6 +9,7 @@
 import { relative, resolve as resolvePath } from 'node:path';
 import { loadConfig } from '../lib/config.mjs';
 import { specId } from '../lib/paths.mjs';
+import { writeServerState, readServerState, clearServerState } from '../lib/server-state.mjs';
 import { createApp } from './app.mjs';
 
 function parseArgs(argv) {
@@ -46,14 +47,31 @@ const specsDir = args.specsDir || config.specsDir;
 const port = Number.isFinite(args.port) ? args.port : config.port;
 
 // --resolve <file>: print the review URL for a spec and exit (no server started).
+// Prefer the actual bound port from the running server's state file so the URL is
+// correct even after collision fallback; fall back to the configured port.
 if (args.resolve) {
   const rel = relative(specsDir, resolvePath(args.resolve));
-  console.log(`http://127.0.0.1:${port}/spec/${specId(rel)}`);
+  const running = readServerState(specsDir);
+  const usePort = running?.port ?? port;
+  console.log(`http://127.0.0.1:${usePort}/spec/${specId(rel)}`);
   process.exit(0);
 }
 
 const server = createApp({ specsDir });
 listenWithFallback(server, port, '127.0.0.1', 20, (p) => {
+  writeServerState(specsDir, { port: p, pid: process.pid, url: `http://127.0.0.1:${p}/` });
   console.log(`SpecForge review server: http://127.0.0.1:${p}/`);
   console.log(`serving specs from: ${specsDir}`);
 });
+
+// Best-effort cleanup of the advertised state on shutdown.
+let cleaned = false;
+const cleanupState = () => {
+  if (cleaned) return;
+  cleaned = true;
+  clearServerState(specsDir);
+};
+process.on('exit', cleanupState);
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => { cleanupState(); process.exit(0); });
+}

@@ -62,23 +62,37 @@ function serveEvents(specsDir, id, req, res) {
   });
   res.write(': connected\n\n');
 
+  let closed = false;
+  // Guarded write: never touch the response after cleanup (a watcher callback may
+  // still be queued when the socket is already gone).
+  const safeWrite = (chunk) => {
+    if (closed) return;
+    try {
+      res.write(chunk);
+    } catch {
+      closed = true;
+    }
+  };
+
   let debounce = null;
   let watcher = null;
   if (spec) {
     try {
       watcher = watch(spec.file, () => {
+        if (closed) return;
         if (debounce) clearTimeout(debounce);
-        debounce = setTimeout(() => res.write('event: reload\ndata: {}\n\n'), 100);
+        debounce = setTimeout(() => safeWrite('event: reload\ndata: {}\n\n'), 100);
         debounce.unref?.();
       });
     } catch {
       watcher = null;
     }
   }
-  const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
+  const heartbeat = setInterval(() => safeWrite(': ping\n\n'), 25000);
   heartbeat.unref?.();
 
   const cleanup = () => {
+    closed = true;
     clearInterval(heartbeat);
     if (debounce) clearTimeout(debounce);
     if (watcher) { try { watcher.close(); } catch { /* already closed */ } }
