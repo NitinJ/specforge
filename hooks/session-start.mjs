@@ -1,10 +1,23 @@
 #!/usr/bin/env node
 // SpecForge — SessionStart hook.
 //
-// In later stages: drains a review inbox left behind by comments submitted while
-// no session was running, surfacing pending batches at session start.
+// Drain fallback: if review batches were submitted while no session was running,
+// surface them as context at session start so Claude picks them up.
 //
-// Stage 0: fail-safe no-op.
-import { noop } from './lib/io.mjs';
+// Fail-safe: any error exits 0.
 
-await noop();
+import { readStdin, parseInput } from './lib/io.mjs';
+import { pendingForCwd, reviewReason } from '../lib/drain.mjs';
+
+async function main() {
+  const input = parseInput(await readStdin());
+  const cwd = input.cwd || process.cwd();
+  const { specsDir, pending } = pendingForCwd(cwd);
+  if (!pending.length) return;
+
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: reviewReason(specsDir, pending) },
+  }));
+}
+
+main().then(() => process.exit(0)).catch(() => process.exit(0));

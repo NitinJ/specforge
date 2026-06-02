@@ -8,6 +8,7 @@ import {
   loadStore, saveStore, createThread, addComment, resolveThread,
 } from '../lib/comments.mjs';
 import { resolveAnchor } from '../lib/anchor.mjs';
+import { submitBatch } from '../lib/inbox.mjs';
 
 export function sendJson(res, status, obj) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -109,4 +110,13 @@ export function handleCommentResolve(specsDir, id, tid, res) {
   }
   saveStore(specsDir, store);
   sendJson(res, 200, { thread });
+}
+
+/** POST /api/spec/:id/comments/submit — freeze pending comments into a batch. */
+export function handleSubmit(specsDir, id, res) {
+  const spec = specOr404(specsDir, id, res);
+  if (!spec) return;
+  const batch = submitBatch(specsDir, id, spec.relPath);
+  if (!batch) return sendJson(res, 200, { ok: false, reason: 'nothing to submit' });
+  sendJson(res, 201, { ok: true, batch });
 }

@@ -14,11 +14,28 @@
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState !== 'loading') boot();
   var booted = false;
-  function boot() { if (booted) return; booted = true; buildChrome(); load(); }
+  function boot() {
+    if (booted) return;
+    booted = true;
+    buildChrome();
+    load();
+    // Poll so Claude's replies appear without a manual refresh. Skip while the
+    // user is mid-action (a selection or composer open) to avoid disruption.
+    setInterval(function () {
+      if (els.compose) return;
+      var sel = window.getSelection && window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+      load();
+    }, 6000);
+  }
 
   // ---------- data ----------
+  var lastRaw = null;
   function load() {
-    fetch(API).then(function (r) { return r.json(); }).then(function (d) {
+    fetch(API).then(function (r) { return r.text(); }).then(function (raw) {
+      if (raw === lastRaw) return; // unchanged → skip re-render (no flicker)
+      lastRaw = raw;
+      var d = JSON.parse(raw);
       state.threads = (d && d.threads) || [];
       render();
     }).catch(function () {});
