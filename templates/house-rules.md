@@ -28,6 +28,13 @@ filled **during implementation**, not at authoring time.
 > The authoritative list is `requiredSections` in `lib/config.mjs` / project
 > config, so it can change without editing this file.
 
+## Open questions (gate at implementation time)
+
+Each open question is `<li data-sf-q="open">…</li>`. When it's settled, change
+the attribute to `data-sf-q="resolved"` (or `"dropped"`). The
+**pre-implementation gate** refuses to start implementing while any
+`data-sf-q="open"` remains — open questions must be resolved first.
+
 ## Theme contract (enforced)
 
 The spec must support a seamless light/dark switch:
