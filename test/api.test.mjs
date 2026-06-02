@@ -102,3 +102,19 @@ test('serve injects the review UI assets', async () => {
     assert.match(body, /window\.SPECFORGE/);
   });
 });
+
+test('submit freezes pending comments into a batch; re-submit finds nothing', async () => {
+  const { dir, id } = specsDirWith();
+  await withServer(dir, async (base) => {
+    await postJSON(base, `/api/spec/${id}/comments`, { anchor, body: 'c' });
+    const sub = await postJSON(base, `/api/spec/${id}/comments/submit`, {});
+    assert.equal(sub.status, 201);
+    assert.ok((await sub.json()).batch.batchId);
+
+    const get = await (await fetch(`${base}/api/spec/${id}/comments`)).json();
+    assert.ok(get.threads[0].comments[0].batchId, 'comment carries batchId after submit');
+
+    const again = await postJSON(base, `/api/spec/${id}/comments/submit`, {});
+    assert.equal((await again.json()).ok, false);
+  });
+});

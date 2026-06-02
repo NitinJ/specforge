@@ -9,7 +9,7 @@ import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
 import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
-  handleCommentReply, handleCommentResolve,
+  handleCommentReply, handleCommentResolve, handleSubmit,
 } from './api.mjs';
 
 function esc(s) {
@@ -128,6 +128,11 @@ export function createApp(config) {
           .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });
+    }
+    const submit = path.match(/^\/api\/spec\/([\w-]+)\/comments\/submit$/);
+    if (submit) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleSubmit(specsDir, submit[1], res);
     }
     const reply = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/reply$/);
     if (reply) {
