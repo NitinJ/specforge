@@ -80,6 +80,7 @@ test('each hook runs as a fail-safe no-op (exit 0, no output)', () => {
       encoding: 'utf8',
       timeout: 8000,
     });
+    assert.ifError(res.error); // distinguishes a failed/timed-out spawn from a non-zero exit
     assert.equal(res.status, 0, `${name}.mjs exits 0 (stderr: ${res.stderr})`);
     assert.equal((res.stdout || '').trim(), '', `${name}.mjs produces no stdout`);
   }
