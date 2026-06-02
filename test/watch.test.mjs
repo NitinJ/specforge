@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { createWatcher } from '../lib/watch.mjs';
+import { createWatcher, tokenizeArgs } from '../lib/watch.mjs';
 import { submitBatch, markBatchDone, listPendingBatches } from '../lib/inbox.mjs';
 import { loadStore, saveStore, createThread } from '../lib/comments.mjs';
 
@@ -70,4 +70,28 @@ test('stop() prevents further drains', async () => {
   w.stop();
   await w.tick();
   assert.equal(calls, 0);
+});
+
+test('stop() reaps an in-flight drain child', async () => {
+  const dir = seededWithBatch();
+  let killed = false;
+  let release;
+  const drain = (sd, pending, register) => {
+    register({ kill: () => { killed = true; } });
+    return new Promise((r) => { release = r; });
+  };
+  const w = createWatcher({ specsDir: dir, drain });
+  const p = w.tick();
+  assert.equal(w.isRunning, true);
+  w.stop();
+  assert.equal(killed, true, 'in-flight child was killed on stop');
+  release();
+  await p;
+});
+
+test('tokenizeArgs keeps quoted values with spaces intact', () => {
+  assert.deepEqual(tokenizeArgs('--permission-mode acceptEdits'), ['--permission-mode', 'acceptEdits']);
+  assert.deepEqual(tokenizeArgs("--allowedTools 'Bash(git *)'"), ['--allowedTools', 'Bash(git *)']);
+  assert.deepEqual(tokenizeArgs(''), []);
+  assert.deepEqual(tokenizeArgs(undefined), []);
 });

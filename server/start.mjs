@@ -70,7 +70,9 @@ listenWithFallback(server, port, '127.0.0.1', 20, (p) => {
   console.log(`serving specs from: ${specsDir}`);
 
   if (args.watch) {
-    const intervalMs = Number.isFinite(args.watchInterval) ? args.watchInterval * 1000 : 90000;
+    const requested = args.watchInterval * 1000;
+    // floor at 1s so `--watch-interval 0` can't become a tight filesystem-poll loop
+    const intervalMs = Number.isFinite(requested) && requested >= 1000 ? requested : 90000;
     watcher = createWatcher({ specsDir, projectDir, intervalMs, log: (m) => console.log(m) });
     watcher.start();
     console.log(`watch mode ON — submitted batches will be drained unattended via a headless \`claude -p\` every ${intervalMs / 1000}s`);
