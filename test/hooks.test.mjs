@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 
 import { buildIndex } from '../lib/paths.mjs';
 import { loadStore, saveStore, createThread } from '../lib/comments.mjs';
-import { submitBatch } from '../lib/inbox.mjs';
+import { submitBatch, markBatchDone } from '../lib/inbox.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HOOKS = join(ROOT, 'hooks');
@@ -49,6 +49,15 @@ test('stop hook does not re-block when stop_hook_active (loop guard)', () => {
   const res = runHook('stop.mjs', { cwd, stop_hook_active: true });
   assert.equal(res.status, 0);
   assert.equal(res.stdout.trim(), '');
+});
+
+test('stop hook no-ops once the batch is done (no double-processing with the live loop)', () => {
+  const { cwd, batch } = projectWithPendingBatch();
+  // The on-shift live loop handled the batch and cleared it via `comment-cli done`.
+  markBatchDone(join(cwd, 'specs'), batch.specId, batch.batchId);
+  const res = runHook('stop.mjs', { cwd, stop_hook_active: false });
+  assert.equal(res.status, 0);
+  assert.equal(res.stdout.trim(), '', 'an already-handled batch is not re-routed');
 });
 
 test('stop hook is a no-op when nothing is pending', () => {
