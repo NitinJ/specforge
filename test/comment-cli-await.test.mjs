@@ -70,6 +70,17 @@ test('await prints "empty" when the long-poll times out', async () => {
   });
 });
 
+test('await surfaces a server error (unknown spec) instead of faking empty', async () => {
+  const { dir } = specsDirWith();
+  await withServer(dir, async (base, port) => {
+    writeServerState(dir, { port, pid: process.pid, url: base + '/' });
+    const { code, out, err } = await runCli(['await', dir, 'no-such-spec', '100']);
+    assert.notEqual(code, 0, 'non-zero on a server error');
+    assert.notEqual(out, 'empty', 'a 404 must not masquerade as a timeout');
+    assert.match(err, /\b404\b/);
+  });
+});
+
 test('await exits non-zero (no crash) when no server is running', async () => {
   const { dir, id } = specsDirWith(); // no server.json written
   const { code, err } = await runCli(['await', dir, id, '100']);
