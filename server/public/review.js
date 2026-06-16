@@ -1,32 +1,36 @@
 /* SpecForge review layer client. Vanilla, dependency-free.
- * - Renders anchored comment threads (sidebar + in-document highlights).
- * - Lets a human select text or a section and leave a comment.
- * - Reply / resolve. Batch submit hooks into the review loop (Stage 4). */
+ * Block-level comments: hover any block to highlight it, click to comment.
+ * Reply / resolve. Batch submit feeds the review loop.
+ *
+ * Anchoring is block-level and lives entirely on the client: a comment binds to
+ * a block by its document-order index + its normalized text. The server is dumb
+ * storage — it never parses the spec. Re-finding a block: try the stored index,
+ * else match by text; if neither matches the thread still shows in the sidebar
+ * (just without an inline highlight). */
 (function () {
   'use strict';
   var SPEC = (window.SPECFORGE || {}).specId;
   if (!SPEC) return;
   var API = '/api/spec/' + encodeURIComponent(SPEC) + '/comments';
 
+  // Elements that can carry a comment. The innermost match under the pointer wins.
+  var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,pre,blockquote,figure,.panel,.callout,.card';
+  var INTERACTIVE = 'a,button,input,textarea,select,summary,label';
+
   var state = { threads: [], filter: 'open', active: null };
   var els = {};
 
+  var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState !== 'loading') boot();
-  var booted = false;
   function boot() {
     if (booted) return;
     booted = true;
     buildChrome();
     load();
-    // Poll so Claude's replies appear without a manual refresh. Skip while the
-    // user is mid-action (a selection or composer open) to avoid disruption.
-    setInterval(function () {
-      if (els.compose) return;
-      var sel = window.getSelection && window.getSelection();
-      if (sel && !sel.isCollapsed) return;
-      load();
-    }, 6000);
+    // Poll so Claude's replies appear without a manual refresh; pause while the
+    // composer is open so we don't disrupt the user mid-comment.
+    setInterval(function () { if (!els.compose) load(); }, 6000);
   }
 
   // ---------- data ----------
@@ -78,8 +82,56 @@
     els.batch.querySelector('button').onclick = submitBatch;
     document.body.appendChild(els.batch);
 
-    document.addEventListener('mouseup', onSelect);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hideCta(); hideCompose(); } });
+    document.addEventListener('mousemove', onHover);
+    document.addEventListener('click', onClick, true); // capture so we can claim a block click
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { clearHover(); hideCompose(); } });
+  }
+
+  // ---------- block targeting ----------
+  function commentableBlocks() {
+    return Array.prototype.filter.call(document.querySelectorAll(BLOCK_SEL), function (el) { return !inUI(el); });
+  }
+  function blockAt(node) {
+    var el = node && node.nodeType === 1 ? node : node && node.parentElement;
+    el = el && el.closest ? el.closest(BLOCK_SEL) : null;
+    return el && !inUI(el) ? el : null;
+  }
+  function blockAnchor(el) {
+    return { index: commentableBlocks().indexOf(el), tag: el.tagName, text: norm(el.textContent).slice(0, 400) };
+  }
+  function findBlock(anchor) {
+    var b = anchor && anchor.block;
+    if (!b) return null;
+    var blocks = commentableBlocks();
+    var byIndex = blocks[b.index];
+    if (byIndex && norm(byIndex.textContent).slice(0, 400) === b.text) return byIndex;
+    for (var i = 0; i < blocks.length; i++) {
+      if (norm(blocks[i].textContent).slice(0, 400) === b.text) return blocks[i];
+    }
+    return null;
+  }
+
+  // ---------- hover + click ----------
+  var hoverEl = null;
+  function onHover(e) {
+    if (els.compose || inUI(e.target)) { clearHover(); return; }
+    var el = blockAt(e.target);
+    if (el === hoverEl) return;
+    clearHover();
+    if (el) { el.classList.add('sf-hover'); hoverEl = el; }
+  }
+  function clearHover() { if (hoverEl) { hoverEl.classList.remove('sf-hover'); hoverEl = null; } }
+
+  function onClick(e) {
+    if (inUI(e.target) || (e.target.closest && e.target.closest(INTERACTIVE))) return;
+    var sel = window.getSelection && window.getSelection();
+    if (sel && !sel.isCollapsed) return; // a real text selection — leave it alone
+    var el = blockAt(e.target);
+    if (!el) return;
+    var tid = el.getAttribute('data-sf-thread');
+    if (tid) { activate(tid, false); els.sidebar.classList.add('open'); return; }
+    e.preventDefault();
+    openCompose(el);
   }
 
   // ---------- render ----------
@@ -98,17 +150,17 @@
     els.count.textContent = list.length + (list.length === 1 ? ' thread' : ' threads');
     els.threads.innerHTML = '';
     if (!list.length) {
-      els.threads.innerHTML = '<p style="color:var(--sf-muted);padding:12px">No comments. Select text in the spec to add one.</p>';
+      els.threads.innerHTML = '<p style="color:var(--sf-muted);padding:12px">No comments yet. Hover any block in the spec and click it to comment.</p>';
       return;
     }
     list.forEach(function (t) {
+      var block = (t.anchor && t.anchor.block) || {};
       var card = create('div', { class: 'sf-thread state-' + t.state });
       if (state.active === t.id) card.classList.add('sf-active');
-      var st = (t.resolution && t.resolution.status) || 'section';
       card.innerHTML =
-        '<div class="sf-meta"><span class="sf-badge ' + st + '">' + st + '</span>' +
-        '<span>' + esc(t.anchor && t.anchor.sectionId || '') + '</span>' +
-        '<span style="margin-left:auto">' + esc(t.state) + '</span></div>' +
+        '<div class="sf-meta"><span class="sf-badge ' + t.state + '">' + esc(t.state) + '</span>' +
+        '<span class="sf-loc">' + esc((block.tag || 'block').toLowerCase()) + '</span></div>' +
+        '<div class="sf-quote">' + esc((block.text || '').slice(0, 140)) + '</div>' +
         t.comments.map(function (c) {
           return '<div class="sf-comment"><span class="who ' + (c.author === 'claude' ? 'claude' : '') + '">' +
             esc(c.author) + '</span><div class="body">' + esc(c.body) + '</div></div>';
@@ -145,16 +197,17 @@
   }
 
   function renderHighlights() {
-    // clear old
-    Array.prototype.forEach.call(document.querySelectorAll('.sf-anchor'), unwrap);
-    Array.prototype.forEach.call(document.querySelectorAll('section.sf-section-hl'), function (s) { s.classList.remove('sf-section-hl', 'sf-active'); });
+    Array.prototype.forEach.call(document.querySelectorAll('.sf-block-mark'), function (el) {
+      el.classList.remove('sf-block-mark', 'sf-active');
+      el.removeAttribute('data-sf-thread');
+    });
     visible().forEach(function (t) {
       if (t.state === 'resolved') return;
-      var section = t.anchor && document.getElementById(t.anchor.sectionId);
-      if (!section) return;
-      var q = t.anchor.quote;
-      var span = q && q.exact ? wrapQuote(section, q.exact, t) : null;
-      if (!span) section.classList.add('sf-section-hl');
+      var el = findBlock(t.anchor);
+      if (!el) return;
+      el.classList.add('sf-block-mark');
+      el.setAttribute('data-sf-thread', t.id);
+      if (state.active === t.id) el.classList.add('sf-active');
     });
   }
 
@@ -171,45 +224,21 @@
     }
   }
 
-  // ---------- selection → comment ----------
-  function onSelect(e) {
-    if (inUI(e.target)) return;
-    var sel = window.getSelection();
-    if (!sel || sel.isCollapsed) { hideCta(); return; }
-    var text = sel.toString().replace(/\s+/g, ' ').trim();
-    var range = sel.rangeCount ? sel.getRangeAt(0) : null;
-    var section = range && closestSection(range.commonAncestorContainer);
-    if (!text || !section || !section.id) { hideCta(); return; }
-    showCta(range, section);
-  }
-
-  function showCta(range, section) {
-    hideCta();
-    var rect = range.getBoundingClientRect();
-    var btn = create('button', { class: 'sf-cta' }, '💬 Comment');
-    btn.style.left = (window.scrollX + rect.left + rect.width / 2) + 'px';
-    btn.style.top = (window.scrollY + rect.bottom) + 'px';
-    btn.onmousedown = function (ev) { ev.preventDefault(); };
-    btn.onclick = function () { openCompose(range, section); };
-    document.body.appendChild(btn);
-    els.cta = btn;
-  }
-  function hideCta() { if (els.cta) { els.cta.remove(); els.cta = null; } }
-
-  function openCompose(range, section) {
-    hideCta();
+  // ---------- compose ----------
+  function openCompose(block) {
     hideCompose();
-    var quote = makeQuote(section, range);
+    var anchor = { block: blockAnchor(block) };
+    var rect = block.getBoundingClientRect();
     var box = create('div', { id: 'sf-compose' });
-    box.style.top = (window.scrollY + range.getBoundingClientRect().top) + 'px';
-    box.innerHTML = '<div class="q">' + esc(quote.exact.slice(0, 160)) + '</div>';
+    box.style.top = Math.max(8, Math.min(rect.top, window.innerHeight - 220)) + 'px';
+    box.innerHTML = '<div class="q">' + esc(anchor.block.text.slice(0, 160)) + '</div>';
     var ta = create('textarea', { placeholder: 'Comment…' });
     var row = create('div', { class: 'sf-acts' });
     var save = create('button', { class: 'sf-primary' }, 'Comment');
     var cancel = create('button', { class: 'sf-ghost' }, 'Cancel');
     save.onclick = function () {
       if (!ta.value.trim()) return;
-      postJSON(API, { anchor: { sectionId: section.id, quote: quote }, body: ta.value.trim(), author: 'human' })
+      postJSON(API, { anchor: anchor, body: ta.value.trim(), author: 'human' })
         .then(function () { hideCompose(); els.sidebar.classList.add('open'); load(); });
     };
     cancel.onclick = hideCompose;
@@ -217,9 +246,14 @@
     box.appendChild(ta); box.appendChild(row);
     document.body.appendChild(box);
     els.compose = box;
+    clearHover();
+    block.classList.add('sf-block-mark', 'sf-active');
     ta.focus();
   }
-  function hideCompose() { if (els.compose) { els.compose.remove(); els.compose = null; } }
+  function hideCompose() {
+    if (els.compose) { els.compose.remove(); els.compose = null; }
+    renderHighlights();
+  }
 
   function submitBatch() {
     postJSON(API + '/submit', {}).then(function (r) {
@@ -228,73 +262,21 @@
     }).catch(function () { flash('Could not submit batch.'); });
   }
 
-  // ---------- anchoring (DOM) ----------
+  // ---------- activate ----------
   function activate(id, scroll) {
     state.active = id;
     renderSidebar();
-    var hl = document.querySelector('[data-thread="' + id + '"]');
-    var thread = state.threads.find(function (t) { return t.id === id; });
-    var target = hl || (thread && document.getElementById(thread.anchor.sectionId));
-    Array.prototype.forEach.call(document.querySelectorAll('.sf-active'), function (e) { if (e.dataset) e.classList.remove('sf-active'); });
-    if (hl) hl.classList.add('sf-active');
-    else if (target) target.classList.add('sf-active');
-    if (scroll && target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-
-  function wrapQuote(section, exact, thread) {
-    var walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT, null);
-    var node;
-    while ((node = walker.nextNode())) {
-      var idx = node.nodeValue.indexOf(exact);
-      if (idx !== -1) {
-        try {
-          var range = document.createRange();
-          range.setStart(node, idx);
-          range.setEnd(node, idx + exact.length);
-          var span = document.createElement('span');
-          span.className = 'sf-anchor' + (thread.resolution && thread.resolution.status === 'moved' ? ' moved' : '');
-          span.setAttribute('data-thread', thread.id);
-          span.onclick = function (e) { e.stopPropagation(); activate(thread.id, false); els.sidebar.classList.add('open'); };
-          range.surroundContents(span);
-          return span;
-        } catch (e) { return null; }
-      }
-    }
-    return null;
-  }
-  function unwrap(span) {
-    var p = span.parentNode; if (!p) return;
-    while (span.firstChild) p.insertBefore(span.firstChild, span);
-    p.removeChild(span); p.normalize();
-  }
-
-  function makeQuote(section, range) {
-    var pre = document.createRange();
-    pre.selectNodeContents(section);
-    try { pre.setEnd(range.startContainer, range.startOffset); } catch (e) {}
-    var offset = pre.toString().length;
-    var full = section.textContent;
-    var exact = range.toString();
-    return {
-      exact: exact,
-      prefix: full.slice(Math.max(0, offset - 40), offset),
-      suffix: full.slice(offset + exact.length, offset + exact.length + 40),
-    };
+    renderHighlights();
+    var el = document.querySelector('[data-sf-thread="' + id + '"]');
+    if (scroll && el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   // ---------- utils ----------
-  function closestSection(node) {
-    var el = node && node.nodeType === 1 ? node : node && node.parentElement;
-    while (el && el !== document.body) {
-      if (el.tagName === 'SECTION' && el.id) return el;
-      el = el.parentElement;
-    }
-    return null;
-  }
+  function norm(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
   function inUI(t) {
     while (t) {
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-batchbar' ||
-          t.id === 'sf-toggle' || (t.classList && t.classList.contains('sf-cta'))) return true;
+          t.id === 'sf-toggle' || t.id === 'sf-live') return true;
       t = t.parentElement;
     }
     return false;

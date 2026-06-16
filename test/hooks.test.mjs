@@ -22,7 +22,7 @@ function projectWithPendingBatch() {
   writeFileSync(join(specsDir, 's-spec.html'), TEMPLATE);
   const id = buildIndex(specsDir)[0].id;
   const store = loadStore(specsDir, id, 's-spec.html');
-  createThread(store, { anchor: { sectionId: 'overview', quote: { exact: 'The problem' } }, body: 'q' });
+  createThread(store, { anchor: { block: { index: 1, tag: 'P', text: 'The problem' } }, body: 'q' });
   saveStore(specsDir, store);
   const batch = submitBatch(specsDir, id, 's-spec.html');
   return { cwd, batch };

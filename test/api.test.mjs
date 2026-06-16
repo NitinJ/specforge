@@ -11,7 +11,7 @@ import { storePath } from '../lib/comments.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TEMPLATE = readFileSync(join(ROOT, 'templates', 'spec-base.html'), 'utf8');
-const anchor = { sectionId: 'overview', quote: { exact: 'The problem' } };
+const anchor = { block: { index: 1, tag: 'P', text: 'The problem and its context' } };
 
 function specsDirWith() {
   const dir = mkdtempSync(join(tmpdir(), 'sf-api-'));
@@ -40,7 +40,7 @@ test('comments API: create → persist → get with resolution', async () => {
     const data = await get.json();
     assert.equal(data.threads.length, 1);
     assert.equal(data.threads[0].comments[0].body, 'why?');
-    assert.equal(data.threads[0].resolution.status, 'precise');
+    assert.equal(data.threads[0].anchor.block.text, 'The problem and its context');
   });
 });
 

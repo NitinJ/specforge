@@ -8,7 +8,7 @@ import { createWatcher, tokenizeArgs } from '../lib/watch.mjs';
 import { submitBatch, markBatchDone, listPendingBatches } from '../lib/inbox.mjs';
 import { loadStore, saveStore, createThread } from '../lib/comments.mjs';
 
-const anchor = { sectionId: 'overview', quote: { exact: 'x' } };
+const anchor = { block: { index: 1, tag: 'P', text: 'x' } };
 
 function seededWithBatch() {
   const dir = mkdtempSync(join(tmpdir(), 'sf-watch-'));

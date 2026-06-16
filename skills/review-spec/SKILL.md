@@ -28,14 +28,17 @@ Pending batches are files at `<specsDir>/.specforge/<specId>/inbox/<batchId>.jso
 For a batch's spec:
 - The spec file is `<specsDir>/<specPath>`.
 - The comment store is `<specsDir>/.specforge/<specId>/comments.json`. Read it to
-  get each thread's `anchor` (sectionId + quote) and the human comment text.
+  get each thread's `anchor.block` (`{ index, tag, text }` — `text` is the
+  normalized text of the commented block) and the human comment text.
 
 ## 3. For each thread in the batch
 
 Work each `threadId`:
 
-1. **Understand** the human comment and where it points (its `anchor.sectionId`
-   and `anchor.quote`). Locate that section in the spec file.
+1. **Understand** the human comment and where it points. The anchor is
+   block-level: search the spec file for `anchor.block.text` to find the exact
+   block the human commented on (`anchor.block.tag` + `index` disambiguate if the
+   text repeats).
 2. **Amend the spec** if the comment asks for a change — edit the relevant
    section with the Edit tool. **Preserve every `<section id="…">` and its id**
    (anchors and the lint depend on them); keep the theme CSS/toggle and TOC.

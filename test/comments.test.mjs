@@ -8,7 +8,7 @@ import {
   loadStore, saveStore, createThread, addComment, editComment, resolveThread, findThread, storePath,
 } from '../lib/comments.mjs';
 
-const anchor = { sectionId: 'overview', quote: { exact: 'the problem', prefix: '', suffix: '' } };
+const anchor = { block: { index: 1, tag: 'P', text: 'the problem and its context' } };
 
 test('loadStore returns an empty store when none exists', () => {
   const dir = mkdtempSync(join(tmpdir(), 'sf-c-'));

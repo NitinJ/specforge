@@ -2,12 +2,10 @@
 // comment store. Anchors are resolved server-side against the current spec so
 // the client can render precise / moved / section / orphaned highlights.
 
-import { readFileSync } from 'node:fs';
 import { resolveSpec } from '../lib/paths.mjs';
 import {
   loadStore, saveStore, createThread, addComment, resolveThread,
 } from '../lib/comments.mjs';
-import { resolveAnchor } from '../lib/anchor.mjs';
 import { submitBatch } from '../lib/inbox.mjs';
 
 export function sendJson(res, status, obj) {
@@ -48,19 +46,13 @@ function specOr404(specsDir, id, res) {
   return spec;
 }
 
-/** GET /api/spec/:id/comments — threads with live anchor resolution. */
+/** GET /api/spec/:id/comments — stored threads. Block anchors are resolved
+ *  client-side (the browser has the DOM), so the server never parses the spec. */
 export function handleCommentsGet(specsDir, id, res) {
   const spec = specOr404(specsDir, id, res);
   if (!spec) return;
   const store = loadStore(specsDir, id, spec.relPath);
-  let html = '';
-  try {
-    html = readFileSync(spec.file, 'utf8');
-  } catch {
-    html = '';
-  }
-  const threads = store.threads.map((t) => ({ ...t, resolution: resolveAnchor(html, t.anchor) }));
-  sendJson(res, 200, { specId: id, specPath: spec.relPath, threads });
+  sendJson(res, 200, { specId: id, specPath: spec.relPath, threads: store.threads });
 }
 
 /** POST /api/spec/:id/comments — create a thread { anchor, body, author? }. */
