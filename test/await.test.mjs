@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 
 import { createApp } from '../server/app.mjs';
 import { buildIndex } from '../lib/paths.mjs';
+import { waiterCount } from '../lib/channel.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TEMPLATE = readFileSync(join(ROOT, 'templates', 'spec-base.html'), 'utf8');
@@ -50,6 +51,33 @@ test('GET /await times out to {batch:null} when nothing is submitted', async () 
     const r = await fetch(`${base}/api/spec/${id}/await?timeout=50`);
     assert.equal(r.status, 200);
     assert.equal((await r.json()).batch, null);
+  });
+});
+
+test('GET /await with no ?timeout parks on the default (does not return instantly)', async () => {
+  const { dir, id } = specsDirWith();
+  await withServer(dir, async (base) => {
+    await postJSON(base, `/api/spec/${id}/comments`, { anchor, body: 'q' });
+    // No ?timeout → must use the 25s default and park, not return null at once.
+    const awaiting = fetch(`${base}/api/spec/${id}/await`);
+    await new Promise((r) => setTimeout(r, 100));
+    const submitted = (await (await postJSON(base, `/api/spec/${id}/comments/submit`, {})).json()).batch;
+    const delivered = (await (await awaiting).json()).batch;
+    assert.ok(delivered, 'no-timeout poll parked and received the batch (not an instant null)');
+    assert.equal(delivered.batchId, submitted.batchId);
+  });
+});
+
+test('a client disconnect removes its parked waiter', async () => {
+  const { dir, id } = specsDirWith();
+  await withServer(dir, async (base) => {
+    const ac = new AbortController();
+    fetch(`${base}/api/spec/${id}/await?timeout=5000`, { signal: ac.signal }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(waiterCount(id), 1, 'one parked waiter while connected');
+    ac.abort();
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(waiterCount(id), 0, 'waiter removed on client disconnect');
   });
 });
 

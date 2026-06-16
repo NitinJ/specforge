@@ -137,9 +137,11 @@ export function createApp(config) {
     const awaitReview = path.match(/^\/api\/spec\/([\w-]+)\/await$/);
     if (awaitReview) {
       if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
-      const t = Number(url.searchParams.get('timeout'));
+      // null (param omitted) must fall through to the default, not Number(null)===0.
+      const raw = url.searchParams.get('timeout');
+      const t = raw == null ? NaN : Number(raw);
       const timeoutMs = Number.isFinite(t) && t >= 0 ? Math.min(t, 60000) : 25000;
-      return handleAwait(specsDir, awaitReview[1], timeoutMs, res);
+      return handleAwait(specsDir, awaitReview[1], timeoutMs, req, res).catch(() => {});
     }
     const reply = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/reply$/);
     if (reply) {

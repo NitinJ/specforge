@@ -119,11 +119,16 @@ export function handleSubmit(specsDir, id, res) {
  *  already-pending inbox batch immediately; otherwise parks until a submit
  *  publishes one or `timeoutMs` elapses (then { batch: null }). The on-disk
  *  inbox stays the durable truth, so a missed wake is recovered on the next poll. */
-export async function handleAwait(specsDir, id, timeoutMs, res) {
+export async function handleAwait(specsDir, id, timeoutMs, req, res) {
   const spec = specOr404(specsDir, id, res);
   if (!spec) return;
   const pending = listPendingBatches(specsDir).filter((b) => b.specId === id);
   if (pending.length) return sendJson(res, 200, { batch: pending[0] });
-  const batch = await waitForBatch(id, timeoutMs);
+  // Drop the waiter (and never write to a dead socket) if the client hangs up.
+  const ac = new AbortController();
+  let closed = false;
+  req.on('close', () => { closed = true; ac.abort(); });
+  const batch = await waitForBatch(id, timeoutMs, ac.signal);
+  if (closed) return;
   sendJson(res, 200, { batch: batch || null });
 }
