@@ -14,7 +14,8 @@ Do this in order:
    loop): long-poll `comment-cli await <specsDir> <specId>`, process each
    delivered batch (reply inline + amend the spec + mark it done), and re-await.
    Stop after ~4 consecutive idle cycles (≈100s of silence) or when the human
-   says to detach.
+   says to detach. If `await` exits non-zero (the review server is gone), stop
+   the loop and tell the human the server is no longer running.
 
 The spec must already exist (use `/specforge:create` for a new one). Spec path
 or name:
