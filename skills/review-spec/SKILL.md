@@ -17,6 +17,30 @@ file change triggers a reload; the sidebar also polls).
 `${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. `<specsDir>` defaults
 to `<project>/specs` (honor `.specforge/config.json`).
 
+## Live mode (attached) — the on-shift loop
+
+When **attached** to a spec for live review, don't wait for the Stop hook — run
+an on-shift loop that picks up each batch the instant the human submits it:
+
+1. Long-poll for the next batch:
+
+   ```
+   node "${CLAUDE_PLUGIN_ROOT}/lib/comment-cli.mjs" await "<specsDir>" "<specId>" 25000
+   ```
+
+   - Prints a **batch JSON** object (`{ batchId, specId, specPath, threadIds, … }`)
+     → that *is* the batch; process it with steps 2–4 below, then loop and `await`
+     again.
+   - Prints `empty` (the long-poll elapsed with no submit) → loop and `await` again.
+   - Exits **non-zero** (no review server running) → stop the loop.
+
+2. Stop after ~4 consecutive `empty` cycles (≈100s of silence) or when the human
+   detaches, then end your turn. Anything submitted afterward is still caught by
+   the Stop / UserPromptSubmit hook fallback.
+
+In live mode the `await` output replaces step 1 below (finding pending batches);
+loading, amending, replying, and marking done are identical.
+
 ## 1. Find pending batches
 
 Pending batches are files at `<specsDir>/.specforge/<specId>/inbox/<batchId>.json`
