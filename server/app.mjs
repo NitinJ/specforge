@@ -9,7 +9,7 @@ import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
 import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
-  handleCommentReply, handleCommentResolve, handleSubmit,
+  handleCommentReply, handleCommentResolve, handleSubmit, handleAwait,
 } from './api.mjs';
 
 function esc(s) {
@@ -133,6 +133,13 @@ export function createApp(config) {
     if (submit) {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleSubmit(specsDir, submit[1], res);
+    }
+    const awaitReview = path.match(/^\/api\/spec\/([\w-]+)\/await$/);
+    if (awaitReview) {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      const t = Number(url.searchParams.get('timeout'));
+      const timeoutMs = Number.isFinite(t) && t >= 0 ? Math.min(t, 60000) : 25000;
+      return handleAwait(specsDir, awaitReview[1], timeoutMs, res);
     }
     const reply = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/reply$/);
     if (reply) {
