@@ -11,7 +11,7 @@ import { loadStore, saveStore, createThread } from '../lib/comments.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = join(ROOT, 'lib', 'comment-cli.mjs');
-const anchor = { sectionId: 'overview', quote: { exact: 'x' } };
+const anchor = { block: { index: 1, tag: 'P', text: 'x' } };
 
 function seeded() {
   const dir = mkdtempSync(join(tmpdir(), 'sf-inbox-'));
