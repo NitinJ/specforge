@@ -16,5 +16,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+        env:
+          # The unit tier needs jsdom; the Playwright browser download is only
+          # for the e2e tier (npm run test:e2e), which CI does not run here.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Run tests
-        run: node --test
+        run: npm test

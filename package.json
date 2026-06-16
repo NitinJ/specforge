@@ -9,7 +9,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test --test-force-exit",
     "test:e2e": "node --test test-e2e/review.e2e.mjs"
   },
   "devDependencies": {
