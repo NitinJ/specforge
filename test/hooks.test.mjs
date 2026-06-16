@@ -51,9 +51,9 @@ test('stop hook does not re-block when stop_hook_active (loop guard)', () => {
   assert.equal(res.stdout.trim(), '');
 });
 
-test('stop hook no-ops once the batch is done (no double-processing with the live loop)', () => {
+test('stop hook no-ops once a batch is marked done', () => {
   const { cwd, batch } = projectWithPendingBatch();
-  // The on-shift live loop handled the batch and cleared it via `comment-cli done`.
+  // Once review-spec clears the batch via `comment-cli done`, the hook must not re-route it.
   markBatchDone(join(cwd, 'specs'), batch.specId, batch.batchId);
   const res = runHook('stop.mjs', { cwd, stop_hook_active: false });
   assert.equal(res.status, 0);

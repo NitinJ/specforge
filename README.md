@@ -5,7 +5,7 @@ A Claude Code plugin for **spec authoring, review & agent collaboration**.
 SpecForge owns the full lifecycle of a design spec:
 
 1. **Author** — skills generate house-style `.html` specs (light/dark, strong presentation, a structured Stages & Tasks plan, a live task tracker, and dedicated impl-time sections for design decisions / deviations / tradeoffs).
-2. **Review & collaborate** — a bundled Node server renders any spec in the browser with a Google-Docs-style comment layer (sidebar + floating markers + highlights). A human leaves comments anchored to **blocks** (hover a block, click to comment); submitting a batch reaches the session — **immediately** if it's on-shift (see [Live review](#live-review-attach)), else **auto-injected** at the next turn boundary — and the session replies inline **and** amends the spec.
+2. **Review & collaborate** — a bundled Node server renders any spec in the browser with a Google-Docs-style comment layer (sidebar + floating markers + highlights). A human leaves comments anchored to **blocks** (hover a block, click to comment); submitting a batch is **auto-injected** into the active Claude session at its next turn boundary (Stop / UserPromptSubmit hook), which replies inline **and** amends the spec. Hands-free `--watch` mode drains batches unattended.
 3. **Enforce** — hooks keep the spec and the implementation in lockstep: the task tracker, decisions, deviations & tradeoffs stay current, and the spec's stage→task→PR cadence is enforced.
 
 **Zero runtime dependencies** — everything uses Node built-ins, so the plugin runs without `npm install`.
@@ -36,10 +36,10 @@ Spec status lives in `data-sf-spec-status` on the document root and the header b
 |-------|-----------|--------------|
 | `specforge:create-spec` | "write a spec for X" | Author a new house-style `.html` spec from the template; runs the lint (required sections, unique ids, light/dark theme contract, structured plan) before finishing. |
 | `specforge:serve-spec` | "open/review this spec" | Boot (or focus) the local review server and open the spec with the review layer (live tracker + live reload) injected. `--watch` for hands-free review. |
-| `specforge:review-spec` | (auto via Stop hook) or "process comments" | Reply inline to a submitted comment batch and amend the spec; mark the batch done. Replies are append-only; only humans resolve threads. **Live (on-shift) mode** long-polls `/await` for real-time delivery when attached. |
+| `specforge:review-spec` | (auto via Stop hook) or "process comments" | Reply inline to a submitted comment batch and amend the spec; mark the batch done. Replies are append-only; only humans resolve threads. |
 | `specforge:implement-spec` | "implement this spec" | Drive implementation stage-by-stage (TDD, one PR per stage), gated by the pre-implementation gate; keeps tracker / PRs / decisions current. |
 
-Thin slash commands wrap each: `/specforge:create`, `/specforge:serve`, `/specforge:review`, `/specforge:attach` (live review), `/specforge:implement`.
+Thin slash commands wrap each: `/specforge:create`, `/specforge:serve`, `/specforge:review`, `/specforge:implement`.
 
 ## Review server
 
@@ -47,7 +47,6 @@ Zero-dep Node HTTP server (`server/start.mjs`), bound to `127.0.0.1`:
 
 - `GET /` — spec index · `GET /spec/:id` — spec with the review layer injected.
 - `GET /events` — per-spec SSE live-reload.
-- `GET /api/spec/:id/await` — long-poll the next submitted batch (live review; woken by **submit**, drains a pending batch, or times out).
 - `GET/POST /api/spec/:id/comments…` — comments API (create / reply / resolve / **submit**). The public API is **human-only**; agent replies are written to the store by `review-spec`.
 
 It advertises its bound address at `<specsDir>/.specforge/server.json`. Comments are stored per spec at `<specsDir>/.specforge/<specId>/comments.json` and never mixed.
@@ -59,33 +58,6 @@ It advertises its bound address at `<specsDir>/.specforge/server.json`. Comments
 - `SPECFORGE_CLAUDE_BIN` — the Claude binary (default `claude`).
 - `SPECFORGE_WATCH_CLAUDE_ARGS` — extra flags (e.g. a permission mode for unattended edits).
 - `--watch-interval <seconds>` — poll cadence (default 90, floored at 1).
-
-## Live review (attach)
-
-Attach a session to a spec for **real-time** review — comments reach you the
-instant they're submitted, with no turn-boundary wait:
-
-```
-/specforge:attach <spec-path>
-```
-
-This serves the spec and puts the session **on-shift**: it long-polls
-`GET /api/spec/:id/await` via `comment-cli await`, and a browser **submit**
-`publish()`es the batch straight to the parked poll. The session amends the spec
-and replies, then re-awaits — changes land in the browser live.
-
-| Part | Mechanism |
-|------|-----------|
-| Immediate delivery | blocking long-poll (`/await`) woken by submit — no MCP, no extra process |
-| Agent write-back | existing `comment-cli` (reply / done) + `Edit`; the browser live-reloads over SSE |
-| Attach / create | `/specforge:attach <path>` (existing spec) · `/specforge:create` (new) |
-
-**On-shift constraint:** immediate delivery only reaches a session currently
-parked in the `await` loop (started by `attach`). With nothing attached, a
-submitted batch waits in the inbox and the **Stop / UserPromptSubmit hook** routes
-it at the next turn boundary — same outcome, just turn-gated. The two never
-double-process: `comment-cli done` clears the inbox file, so the hook no-ops on an
-already-handled batch.
 
 ## Hooks
 

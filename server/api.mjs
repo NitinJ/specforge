@@ -6,8 +6,7 @@ import { resolveSpec } from '../lib/paths.mjs';
 import {
   loadStore, saveStore, createThread, addComment, resolveThread,
 } from '../lib/comments.mjs';
-import { submitBatch, listPendingBatches } from '../lib/inbox.mjs';
-import { publish, waitForBatch } from '../lib/channel.mjs';
+import { submitBatch } from '../lib/inbox.mjs';
 
 export function sendJson(res, status, obj) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -111,24 +110,5 @@ export function handleSubmit(specsDir, id, res) {
   if (!spec) return;
   const batch = submitBatch(specsDir, id, spec.relPath);
   if (!batch) return sendJson(res, 200, { ok: false, reason: 'nothing to submit' });
-  publish(id, batch); // wake any parked /await waiter for real-time delivery
   sendJson(res, 201, { ok: true, batch });
-}
-
-/** GET /api/spec/:id/await — long-poll for the next review batch. Drains an
- *  already-pending inbox batch immediately; otherwise parks until a submit
- *  publishes one or `timeoutMs` elapses (then { batch: null }). The on-disk
- *  inbox stays the durable truth, so a missed wake is recovered on the next poll. */
-export async function handleAwait(specsDir, id, timeoutMs, req, res) {
-  const spec = specOr404(specsDir, id, res);
-  if (!spec) return;
-  const pending = listPendingBatches(specsDir).filter((b) => b.specId === id);
-  if (pending.length) return sendJson(res, 200, { batch: pending[0] });
-  // Drop the waiter (and never write to a dead socket) if the client hangs up.
-  const ac = new AbortController();
-  let closed = false;
-  req.on('close', () => { closed = true; ac.abort(); });
-  const batch = await waitForBatch(id, timeoutMs, ac.signal);
-  if (closed) return;
-  sendJson(res, 200, { batch: batch || null });
 }
