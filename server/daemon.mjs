@@ -20,7 +20,7 @@ import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
 import {
   readServerState, writeServerState, clearServerState,
-  acquireLock, releaseLock, lockHolderPid, isAlive,
+  acquireLock, releaseLock, lockHolderPid, isAlive, healthOk,
 } from '../lib/daemon-state.mjs';
 
 const DEFAULT_PORT = 4180;
@@ -136,19 +136,6 @@ function listenWithFallback(server, port, host, retryLimit) {
     };
     tryPort(port);
   });
-}
-
-/** GET /healthz against an advertised url; true iff it answers 200. */
-async function healthOk(url) {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 1000);
-    const res = await fetch(new URL('/healthz', url), { signal: ctrl.signal });
-    clearTimeout(t);
-    return res.status === 200;
-  } catch {
-    return false;
-  }
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
