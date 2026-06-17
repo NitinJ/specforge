@@ -76,3 +76,35 @@
 #sf-batchbar button { margin-left: auto; background: var(--sf-accent); color: #08101f; border: none; border-radius: 8px; font: 600 12px/1 system-ui, sans-serif; padding: 8px 14px; cursor: pointer; }
 .sf-primary { background: var(--sf-accent); color: #08101f; border: none; border-radius: 8px; font: 600 12px/1 system-ui; padding: 7px 12px; cursor: pointer; }
 .sf-ghost { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 8px; font-size: 12px; padding: 7px 10px; cursor: pointer; }
+
+/* injected container-width slider (only when the spec has none of its own) */
+#sf-width {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 12px; z-index: 46;
+  display: flex; align-items: center; gap: 8px; background: var(--sf-panel);
+  border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 999px;
+  padding: 6px 14px; font: 12px/1 system-ui, sans-serif; box-shadow: 0 6px 20px rgba(0,0,0,.25);
+}
+#sf-width input[type=range] { width: 130px; accent-color: var(--sf-accent); cursor: pointer; }
+#sf-width b { color: var(--sf-ink); font-weight: 700; min-width: 36px; text-align: right; }
+
+/* injected floating TOC drawer (only when the spec has no TOC of its own) */
+#sf-toc-toggle {
+  position: fixed; top: 54px; left: 16px; z-index: 46; background: var(--sf-panel);
+  border: 1px solid var(--sf-line); color: var(--sf-ink); border-radius: 999px;
+  padding: 7px 13px; font: 600 12px/1 system-ui, sans-serif; cursor: pointer;
+}
+#sf-toc-toggle:hover { border-color: var(--sf-accent); }
+#sf-toc {
+  position: fixed; top: 0; left: 0; height: 100vh; width: 280px; z-index: 44;
+  background: var(--sf-panel); border-right: 1px solid var(--sf-line); color: var(--sf-ink);
+  display: flex; flex-direction: column; transform: translateX(-100%); transition: transform .18s ease;
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+#sf-toc.open { transform: translateX(0); }
+#sf-toc .sf-toc-head { padding: 52px 16px 12px; border-bottom: 1px solid var(--sf-line); }
+#sf-toc .sf-toc-head b span { color: var(--sf-accent); }
+#sf-toc .sf-toc-list { overflow-y: auto; padding: 8px 10px 80px; flex: 1; }
+#sf-toc a { display: block; color: var(--sf-muted); text-decoration: none; padding: 4px 10px;
+  border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
+#sf-toc a:hover { color: var(--sf-ink); background: var(--sf-panel2); }
+#sf-toc a.active { color: var(--sf-ink); border-left-color: var(--sf-accent); background: var(--sf-panel2); }

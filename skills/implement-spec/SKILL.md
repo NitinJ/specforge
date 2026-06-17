@@ -41,6 +41,20 @@ Sets the active marker and the document status to `implementing`.
 
 ## 3. Work the plan, stage by stage (TDD, one PR per stage)
 
+Work from the spec MAP, not the whole file — re-reading the full spec each stage
+is wasteful (most of it is CSS/markup boilerplate):
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" map --spec "<spec-file>"
+```
+
+It lists every section + the stage/task plan with line ranges. For the stage
+you're on, read only what you need — `spec-nav-cli.mjs section <id> --spec "<spec>"`
+for the design section(s) that stage implements, and `xrefs <id>` / `grep "<term>"`
+to see what else in the spec a change touches (so cross-cutting edits stay
+consistent). Use `section impl-decisions` (etc.) to find the exact lines of the
+impl-time stubs when you fill them in.
+
 For each stage, top to bottom:
 
 1. Mark the task in progress:

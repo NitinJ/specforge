@@ -35,8 +35,10 @@
     padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:13px;line-height:1.55}
   pre code{background:none;border:none;padding:0}
 
-  .layout{display:grid;grid-template-columns:264px minmax(0,1fr);gap:0;max-width:1280px;margin:0 auto}
-  nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  .layout{display:grid;grid-template-columns:264px minmax(0,1fr);gap:0;max-width:var(--maxw,1280px);margin:0 auto}
+  /* Floating left TOC: pinned to the top of the viewport, scrolls independently,
+     stays in view for the whole page scroll (never scrolls up with the content). */
+  nav.toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;z-index:5;
     padding:28px 16px 60px 24px;border-right:1px solid var(--line);font-size:13.5px}
   nav.toc .brand{font-weight:700;font-size:15px;letter-spacing:.2px;margin-bottom:4px}
   nav.toc .brand span{color:var(--accent)}
@@ -44,6 +46,13 @@
   nav.toc a{display:block;color:var(--muted);padding:4px 8px;border-radius:6px;border-left:2px solid transparent}
   nav.toc a:hover{color:var(--ink);text-decoration:none;background:var(--panel)}
   nav.toc a.active{color:var(--ink);border-left-color:var(--accent);background:var(--panel)}
+  /* On narrow viewports the sticky sidebar would crowd the content — collapse it
+     to a static strip above the body so nothing overlaps. */
+  @media (max-width:860px){
+    .layout{grid-template-columns:1fr}
+    nav.toc{position:static;max-height:none;overflow:visible;
+      border-right:none;border-bottom:1px solid var(--line)}
+  }
 
   main{padding:40px 48px 120px;min-width:0}
   h1{font-size:30px;line-height:1.25;margin:0 0 10px}
@@ -77,6 +86,13 @@
     border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:7px 14px;
     font-size:12.5px;cursor:pointer;box-shadow:var(--shadow)}
   .toggle:hover{border-color:var(--accent)}
+  /* Reader control: adjust the content container width; persisted. */
+  .widthctl{position:fixed;bottom:16px;right:20px;z-index:30;display:flex;align-items:center;gap:8px;
+    background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:999px;
+    padding:7px 14px;box-shadow:var(--shadow);font-size:12px}
+  .widthctl input[type=range]{width:120px;accent-color:var(--accent);cursor:pointer}
+  .widthctl b{color:var(--ink);font-weight:700;min-width:34px;text-align:right}
+  @media (max-width:720px){.widthctl{display:none}}
 
   ol.sf-stages{list-style:none;padding-left:0}
   li[data-sf-stage]{background:var(--panel);border:1px solid var(--line);border-radius:12px;
@@ -91,6 +107,11 @@
 </head>
 <body>
 <button class="toggle" id="themeToggle">◐ theme</button>
+<div class="widthctl" aria-label="Adjust content width" title="Adjust content width">
+  <span>↔</span>
+  <input type="range" id="widthSlider" min="820" max="1760" step="20" value="1280">
+  <b id="widthVal">1280</b>
+</div>
 <div class="layout">
 
 <nav class="toc">
@@ -234,6 +255,16 @@
       });
     },{rootMargin:"-10% 0px -80% 0px",threshold:0});
     Object.keys(map).forEach(function(id){var el=document.getElementById(id);if(el)obs.observe(el);});
+  })();
+  // Container-width slider — reader adjusts --maxw; persisted independently of theme.
+  (function(){
+    var root=document.documentElement, key="specforge-width";
+    var s=document.getElementById("widthSlider"), out=document.getElementById("widthVal");
+    if(!s) return;
+    function apply(px){root.style.setProperty("--maxw",px+"px");if(out)out.textContent=px;s.value=px;}
+    var saved=localStorage.getItem(key);
+    if(saved) apply(saved);
+    s.addEventListener("input",function(){apply(s.value);localStorage.setItem(key,s.value);});
   })();
 </script>
 </body>

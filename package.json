@@ -5,6 +5,9 @@
   "type": "module",
   "private": true,
   "license": "MIT",
+  "bin": {
+    "spec-nav": "lib/spec-nav-cli.mjs"
+  },
   "engines": {
     "node": ">=18"
   },

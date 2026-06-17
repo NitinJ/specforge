@@ -14,7 +14,7 @@
   var API = '/api/spec/' + encodeURIComponent(SPEC) + '/comments';
 
   // Elements that can carry a comment. The innermost match under the pointer wins.
-  var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,pre,blockquote,figure,.panel,.callout,.card';
+  var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,td,th,pre,blockquote,figure,.panel,.callout,.card,.stat,.loop .step,.matrix .q,.bar,.ns';
   var INTERACTIVE = 'a,button,input,textarea,select,summary,label';
 
   var state = { threads: [], filter: 'open', active: null };
@@ -276,7 +276,8 @@
   function inUI(t) {
     while (t) {
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-batchbar' ||
-          t.id === 'sf-toggle' || t.id === 'sf-live') return true;
+          t.id === 'sf-toggle' || t.id === 'sf-live' ||
+          t.id === 'sf-width' || t.id === 'sf-toc' || t.id === 'sf-toc-toggle') return true;
       t = t.parentElement;
     }
     return false;
@@ -298,4 +299,96 @@
     document.body.appendChild(n);
     setTimeout(function () { n.remove(); }, 3000);
   }
+})();
+
+/* Serve-time enhancements, added to EVERY served spec:
+ *   1. a container-width slider, and
+ *   2. an auto-built floating TOC,
+ * each injected only if the spec doesn't already provide its own. The on-disk
+ * file is untouched — these live purely in the served page. */
+(function () {
+  'use strict';
+  var done = false;
+  document.addEventListener('DOMContentLoaded', init);
+  if (document.readyState !== 'loading') init();
+  function init() { if (done) return; done = true; ensureWidth(); ensureToc(); }
+
+  // ---------- container-width slider ----------
+  function ensureWidth() {
+    if (document.getElementById('widthSlider') || document.querySelector('.widthctl')) return; // spec has its own
+    var root = document.documentElement, KEY = 'sf-spec-width';
+    var container = document.querySelector('.deck, .layout, main, article, .container, .wrap') || document.body;
+    var box = document.createElement('div');
+    box.id = 'sf-width';
+    box.innerHTML = '<span>↔ width</span>' +
+      '<input type="range" id="sf-width-range" min="820" max="1760" step="20">' +
+      '<b id="sf-width-val"></b>';
+    document.body.appendChild(box);
+    var range = box.querySelector('#sf-width-range'), out = box.querySelector('#sf-width-val');
+    function start() {
+      var saved = parseInt(localStorage.getItem(KEY), 10);
+      if (saved) return saved;
+      var w = container.getBoundingClientRect().width || 1040;
+      return Math.min(1760, Math.max(820, Math.round(w / 20) * 20));
+    }
+    function apply(px) {
+      root.style.setProperty('--maxw', px + 'px');
+      try { container.style.maxWidth = px + 'px'; container.style.marginLeft = 'auto'; container.style.marginRight = 'auto'; } catch (e) {}
+      out.textContent = px; range.value = px;
+    }
+    apply(start());
+    range.addEventListener('input', function () { apply(range.value); localStorage.setItem(KEY, range.value); });
+  }
+
+  // ---------- auto floating TOC ----------
+  function ensureToc() {
+    if (document.querySelector('nav.toc, .side-toc')) return; // spec has its own TOC
+    var items = collect();
+    if (items.length < 3) return; // too few sections to bother
+    var toggle = document.createElement('button');
+    toggle.id = 'sf-toc-toggle'; toggle.type = 'button'; toggle.textContent = '📑 contents';
+    var panel = document.createElement('nav');
+    panel.id = 'sf-toc'; panel.setAttribute('aria-label', 'Contents');
+    var html = '<div class="sf-toc-head"><b><span>On this</span> page</b></div><div class="sf-toc-list">';
+    items.forEach(function (it) { html += '<a href="#' + it.id + '">' + esc(it.text) + '</a>'; });
+    panel.innerHTML = html + '</div>';
+    document.body.appendChild(toggle); document.body.appendChild(panel);
+    toggle.addEventListener('click', function () { panel.classList.toggle('open'); });
+    Array.prototype.forEach.call(panel.querySelectorAll('a'), function (a) {
+      a.addEventListener('click', function () { if (window.innerWidth < 1100) panel.classList.remove('open'); });
+    });
+    spy(items, panel);
+  }
+  function collect() {
+    var out = [], seen = {};
+    var secs = document.querySelectorAll('section[id]');
+    if (secs.length >= 3) {
+      Array.prototype.forEach.call(secs, function (s) {
+        var h = s.querySelector('h1,h2,h3'); if (h) out.push({ id: s.id, text: txt(h) });
+      });
+      return out;
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('h2,h3'), function (h) {
+      var id = h.id;
+      if (!id) { id = slug(txt(h)) || 'sec'; if (seen[id]) id = id + '-' + out.length; h.id = id; }
+      seen[id] = 1; out.push({ id: id, text: txt(h) });
+    });
+    return out;
+  }
+  function spy(items, panel) {
+    if (!('IntersectionObserver' in window)) return;
+    var links = {};
+    Array.prototype.forEach.call(panel.querySelectorAll('a'), function (a) { links[a.getAttribute('href').slice(1)] = a; });
+    var obs = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        Array.prototype.forEach.call(panel.querySelectorAll('a'), function (l) { l.classList.remove('active'); });
+        var a = links[e.target.id]; if (a) a.classList.add('active');
+      });
+    }, { rootMargin: '-12% 0px -80% 0px', threshold: 0 });
+    items.forEach(function (it) { var el = document.getElementById(it.id); if (el) obs.observe(el); });
+  }
+  function txt(h) { return String(h.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80); }
+  function slug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 })();
