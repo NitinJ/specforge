@@ -1,0 +1,251 @@
+#!/usr/bin/env node
+// SpecForge v2 global daemon (design §5): one server per machine, serving the
+// global store at ~/.specforge — distinct from the v1 per-project review server
+// (server/start.mjs + server/app.mjs), which is left untouched.
+//
+// Routes:
+//   GET /healthz   → 200 "ok"
+//   GET /          → index page: a table of all store specs (listSpecs())
+//   GET /spec/<id> → the spec's spec.html with the v1 review layer injected
+//   GET /public/*  → review-layer client assets (review.js / review.css)
+//
+// ensureServer() (below) is the singleton entrypoint every v2 command calls:
+// reuse a healthy daemon if one is advertised, else acquire the lock, bind a
+// port with fall-forward, write server.json, and return the URL.
+
+import http from 'node:http';
+import { listSpecs } from '../lib/meta.mjs';
+import { readSpecHtml } from '../lib/store.mjs';
+import { injectReviewLayer } from './inject.mjs';
+import { serveStatic } from './static.mjs';
+import {
+  readServerState, writeServerState, clearServerState,
+  acquireLock, releaseLock, lockHolderPid, isAlive,
+} from '../lib/daemon-state.mjs';
+
+const DEFAULT_PORT = 4180;
+const PORT_ATTEMPTS = 20;
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function send(res, status, type, body) {
+  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  res.end(body);
+}
+
+/** "attached?" cell: 'session abc12345' when owned, 'free' otherwise. */
+function attachedLabel(meta) {
+  return meta.attachedSession
+    ? `session ${esc(String(meta.attachedSession).slice(0, 8))}`
+    : 'free';
+}
+
+function renderIndex() {
+  const specs = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const rows = specs.map((m) => {
+    const id = esc(m.id);
+    const title = esc(m.title || 'Untitled');
+    return `<tr>
+  <td class="id"><a href="/spec/${id}">${id}</a></td>
+  <td><a href="/spec/${id}">${title}</a></td>
+  <td><span class="s">${esc(m.status || 'draft')}</span></td>
+  <td class="att">${attachedLabel(m)}</td>
+</tr>`;
+  }).join('\n');
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>SpecForge</title>
+<style>
+  body{margin:0;background:#0f1115;color:#e6e8ee;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:880px;margin:0 auto;padding:48px 24px}
+  h1{font-size:22px;margin:0 0 4px} h1 span{color:#6ea8fe}
+  .sub{color:#9aa3b2;font-size:14px;margin-bottom:24px}
+  table{border-collapse:collapse;width:100%}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #2a2f3a;vertical-align:top}
+  th{color:#9aa3b2;font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+  a{color:#e6e8ee;text-decoration:none;font-weight:600} a:hover{color:#6ea8fe}
+  .id a{font-family:ui-monospace,Menlo,monospace;font-weight:500;color:#9aa3b2}
+  .s{color:#6ea8fe;font-size:11.5px;border:1px solid #2a2f3a;border-radius:999px;padding:1px 8px}
+  .att{color:#9aa3b2;font-size:13px;font-family:ui-monospace,Menlo,monospace}
+  .empty{color:#9aa3b2}
+</style></head><body><div class="wrap">
+<h1><span>Spec</span>Forge</h1>
+<div class="sub">${specs.length} spec${specs.length === 1 ? '' : 's'} in the store</div>
+${specs.length
+    ? `<table>
+<thead><tr><th>id</th><th>title</th><th>status</th><th>attached?</th></tr></thead>
+<tbody>
+${rows}
+</tbody>
+</table>`
+    : '<p class="empty">No specs yet. Create one with the create command.</p>'}
+</div></body></html>`;
+}
+
+function serveSpec(id, res) {
+  let html;
+  try {
+    html = readSpecHtml(id);
+  } catch {
+    return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
+  }
+  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id }));
+}
+
+/**
+ * Create the v2 daemon HTTP server (no listen — caller binds).
+ * @returns {import('node:http').Server}
+ */
+export function createDaemon() {
+  return http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const path = url.pathname;
+
+    if (req.method === 'GET') {
+      if (path === '/healthz') return send(res, 200, 'text/plain; charset=utf-8', 'ok');
+      if (path === '/') return send(res, 200, 'text/html; charset=utf-8', renderIndex());
+      const sm = path.match(/^\/spec\/([\w-]+)$/);
+      if (sm) return serveSpec(sm[1], res);
+      const pub = path.match(/^\/public\/([\w.-]+)$/);
+      if (pub) return serveStatic(pub[1], res);
+    }
+
+    return send(res, 404, 'text/plain; charset=utf-8', 'not found');
+  });
+}
+
+function listenWithFallback(server, port, host, attempts) {
+  return new Promise((resolve, reject) => {
+    let tries = 0;
+    const tryPort = (p) => {
+      const onError = (err) => {
+        if (err.code === 'EADDRINUSE' && tries < attempts) {
+          tries++;
+          tryPort(p + 1);
+        } else {
+          reject(err);
+        }
+      };
+      server.once('error', onError);
+      server.listen(p, host, () => {
+        server.removeListener('error', onError);
+        // Resolve the *actual* bound port (p may be 0 → OS-assigned).
+        resolve(server.address().port);
+      });
+    };
+    tryPort(port);
+  });
+}
+
+/** GET /healthz against an advertised url; true iff it answers 200. */
+async function healthOk(url) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 1000);
+    const res = await fetch(new URL('/healthz', url), { signal: ctrl.signal });
+    clearTimeout(t);
+    return res.status === 200;
+  } catch {
+    return false;
+  }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Singleton daemon entrypoint. Returns the base url of a healthy daemon,
+ * starting one in-process if needed.
+ *
+ *  - If server.json advertises a daemon whose pid is alive AND /healthz is 200,
+ *    reuse its url (no new server).
+ *  - Else acquire server.lock (O_EXCL). If the lock is held by a *live* pid,
+ *    another ensureServer() is mid-start: briefly retry reading server.json and
+ *    reuse it. A lock held by a dead pid is reclaimed.
+ *  - Bind a port (DEFAULT_PORT with fall-forward), write server.json, return url.
+ *
+ * Single-user / KISS: the lockfile is the only mutual-exclusion primitive — no
+ * elaborate CAS. Safe under two near-simultaneous calls.
+ *
+ * @returns {Promise<{url:string, server:import('node:http').Server|null, port:number}>}
+ *   server is null when an existing daemon was reused.
+ */
+export async function ensureServer({ port = DEFAULT_PORT } = {}) {
+  // 1. Reuse a healthy advertised daemon.
+  const existing = readServerState();
+  if (existing && isAlive(existing.pid) && (await healthOk(existing.url))) {
+    return { url: existing.url, server: null, port: existing.port };
+  }
+
+  // 2. Acquire the singleton lock.
+  if (!acquireLock()) {
+    const holder = lockHolderPid();
+    if (holder && isAlive(holder)) {
+      // Another start is in flight — give it a moment, then reuse its state.
+      for (let i = 0; i < 20; i++) {
+        await sleep(50);
+        const s = readServerState();
+        if (s && isAlive(s.pid) && (await healthOk(s.url))) {
+          return { url: s.url, server: null, port: s.port };
+        }
+      }
+      // Holder never produced a healthy daemon; fall through and reclaim.
+    }
+    // Stale lock (dead holder, or holder that never came up) — reclaim it.
+    releaseLock();
+    if (!acquireLock()) {
+      // Lost a genuine race; reuse whatever the winner advertised if healthy.
+      const s = readServerState();
+      if (s && isAlive(s.pid) && (await healthOk(s.url))) {
+        return { url: s.url, server: null, port: s.port };
+      }
+      throw new Error('could not acquire daemon lock');
+    }
+  }
+
+  // 3. We hold the lock — bind and advertise.
+  const server = createDaemon();
+  let boundPort;
+  try {
+    boundPort = await listenWithFallback(server, port, '127.0.0.1', PORT_ATTEMPTS);
+  } catch (err) {
+    releaseLock();
+    throw err;
+  }
+  const url = `http://127.0.0.1:${boundPort}/`;
+  writeServerState({ port: boundPort, pid: process.pid, url });
+
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    clearServerState();
+    releaseLock();
+  };
+  server.on('close', cleanup);
+  process.on('exit', cleanup);
+
+  return { url, server, port: boundPort };
+}
+
+// Runnable like start.mjs: `node server/daemon.mjs` starts the daemon and keeps
+// it alive until SIGINT/SIGTERM, clearing server.json + releasing the lock.
+const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
+  ensureServer().then(({ url, server }) => {
+    if (!server) {
+      console.log(`SpecForge daemon already running: ${url}`);
+      process.exit(0);
+    }
+    console.log(`SpecForge daemon: ${url}`);
+    const shutdown = () => {
+      clearServerState();
+      releaseLock();
+      process.exit(0);
+    };
+    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, shutdown);
+  }).catch((err) => {
+    console.error(`daemon failed to start: ${err.message}`);
+    process.exit(1);
+  });
+}
