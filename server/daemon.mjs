@@ -31,7 +31,7 @@ import {
 import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
   handleCommentReply, handleCommentResolve, handleSubmit,
-  handleMeta, handleStatus, handleResolveAll,
+  handleMeta, handleStatus, handleResolveAll, handleDetach,
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
 
@@ -199,6 +199,11 @@ export function createDaemon() {
       return readJsonBody(req)
         .then((b) => handleStatus(status[1], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+    const det = path.match(/^\/api\/spec\/([\w-]+)\/detach$/);
+    if (det) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleDetach(det[1], res);
     }
 
     if (method === 'GET') {

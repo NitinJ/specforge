@@ -248,6 +248,9 @@
     // Theme — light/dark toggle.
     els.menu.appendChild(themeRow());
 
+    // Session — which session owns this spec, with a Detach button.
+    els.menu.appendChild(sessionRow());
+
     // Footer — relocate the live-status pill into the menu. Held at els.live so it
     // survives the innerHTML reset above (we re-append the same node each rebuild).
     if (els.live) {
@@ -281,6 +284,23 @@
     row.querySelector('.sf-row-main').appendChild(val);
     row.onclick = function () { val.textContent = toggleTheme(); };
     return row;
+  }
+  // Session row — shows which session owns this spec + a Detach button.
+  function sessionRow() {
+    var attached = state.meta && state.meta.attachedSession;
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    var label = attached ? 'Session ' + esc(String(attached).slice(0, 8)) : 'Not attached';
+    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">🔗</span><span>' + label + '</span></span>';
+    if (attached) {
+      var btn = create('button', { class: 'sf-detach', type: 'button' }, 'Detach');
+      btn.onclick = function (e) { e.stopPropagation(); detachSpec(); };
+      row.appendChild(btn);
+    }
+    return row;
+  }
+  function detachSpec() {
+    postJSON(SPEC_API + '/detach').then(function () { closeMenu(); load(); })
+      .catch(function () { flash('Could not detach.'); });
   }
 
   // ---------- block targeting ----------
