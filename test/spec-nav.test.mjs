@@ -10,8 +10,10 @@ import { dirname, resolve } from 'node:path';
 import {
   sections, buildIndex, map, section, grep, search, around, neighbors, xrefs,
 } from '../lib/spec-nav.mjs';
-import { buildIndex as buildPathIndex } from '../lib/paths.mjs';
-import { writeIndex, loadIndex, indexPath } from '../lib/spec-nav-index.mjs';
+import { writeIndex, loadIndex, indexPath, specId } from '../lib/spec-nav-index.mjs';
+
+/** A spec descriptor for a fixture file directly under `dir` (no project scan). */
+const specFor = (dir, name) => ({ file: join(dir, name), relPath: name, id: specId(name) });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = join(ROOT, 'lib', 'spec-nav-cli.mjs');
@@ -147,7 +149,7 @@ test('xrefs: outbound anchors + inbound (anchor links and term mentions)', () =>
 test('persist: writeIndex emits idx.json under .specforge/idx and loadIndex round-trips', () => {
   const dir = mkdtempSync(join(tmpdir(), 'sf-nav-'));
   writeFileSync(join(dir, 'fix-spec.html'), FIXTURE);
-  const spec = buildPathIndex(dir)[0];
+  const spec = specFor(dir, 'fix-spec.html');
   const p = writeIndex(dir, spec);
   assert.equal(p, indexPath(dir, spec.id));
   assert.ok(existsSync(p));
@@ -164,7 +166,7 @@ test('persist: loadIndex regenerates when the spec is newer than the index', () 
   const dir = mkdtempSync(join(tmpdir(), 'sf-nav-stale-'));
   const file = join(dir, 'fix-spec.html');
   writeFileSync(file, FIXTURE);
-  const spec = buildPathIndex(dir)[0];
+  const spec = specFor(dir, 'fix-spec.html');
   writeIndex(dir, spec);
 
   // mutate the spec + bump its mtime past the index
