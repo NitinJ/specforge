@@ -41,23 +41,22 @@ Spec status lives in `data-sf-spec-status` on the document root and the header b
 
 Thin slash commands: `/specforge:create`, `/specforge:convert`, `/specforge:listall`, `/specforge:list`. Reviewing is automatic — the session a spec is attached to picks up submitted batches; there is no separate serve/review/implement command (open from the index, review via hooks, implement by working in the attached session).
 
-## Review server
+## Review server (daemon)
 
-Zero-dep Node HTTP server (`server/start.mjs`), bound to `127.0.0.1`:
+Zero-dep Node HTTP daemon (`server/daemon.mjs`) — one per machine, bound to `127.0.0.1`, serving the global store at `~/.specforge`:
 
 - `GET /` — spec index · `GET /spec/:id` — spec with the review layer injected.
-- `GET /events` — per-spec SSE live-reload.
+- `GET /events?spec=:id` — per-spec SSE live-reload.
 - `GET/POST /api/spec/:id/comments…` — comments API (create / reply / resolve / **submit**). The public API is **human-only**; agent replies are written to the store by `review-spec`.
 
-It advertises its bound address at `<specsDir>/.specforge/server.json`. Comments are stored per spec at `<specsDir>/.specforge/<specId>/comments.json` and never mixed.
+It advertises its bound address at `~/.specforge/server.json` (singleton: lockfile + pid/health check, with port fall-forward). Comments are stored per spec at `~/.specforge/specs/:id/comments.json` and never mixed. Every command auto-starts (or reuses) the daemon via `ensureDaemon()`.
 
-### Hands-free watch mode
+### Hands-free drain
 
-The daemon's watch loop polls the inbox and drains submitted batches by spawning a headless `claude -p` so review happens unattended.
+A batch for a spec attached to a live session is delivered to that session in-context by its Stop/UserPromptSubmit hooks. **Orphaned** specs (no live owner, or a stale lock) fall back to the daemon's **opt-in** headless drain — start the daemon with `SPECFORGE_DAEMON_DRAIN=1` and it spawns a headless `claude -p` for them.
 
 - `SPECFORGE_CLAUDE_BIN` — the Claude binary (default `claude`).
 - `SPECFORGE_WATCH_CLAUDE_ARGS` — extra flags (e.g. a permission mode for unattended edits).
-- `--watch-interval <seconds>` — poll cadence (default 90, floored at 1).
 
 ## Hooks
 

@@ -1,27 +1,38 @@
 #!/usr/bin/env node
 // SpecForge v2 global daemon (design §5): one server per machine, serving the
-// global store at ~/.specforge — distinct from the v1 per-project review server
-// (server/start.mjs + server/app.mjs), which is left untouched.
+// global store at ~/.specforge. (The v1 per-project review server — server/app,
+// server/start, server/api — has been retired.)
 //
 // Routes:
-//   GET /healthz   → 200 "ok"
-//   GET /          → index page: a table of all store specs (listSpecs())
-//   GET /spec/<id> → the spec's spec.html with the v1 review layer injected
-//   GET /public/*  → review-layer client assets (review.js / review.css)
+//   GET  /healthz                              → 200 "ok"
+//   GET  /                                      → index: a table of all store specs
+//   GET  /spec/<id>                             → spec.html with the review layer injected
+//   GET  /events?spec=<id>                      → SSE live-reload for a spec
+//   GET  /public/*                              → review-layer client assets
+//   GET/POST /api/spec/<id>/comments            → list / create threads
+//   POST /api/spec/<id>/comments/submit         → freeze a review batch
+//   POST /api/spec/<id>/comments/<tid>/reply    → reply to a thread
+//   POST /api/spec/<id>/comments/<tid>/resolve  → resolve a thread (human)
 //
 // ensureServer() (below) is the singleton entrypoint every v2 command calls:
 // reuse a healthy daemon if one is advertised, else acquire the lock, bind a
 // port with fall-forward, write server.json, and return the URL.
 
 import http from 'node:http';
+import { watch } from 'node:fs';
 import { listSpecs } from '../lib/meta.mjs';
-import { readSpecHtml } from '../lib/store.mjs';
+import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
 import {
   readServerState, writeServerState, clearServerState,
   acquireLock, releaseLock, lockHolderPid, isAlive, healthOk,
 } from '../lib/daemon-state.mjs';
+import {
+  sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
+  handleCommentReply, handleCommentResolve, handleSubmit,
+} from '../lib/store-api.mjs';
+import { createDaemonDrain } from '../lib/store-watch.mjs';
 
 const DEFAULT_PORT = 4180;
 const PORT_RETRY_LIMIT = 20; // up to 20 retries after the first attempt = 21 ports probed
@@ -93,6 +104,46 @@ function serveSpec(id, res) {
   send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id }));
 }
 
+/** SSE live-reload: push a `reload` event whenever the spec's spec.html changes. */
+function serveEvents(id, req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-store',
+    Connection: 'keep-alive',
+  });
+  res.write(': connected\n\n');
+
+  let closed = false;
+  const safeWrite = (chunk) => {
+    if (closed) return;
+    try { res.write(chunk); } catch { closed = true; }
+  };
+
+  let debounce = null;
+  let watcher = null;
+  try {
+    watcher = watch(specHtmlPath(id), () => {
+      if (closed) return;
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => safeWrite('event: reload\ndata: {}\n\n'), 100);
+      debounce.unref?.();
+    });
+  } catch {
+    watcher = null; // spec may not exist yet / be unreadable — heartbeat-only stream
+  }
+  const heartbeat = setInterval(() => safeWrite(': ping\n\n'), 25000);
+  heartbeat.unref?.();
+
+  const cleanup = () => {
+    closed = true;
+    clearInterval(heartbeat);
+    if (debounce) clearTimeout(debounce);
+    if (watcher) { try { watcher.close(); } catch { /* already closed */ } }
+  };
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+}
+
 /**
  * Create the v2 daemon HTTP server (no listen — caller binds).
  * @returns {import('node:http').Server}
@@ -101,10 +152,41 @@ export function createDaemon() {
   return http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const path = url.pathname;
+    const method = req.method;
 
-    if (req.method === 'GET') {
+    // --- Comments API (store-keyed) ---
+    const list = path.match(/^\/api\/spec\/([\w-]+)\/comments$/);
+    if (list) {
+      if (method === 'GET') return handleCommentsGet(list[1], res);
+      if (method === 'POST') {
+        return readJsonBody(req)
+          .then((b) => handleCommentCreate(list[1], b, res))
+          .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
+    }
+    const submit = path.match(/^\/api\/spec\/([\w-]+)\/comments\/submit$/);
+    if (submit) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleSubmit(submit[1], res);
+    }
+    const reply = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/reply$/);
+    if (reply) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((b) => handleCommentReply(reply[1], reply[2], b, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+    const resolve = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/resolve$/);
+    if (resolve) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleCommentResolve(resolve[1], resolve[2], res);
+    }
+
+    if (method === 'GET') {
       if (path === '/healthz') return send(res, 200, 'text/plain; charset=utf-8', 'ok');
       if (path === '/') return send(res, 200, 'text/html; charset=utf-8', renderIndex());
+      if (path === '/events') return serveEvents(url.searchParams.get('spec') || '', req, res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
       if (sm) return serveSpec(sm[1], res);
       const pub = path.match(/^\/public\/([\w.-]+)$/);
@@ -225,9 +307,15 @@ if (isMain) {
       process.exit(0);
     }
     console.log(`SpecForge daemon: ${url}`);
+    // Opt-in headless orphan-drain (default off — never spawn Claude unprompted).
+    let drainer = null;
+    if (process.env.SPECFORGE_DAEMON_DRAIN) {
+      drainer = createDaemonDrain({ log: (m) => console.log(m) }).start();
+    }
     // server.close() fires the 'close' handler registered in ensureServer(),
     // which clears server.json + releases the lock; draining in-flight requests.
     const shutdown = () => {
+      if (drainer) drainer.stop();
       server.close(() => process.exit(0));
     };
     for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, shutdown);
