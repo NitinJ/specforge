@@ -94,6 +94,10 @@ test('listall shows every spec with its attached state', async () => {
   assert.ok(rows.some((r) => r.attached === 'sess-2'));
 });
 
+test('detach rejects an unknown spec', async () => {
+  await assert.rejects(() => cmdDetach({ id: 'deadbeef00' }, deps()), /unknown spec/);
+});
+
 test('detach frees a spec and drops it from the session list', async () => {
   const a = await cmdCreate({ title: 'A' }, deps('sess-1'));
   const res = await cmdDetach({ id: a.id }, deps());
