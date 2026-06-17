@@ -139,7 +139,7 @@ function listenWithFallback(server, port, host, retryLimit) {
 }
 
 /** GET /healthz against an advertised url; true iff it answers 200. */
-async function healthOk(url) {
+export async function healthOk(url) {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 1000);

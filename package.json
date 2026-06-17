@@ -6,7 +6,8 @@
   "private": true,
   "license": "MIT",
   "bin": {
-    "spec-nav": "lib/spec-nav-cli.mjs"
+    "spec-nav": "lib/spec-nav-cli.mjs",
+    "specforge": "lib/specforge-cli.mjs"
   },
   "engines": {
     "node": ">=18"

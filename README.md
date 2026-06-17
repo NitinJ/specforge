@@ -34,12 +34,12 @@ Spec status lives in `data-sf-spec-status` on the document root and the header b
 
 | Skill | Use it to | What it does |
 |-------|-----------|--------------|
-| `specforge:create-spec` | "write a spec for X" | Author a new house-style `.html` spec from the template; runs the lint (required sections, unique ids, light/dark theme contract, structured plan) before finishing. |
-| `specforge:serve-spec` | "open/review this spec" | Boot (or focus) the local review server and open the spec with the review layer (live tracker + live reload) injected. `--watch` for hands-free review. |
-| `specforge:review-spec` | (auto via Stop hook) or "process comments" | Reply inline to a submitted comment batch and amend the spec; mark the batch done. Replies are append-only; only humans resolve threads. |
-| `specforge:implement-spec` | "implement this spec" | Drive implementation stage-by-stage (TDD, one PR per stage), gated by the pre-implementation gate; keeps tracker / PRs / decisions current. |
+| `specforge:create-spec` | "write a spec for X" | Author a new house-style `.html` spec into the store from the template, attach it to this session, ensure the daemon; lints (required sections, unique ids, light/dark theme contract, structured plan) before finishing. |
+| `specforge:convert-spec` | "convert this design doc to a spec" | Ingest an existing `.html` spec as-is, or re-author a `.md`/freeform doc into a house-style spec; copy into the store + attach. |
+| `specforge:list-specs` | "list specs / what's open" | List every spec (or just this session's) with status + attachment; open or detach a spec by id. |
+| `specforge:review-spec` | (auto — hook/daemon-driven) | Reply inline to a submitted comment batch and amend the spec; mark the batch done. Replies are append-only; only humans resolve threads. |
 
-Thin slash commands wrap each: `/specforge:create`, `/specforge:serve`, `/specforge:review`, `/specforge:implement`.
+Thin slash commands: `/specforge:create`, `/specforge:convert`, `/specforge:listall`, `/specforge:list`. Reviewing is automatic — the session a spec is attached to picks up submitted batches; there is no separate serve/review/implement command (open from the index, review via hooks, implement by working in the attached session).
 
 ## Review server
 
@@ -53,7 +53,7 @@ It advertises its bound address at `<specsDir>/.specforge/server.json`. Comments
 
 ### Hands-free watch mode
 
-`serve-spec --watch` (or `node server/start.mjs --watch`) polls the inbox and drains submitted batches by spawning a headless `claude -p` so review happens unattended.
+The daemon's watch loop polls the inbox and drains submitted batches by spawning a headless `claude -p` so review happens unattended.
 
 - `SPECFORGE_CLAUDE_BIN` — the Claude binary (default `claude`).
 - `SPECFORGE_WATCH_CLAUDE_ARGS` — extra flags (e.g. a permission mode for unattended edits).
@@ -98,7 +98,7 @@ See `templates/house-rules.md` for the authoring conventions and `CONTRIBUTING`/
 Built from the design spec (`~/workspace/specs/specforge/`). Notable, intentional deviations (flagged during the build):
 
 - **Watch mode** uses a headless `claude -p` poller rather than the spec's imagined session self-wake (`ScheduleWakeup`) — a plugin cannot schedule the harness's wakeup. Strictly opt-in behind `--watch`.
-- **PreToolUse gate backstop** is scoped to closed-spec protection; the pre-implementation gate's primary enforcement is at `implement-spec` entry (skill refusal) + the `impl-cli gate` command.
+- **PreToolUse gate backstop** is scoped to closed-spec protection (denying edits to a spec attached to this session whose status is `closed`); there is no separate implement command — "implementing" is just working in the session a spec is attached to.
 - Drift detection (`Stop` hook) is **heuristic** — it nudges, it doesn't cage. The "decisions written back" check is a stage-boundary prompt since intent isn't observable from tool calls.
 
 ## License
