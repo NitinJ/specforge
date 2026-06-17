@@ -7,11 +7,12 @@
 
 /**
  * Read all of stdin (the hook payload) as a string, with a hard timeout so a
- * hook never hangs waiting on a pipe that does not close.
+ * hook never hangs waiting on a pipe that does not close. The ceiling is low
+ * (≤100ms) so a missing EOF never stalls a turn (design §7).
  * @param {number} timeoutMs
  * @returns {Promise<string>}
  */
-export function readStdin(timeoutMs = 2000) {
+export function readStdin(timeoutMs = 100) {
   return new Promise((resolve) => {
     let data = '';
     let done = false;
