@@ -24,7 +24,7 @@ import {
 } from '../lib/daemon-state.mjs';
 
 const DEFAULT_PORT = 4180;
-const PORT_ATTEMPTS = 20;
+const PORT_RETRY_LIMIT = 20; // up to 20 retries after the first attempt = 21 ports probed
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -115,12 +115,12 @@ export function createDaemon() {
   });
 }
 
-function listenWithFallback(server, port, host, attempts) {
+function listenWithFallback(server, port, host, retryLimit) {
   return new Promise((resolve, reject) => {
     let tries = 0;
     const tryPort = (p) => {
       const onError = (err) => {
-        if (err.code === 'EADDRINUSE' && tries < attempts) {
+        if (err.code === 'EADDRINUSE' && tries < retryLimit) {
           tries++;
           tryPort(p + 1);
         } else {
@@ -207,7 +207,7 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
   const server = createDaemon();
   let boundPort;
   try {
-    boundPort = await listenWithFallback(server, port, '127.0.0.1', PORT_ATTEMPTS);
+    boundPort = await listenWithFallback(server, port, '127.0.0.1', PORT_RETRY_LIMIT);
   } catch (err) {
     releaseLock();
     throw err;
@@ -223,7 +223,7 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
     releaseLock();
   };
   server.on('close', cleanup);
-  process.on('exit', cleanup);
+  process.once('exit', cleanup);
 
   return { url, server, port: boundPort };
 }
@@ -238,10 +238,10 @@ if (isMain) {
       process.exit(0);
     }
     console.log(`SpecForge daemon: ${url}`);
+    // server.close() fires the 'close' handler registered in ensureServer(),
+    // which clears server.json + releases the lock; draining in-flight requests.
     const shutdown = () => {
-      clearServerState();
-      releaseLock();
-      process.exit(0);
+      server.close(() => process.exit(0));
     };
     for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, shutdown);
   }).catch((err) => {
