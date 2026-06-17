@@ -3,10 +3,11 @@
  * Reply / resolve. Batch submit feeds the review loop.
  *
  * Anchoring is block-level and lives entirely on the client: a comment binds to
- * a block by its document-order index + its normalized text. The server is dumb
- * storage — it never parses the spec. Re-finding a block: try the stored index,
- * else match by text; if neither matches the thread still shows in the sidebar
- * (just without an inline highlight). */
+ * a block by its document-order index + its normalized text, plus the id-path of
+ * its enclosing sections. The server is dumb storage — it never parses the spec.
+ * Re-finding a block: try the stored index, else match by text; if the block was
+ * edited away or removed, fall back to its section (then the parent section) so
+ * the thread stays anchored instead of going stray. */
 (function () {
   'use strict';
   var SPEC = (window.SPECFORGE || {}).specId;
@@ -112,6 +113,15 @@
       };
     });
 
+    // Submit-batch bar — a footer on the comments sidebar, shown only when there
+    // are unsubmitted comments (not buried in the launcher menu).
+    els.batchbar = create('div', { id: 'sf-batchbar' });
+    els.batchbar.innerHTML = '<span class="c"></span>';
+    var submitBtn = create('button', { class: 'sf-primary' }, 'Submit batch');
+    submitBtn.onclick = submitBatch;
+    els.batchbar.appendChild(submitBtn);
+    els.sidebar.appendChild(els.batchbar);
+
     buildLauncher();
 
     document.addEventListener('mousemove', onHover);
@@ -177,11 +187,6 @@
     // Theme — light/dark toggle.
     els.menu.appendChild(themeRow());
 
-    // Submit batch — only when there are comments to submit.
-    if (pending) {
-      els.menu.appendChild(menuRow('▲', 'Submit batch (' + pending + ')', function () { closeMenu(); submitBatch(); }));
-    }
-
     // Footer — relocate the live-status pill into the menu. Held at els.live so it
     // survives the innerHTML reset above (we re-append the same node each rebuild).
     if (els.live) {
@@ -226,8 +231,23 @@
     el = el && el.closest ? el.closest(BLOCK_SEL) : null;
     return el && !inUI(el) ? el : null;
   }
+  // Section ancestry (innermost → outermost) so a thread can fall back to its
+  // section — then the parent section — if the exact block is edited away/removed.
+  function sectionPathOf(el) {
+    var path = [], n = el;
+    while (n && n !== document.body) {
+      if (n.tagName === 'SECTION' && n.id && !inUI(n)) path.push(n.id);
+      n = n.parentElement;
+    }
+    return path;
+  }
   function blockAnchor(el) {
-    return { index: commentableBlocks().indexOf(el), tag: el.tagName, text: norm(el.textContent).slice(0, 400) };
+    return {
+      index: commentableBlocks().indexOf(el),
+      tag: el.tagName,
+      text: norm(el.textContent).slice(0, 400),
+      sectionPath: sectionPathOf(el),
+    };
   }
   function findBlock(anchor) {
     var b = anchor && anchor.block;
@@ -237,6 +257,13 @@
     if (byIndex && norm(byIndex.textContent).slice(0, 400) === b.text) return byIndex;
     for (var i = 0; i < blocks.length; i++) {
       if (norm(blocks[i].textContent).slice(0, 400) === b.text) return blocks[i];
+    }
+    // Block edited away or removed → anchor to the nearest surviving section in the
+    // original ancestry: its own section, else the parent section, and so on.
+    var path = b.sectionPath || [];
+    for (var k = 0; k < path.length; k++) {
+      var sec = document.getElementById(path[k]);
+      if (sec && sec.tagName === 'SECTION') return sec;
     }
     return null;
   }
@@ -350,7 +377,11 @@
     var pending = pendingCount();
     els.launcher.classList.toggle('has-pending', !!pending);
     els.launcher.querySelector('.sf-l-n').textContent = pending || '';
-    // Keep an open menu's rows (badge, Submit batch) in sync with fresh data.
+    // Submit-batch bar on the sidebar — shown only when there are pending comments.
+    els.batchbar.classList.toggle('show', !!pending);
+    els.batchbar.querySelector('.c').textContent =
+      pending ? pending + (pending === 1 ? ' thread to submit' : ' threads to submit') : '';
+    // Keep an open menu's pending badge in sync with fresh data.
     if (els.menu.classList.contains('open')) buildMenuRows();
   }
 

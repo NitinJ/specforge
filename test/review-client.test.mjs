@@ -35,8 +35,10 @@ const SPEC_BODY = `
  * document is parsed (readyState !== 'loading'), THEN DOMContentLoaded fires.
  * Returns { window, posts } where posts captures any POST fetch bodies.
  */
-async function bootReviewLayer(t) {
-  const html = `<!doctype html><html><head></head><body>${SPEC_BODY}</body></html>`;
+async function bootReviewLayer(t, opts = {}) {
+  const body = opts.body || SPEC_BODY;
+  const threadsJson = JSON.stringify({ threads: opts.threads || [] });
+  const html = `<!doctype html><html><head></head><body>${body}</body></html>`;
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'http://localhost/' });
   const { window } = dom;
   // review.js installs a setInterval poll; close the window after the test so
@@ -44,12 +46,12 @@ async function bootReviewLayer(t) {
   t.after(() => window.close());
   window.SPECFORGE = { specId: 'test-spec' };
   const posts = [];
-  window.fetch = (url, opts) => {
-    if (opts && opts.method === 'POST') {
-      posts.push({ url, body: JSON.parse(opts.body) });
-      return Promise.resolve({ ok: true, text: () => Promise.resolve('{"threads":[]}') });
+  window.fetch = (url, init) => {
+    if (init && init.method === 'POST') {
+      posts.push({ url, body: JSON.parse(init.body) });
+      return Promise.resolve({ ok: true, text: () => Promise.resolve(threadsJson) });
     }
-    return Promise.resolve({ text: () => Promise.resolve('{"threads":[]}') });
+    return Promise.resolve({ text: () => Promise.resolve(threadsJson) });
   };
   await new Promise((r) => window.setTimeout(r, 0));
   window.eval(REVIEW_JS); // deferred-script execution → boot() via the readyState check
@@ -155,4 +157,42 @@ test('clicking the review UI does not open a composer', async (t) => {
   const { document } = window;
   document.getElementById('sf-launcher').click();
   assert.equal(document.getElementById('sf-compose'), null, 'no composer from a UI click');
+});
+
+test('the submit-batch bar lives on the sidebar, not in the launcher menu', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open', comments: [{ author: 'human', body: 'x' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  const bar = document.querySelector('#sf-sidebar #sf-batchbar');
+  assert.ok(bar, 'batch bar is a child of the sidebar');
+  assert.ok(bar.classList.contains('show'), 'batch bar shows when a comment is pending');
+  assert.ok(bar.querySelector('button'), 'batch bar carries a Submit button');
+  document.getElementById('sf-launcher').click();
+  assert.ok(!rowByLabel(document, 'Submit'), 'the launcher menu has no Submit row');
+});
+
+test('a thread re-anchors to its section when the exact block is gone', async (t) => {
+  const body = `<main><section id="s1"><h2>S1</h2><p class="x">current text</p></section></main><div id="sf-live">● live</div>`;
+  const threads = [{
+    id: 't1', state: 'open', comments: [{ author: 'human', body: 'c' }],
+    anchor: { block: { index: 99, tag: 'P', text: 'a block that no longer exists', sectionPath: ['s1'] } },
+  }];
+  const { window } = await bootReviewLayer(t, { body, threads });
+  assert.equal(window.document.getElementById('s1').getAttribute('data-sf-thread'), 't1',
+    'falls back to the enclosing section');
+});
+
+test('a thread re-anchors to the parent section when its own section is removed', async (t) => {
+  // The original section (#child) is gone; only #parent survives in the spec.
+  const body = `<main><section id="parent"><h2>P</h2><p>still here</p></section></main><div id="sf-live">● live</div>`;
+  const threads = [{
+    id: 't1', state: 'open', comments: [{ author: 'human', body: 'c' }],
+    anchor: { block: { index: 99, tag: 'P', text: 'gone', sectionPath: ['child', 'parent'] } },
+  }];
+  const { window } = await bootReviewLayer(t, { body, threads });
+  assert.equal(window.document.getElementById('parent').getAttribute('data-sf-thread'), 't1',
+    'falls back to the parent section when the original section is removed');
 });
