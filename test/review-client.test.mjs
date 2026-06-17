@@ -116,9 +116,9 @@ test('the Theme row toggles data-theme on <html>', async (t) => {
   document.getElementById('sf-launcher').click();
   const theme = rowByLabel(document, 'Theme');
   theme.click();
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'light', 'first toggle → light');
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'first toggle → dark (away from rendered light)');
   theme.click();
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'second toggle → dark');
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'light', 'second toggle → light');
 });
 
 test('hovering a block highlights it; moving moves the highlight', async (t) => {

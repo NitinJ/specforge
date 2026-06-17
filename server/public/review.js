@@ -42,9 +42,14 @@
     if (next !== 'light' && next !== 'dark') return; // honor the spec/OS default
     root.setAttribute('data-theme', next);
   }
+  function currentTheme() {
+    var a = document.documentElement.getAttribute('data-theme');
+    if (a === 'light' || a === 'dark') return a;
+    // No explicit choice yet → reflect what's actually rendered (OS preference).
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
   function toggleTheme() {
-    var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    var next = cur === 'light' ? 'dark' : 'light';
+    var next = currentTheme() === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', next);
     try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
     return next;
@@ -126,6 +131,7 @@
 
     els.menu = create('div', { id: 'sf-menu', role: 'menu' });
     document.body.appendChild(els.menu);
+    els.live = document.getElementById('sf-live'); // capture once — survives menu innerHTML resets
 
     document.addEventListener('click', function (e) { // click-outside closes
       if (els.menu.classList.contains('open') && !inMenu(e.target)) closeMenu();
@@ -176,11 +182,11 @@
       els.menu.appendChild(menuRow('▲', 'Submit batch (' + pending + ')', function () { closeMenu(); submitBatch(); }));
     }
 
-    // Footer — relocate the live-status pill, if present, into the menu.
-    var live = document.getElementById('sf-live');
-    if (live) {
+    // Footer — relocate the live-status pill into the menu. Held at els.live so it
+    // survives the innerHTML reset above (we re-append the same node each rebuild).
+    if (els.live) {
       var foot = create('div', { class: 'sf-menu-foot' });
-      foot.appendChild(live);
+      foot.appendChild(els.live);
       els.menu.appendChild(foot);
     }
   }
@@ -203,7 +209,7 @@
     return row;
   }
   function themeRow() {
-    var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    var cur = currentTheme();
     var row = menuRow('◐', 'Theme', null);
     var val = create('span', { class: 'sf-row-val' }, cur);
     row.querySelector('.sf-row-main').appendChild(val);

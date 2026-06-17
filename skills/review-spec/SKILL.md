@@ -59,8 +59,10 @@ Work each `threadId`:
      every place that term appears.
    Open each coupled section with `section <id>` and edit it too.
 3. **Amend** with the Edit tool. **Preserve every `<section id="…">` and its id**
-   (anchors and the lint depend on them); keep the theme CSS/toggle, TOC, and
-   width slider. After changing a term/number, re-run `grep "<old term>"` and
+   (anchors and the lint depend on them); keep the theme CSS (light/dark vars,
+   `[data-theme]` override, `prefers-color-scheme`) and the TOC — the review layer
+   owns the theme + width controls, so specs carry no in-spec toggle or slider.
+   After changing a term/number, re-run `grep "<old term>"` and
    expect **zero hits** — that proves the edit is consistent across the spec.
    Re-run the lint if you changed structure:
    `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" "<spec-file>" --project "<project>"`.
