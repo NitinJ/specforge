@@ -38,6 +38,7 @@ const SPEC_BODY = `
 async function bootReviewLayer(t, opts = {}) {
   const body = opts.body || SPEC_BODY;
   const threadsJson = JSON.stringify({ threads: opts.threads || [] });
+  const meta = opts.meta || { id: 'test-spec', title: 'Test', status: 'draft', attachedSession: null };
   const html = `<!doctype html><html><head></head><body>${body}</body></html>`;
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'http://localhost/' });
   const { window } = dom;
@@ -48,8 +49,11 @@ async function bootReviewLayer(t, opts = {}) {
   const posts = [];
   window.fetch = (url, init) => {
     if (init && init.method === 'POST') {
-      posts.push({ url, body: JSON.parse(init.body) });
-      return Promise.resolve({ ok: true, text: () => Promise.resolve(threadsJson) });
+      posts.push({ url, body: init.body ? JSON.parse(init.body) : {} });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }), text: () => Promise.resolve('{"ok":true}') });
+    }
+    if (String(url).indexOf('/meta') !== -1) {
+      return Promise.resolve({ json: () => Promise.resolve(meta) });
     }
     return Promise.resolve({ text: () => Promise.resolve(threadsJson) });
   };
@@ -195,4 +199,58 @@ test('a thread re-anchors to the parent section when its own section is removed'
   const { window } = await bootReviewLayer(t, { body, threads });
   assert.equal(window.document.getElementById('parent').getAttribute('data-sf-thread'), 't1',
     'falls back to the parent section when the original section is removed');
+});
+
+// ---------- lifecycle action button ----------
+const PENDING_THREAD = [{
+  id: 't1', state: 'open', comments: [{ author: 'human', body: 'x' }],
+  anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+}];
+const tick = (window) => new Promise((r) => window.setTimeout(r, 0));
+
+test('action button: draft + pending → "Needs review" and submits the batch', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.ok(btn, 'action button present');
+  assert.equal(btn.getAttribute('data-state'), 'needs');
+  assert.match(btn.textContent, /Needs review/);
+  btn.click();
+  await tick(window);
+  assert.ok(posts.some((p) => /\/comments\/submit$/.test(p.url)), 'clicking submits the batch');
+});
+
+test('action button: draft + no pending → "LGTM" and approves', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { meta: { status: 'draft' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.equal(btn.getAttribute('data-state'), 'lgtm');
+  btn.click();
+  await tick(window);
+  const p = posts.find((x) => /\/status$/.test(x.url));
+  assert.ok(p && p.body.status === 'approved', 'clicking LGTM POSTs status=approved');
+});
+
+test('action button: approved → "Implement →" and sets implementing', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { meta: { status: 'approved' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.equal(btn.getAttribute('data-state'), 'impl');
+  btn.click();
+  await tick(window);
+  const p = posts.find((x) => /\/status$/.test(x.url));
+  assert.ok(p && p.body.status === 'implementing', 'clicking Implement POSTs status=implementing');
+});
+
+test('action button: implementing is a disabled status display', async (t) => {
+  const { window } = await bootReviewLayer(t, { meta: { status: 'implementing' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.equal(btn.getAttribute('data-state'), 'working');
+  assert.ok(btn.disabled, 'no action while implementing');
+});
+
+test('resolve-all shows when threads are open and posts resolve-all', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD });
+  const btn = window.document.querySelector('.sf-resolve-all');
+  assert.ok(btn.classList.contains('show'), 'shown with an open thread');
+  btn.click();
+  await tick(window);
+  assert.ok(posts.some((p) => /\/comments\/resolve-all$/.test(p.url)), 'posts resolve-all');
 });

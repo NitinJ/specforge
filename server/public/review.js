@@ -12,13 +12,14 @@
   'use strict';
   var SPEC = (window.SPECFORGE || {}).specId;
   if (!SPEC) return;
-  var API = '/api/spec/' + encodeURIComponent(SPEC) + '/comments';
+  var SPEC_API = '/api/spec/' + encodeURIComponent(SPEC);
+  var API = SPEC_API + '/comments';
 
   // Elements that can carry a comment. The innermost match under the pointer wins.
   var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,td,th,pre,blockquote,figure,.panel,.callout,.card,.stat,.loop .step,.matrix .q,.bar,.ns';
   var INTERACTIVE = 'a,button,input,textarea,select,summary,label';
 
-  var state = { threads: [], filter: 'open', active: null };
+  var state = { threads: [], filter: 'open', active: null, meta: null };
   var els = {};
 
   var booted = false;
@@ -75,13 +76,19 @@
 
   // ---------- data ----------
   var lastRaw = null;
+  var lastMeta = null;
   function load() {
-    fetch(API).then(function (r) { return r.text(); }).then(function (raw) {
-      if (raw === lastRaw) return; // unchanged → skip re-render (no flicker)
-      lastRaw = raw;
-      var d = JSON.parse(raw);
-      state.threads = (d && d.threads) || [];
-      render();
+    Promise.all([
+      fetch(API).then(function (r) { return r.text(); }),
+      fetch(SPEC_API + '/meta').then(function (r) { return r.json(); }).catch(function () { return null; }),
+    ]).then(function (vals) {
+      var raw = vals[0];
+      var meta = vals[1];
+      var changed = false;
+      if (raw !== lastRaw) { lastRaw = raw; state.threads = (JSON.parse(raw) || {}).threads || []; changed = true; }
+      var metaStr = meta && JSON.stringify(meta);
+      if (metaStr && metaStr !== lastMeta) { lastMeta = metaStr; state.meta = meta; changed = true; }
+      if (changed) render();
     }).catch(function () {});
   }
   function postJSON(url, body) {
@@ -96,6 +103,7 @@
     els.sidebar.innerHTML =
       '<div class="sf-side-head"><b><span>Spec</span>Forge</b>' +
       '<span class="sf-count"></span>' +
+      '<button class="sf-resolve-all" title="Resolve every open thread">Resolve all</button>' +
       '<span class="sf-filter">' +
       '<button data-f="open" class="on">Open</button>' +
       '<button data-f="resolved">Resolved</button>' +
@@ -104,6 +112,11 @@
     document.body.appendChild(els.sidebar);
     els.threads = els.sidebar.querySelector('.sf-threads');
     els.count = els.sidebar.querySelector('.sf-count');
+    els.resolveAll = els.sidebar.querySelector('.sf-resolve-all');
+    els.resolveAll.onclick = function () {
+      if (!unresolvedCount()) return;
+      postJSON(API + '/resolve-all').then(load).catch(function () { flash('Could not resolve threads.'); });
+    };
     Array.prototype.forEach.call(els.sidebar.querySelectorAll('.sf-filter button'), function (b) {
       b.onclick = function () {
         state.filter = b.getAttribute('data-f');
@@ -122,11 +135,59 @@
     els.batchbar.appendChild(submitBtn);
     els.sidebar.appendChild(els.batchbar);
 
+    buildAction();
     buildLauncher();
 
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { clearHover(); hideCompose(); closeMenu(); } });
+  }
+
+  // ---------- lifecycle action button ----------
+  // One contextual primary CTA driven by the spec's status + pending comments:
+  //   draft/in_review + pending  → "Needs review" (submit the batch)
+  //   draft/in_review + none     → "LGTM ✓"       (status → approved)
+  //   approved                   → "Implement →"  (status → implementing; nudges
+  //                                                 the attached session to start)
+  //   implementing / done / closed → status display (no action)
+  function buildAction() {
+    els.action = create('button', { id: 'sf-action', type: 'button' });
+    els.action.onclick = onAction;
+    document.body.appendChild(els.action);
+  }
+  function actionState() {
+    var status = (state.meta && state.meta.status) || 'draft';
+    var pending = pendingCount();
+    if (status === 'draft' || status === 'in_review') {
+      return pending
+        ? { label: 'Needs review', state: 'needs', act: 'submit' }
+        : { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
+    }
+    if (status === 'approved') return { label: 'Implement →', state: 'impl', act: 'implement' };
+    if (status === 'implementing') return { label: 'Implementing…', state: 'working', act: null };
+    if (status === 'done') return { label: 'Done ✓', state: 'done', act: null };
+    if (status === 'closed') return { label: 'Closed', state: 'closed', act: null };
+    return { label: status, state: 'other', act: null };
+  }
+  function renderAction() {
+    if (!els.action) return;
+    var s = actionState();
+    els.action.textContent = s.label;
+    els.action.setAttribute('data-state', s.state);
+    els.action.disabled = !s.act;
+    if (els.resolveAll) els.resolveAll.classList.toggle('show', !!unresolvedCount());
+  }
+  function onAction() {
+    var s = actionState();
+    if (!s.act) return;
+    if (s.act === 'submit') return submitBatch();
+    var status = s.act === 'approve' ? 'approved' : 'implementing';
+    postJSON(SPEC_API + '/status', { status: status }).then(function (r) {
+      if (r.ok) load(); else flash('Could not update status.');
+    }).catch(function () { flash('Could not update status.'); });
+  }
+  function unresolvedCount() {
+    return state.threads.filter(function (t) { return t.state !== 'resolved'; }).length;
   }
 
   // ---------- launcher + menu ----------
@@ -292,7 +353,7 @@
   }
 
   // ---------- render ----------
-  function render() { renderSidebar(); renderHighlights(); renderLauncher(); }
+  function render() { renderSidebar(); renderHighlights(); renderLauncher(); renderAction(); }
 
   function visible() {
     return state.threads.filter(function (t) {
@@ -437,7 +498,7 @@
   function inUI(t) {
     while (t) {
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
-          t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc') return true;
+          t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-action') return true;
       t = t.parentElement;
     }
     return false;
