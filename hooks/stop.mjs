@@ -17,6 +17,7 @@ import { readMeta } from '../lib/meta.mjs';
 import { readSpecHtml } from '../lib/store.mjs';
 import { readLedger, clearLedger } from '../lib/store-ledger.mjs';
 import { computeDrift } from '../lib/enforce.mjs';
+import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 
 export function run(input, env = process.env) {
   // Loop guard: if this stop already followed a stop-hook continuation, settle.
@@ -26,6 +27,10 @@ export function run(input, env = process.env) {
   if (!mine.length) return null; // ← idle no-op
 
   heartbeat(me);
+
+  // Pending review batches take priority — route to review-spec before settling.
+  const batches = pendingForSession(me);
+  if (batches.length) return { decision: 'block', reason: reviewReason(batches) };
 
   const nudges = [];
   for (const id of mine) {

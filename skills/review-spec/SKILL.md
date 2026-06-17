@@ -1,95 +1,82 @@
 ---
 name: specforge:review-spec
 description: |
-  Process a submitted batch of human comments on a spec: reply to each thread
-  inline and amend the spec accordingly. Usually auto-invoked by the Stop hook
-  when a comment batch is submitted in the browser; can also be run manually.
-  Replies are append-only; only the human resolves threads.
+  Process a submitted batch of human comments on a spec in the store: reply to
+  each thread inline and amend the spec accordingly. Usually auto-invoked when the
+  owning session's Stop/UserPromptSubmit hook surfaces a pending batch; can also
+  be run manually. Replies are append-only; only the human resolves threads.
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
 # review-spec
 
-Process one or more **pending review batches**: reply inline to each comment
-thread and amend the spec per the comments. The browser updates live (the spec
-file change triggers a reload; the sidebar also polls).
+Process one or more **pending review batches** for specs in the global store:
+reply inline to each comment thread and amend the spec per the comments. The
+browser updates live (the spec file change triggers an SSE reload).
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. `<specsDir>` defaults
-to `<project>/specs` (honor `.specforge/config.json`).
+`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Specs live in the
+store at `~/.specforge/specs/<id>/spec.html`; you address them by spec **id**
+(the hook message lists each batch's `specId` + `batchId`).
 
-## 1. Find pending batches
+## 1. Load the threads + the spec path
 
-Pending batches are files at `<specsDir>/.specforge/<specId>/inbox/<batchId>.json`
-(the Stop hook's message lists them). Read each batch file: it has `specId`,
-`specPath`, `threadIds`, `batchId`.
+For a batch's spec id:
 
-## 2. Load comments + the spec MAP (don't read the whole spec)
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" comments <id>
+```
 
-For a batch's spec:
-- The comment store is `<specsDir>/.specforge/<specId>/comments.json`. Read it to
-  get each thread's `anchor.block` (`{ index, tag, text }` — `text` is the
-  normalized text of the commented block) and the human comment text.
-- Get the spec's structure cheaply instead of reading the whole file — this gives
-  you the entire shape (sections, the plan, line ranges, token sizes) in a few
-  hundred tokens; most of the raw HTML is CSS/markup boilerplate you don't need:
+It prints `{ specId, htmlPath, threads, pending }`. `htmlPath` is the spec file to
+edit; each thread has `anchor.block` (`{ index, tag, text }` — `text` is the
+commented block's normalized text) and the human comment(s).
 
-  ```
-  node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" map --spec "<specsDir>/<specPath>"
-  ```
+## 2. Get the spec MAP (don't read the whole file)
 
-  Then pull only the sections you actually touch (step 3).
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" map --spec "<htmlPath>"
+```
+
+This gives the whole shape (sections, plan, line ranges, token sizes) in a few
+hundred tokens — most of the raw HTML is boilerplate. Pull only the sections you
+touch.
 
 ## 3. For each thread in the batch
 
-Work each `threadId`:
-
-1. **Locate** the commented block without reading the whole file. Grep a
-   distinctive phrase from `anchor.block.text` to find its section, then open just
-   that section (it reports the exact line range to target your Edit):
+1. **Locate** the commented block: grep a distinctive phrase from
+   `anchor.block.text`, then open just that section (it reports the exact line
+   range):
 
    ```
-   node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" grep "<phrase from anchor.block.text>" --spec "<spec>"
-   node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" section <id> --spec "<spec>"
+   node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" grep "<phrase>" --spec "<htmlPath>"
+   node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" section <id> --spec "<htmlPath>"
    ```
-2. **Find coupled sections before editing** — this is how you safely change
-   content far from the comment without going blind to the rest of the spec:
-   - `spec-nav-cli.mjs xrefs <id> --spec "<spec>"` → sections that reference or
-     mention this one (the plan, a table, the glossary…).
-   - `spec-nav-cli.mjs grep "<old term/number you're changing>" --spec "<spec>"` →
-     every place that term appears.
-   Open each coupled section with `section <id>` and edit it too.
-3. **Amend** with the Edit tool. **Preserve every `<section id="…">` and its id**
-   (anchors and the lint depend on them); keep the theme CSS (light/dark vars,
-   `[data-theme]` override, `prefers-color-scheme`) and the TOC — the review layer
-   owns the theme + width controls, so specs carry no in-spec toggle or slider.
-   After changing a term/number, re-run `grep "<old term>"` and
-   expect **zero hits** — that proves the edit is consistent across the spec.
-   Re-run the lint if you changed structure:
-   `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" "<spec-file>" --project "<project>"`.
+2. **Find coupled sections before editing** — `xrefs <id>` and `grep "<old
+   term>"` to find every place a changed term/number appears; open and edit those
+   too.
+3. **Amend** `htmlPath` with the Edit tool. **Preserve every `<section id="…">`
+   and its id**; keep the theme CSS and the floating TOC (the review layer owns
+   theme + width). After changing a term/number, re-run `grep "<old term>"` and
+   expect **zero hits**. Re-run the lint if you changed structure:
+   `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" "<htmlPath>" --project "${CLAUDE_PLUGIN_ROOT}"`.
 4. **Reply inline** (append-only, attributed to claude) via the CLI — never edit
    `comments.json` by hand, and never use the HTTP API (it is human-only):
 
    ```
-   node "${CLAUDE_PLUGIN_ROOT}/lib/comment-cli.mjs" reply "<specsDir>" "<specId>" "<threadId>" --body-file "<reply.txt>" [--edited]
+   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>"
    ```
-
-   Write your reply to a temp file and pass `--body-file`. Add `--edited` when
-   this thread caused a spec change. Keep replies concise; reference the section
-   you changed.
 
 Do **not** resolve threads — only the human resolves (which closes them).
 
 ## 4. Mark the batch done
 
-When every thread in a batch has a reply, clear it so the Stop hook stops
-nudging:
+When every thread in a batch has a reply:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/comment-cli.mjs" done "<specsDir>" "<specId>" "<batchId>"
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" batch-done <id> <batchId>
 ```
 
 ## 5. Report
 
-Briefly summarize: per spec, how many threads you replied to and which sections
-you amended. The human will see your replies + edits live and resolve threads
-they're satisfied with.
+Briefly summarize per spec: how many threads you replied to and which sections you
+amended. The human sees your replies + edits live and resolves the threads they're
+satisfied with.
