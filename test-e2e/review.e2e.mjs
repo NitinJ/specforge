@@ -1,7 +1,7 @@
 // End-to-end tests for the review layer in a real browser. These cover what
-// jsdom cannot: layout (the review toggle must not collide with the spec's own
-// theme toggle) and the full comment round-trip driven through real clicks +
-// the HTTP API. Run with `npm run test:e2e`.
+// jsdom cannot: layout (the SpecForge launcher menu is the single floating
+// control and is clickable) and the full comment round-trip driven through real
+// clicks + the HTTP API. Run with `npm run test:e2e`.
 //
 // Uses whatever chromium build is already cached under ~/.cache/ms-playwright
 // (via executablePath) so it never triggers a browser download; if none is
@@ -51,7 +51,7 @@ async function withServerAndPage(fn) {
     // The injected SSE EventSource keeps the network busy, so 'networkidle'
     // would never fire — wait for DOM + the review chrome instead.
     await page.goto(`${base}/spec/${id}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#sf-toggle');
+    await page.waitForSelector('#sf-launcher');
     return await fn({ page, base, id });
   } finally {
     await browser.close();
@@ -59,23 +59,29 @@ async function withServerAndPage(fn) {
   }
 }
 
-test('review toggle and theme toggle do not collide and are both clickable', { skip: CHROME ? false : 'no cached chromium' }, async () => {
+test('the launcher is the single floating control, is clickable, and opens the menu with the review rows', { skip: CHROME ? false : 'no cached chromium' }, async () => {
   await withServerAndPage(async ({ page }) => {
-    assert.equal(await page.locator('#sf-toggle').count(), 1, 'exactly one review toggle');
+    assert.equal(await page.locator('#sf-launcher').count(), 1, 'exactly one launcher');
     assert.equal(await page.locator('#sf-sidebar').count(), 1, 'exactly one sidebar');
+    // The spec no longer ships its own theme/width controls — those are gone.
+    assert.equal(await page.locator('#themeToggle').count(), 0, 'spec has no theme toggle');
+    assert.equal(await page.locator('#sf-toggle, #sf-batchbar, #sf-width').count(), 0, 'no retired standalone controls');
 
-    const geom = await page.evaluate(() => {
-      const r = (el) => { const b = el.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, cx: b.left + b.width / 2, cy: b.top + b.height / 2 }; };
-      const sf = document.getElementById('sf-toggle');
-      const th = document.getElementById('themeToggle');
-      const overlap = (a, c) => Math.max(0, Math.min(a.r, c.r) - Math.max(a.l, c.l)) * Math.max(0, Math.min(a.b, c.b) - Math.max(a.t, c.t));
-      const top = (el, g) => { const h = document.elementFromPoint(g.cx, g.cy); return h === el || el.contains(h); };
-      const sfg = r(sf); const thg = r(th);
-      return { overlap: overlap(sfg, thg), sfClickable: top(sf, sfg), themeClickable: top(th, thg) };
+    // The launcher is the top hit-target at its own center (nothing overlaps it).
+    const clickable = await page.evaluate(() => {
+      const el = document.getElementById('sf-launcher');
+      const b = el.getBoundingClientRect();
+      const h = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return h === el || el.contains(h);
     });
-    assert.equal(geom.overlap, 0, 'review toggle and theme toggle must not overlap');
-    assert.ok(geom.sfClickable, 'review toggle is the top hit-target at its center');
-    assert.ok(geom.themeClickable, 'theme toggle is the top hit-target at its center');
+    assert.ok(clickable, 'launcher is the top hit-target at its center');
+
+    // Clicking it opens the popover menu carrying Width + Theme controls.
+    assert.equal(await page.locator('#sf-menu.open').count(), 0, 'menu starts closed');
+    await page.locator('#sf-launcher').click();
+    await page.waitForSelector('#sf-menu.open');
+    assert.ok(await page.locator('#sf-menu input[type=range]').count() >= 1, 'menu has the width slider');
+    assert.ok(await page.locator('#sf-menu .sf-menu-row', { hasText: 'Theme' }).count() >= 1, 'menu has the Theme row');
   });
 });
 

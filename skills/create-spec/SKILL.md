@@ -44,7 +44,9 @@ root). Read its files there.
   - Leave `impl-decisions`, `deviations`, `tradeoffs` as the empty stubs — they
     are filled during implementation.
 - **Keep every `<section id="…">` and its id.** Anchors and the lint depend on
-  them. Do not remove the theme CSS/toggle or the container-width slider.
+  them. Keep the theme CSS (light/dark vars, the `[data-theme]` override,
+  `prefers-color-scheme`, and `--maxw`) — there is no in-spec theme toggle or
+  width slider; the review layer drives theme + width.
 - **The TOC is a floating left sidebar — always.** Every spec keeps
   `<nav class="toc">` as the sticky left-hand column that stays pinned in view
   while the main content scrolls — never an in-flow block that scrolls up and

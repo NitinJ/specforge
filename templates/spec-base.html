@@ -82,18 +82,6 @@
     padding:12px 16px;margin:16px 0}
   .callout.warn{border-left-color:var(--amber)} .callout.good{border-left-color:var(--green)}
 
-  .toggle{position:fixed;top:16px;right:20px;z-index:30;background:var(--panel);
-    border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:7px 14px;
-    font-size:12.5px;cursor:pointer;box-shadow:var(--shadow)}
-  .toggle:hover{border-color:var(--accent)}
-  /* Reader control: adjust the content container width; persisted. */
-  .widthctl{position:fixed;bottom:16px;right:20px;z-index:30;display:flex;align-items:center;gap:8px;
-    background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:999px;
-    padding:7px 14px;box-shadow:var(--shadow);font-size:12px}
-  .widthctl input[type=range]{width:120px;accent-color:var(--accent);cursor:pointer}
-  .widthctl b{color:var(--ink);font-weight:700;min-width:34px;text-align:right}
-  @media (max-width:720px){.widthctl{display:none}}
-
   ol.sf-stages{list-style:none;padding-left:0}
   li[data-sf-stage]{background:var(--panel);border:1px solid var(--line);border-radius:12px;
     padding:14px 16px;margin:12px 0;box-shadow:var(--shadow)}
@@ -106,12 +94,6 @@
 </style>
 </head>
 <body>
-<button class="toggle" id="themeToggle">◐ theme</button>
-<div class="widthctl" aria-label="Adjust content width" title="Adjust content width">
-  <span>↔</span>
-  <input type="range" id="widthSlider" min="820" max="1760" step="20" value="1280">
-  <b id="widthVal">1280</b>
-</div>
 <div class="layout">
 
 <nav class="toc">
@@ -230,18 +212,6 @@
 </div>
 
 <script>
-  // Theme toggle — persists choice; respects OS preference until overridden.
-  (function(){
-    var root=document.documentElement, key="specforge-theme";
-    var saved=localStorage.getItem(key);
-    if(saved){root.setAttribute("data-theme",saved);}
-    var btn=document.getElementById("themeToggle");
-    if(btn){btn.addEventListener("click",function(){
-      var cur=root.getAttribute("data-theme")==="light"?"light":"dark";
-      var next=cur==="light"?"dark":"light";
-      root.setAttribute("data-theme",next);localStorage.setItem(key,next);
-    });}
-  })();
   // TOC scroll-spy.
   (function(){
     var links=[].slice.call(document.querySelectorAll("nav.toc a"));
@@ -255,16 +225,6 @@
       });
     },{rootMargin:"-10% 0px -80% 0px",threshold:0});
     Object.keys(map).forEach(function(id){var el=document.getElementById(id);if(el)obs.observe(el);});
-  })();
-  // Container-width slider — reader adjusts --maxw; persisted independently of theme.
-  (function(){
-    var root=document.documentElement, key="specforge-width";
-    var s=document.getElementById("widthSlider"), out=document.getElementById("widthVal");
-    if(!s) return;
-    function apply(px){root.style.setProperty("--maxw",px+"px");if(out)out.textContent=px;s.value=px;}
-    var saved=localStorage.getItem(key);
-    if(saved) apply(saved);
-    s.addEventListener("input",function(){apply(s.value);localStorage.setItem(key,s.value);});
   })();
 </script>
 </body>
