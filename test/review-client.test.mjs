@@ -254,3 +254,26 @@ test('resolve-all shows when threads are open and posts resolve-all', async (t) 
   await tick(window);
   assert.ok(posts.some((p) => /\/comments\/resolve-all$/.test(p.url)), 'posts resolve-all');
 });
+
+// ---------- launcher session row (attached + detach) ----------
+test('menu shows the attached session + a Detach button that posts /detach', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678' } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const row = rowByLabel(document, 'Session sess-123');
+  assert.ok(row, 'session row shows the attached session id');
+  const detach = row.querySelector('.sf-detach');
+  assert.ok(detach, 'Detach button present when attached');
+  detach.click();
+  await tick(window);
+  assert.ok(posts.some((p) => /\/detach$/.test(p.url)), 'Detach posts /detach');
+});
+
+test('menu shows "Not attached" with no Detach button when free', async (t) => {
+  const { window } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: null } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const row = rowByLabel(document, 'Not attached');
+  assert.ok(row, 'session row shows Not attached');
+  assert.equal(row.querySelector('.sf-detach'), null, 'no Detach button when free');
+});

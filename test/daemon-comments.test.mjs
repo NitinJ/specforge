@@ -8,6 +8,7 @@ import { createDaemon } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
 import { loadComments } from '../lib/store-comments.mjs';
 import { listPendingForSpec } from '../lib/store-inbox.mjs';
+import { attach } from '../lib/attach.mjs';
 
 let home;
 let prevHome;
@@ -110,6 +111,16 @@ test('GET meta returns lifecycle + ownership; POST status transitions', async ()
 test('POST status rejects an invalid state (400)', async () => {
   const r = await post(`/api/spec/${specId}/status`, { status: 'bogus' });
   assert.equal(r.status, 400);
+});
+
+test('POST detach frees the spec from its session', async () => {
+  attach(specId, 'sess-x');
+  const before = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(before.attachedSession, 'sess-x');
+  const r = await post(`/api/spec/${specId}/detach`);
+  assert.equal(r.status, 200);
+  const after = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(after.attachedSession, null);
 });
 
 test('POST comments/resolve-all resolves every open thread', async () => {

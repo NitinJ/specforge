@@ -134,6 +134,9 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
 .sf-row-val { margin-left: auto; color: var(--sf-muted); font-size: 11px; }
 .sf-menu-badge { margin-left: auto; background: var(--sf-accent); color: #08101f; border-radius: 999px; padding: 0 7px; font: 700 10.5px/1.5 system-ui, sans-serif; }
 .sf-menu-row input[type=range] { width: 100%; margin: 6px 0 2px; accent-color: var(--sf-accent); cursor: pointer; }
+.sf-detach { margin-left: auto; background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
+  border-radius: 6px; font-size: 11px; padding: 3px 9px; cursor: pointer; }
+.sf-detach:hover { color: var(--sf-amber); border-color: var(--sf-amber); }
 .sf-menu-foot { border-top: 1px solid var(--sf-line); margin-top: 4px; padding: 7px 10px 3px; }
 
 /* injected floating TOC drawer (only when the spec has no TOC of its own) */
