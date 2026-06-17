@@ -31,6 +31,7 @@ import {
 import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
   handleCommentReply, handleCommentResolve, handleSubmit,
+  handleMeta, handleStatus, handleResolveAll,
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
 
@@ -177,10 +178,27 @@ export function createDaemon() {
         .then((b) => handleCommentReply(reply[1], reply[2], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
+    const resolveAll = path.match(/^\/api\/spec\/([\w-]+)\/comments\/resolve-all$/);
+    if (resolveAll) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleResolveAll(resolveAll[1], res);
+    }
     const resolve = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/resolve$/);
     if (resolve) {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleCommentResolve(resolve[1], resolve[2], res);
+    }
+    const meta = path.match(/^\/api\/spec\/([\w-]+)\/meta$/);
+    if (meta) {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleMeta(meta[1], res);
+    }
+    const status = path.match(/^\/api\/spec\/([\w-]+)\/status$/);
+    if (status) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((b) => handleStatus(status[1], b, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
 
     if (method === 'GET') {

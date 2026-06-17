@@ -94,3 +94,30 @@ test('SSE /events streams an initial connected comment', async () => {
   assert.match(new TextDecoder().decode(value), /connected/);
   await reader.cancel();
 });
+
+test('GET meta returns lifecycle + ownership; POST status transitions', async () => {
+  const m0 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(m0.status, 'draft');
+  assert.equal(m0.attachedSession, null);
+
+  const s = await post(`/api/spec/${specId}/status`, { status: 'approved' });
+  assert.equal(s.status, 200);
+  assert.equal((await s.json()).status, 'approved');
+  const m1 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(m1.status, 'approved');
+});
+
+test('POST status rejects an invalid state (400)', async () => {
+  const r = await post(`/api/spec/${specId}/status`, { status: 'bogus' });
+  assert.equal(r.status, 400);
+});
+
+test('POST comments/resolve-all resolves every open thread', async () => {
+  await post(`/api/spec/${specId}/comments`, { anchor, body: 'q1' });
+  await post(`/api/spec/${specId}/comments`, { anchor, body: 'q2' });
+  const r = await post(`/api/spec/${specId}/comments/resolve-all`);
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).resolved, 2);
+  const { threads } = await (await fetch(`${base}/api/spec/${specId}/comments`)).json();
+  assert.ok(threads.every((t) => t.state === 'resolved'));
+});
