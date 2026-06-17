@@ -5,6 +5,7 @@ import http from 'node:http';
 import { readFileSync, watch } from 'node:fs';
 import { buildIndex, resolveSpec } from '../lib/paths.mjs';
 import { getTitle, getStatus } from '../lib/spec.mjs';
+import { writeIndex } from '../lib/spec-nav-index.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
 import {
@@ -55,6 +56,8 @@ function serveSpec(specsDir, id, res) {
   } catch {
     return send(res, 404, 'text/plain; charset=utf-8', 'spec not readable');
   }
+  // Ensure a spec-nav index exists when a spec is opened (best-effort).
+  try { writeIndex(specsDir, spec); } catch { /* index regen is best-effort */ }
   send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id }));
 }
 
@@ -86,7 +89,13 @@ function serveEvents(specsDir, id, req, res) {
       watcher = watch(spec.file, () => {
         if (closed) return;
         if (debounce) clearTimeout(debounce);
-        debounce = setTimeout(() => safeWrite('event: reload\ndata: {}\n\n'), 100);
+        debounce = setTimeout(() => {
+          // Regenerate the spec-nav index on save (cheap, idempotent) so the
+          // resident map + search stay in lockstep with the file. Best-effort:
+          // an index failure must never break live-reload.
+          try { writeIndex(specsDir, spec); } catch { /* index regen is best-effort */ }
+          safeWrite('event: reload\ndata: {}\n\n');
+        }, 100);
         debounce.unref?.();
       });
     } catch {

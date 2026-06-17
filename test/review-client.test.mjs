@@ -1,8 +1,9 @@
 // Unit tests for the injected review-layer client (server/public/review.js),
 // executed in a jsdom DOM. These cover the JS lifecycle + the block-level
-// comment interaction: chrome builds once, hovering a block highlights it,
+// comment interaction: chrome builds once, the SpecForge launcher menu
+// opens/closes and carries the review controls, hovering a block highlights it,
 // clicking a block opens the composer and posts a block anchor. Layout (the
-// review/theme toggle collision) needs a real browser and lives in the
+// launcher/popover positioning) needs a real browser and lives in the
 // Playwright e2e tier.
 //
 // The fixture has NO <section> wrappers on purpose — block-level commenting
@@ -19,7 +20,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REVIEW_JS = readFileSync(join(ROOT, 'server', 'public', 'review.js'), 'utf8');
 
 const SPEC_BODY = `
-  <button id="themeToggle" class="toggle">◐ theme</button>
   <main>
     <h1>Test Spec</h1>
     <h2>Overview</h2>
@@ -59,24 +59,66 @@ async function bootReviewLayer(t) {
 }
 
 const mouse = (window, el, type) => el.dispatchEvent(new window.MouseEvent(type, { bubbles: true }));
+// Find a menu row button by its visible label text.
+const rowByLabel = (document, label) =>
+  Array.prototype.find.call(document.querySelectorAll('#sf-menu .sf-menu-row'), (r) =>
+    r.textContent.includes(label));
 
 test('review chrome is built exactly once (defer run + DOMContentLoaded)', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;
-  assert.equal(document.querySelectorAll('#sf-toggle').length, 1, 'exactly one review toggle');
+  assert.equal(document.querySelectorAll('#sf-launcher').length, 1, 'exactly one launcher');
+  assert.equal(document.querySelectorAll('#sf-menu').length, 1, 'exactly one launcher menu');
   assert.equal(document.querySelectorAll('#sf-sidebar').length, 1, 'exactly one sidebar');
-  assert.equal(document.querySelectorAll('#sf-batchbar').length, 1, 'exactly one batch bar');
 });
 
-test('the single review toggle controls the single sidebar', async (t) => {
+test('the launcher menu opens and closes', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;
-  const toggle = document.getElementById('sf-toggle');
+  const launcher = document.getElementById('sf-launcher');
+  const menu = document.getElementById('sf-menu');
+  assert.ok(!menu.classList.contains('open'), 'menu starts closed');
+  assert.equal(launcher.getAttribute('aria-expanded'), 'false');
+  launcher.click();
+  assert.ok(menu.classList.contains('open'), 'launcher opens the menu');
+  assert.equal(launcher.getAttribute('aria-expanded'), 'true');
+  launcher.click();
+  assert.ok(!menu.classList.contains('open'), 'launcher closes the menu');
+  assert.equal(launcher.getAttribute('aria-expanded'), 'false');
+});
+
+test('the menu carries the Comments, Width and Theme rows', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  assert.ok(rowByLabel(document, 'Comments'), 'Comments row present');
+  const width = rowByLabel(document, 'Width');
+  assert.ok(width, 'Width row present');
+  assert.ok(width.querySelector('input[type=range]'), 'Width row has a range input');
+  assert.ok(rowByLabel(document, 'Theme'), 'Theme row present');
+});
+
+test('the Comments row toggles the single sidebar', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
   const sidebar = document.getElementById('sf-sidebar');
-  toggle.click();
-  assert.ok(sidebar.classList.contains('open'), 'toggle opens the sidebar');
-  toggle.click();
-  assert.ok(!sidebar.classList.contains('open'), 'toggle closes the sidebar');
+  document.getElementById('sf-launcher').click();
+  rowByLabel(document, 'Comments').click();
+  assert.ok(sidebar.classList.contains('open'), 'Comments row opens the sidebar');
+  document.getElementById('sf-launcher').click();
+  rowByLabel(document, 'Comments').click();
+  assert.ok(!sidebar.classList.contains('open'), 'Comments row closes the sidebar');
+});
+
+test('the Theme row toggles data-theme on <html>', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const theme = rowByLabel(document, 'Theme');
+  theme.click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'first toggle → dark (away from rendered light)');
+  theme.click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'light', 'second toggle → light');
 });
 
 test('hovering a block highlights it; moving moves the highlight', async (t) => {
@@ -111,6 +153,6 @@ test('clicking a block (no <section> needed) opens the composer and posts a bloc
 test('clicking the review UI does not open a composer', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;
-  document.getElementById('sf-toggle').click();
+  document.getElementById('sf-launcher').click();
   assert.equal(document.getElementById('sf-compose'), null, 'no composer from a UI click');
 });

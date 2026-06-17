@@ -14,7 +14,7 @@
   var API = '/api/spec/' + encodeURIComponent(SPEC) + '/comments';
 
   // Elements that can carry a comment. The innermost match under the pointer wins.
-  var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,pre,blockquote,figure,.panel,.callout,.card';
+  var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,td,th,pre,blockquote,figure,.panel,.callout,.card,.stat,.loop .step,.matrix .q,.bar,.ns';
   var INTERACTIVE = 'a,button,input,textarea,select,summary,label';
 
   var state = { threads: [], filter: 'open', active: null };
@@ -26,11 +26,50 @@
   function boot() {
     if (booted) return;
     booted = true;
+    applyTheme(); // review-layer owns theme — apply the persisted choice on load
     buildChrome();
     load();
     // Poll so Claude's replies appear without a manual refresh; pause while the
     // composer is open so we don't disrupt the user mid-comment.
     setInterval(function () { if (!els.compose) load(); }, 6000);
+  }
+
+  // ---------- theme (review-layer owned) ----------
+  var THEME_KEY = 'sf-theme';
+  function applyTheme(next) {
+    var root = document.documentElement;
+    if (next == null) next = localStorage.getItem(THEME_KEY);
+    if (next !== 'light' && next !== 'dark') return; // honor the spec/OS default
+    root.setAttribute('data-theme', next);
+  }
+  function currentTheme() {
+    var a = document.documentElement.getAttribute('data-theme');
+    if (a === 'light' || a === 'dark') return a;
+    // No explicit choice yet → reflect what's actually rendered (OS preference).
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  function toggleTheme() {
+    var next = currentTheme() === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    return next;
+  }
+
+  // ---------- container width (review-layer owned) ----------
+  var WIDTH_KEY = 'sf-spec-width';
+  function widthContainer() {
+    return document.querySelector('.deck, .layout, main, article, .container, .wrap') || document.body;
+  }
+  function applyWidth(px) {
+    document.documentElement.style.setProperty('--maxw', px + 'px');
+    var c = widthContainer();
+    try { c.style.maxWidth = px + 'px'; c.style.marginLeft = 'auto'; c.style.marginRight = 'auto'; } catch (e) {}
+  }
+  function startWidth() {
+    var saved = parseInt(localStorage.getItem(WIDTH_KEY), 10);
+    if (saved) return saved;
+    var w = widthContainer().getBoundingClientRect().width || 1040;
+    return Math.min(1760, Math.max(820, Math.round(w / 20) * 20));
   }
 
   // ---------- data ----------
@@ -52,10 +91,6 @@
 
   // ---------- chrome ----------
   function buildChrome() {
-    els.toggle = create('button', { id: 'sf-toggle' });
-    els.toggle.onclick = function () { els.sidebar.classList.toggle('open'); };
-    document.body.appendChild(els.toggle);
-
     els.sidebar = create('div', { id: 'sf-sidebar' });
     els.sidebar.innerHTML =
       '<div class="sf-side-head"><b><span>Spec</span>Forge</b>' +
@@ -77,14 +112,109 @@
       };
     });
 
-    els.batch = create('div', { id: 'sf-batchbar' });
-    els.batch.innerHTML = '<span class="c"></span><button>Submit batch</button>';
-    els.batch.querySelector('button').onclick = submitBatch;
-    document.body.appendChild(els.batch);
+    buildLauncher();
 
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { clearHover(); hideCompose(); } });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { clearHover(); hideCompose(); closeMenu(); } });
+  }
+
+  // ---------- launcher + menu ----------
+  // One floating SpecForge button consolidates every review control. The menu is
+  // (re)built on each open so applicable rows reflect current state — notably the
+  // injected #sf-toc drawer, which a later script builds after this chrome.
+  function buildLauncher() {
+    els.launcher = create('button', { id: 'sf-launcher', 'aria-expanded': 'false', 'aria-label': 'SpecForge', title: 'SpecForge' });
+    els.launcher.innerHTML = '<b><span>S</span>F</b><span class="sf-l-n"></span>';
+    els.launcher.onclick = function (e) { e.stopPropagation(); toggleMenu(); };
+    document.body.appendChild(els.launcher);
+
+    els.menu = create('div', { id: 'sf-menu', role: 'menu' });
+    document.body.appendChild(els.menu);
+    els.live = document.getElementById('sf-live'); // capture once — survives menu innerHTML resets
+
+    document.addEventListener('click', function (e) { // click-outside closes
+      if (els.menu.classList.contains('open') && !inMenu(e.target)) closeMenu();
+    });
+  }
+  function inMenu(t) {
+    while (t) { if (t === els.menu || t === els.launcher) return true; t = t.parentElement; }
+    return false;
+  }
+  function toggleMenu() { els.menu.classList.contains('open') ? closeMenu() : openMenu(); }
+  function openMenu() {
+    buildMenuRows();
+    els.menu.classList.add('open');
+    els.launcher.setAttribute('aria-expanded', 'true');
+  }
+  function closeMenu() {
+    if (!els.menu) return;
+    els.menu.classList.remove('open');
+    els.launcher.setAttribute('aria-expanded', 'false');
+  }
+
+  function buildMenuRows() {
+    els.menu.innerHTML = '';
+    var pending = pendingCount();
+
+    // Comments — toggles the sidebar; carries the pending badge.
+    var comments = menuRow('💬', 'Comments', function () { els.sidebar.classList.toggle('open'); closeMenu(); });
+    if (pending) {
+      var badge = create('span', { class: 'sf-menu-badge' }, String(pending));
+      comments.querySelector('.sf-row-main').appendChild(badge);
+    }
+    els.menu.appendChild(comments);
+
+    // Contents — only when the review layer injected its own TOC drawer.
+    var toc = document.getElementById('sf-toc');
+    if (toc) {
+      els.menu.appendChild(menuRow('📑', 'Contents', function () { toc.classList.toggle('open'); closeMenu(); }));
+    }
+
+    // Width — inline range, persisted.
+    els.menu.appendChild(widthRow());
+
+    // Theme — light/dark toggle.
+    els.menu.appendChild(themeRow());
+
+    // Submit batch — only when there are comments to submit.
+    if (pending) {
+      els.menu.appendChild(menuRow('▲', 'Submit batch (' + pending + ')', function () { closeMenu(); submitBatch(); }));
+    }
+
+    // Footer — relocate the live-status pill into the menu. Held at els.live so it
+    // survives the innerHTML reset above (we re-append the same node each rebuild).
+    if (els.live) {
+      var foot = create('div', { class: 'sf-menu-foot' });
+      foot.appendChild(els.live);
+      els.menu.appendChild(foot);
+    }
+  }
+
+  function menuRow(icon, label, onclick) {
+    var row = create('button', { class: 'sf-menu-row', type: 'button', role: 'menuitem' });
+    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">' + esc(icon) + '</span><span>' + esc(label) + '</span></span>';
+    if (onclick) row.onclick = onclick;
+    return row;
+  }
+  function widthRow() {
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">↔</span><span>Width</span></span>';
+    var range = create('input', { type: 'range', min: '820', max: '1760', step: '20' });
+    var px = startWidth();
+    range.value = px;
+    applyWidth(px);
+    range.oninput = function () { applyWidth(range.value); try { localStorage.setItem(WIDTH_KEY, range.value); } catch (e) {} };
+    row.appendChild(range);
+    return row;
+  }
+  function themeRow() {
+    var cur = currentTheme();
+    var row = menuRow('◐', 'Theme', null);
+    var val = create('span', { class: 'sf-row-val' }, cur);
+    row.querySelector('.sf-row-main').appendChild(val);
+    row.onclick = function () { val.textContent = toggleTheme(); };
+    return row;
   }
 
   // ---------- block targeting ----------
@@ -135,7 +265,7 @@
   }
 
   // ---------- render ----------
-  function render() { renderSidebar(); renderHighlights(); renderBatchbar(); }
+  function render() { renderSidebar(); renderHighlights(); renderLauncher(); }
 
   function visible() {
     return state.threads.filter(function (t) {
@@ -211,17 +341,17 @@
     });
   }
 
-  function renderBatchbar() {
-    var pending = state.threads.filter(function (t) {
+  function pendingCount() {
+    return state.threads.filter(function (t) {
       return t.state !== 'resolved' && t.comments.every(function (c) { return !c.batchId; });
     }).length;
-    els.toggle.innerHTML = '💬 ' + (pending ? '<span class="n">' + pending + '</span>' : 'review');
-    if (pending) {
-      els.batch.classList.add('show');
-      els.batch.querySelector('.c').textContent = pending + (pending === 1 ? ' comment' : ' comments') + ' to submit';
-    } else {
-      els.batch.classList.remove('show');
-    }
+  }
+  function renderLauncher() {
+    var pending = pendingCount();
+    els.launcher.classList.toggle('has-pending', !!pending);
+    els.launcher.querySelector('.sf-l-n').textContent = pending || '';
+    // Keep an open menu's rows (badge, Submit batch) in sync with fresh data.
+    if (els.menu.classList.contains('open')) buildMenuRows();
   }
 
   // ---------- compose ----------
@@ -275,8 +405,8 @@
   function norm(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
   function inUI(t) {
     while (t) {
-      if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-batchbar' ||
-          t.id === 'sf-toggle' || t.id === 'sf-live') return true;
+      if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
+          t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc') return true;
       t = t.parentElement;
     }
     return false;
@@ -298,4 +428,65 @@
     document.body.appendChild(n);
     setTimeout(function () { n.remove(); }, 3000);
   }
+})();
+
+/* Serve-time enhancement, added to EVERY served spec: an auto-built floating TOC
+ * drawer (#sf-toc), injected only when the spec has no TOC of its own. The
+ * SpecForge launcher's "Contents" row toggles it. The on-disk file is untouched —
+ * this lives purely in the served page. */
+(function () {
+  'use strict';
+  var done = false;
+  document.addEventListener('DOMContentLoaded', init);
+  if (document.readyState !== 'loading') init();
+  function init() { if (done) return; done = true; ensureToc(); }
+
+  // ---------- auto floating TOC ----------
+  function ensureToc() {
+    if (document.querySelector('nav.toc, .side-toc')) return; // spec has its own TOC
+    var items = collect();
+    if (items.length < 3) return; // too few sections to bother
+    var panel = document.createElement('nav');
+    panel.id = 'sf-toc'; panel.setAttribute('aria-label', 'Contents');
+    var html = '<div class="sf-toc-head"><b><span>On this</span> page</b></div><div class="sf-toc-list">';
+    items.forEach(function (it) { html += '<a href="#' + it.id + '">' + esc(it.text) + '</a>'; });
+    panel.innerHTML = html + '</div>';
+    document.body.appendChild(panel);
+    Array.prototype.forEach.call(panel.querySelectorAll('a'), function (a) {
+      a.addEventListener('click', function () { if (window.innerWidth < 1100) panel.classList.remove('open'); });
+    });
+    spy(items, panel);
+  }
+  function collect() {
+    var out = [], seen = {};
+    var secs = document.querySelectorAll('section[id]');
+    if (secs.length >= 3) {
+      Array.prototype.forEach.call(secs, function (s) {
+        var h = s.querySelector('h1,h2,h3'); if (h) out.push({ id: s.id, text: txt(h) });
+      });
+      return out;
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('h2,h3'), function (h) {
+      var id = h.id;
+      if (!id) { id = slug(txt(h)) || 'sec'; if (seen[id]) id = id + '-' + out.length; h.id = id; }
+      seen[id] = 1; out.push({ id: id, text: txt(h) });
+    });
+    return out;
+  }
+  function spy(items, panel) {
+    if (!('IntersectionObserver' in window)) return;
+    var links = {};
+    Array.prototype.forEach.call(panel.querySelectorAll('a'), function (a) { links[a.getAttribute('href').slice(1)] = a; });
+    var obs = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        Array.prototype.forEach.call(panel.querySelectorAll('a'), function (l) { l.classList.remove('active'); });
+        var a = links[e.target.id]; if (a) a.classList.add('active');
+      });
+    }, { rootMargin: '-12% 0px -80% 0px', threshold: 0 });
+    items.forEach(function (it) { var el = document.getElementById(it.id); if (el) obs.observe(el); });
+  }
+  function txt(h) { return String(h.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80); }
+  function slug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 })();
