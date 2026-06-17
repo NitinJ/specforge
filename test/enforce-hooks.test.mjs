@@ -1,74 +1,96 @@
-import { test } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve, join } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { spawnSync } from 'node:child_process';
 
-import { buildIndex } from '../lib/paths.mjs';
-import { setActive } from '../lib/active.mjs';
-import { appendEvent, readLedger } from '../lib/ledger.mjs';
-import { setSpecStatus } from '../lib/plan-edit.mjs';
+import { createSpec, specHtmlPath } from '../lib/store.mjs';
+import { readMeta, writeMeta } from '../lib/meta.mjs';
+import { attach } from '../lib/attach.mjs';
+import { appendEvent, readLedger } from '../lib/store-ledger.mjs';
+import { run as preRun } from '../hooks/pre-tool-use.mjs';
+import { run as postRun } from '../hooks/post-tool-use.mjs';
+import { run as stopRun } from '../hooks/stop.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const HOOKS = join(ROOT, 'hooks');
-const TEMPLATE = readFileSync(join(ROOT, 'templates', 'spec-base.html'), 'utf8');
+let home;
+let prevHome;
 
-function project({ status = 'draft', active = true } = {}) {
-  const cwd = mkdtempSync(join(tmpdir(), 'sf-enf-'));
-  const specsDir = join(cwd, 'specs');
-  mkdirSync(specsDir, { recursive: true });
-  const html = status === 'draft' ? TEMPLATE : setSpecStatus(TEMPLATE, status);
-  const file = join(specsDir, 's-spec.html');
-  writeFileSync(file, html);
-  const id = buildIndex(specsDir)[0].id;
-  if (active) setActive(specsDir, { specId: id, specPath: 's-spec.html', stage: '1', task: '1.1' });
-  return { cwd, specsDir, id, file };
+beforeEach(() => {
+  home = mkdtempSync(join(tmpdir(), 'sf-enf-'));
+  prevHome = process.env.SPECFORGE_HOME;
+  process.env.SPECFORGE_HOME = home;
+});
+
+afterEach(() => {
+  if (prevHome === undefined) delete process.env.SPECFORGE_HOME;
+  else process.env.SPECFORGE_HOME = prevHome;
+  rmSync(home, { recursive: true, force: true });
+});
+
+/** Create a spec, attach it to a session, set its meta.status. */
+function ownedSpec({ status = 'implementing', session = 'sess-1' } = {}) {
+  const id = createSpec({ title: 'A' });
+  attach(id, session);
+  if (status !== 'draft') {
+    const m = readMeta(id);
+    m.status = status;
+    writeMeta(id, m);
+  }
+  return id;
 }
-const runHook = (script, input) =>
-  spawnSync(process.execPath, [join(HOOKS, script)], { input: JSON.stringify(input), encoding: 'utf8', timeout: 8000 });
 
-test('post-tool-use records gh pr create as a pr event when a spec is active', () => {
-  const { cwd, specsDir } = project();
-  const res = runHook('post-tool-use.mjs', {
-    cwd, tool_name: 'Bash',
+const SID = { CLAUDE_CODE_SESSION_ID: 'sess-1' };
+
+test('PostToolUse records gh pr create as a pr event for an implementing owned spec', () => {
+  const id = ownedSpec({ status: 'implementing' });
+  postRun({
+    tool_name: 'Bash',
     tool_input: { command: 'gh pr create --title x' },
     tool_response: { stdout: 'https://github.com/o/r/pull/42' },
-  });
-  assert.equal(res.status, 0);
-  assert.ok(readLedger(specsDir).events.some((e) => e.kind === 'pr' && e.number === '#42'));
+  }, SID);
+  assert.ok(readLedger(id).events.some((e) => e.kind === 'pr' && e.number === '#42'));
 });
 
-test('post-tool-use is a no-op when no spec is active', () => {
-  const { cwd, specsDir } = project({ active: false });
-  runHook('post-tool-use.mjs', { cwd, tool_name: 'Bash', tool_input: { command: 'git commit -m x' } });
-  assert.deepEqual(readLedger(specsDir).events, []);
+test('PostToolUse is a no-op when the session owns no specs', () => {
+  const id = ownedSpec({ status: 'implementing' }); // owned by sess-1
+  postRun({ tool_name: 'Bash', tool_input: { command: 'git commit -m x' } },
+    { CLAUDE_CODE_SESSION_ID: 'someone-else' });
+  assert.deepEqual(readLedger(id).events, []);
 });
 
-test('pre-tool-use denies edits to a closed spec, allows otherwise', () => {
-  const closed = project({ status: 'closed' });
-  const denied = runHook('pre-tool-use.mjs', { cwd: closed.cwd, tool_name: 'Edit', tool_input: { file_path: closed.file } });
-  assert.equal(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision, 'deny');
-
-  const impl = project({ status: 'implementing' });
-  const allowed = runHook('pre-tool-use.mjs', { cwd: impl.cwd, tool_name: 'Edit', tool_input: { file_path: impl.file } });
-  assert.equal(allowed.stdout.trim(), '');
+test('PostToolUse is a no-op for an owned spec that is not implementing', () => {
+  const id = ownedSpec({ status: 'draft' });
+  postRun({ tool_name: 'Bash', tool_input: { command: 'git commit -m x' } }, SID);
+  assert.deepEqual(readLedger(id).events, []);
 });
 
-test('stop hook blocks on PR-recording drift', () => {
-  const { cwd, specsDir } = project({ status: 'implementing' });
-  appendEvent(specsDir, { kind: 'pr', number: '#42', at: 't' });
-  const res = runHook('stop.mjs', { cwd, stop_hook_active: false });
-  assert.equal(res.status, 0);
-  const out = JSON.parse(res.stdout);
+test('PreToolUse denies edits to a closed owned spec, allows otherwise', () => {
+  const closed = ownedSpec({ status: 'closed' });
+  const denied = preRun({ tool_name: 'Edit', tool_input: { file_path: specHtmlPath(closed) } }, SID);
+  assert.equal(denied.hookSpecificOutput.permissionDecision, 'deny');
+
+  const impl = ownedSpec({ status: 'implementing', session: 'sess-2' });
+  const allowed = preRun({ tool_name: 'Edit', tool_input: { file_path: specHtmlPath(impl) } },
+    { CLAUDE_CODE_SESSION_ID: 'sess-2' });
+  assert.equal(allowed, null);
+});
+
+test('PreToolUse ignores edits to files that are not the owned spec', () => {
+  ownedSpec({ status: 'closed' });
+  const res = preRun({ tool_name: 'Edit', tool_input: { file_path: '/tmp/unrelated.txt' } }, SID);
+  assert.equal(res, null);
+});
+
+test('Stop blocks on PR-recording drift for an implementing spec', () => {
+  const id = ownedSpec({ status: 'implementing' });
+  appendEvent(id, { kind: 'pr', number: '#42', at: 't' });
+  const out = stopRun({ stop_hook_active: false }, SID);
   assert.equal(out.decision, 'block');
   assert.ok(out.reason.includes('#42'));
 });
 
-test('stop hook respects the loop guard during enforcement', () => {
-  const { cwd, specsDir } = project({ status: 'implementing' });
-  appendEvent(specsDir, { kind: 'pr', number: '#42', at: 't' });
-  const res = runHook('stop.mjs', { cwd, stop_hook_active: true });
-  assert.equal(res.stdout.trim(), '');
+test('Stop does not enforce drift for a draft (non-implementing) spec', () => {
+  const id = ownedSpec({ status: 'draft' });
+  appendEvent(id, { kind: 'pr', number: '#42', at: 't' });
+  assert.equal(stopRun({ stop_hook_active: false }, SID), null);
 });

@@ -1,23 +1,28 @@
 #!/usr/bin/env node
-// SpecForge — SessionStart hook.
+// SpecForge — SessionStart hook (v2, session-aware).
 //
-// Drain fallback: if review batches were submitted while no session was running,
-// surface them as context at session start so Claude picks them up.
+// Gate: read $CLAUDE_CODE_SESSION_ID → the specs attached to it. A fresh session
+// owns nothing (attachment happens later, via create/convert/open), so this is a
+// sub-ms no-op in the common case.
+//
+// (Drain-fallback — surfacing batches submitted while no session was running —
+// is drain routing, design §7, and lands in Stage 5. Reserved here.)
 //
 // Fail-safe: any error exits 0.
 
 import { readStdin, parseInput } from './lib/io.mjs';
-import { pendingForCwd, reviewReason } from '../lib/drain.mjs';
+import { mineFor } from './lib/session.mjs';
 
-async function main() {
-  const input = parseInput(await readStdin());
-  const cwd = input.cwd || process.cwd();
-  const { specsDir, pending } = pendingForCwd(cwd);
-  if (!pending.length) return;
-
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: reviewReason(specsDir, pending) },
-  }));
+export function run(input, env = process.env) {
+  const { mine } = mineFor(env);
+  if (!mine.length) return null; // ← idle no-op
+  return null; // Stage 5 wires drain-fallback for owned specs here.
 }
 
-main().then(() => process.exit(0)).catch(() => process.exit(0));
+async function main() {
+  const decision = run(parseInput(await readStdin()));
+  if (decision) process.stdout.write(JSON.stringify(decision));
+}
+
+const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMain) main().then(() => process.exit(0)).catch(() => process.exit(0));

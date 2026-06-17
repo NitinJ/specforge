@@ -1,16 +1,17 @@
 #!/usr/bin/env node
-// SpecForge — PostToolUse hook.
+// SpecForge — PostToolUse hook (v2, session-aware).
 //
-// Evidence ledger: while a spec is being implemented, record commits, PR ops,
-// test runs, and edits so the Stop hook can detect spec/implementation drift.
-// No-op (and cheap) whenever no spec is active.
+// Evidence ledger: while a spec this session owns is being implemented, record
+// commits, PR ops, test runs, and edits to that spec's ledger so the Stop hook
+// can detect spec/implementation drift. No-op (and cheap) for every session that
+// owns no spec, and for owned specs not in the `implementing` state.
 //
 // Fail-safe: any error exits 0.
 
 import { readStdin, parseInput } from './lib/io.mjs';
-import { loadConfig } from '../lib/config.mjs';
-import { getActive } from '../lib/active.mjs';
-import { appendEvent } from '../lib/ledger.mjs';
+import { mineFor } from './lib/session.mjs';
+import { readMeta } from '../lib/meta.mjs';
+import { appendEvent } from '../lib/store-ledger.mjs';
 
 function classify(input) {
   const tool = input.tool_name || '';
@@ -34,18 +35,22 @@ function classify(input) {
   return null;
 }
 
-async function main() {
-  const input = parseInput(await readStdin());
-  const cwd = input.cwd || process.cwd();
-  let specsDir;
-  try {
-    specsDir = loadConfig(cwd).specsDir;
-  } catch {
-    return;
-  }
-  if (!getActive(specsDir)) return; // only record during implementation
+export function run(input, env = process.env) {
+  const { mine } = mineFor(env);
+  if (!mine.length) return null; // ← idle no-op
   const ev = classify(input);
-  if (ev) appendEvent(specsDir, { ...ev, at: new Date().toISOString() });
+  if (!ev) return null;
+  const at = new Date().toISOString();
+  for (const id of mine) {
+    const meta = readMeta(id);
+    if (meta && meta.status === 'implementing') appendEvent(id, { ...ev, at });
+  }
+  return null; // PostToolUse never emits a decision
 }
 
-main().then(() => process.exit(0)).catch(() => process.exit(0));
+async function main() {
+  run(parseInput(await readStdin()));
+}
+
+const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMain) main().then(() => process.exit(0)).catch(() => process.exit(0));

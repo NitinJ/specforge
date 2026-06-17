@@ -1,60 +1,63 @@
 #!/usr/bin/env node
-// SpecForge — Stop hook.
+// SpecForge — Stop hook (v2, session-aware).
 //
-// (a) Review-drain: if review batches were submitted in the browser, block the
-//     stop and route Claude to the review-spec skill so it replies + amends
-//     without the human having to type anything.
-// (b) Impl-enforce: if a spec is being implemented and the evidence ledger shows
-//     work that the spec wasn't updated to match, block with the drift nudges.
+// Gate: read $CLAUDE_CODE_SESSION_ID → the specs attached to it. A session that
+// owns nothing returns immediately (sub-ms no-op for every non-spec session).
+//
+// For owned specs: bump their heartbeat (keeps the lock alive), and for any spec
+// being implemented, run the drift check on its own spec.html + ledger and block
+// with the nudges if work happened that the spec wasn't updated to match.
 //
 // Fail-safe: any error exits 0 so a SpecForge bug can never wedge a session.
 
-import { readFileSync } from 'node:fs';
 import { readStdin, parseInput } from './lib/io.mjs';
-import { pendingForCwd, reviewReason } from '../lib/drain.mjs';
-import { getActive } from '../lib/active.mjs';
-import { readLedger, clearLedger } from '../lib/ledger.mjs';
+import { mineFor } from './lib/session.mjs';
+import { heartbeat } from '../lib/attach.mjs';
+import { readMeta } from '../lib/meta.mjs';
+import { readSpecHtml } from '../lib/store.mjs';
+import { readLedger, clearLedger } from '../lib/store-ledger.mjs';
 import { computeDrift } from '../lib/enforce.mjs';
-import { resolveSpec } from '../lib/paths.mjs';
 
-function block(reason) {
-  process.stdout.write(JSON.stringify({ decision: 'block', reason }));
+export function run(input, env = process.env) {
+  // Loop guard: if this stop already followed a stop-hook continuation, settle.
+  if (input.stop_hook_active) return null;
+
+  const { me, mine } = mineFor(env);
+  if (!mine.length) return null; // ← idle no-op
+
+  heartbeat(me);
+
+  const nudges = [];
+  for (const id of mine) {
+    const meta = readMeta(id);
+    if (!meta || meta.status !== 'implementing') continue;
+    let html;
+    try {
+      html = readSpecHtml(id);
+    } catch {
+      continue;
+    }
+    const active = { specId: id, stage: meta.stage ?? null, task: meta.task ?? null };
+    const { nudges: n } = computeDrift(html, active, readLedger(id));
+    if (n.length) {
+      clearLedger(id); // acted on this evidence — don't re-nudge it
+      nudges.push(...n.map((x) => `[${meta.title}] ${x}`));
+    }
+  }
+
+  if (nudges.length) {
+    return {
+      decision: 'block',
+      reason: `SpecForge implementation check — keep the spec in sync before stopping:\n- ${nudges.join('\n- ')}\n\nUpdate the spec, then continue.`,
+    };
+  }
+  return null;
 }
 
 async function main() {
-  const input = parseInput(await readStdin());
-
-  // Loop guard: if this stop already followed a stop-hook continuation, do not
-  // block again — let the session settle.
-  if (input.stop_hook_active) return;
-
-  const cwd = input.cwd || process.cwd();
-  const { specsDir, pending } = pendingForCwd(cwd);
-  if (!specsDir) return;
-
-  // (a) Pending review batches take priority.
-  if (pending.length) {
-    block(reviewReason(specsDir, pending));
-    return;
-  }
-
-  // (b) Implementation drift.
-  const active = getActive(specsDir);
-  if (!active) return;
-  const spec = resolveSpec(specsDir, active.specId);
-  if (!spec) return;
-  let html = '';
-  try {
-    html = readFileSync(spec.file, 'utf8');
-  } catch {
-    return;
-  }
-  const { nudges } = computeDrift(html, active, readLedger(specsDir));
-  if (nudges.length) {
-    // Acted on these events — clear so the same evidence doesn't re-nudge.
-    clearLedger(specsDir);
-    block(`SpecForge implementation check — keep the spec in sync before stopping:\n- ${nudges.join('\n- ')}\n\nUpdate via impl-cli, then continue.`);
-  }
+  const decision = run(parseInput(await readStdin()));
+  if (decision) process.stdout.write(JSON.stringify(decision));
 }
 
-main().then(() => process.exit(0)).catch(() => process.exit(0));
+const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMain) main().then(() => process.exit(0)).catch(() => process.exit(0));

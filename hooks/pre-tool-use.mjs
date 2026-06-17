@@ -1,52 +1,45 @@
 #!/usr/bin/env node
-// SpecForge — PreToolUse hook.
+// SpecForge — PreToolUse hook (v2, session-aware).
 //
-// Closed-spec guard: deny edits to a spec that has been marked `closed` (final).
-// Narrowly scoped — only fires when a spec is active AND the edit targets that
-// spec's file AND its status is closed. No-op otherwise.
+// Closed-spec guard: deny edits to a spec this session owns whose meta.status is
+// `closed` (final). Narrowly scoped — only fires when the edit targets one of
+// the session's attached specs' spec.html. No-op for every other session/file.
 //
 // Fail-safe: any error exits 0 (fails open).
 
-import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { readStdin, parseInput } from './lib/io.mjs';
-import { loadConfig } from '../lib/config.mjs';
-import { getActive } from '../lib/active.mjs';
-import { resolveSpec } from '../lib/paths.mjs';
-import { getStatus } from '../lib/spec.mjs';
+import { mineFor } from './lib/session.mjs';
+import { readMeta } from '../lib/meta.mjs';
+import { specHtmlPath } from '../lib/store.mjs';
 
-async function main() {
-  const input = parseInput(await readStdin());
+export function run(input, env = process.env) {
   const file = input.tool_input && input.tool_input.file_path;
-  if (!file) return;
+  if (!file) return null;
 
-  const cwd = input.cwd || process.cwd();
-  let specsDir;
-  try {
-    specsDir = loadConfig(cwd).specsDir;
-  } catch {
-    return;
-  }
-  const active = getActive(specsDir);
-  if (!active) return;
-  const spec = resolveSpec(specsDir, active.specId);
-  if (!spec || resolvePath(file) !== resolvePath(spec.file)) return;
+  const { mine } = mineFor(env);
+  if (!mine.length) return null; // ← idle no-op
 
-  let html = '';
-  try {
-    html = readFileSync(spec.file, 'utf8');
-  } catch {
-    return;
+  for (const id of mine) {
+    const meta = readMeta(id);
+    if (!meta || meta.status !== 'closed') continue;
+    if (resolvePath(file) === resolvePath(specHtmlPath(id))) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: 'SpecForge: this spec is marked closed (final). Reopen it (set status back) before editing.',
+        },
+      };
+    }
   }
-  if (getStatus(html).toLowerCase().includes('closed')) {
-    process.stdout.write(JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-        permissionDecisionReason: 'SpecForge: this spec is marked closed (final). Reopen it (set status back) before editing.',
-      },
-    }));
-  }
+  return null;
 }
 
-main().then(() => process.exit(0)).catch(() => process.exit(0));
+async function main() {
+  const decision = run(parseInput(await readStdin()));
+  if (decision) process.stdout.write(JSON.stringify(decision));
+}
+
+const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMain) main().then(() => process.exit(0)).catch(() => process.exit(0));
