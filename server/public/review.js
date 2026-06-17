@@ -380,7 +380,7 @@
     // Submit-batch bar on the sidebar — shown only when there are pending comments.
     els.batchbar.classList.toggle('show', !!pending);
     els.batchbar.querySelector('.c').textContent =
-      pending ? pending + (pending === 1 ? ' comment to submit' : ' comments to submit') : '';
+      pending ? pending + (pending === 1 ? ' thread to submit' : ' threads to submit') : '';
     // Keep an open menu's pending badge in sync with fresh data.
     if (els.menu.classList.contains('open')) buildMenuRows();
   }
