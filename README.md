@@ -1,104 +1,216 @@
 # SpecForge
 
-A Claude Code plugin for **spec authoring, review & agent collaboration**.
+A **Claude Code plugin for spec authoring, browser review, and agent
+collaboration.** SpecForge turns a vague request into a well-presented,
+house-style spec, lets a human review it in the browser with Google-Docs-style
+comments, and feeds those comments back to the Claude session that owns the spec —
+which replies inline and amends the document.
 
-SpecForge owns the full lifecycle of a design spec:
+**Zero runtime dependencies.** The bundled CLI and review server use only Node
+built-ins — no `npm install`, no services to run.
 
-1. **Author** — skills generate house-style `.html` specs (light/dark, strong presentation, a structured Stages & Tasks plan, a live task tracker, and dedicated impl-time sections for design decisions / deviations / tradeoffs).
-2. **Review & collaborate** — a bundled Node server renders any spec in the browser with a Google-Docs-style comment layer (sidebar + floating markers + highlights). A human leaves comments anchored to **blocks** (hover a block, click to comment); submitting a batch is **auto-injected** into the active Claude session at its next turn boundary (Stop / UserPromptSubmit hook), which replies inline **and** amends the spec. Hands-free `--watch` mode drains batches unattended.
-3. **Enforce** — hooks keep the spec and the implementation in lockstep: the task tracker, decisions, deviations & tradeoffs stay current, and the spec's stage→task→PR cadence is enforced.
+---
 
-**Zero runtime dependencies** — everything uses Node built-ins, so the plugin runs without `npm install`.
+## What it does
+
+1. **Author** — `/specforge:create` generates a light/dark, strongly-presented
+   `.html` spec from a house template, picking the right **spec type** (design /
+   research / design+implementation / implementation-only) and scaffolding that
+   type's sections. Impl types also get a Stages → Tasks plan, a live task
+   tracker, and impl-time sections (decisions / deviations / tradeoffs).
+2. **Review** — a bundled, zero-dep daemon renders any spec in the browser with a
+   comment layer: hover a block, click to comment, leave a batch. Submitting is
+   delivered to the spec's owning Claude session at its next turn boundary; the
+   agent replies inline **and** edits the spec. A floating **SpecForge** menu adds
+   theme, width, contents, **Export → PDF**, and a contextual lifecycle button.
+3. **Implement** — the spec and the work stay in lockstep: the task tracker
+   renders live from the plan, and hooks nudge when the implementation drifts from
+   the spec. Hooks are fail-safe and no-op unless a spec is in play.
+
+---
+
+## Requirements
+
+- **[Claude Code](https://claude.com/claude-code)** — SpecForge is a plugin.
+- **Node ≥ 18** on your `PATH` — runs the bundled CLI + review daemon (both
+  zero-dependency).
+- A modern browser for the review UI.
+- *(dev only)* `jsdom` + `playwright` are dev-dependencies for the test tiers;
+  not needed to use the plugin.
+
+---
 
 ## Install
 
-SpecForge ships its own local marketplace (`.claude-plugin/marketplace.json`).
+From GitHub:
 
-```
-claude plugin marketplace add /path/to/specforge
+```sh
+claude plugin marketplace add NitinJ/specforge
 claude plugin install specforge@specforge
 ```
 
-Then reload (`/reload-plugins`) or restart Claude Code. Requires Node ≥ 18.
+Then `/reload-plugins` (or restart Claude Code).
 
-## Lifecycle
+From a local clone (development):
+
+```sh
+git clone https://github.com/NitinJ/specforge
+claude plugin marketplace add ./specforge
+claude plugin install specforge@specforge
+```
+
+**Updating** to a newer version (a reinstall is required to pick up skill/command
+changes):
+
+```sh
+claude plugin marketplace update specforge
+claude plugin uninstall specforge@specforge && claude plugin install specforge@specforge
+```
+
+Then `/reload-plugins`.
+
+---
+
+## Quickstart
 
 ```
-request → author → review loop → approve → implement (enforced) → done → closed
- draft     draft     in_review     approved   implementing          done   closed
+/specforge:create research on on-device vs server inference for tryon
 ```
 
-Spec status lives in `data-sf-spec-status` on the document root and the header badge.
+SpecForge infers the type (here, **research**), confirms it, scaffolds the spec
+into the global store, starts the review daemon, and prints a URL. Open it:
 
-## Skills
+- **Comment** — hover any block, click it, type, and **Submit**. The owning
+  session picks the batch up automatically, replies inline, and amends the spec.
+- **Act** — the floating **SF** button (bottom-right) opens the menu (Comments,
+  Contents, Width, Theme, **Export PDF**, Session). The pill beside it is the
+  contextual lifecycle action (see below).
+- `/specforge:listall` lists every spec (with a picker to open/detach one);
+  `/specforge:start` just prints the index URL.
 
-| Skill | Use it to | What it does |
-|-------|-----------|--------------|
-| `specforge:create-spec` | "write a spec for X" | Author a new house-style `.html` spec into the store from the template, attach it to this session, ensure the daemon; lints (required sections, unique ids, light/dark theme contract, structured plan) before finishing. |
-| `specforge:convert-spec` | "convert this design doc to a spec" | Ingest an existing `.html` spec as-is, or re-author a `.md`/freeform doc into a house-style spec; copy into the store + attach. |
-| `specforge:list-specs` | "list specs / what's open" | List every spec (or just this session's) with status + attachment; open or detach a spec by id. |
-| `specforge:review-spec` | (auto — hook/daemon-driven) | Reply inline to a submitted comment batch and amend the spec; mark the batch done. Replies are append-only; only humans resolve threads. |
+---
 
-Thin slash commands: `/specforge:create`, `/specforge:convert`, `/specforge:listall`, `/specforge:list`. Reviewing is automatic — the session a spec is attached to picks up submitted batches; there is no separate serve/review/implement command (open from the index, review via hooks, implement by working in the attached session).
+## Spec types
 
-## Review server (daemon)
+`/specforge:create` picks a type from your wording and confirms it. Sections are
+**recommended starting points** the authoring skill adapts to the problem — they
+are *not* rigidly enforced.
 
-Zero-dep Node HTTP daemon (`server/daemon.mjs`) — one per machine, bound to `127.0.0.1`, serving the global store at `~/.specforge`:
+| Type | Best for | Scaffolds |
+|------|----------|-----------|
+| `design` | a decision/architecture doc | problem · goals · design · alternatives · decisions · open questions |
+| `research` | a findings report | question · background · method · findings · analysis · recommendations · sources |
+| `design-impl` *(default)* | design **and** build it | the design sections **+** Stages/Tasks plan + live tracker + Runtime stubs |
+| `impl` | build an existing design | light scope/prereqs **+** Stages/Tasks plan + live tracker + Runtime stubs |
 
-- `GET /` — spec index · `GET /spec/:id` — spec with the review layer injected.
-- `GET /events?spec=:id` — per-spec SSE live-reload.
-- `GET/POST /api/spec/:id/comments…` — comments API (create / reply / resolve / **submit**). The public API is **human-only**; agent replies are written to the store by `review-spec`.
+Pass it explicitly if you like: `/specforge:create --type impl …`. The type is
+stored in the spec's metadata and shown in `listall` + the browser index.
 
-It advertises its bound address at `~/.specforge/server.json` (singleton: lockfile + pid/health check, with port fall-forward). Comments are stored per spec at `~/.specforge/specs/:id/comments.json` and never mixed. Every command auto-starts (or reuses) the daemon via `ensureDaemon()`.
+---
 
-### Hands-free drain
+## Commands
 
-A batch for a spec attached to a live session is delivered to that session in-context by its Stop/UserPromptSubmit hooks. **Orphaned** specs (no live owner, or a stale lock) fall back to the daemon's **opt-in** headless drain — start the daemon with `SPECFORGE_DAEMON_DRAIN=1` and it spawns a headless `claude -p` for them.
+| Command | What it does |
+|---------|--------------|
+| `/specforge:create` | Author a new spec (infers + confirms the type), open it for review. |
+| `/specforge:convert <file>` | Bring an existing `.md`/`.html` design doc into the store (ingest as-is, or re-author into house style). |
+| `/specforge:list` | List the specs attached to **this** session; open a free one or detach. |
+| `/specforge:listall` | List **every** spec (id · title · type · status · attached) + the index URL; pick one to open/detach. |
+| `/specforge:start` | Start (or reuse) the review daemon and print the index URL. |
 
-- `SPECFORGE_CLAUDE_BIN` — the Claude binary (default `claude`).
-- `SPECFORGE_WATCH_CLAUDE_ARGS` — extra flags (e.g. a permission mode for unattended edits).
+Reviewing is automatic — the session a spec is attached to picks up submitted
+comment batches via hooks; there's no separate serve/review/implement command.
 
-## Hooks
+---
 
-All hooks are **fail-safe** (any error exits 0) and **no-op** unless there's relevant SpecForge state, so installing the plugin never disrupts an unrelated session.
+## The lifecycle action button
 
-| Event | Role |
-|-------|------|
-| `Stop` | Auto-inject pending comment review; enforce implementation drift (the 4 cases). Honors `stop_hook_active` as a loop guard. |
-| `PostToolUse` | While a spec is active, record commits / PR ops / test runs / edits to the evidence ledger. |
+The pill next to the SF button is one contextual call-to-action driven by the
+spec's comments + status:
+
+```
+Submit comments → Awaiting response → Review replies → LGTM ✓ → Implement → → Implementing… → Done ✓
+   open comment     submitted, agent    agent replied;   all          approved      (work in the
+   (sends a batch)  is working          read & resolve   resolved                   attached session)
+```
+
+Status lives in `data-sf-spec-status` on the document root and the header badge:
+`draft → in_review → approved → implementing → done → closed`.
+
+---
+
+## Architecture
+
+- **Global store** — every spec lives at `~/.specforge/specs/<id>/`
+  (`spec.html` + `meta.json` + `comments.json` + review inbox + nav index). Specs
+  are not kept in your project repo.
+- **Singleton daemon** (`server/daemon.mjs`) — one zero-dep Node HTTP server per
+  machine, bound to `127.0.0.1`, advertised at `~/.specforge/server.json`
+  (lockfile + pid/health check, port fall-forward). Serves the index, each spec
+  with the review layer injected, an SSE live-reload stream, and a **human-only**
+  comments API. Every command auto-starts or reuses it.
+- **Session attachment** — a spec is attached to one Claude session (via
+  `$CLAUDE_CODE_SESSION_ID`); that session receives its review batches. 1 session
+  ↔ many specs; a spec is held by at most one live session (stale locks are
+  reclaimed on a heartbeat timeout).
+- **Review layer** — `server/public/review.{js,css}`, injected at serve time:
+  block comments, the SF menu, the lifecycle button, theme/width, Export PDF.
+- **Hooks** — fail-safe (any error exits 0) and no-op unless a spec is relevant,
+  so installing the plugin never disrupts an unrelated session.
+
+| Hook | Role |
+|------|------|
+| `Stop` | Surface a pending comment batch for the owning session; nudge on implementation drift. |
+| `UserPromptSubmit` / `SessionStart` | Fallback: surface pending batches a live session didn't catch. |
+| `PostToolUse` | Record commits / PR ops / test runs / edits to the spec's evidence ledger. |
 | `PreToolUse` | Deny edits to a spec marked `closed`. |
-| `SessionStart` / `UserPromptSubmit` | Drain fallback — surface pending review batches when no live session caught them. |
+
+### Hands-free drain (opt-in)
+
+A batch for a spec with a live owner is delivered in-context. **Orphaned** specs
+(no live owner / stale lock) can be drained headlessly: start the daemon with
+`SPECFORGE_DAEMON_DRAIN=1` and it spawns a headless `claude -p` for them.
+`SPECFORGE_CLAUDE_BIN` overrides the binary; `SPECFORGE_WATCH_CLAUDE_ARGS` passes
+extra flags (e.g. a permission mode).
+
+---
 
 ## Configuration
 
-Defaults live in `lib/config.mjs`; override per project at `<project>/.specforge/config.json` (see `templates/config.example.json`):
+Defaults live in `lib/config.mjs`; override per project at
+`<project>/.specforge/config.json`:
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `specsDir` | `<project>/specs` | Where specs live (`~` expands). |
+| `specsDir` | `<project>/specs` | Legacy/local spec dir (`~` expands). |
 | `defaultTheme` | `dark` | Initial theme. |
-| `port` | `4178` | Review server port (collision-fallback). |
-| `naming` | `{date}-{slug}-spec.html` | New-spec filename. |
-| `requiredSections` | (10 sections) | **Replaces** the enforced section list. |
-| `additionalRequiredSections` | `[]` | **Appends** extra required sections. |
+| `port` | `4178` | Preferred daemon port (collision fall-forward). |
+| `requiredSections` | (the design-impl set) | **Advisory** — recommended sections for the skill. The lint no longer enforces sections. |
 | `cadence` | `{onePRPerStage, tddRequired}` | Implementation cadence. |
-| `trackComments` | `false` | Whether to git-track comment stores. |
+
+The spec lint (`lib/lint-spec.mjs`) checks only universal basics — a title, a
+lifecycle status, unique section ids, and the light/dark theme contract — so any
+spec type passes regardless of which sections it carries.
+
+---
 
 ## Development
 
+```sh
+npm test          # the full suite (node --test; zero runtime deps)
 ```
-node --test        # run the suite (zero deps)
-```
 
-See `templates/house-rules.md` for the authoring conventions and `CONTRIBUTING`/design notes below.
+- `lib/` — store, daemon client, CLI (`specforge`), lint, spec model, lifecycle.
+- `server/` — the daemon + injected review layer (`public/review.{js,css}`).
+- `skills/` — the authoring/review skills (invoked by the commands; hidden from
+  the slash menu via `user-invocable: false`).
+- `commands/` — the thin slash commands.
+- `hooks/` — the fail-safe session hooks.
+- `templates/` — the spec shells (`spec-base.html` impl, `spec-base-doc.html` doc)
+  + house rules.
 
-## Design notes & deviations
-
-Built from the design spec (`~/workspace/specs/specforge/`). Notable, intentional deviations (flagged during the build):
-
-- **Watch mode** uses a headless `claude -p` poller rather than the spec's imagined session self-wake (`ScheduleWakeup`) — a plugin cannot schedule the harness's wakeup. Strictly opt-in behind `--watch`.
-- **PreToolUse gate backstop** is scoped to closed-spec protection (denying edits to a spec attached to this session whose status is `closed`); there is no separate implement command — "implementing" is just working in the session a spec is attached to.
-- Drift detection (`Stop` hook) is **heuristic** — it nudges, it doesn't cage. The "decisions written back" check is a stage-boundary prompt since intent isn't observable from tool calls.
+`jsdom` + `playwright` are dev-only (the review-layer test tiers). Contributions
+go through a feature branch → PR → review → squash-merge.
 
 ## License
 
