@@ -22,6 +22,10 @@
   var state = { threads: [], filter: 'open', active: null, meta: null };
   var els = {};
 
+  // Submit shortcut label: ⌘↵ on Mac, Ctrl+↵ elsewhere (the handler accepts both).
+  var IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+  var MOD_HINT = IS_MAC ? '⌘↵' : 'Ctrl+↵';
+
   var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState !== 'loading') boot();
@@ -443,16 +447,20 @@
   function openReply(card, t) {
     if (card.querySelector('.sf-reply')) return;
     var box = create('div', { class: 'sf-reply' });
-    var ta = create('textarea', { placeholder: 'Reply…' });
+    box.onclick = function (e) { e.stopPropagation(); }; // typing shouldn't re-activate the card
+    var ta = create('textarea', { class: 'sf-input', placeholder: 'Reply…', rows: '2' });
+    var row = create('div', { class: 'sf-compose-foot' });
     var send = create('button', { class: 'sf-primary' }, 'Send');
-    send.style.marginTop = '6px';
-    send.onclick = function (e) {
-      e.stopPropagation();
+    function submit() {
       if (!ta.value.trim()) return;
       postJSON(API + '/' + t.id + '/reply', { body: ta.value.trim(), author: 'human' }).then(load);
-    };
-    box.appendChild(ta); box.appendChild(send);
+    }
+    send.onclick = submit;
+    row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to send'));
+    row.appendChild(send);
+    box.appendChild(ta); box.appendChild(row);
     card.appendChild(box);
+    wireInput(ta, submit);
     ta.focus();
   }
 
@@ -485,6 +493,21 @@
   }
 
   // ---------- compose ----------
+  // Grow the textarea with its content (capped), so there's no drag-grip and the
+  // box never starts oversized.
+  function autoGrow(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 240) + 'px';
+  }
+  // Shared input behavior: auto-grow + ⌘/Ctrl+Enter to submit. (Esc closes the
+  // composer via the global keydown handler.)
+  function wireInput(ta, submit) {
+    ta.addEventListener('input', function () { autoGrow(ta); });
+    ta.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
+    });
+  }
+
   function openCompose(block) {
     hideCompose();
     var anchor = { block: blockAnchor(block) };
@@ -492,22 +515,25 @@
     var box = create('div', { id: 'sf-compose' });
     box.style.top = Math.max(8, Math.min(rect.top, window.innerHeight - 220)) + 'px';
     box.innerHTML = '<div class="q">' + esc(anchor.block.text.slice(0, 160)) + '</div>';
-    var ta = create('textarea', { placeholder: 'Comment…' });
-    var row = create('div', { class: 'sf-acts' });
+    var ta = create('textarea', { class: 'sf-input', placeholder: 'Add a comment…', rows: '2' });
+    var row = create('div', { class: 'sf-compose-foot' });
     var save = create('button', { class: 'sf-primary' }, 'Comment');
     var cancel = create('button', { class: 'sf-ghost' }, 'Cancel');
-    save.onclick = function () {
+    function submit() {
       if (!ta.value.trim()) return;
       postJSON(API, { anchor: anchor, body: ta.value.trim(), author: 'human' })
         .then(function () { hideCompose(); setSidebar(true); load(); });
-    };
+    }
+    save.onclick = submit;
     cancel.onclick = hideCompose;
-    row.appendChild(save); row.appendChild(cancel);
+    row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to comment'));
+    row.appendChild(cancel); row.appendChild(save);
     box.appendChild(ta); box.appendChild(row);
     document.body.appendChild(box);
     els.compose = box;
     clearHover();
     block.classList.add('sf-block-mark', 'sf-active');
+    wireInput(ta, submit);
     ta.focus();
   }
   function hideCompose() {
