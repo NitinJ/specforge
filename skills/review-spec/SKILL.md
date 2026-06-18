@@ -76,8 +76,11 @@ When every thread in a batch has a reply:
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" batch-done <id> <batchId>
 ```
 
-## 5. Report
+## 5. Report + re-arm the watcher
 
 Briefly summarize per spec: how many threads you replied to and which sections you
 amended. The human sees your replies + edits live and resolves the threads they're
 satisfied with.
+
+Then **re-arm the review watcher** so the next batch wakes the session: relaunch
+`node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch` as a background task.

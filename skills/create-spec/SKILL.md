@@ -91,8 +91,14 @@ Checks the universal basics — a title, a lifecycle status, unique section ids,
 the light/dark theme contract (per-type sections are recommended, not enforced).
 Fix and re-run until `PASS`. **Don't finish on a failing lint.**
 
-## 5. Hand off
+## 5. Hand off + arm the review watcher
 
 - Print the spec `url` (open it to review). Edits to `htmlPath` live-reload.
 - The spec is attached to this session; review comments submitted in the browser
   come back here automatically.
+- **Arm the review watcher (once per session)** so comments are picked up even
+  while you're idle. If it isn't already running this session, start it in the
+  **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
+  Its completion wakes the session with `{ ready, pending }` — on `ready`, run the
+  review-spec flow for each `pending` spec, then relaunch it; on timeout
+  (`ready:false`), just relaunch. One watcher covers every spec attached here.
