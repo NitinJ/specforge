@@ -22,6 +22,10 @@
   var state = { threads: [], filter: 'open', active: null, meta: null };
   var els = {};
 
+  // Submit shortcut label: ⌘↵ on Mac, Ctrl+↵ elsewhere (the handler accepts both).
+  var IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+  var MOD_HINT = IS_MAC ? '⌘↵' : 'Ctrl+↵';
+
   var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState !== 'loading') boot();
@@ -452,7 +456,7 @@
       postJSON(API + '/' + t.id + '/reply', { body: ta.value.trim(), author: 'human' }).then(load);
     }
     send.onclick = submit;
-    row.appendChild(create('span', { class: 'sf-hint' }, '⌘↵ to send'));
+    row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to send'));
     row.appendChild(send);
     box.appendChild(ta); box.appendChild(row);
     card.appendChild(box);
@@ -522,7 +526,7 @@
     }
     save.onclick = submit;
     cancel.onclick = hideCompose;
-    row.appendChild(create('span', { class: 'sf-hint' }, '⌘↵ to comment'));
+    row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to comment'));
     row.appendChild(cancel); row.appendChild(save);
     box.appendChild(ta); box.appendChild(row);
     document.body.appendChild(box);
