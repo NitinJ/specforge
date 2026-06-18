@@ -1,5 +1,6 @@
 ---
 name: specforge:review-spec
+user-invocable: false
 description: |
   Process a submitted batch of human comments on a spec in the store: reply to
   each thread inline and amend the spec accordingly. Usually auto-invoked when the
