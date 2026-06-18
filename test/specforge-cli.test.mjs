@@ -86,9 +86,10 @@ test('listall shows every spec with its attached state', async () => {
   const a = await cmdCreate({ title: 'A' }, deps('sess-1'));
   await cmdDetach({ id: a.id }, deps());
   await cmdCreate({ title: 'B' }, deps('sess-2'));
-  const { rows, indexUrl } = await cmdListall({}, deps());
+  const { rows, indexUrl, session } = await cmdListall({}, deps());
   assert.equal(rows.length, 2);
   assert.equal(indexUrl, 'http://127.0.0.1:4180/');
+  assert.equal(session, 'sess-1', 'listall reports the current session so the picker can classify rows');
   const free = rows.find((r) => r.id === a.id);
   assert.equal(free.attached, 'free');
   assert.ok(rows.some((r) => r.attached === 'sess-2'));
