@@ -177,7 +177,8 @@
     if (status === 'closed') return { label: 'Closed', state: 'closed', act: null };
     if (unresolvedCount() > 0) return { label: 'Submit comments', state: 'needs', act: 'submit' };
     if (status === 'approved') return { label: 'Implement →', state: 'impl', act: 'implement' };
-    return { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
+    if (status === 'draft' || status === 'in_review') return { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
+    return { label: status, state: 'other', act: null }; // unknown status → inert display, never a silent approve
   }
   function renderAction() {
     var s = actionState();

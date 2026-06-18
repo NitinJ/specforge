@@ -271,6 +271,13 @@ test('action button: an open comment overrides approved status → "Submit comme
   assert.match(btn.textContent, /Submit comments/);
 });
 
+test('action button: an unknown status is an inert display (no silent approve)', async (t) => {
+  const { window } = await bootReviewLayer(t, { meta: { status: 'cancelled' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.equal(btn.getAttribute('data-state'), 'other');
+  assert.ok(btn.disabled, 'an unrecognized status carries no action');
+});
+
 test('action button: implementing is a disabled status display', async (t) => {
   const { window } = await bootReviewLayer(t, { meta: { status: 'implementing' } });
   const btn = window.document.getElementById('sf-action');
