@@ -27,7 +27,7 @@ is store-only — so both work whether or not the daemon was already running.
 
 ## Present the result
 
-Render `rows` as a compact, numbered table — **# · id · title · status · attached** —
+Render `rows` as a compact, numbered table — **# · id · title · type · status · attached** —
 showing `attached` as `free`, `this session`, or `held: <first 8 of the id>`. For
 "all", also print `indexUrl` (the browser index links each row to `/spec/<id>`).
 
