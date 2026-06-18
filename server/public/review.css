@@ -107,8 +107,8 @@
 #sf-action[data-state="impl"], .sf-act[data-state="impl"] { background: var(--sf-accent); color: #08101f; border-color: transparent; }
 #sf-action[data-state="working"], .sf-act[data-state="working"] { color: var(--sf-accent); border-color: var(--sf-accent); }
 #sf-action[data-state="done"], .sf-act[data-state="done"] { color: var(--sf-green); border-color: var(--sf-green); }
-#sf-action[data-state="closed"], #sf-action[data-state="other"],
-.sf-act[data-state="closed"], .sf-act[data-state="other"] { color: var(--sf-muted); }
+#sf-action[data-state="closed"], #sf-action[data-state="other"], #sf-action[data-state="awaiting"],
+.sf-act[data-state="closed"], .sf-act[data-state="other"], .sf-act[data-state="awaiting"] { color: var(--sf-muted); }
 /* the open sidebar carries the lifecycle action in its footer → hide the floating pill */
 body.sf-side-open #sf-action { display: none; }
 

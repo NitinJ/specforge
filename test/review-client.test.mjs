@@ -232,7 +232,14 @@ const RESOLVED_THREAD = [{
   anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
 }];
 
-test('action button: any open comment → "Submit comments" and submits the batch', async (t) => {
+// Submitted-but-open fixture — the comment carries a batchId (already submitted)
+// yet the thread is still unresolved (the agent hasn't replied/resolved it).
+const SUBMITTED_OPEN_THREAD = [{
+  id: 't1', state: 'open', comments: [{ author: 'human', body: 'x', batchId: 'b1' }],
+  anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+}];
+
+test('action button: an unsubmitted comment → "Submit comments" and submits the batch', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
   const btn = window.document.getElementById('sf-action');
   assert.ok(btn, 'action button present');
@@ -264,11 +271,25 @@ test('action button: all resolved AND approved → "Implement →" and sets impl
   assert.ok(p && p.body.status === 'implementing', 'clicking Implement POSTs status=implementing');
 });
 
-test('action button: an open comment overrides approved status → "Submit comments"', async (t) => {
+test('action button: an unsubmitted comment overrides approved status → "Submit comments"', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'approved' } });
   const btn = window.document.getElementById('sf-action');
   assert.equal(btn.getAttribute('data-state'), 'needs', 'open comment takes priority over approved');
   assert.match(btn.textContent, /Submit comments/);
+});
+
+test('action button: submitted but unresolved → "Awaiting response" (disabled, nothing to submit)', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'in_review' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.equal(btn.getAttribute('data-state'), 'awaiting');
+  assert.match(btn.textContent, /Awaiting/);
+  assert.ok(btn.disabled, 'no submit action once the batch is already submitted');
+});
+
+test('action button: a submitted-but-open comment still blocks Implement on an approved doc', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'approved' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.equal(btn.getAttribute('data-state'), 'awaiting', 'an unresolved comment overrides approved → not Implement');
 });
 
 test('action button: an unknown status is an inert display (no silent approve)', async (t) => {

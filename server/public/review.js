@@ -158,13 +158,14 @@
   // ---------- lifecycle action button ----------
   // One contextual primary CTA. Once implementation has started the button is just
   // a status display; before that it follows comment-resolution, then approval:
-  //   any open (unresolved) comment  → "Submit comments" (freeze a batch for the agent)
-  //   all resolved, not yet approved → "LGTM ✓"          (status → approved)
-  //   all resolved AND approved      → "Implement →"     (status → implementing;
-  //                                                        nudges the session to start)
+  //   unsubmitted comment(s)         → "Submit comments"   (freeze a batch for the agent)
+  //   submitted, still unresolved    → "Awaiting response" (disabled; agent is working)
+  //   all resolved, not yet approved → "LGTM ✓"            (status → approved)
+  //   all resolved AND approved      → "Implement →"       (status → implementing;
+  //                                                          nudges the session to start)
   //   implementing / done / closed   → status display (no action)
-  // An open comment takes priority over `approved`, so new feedback on an approved
-  // doc correctly reverts the CTA to "Submit comments".
+  // Open comments take priority over `approved`, so new feedback on an approved
+  // doc reverts the CTA away from "Implement →".
   function buildAction() {
     els.action = create('button', { id: 'sf-action', type: 'button' });
     els.action.onclick = onAction;
@@ -175,7 +176,8 @@
     if (status === 'implementing') return { label: 'Implementing…', state: 'working', act: null };
     if (status === 'done') return { label: 'Done ✓', state: 'done', act: null };
     if (status === 'closed') return { label: 'Closed', state: 'closed', act: null };
-    if (unresolvedCount() > 0) return { label: 'Submit comments', state: 'needs', act: 'submit' };
+    if (pendingCount() > 0) return { label: 'Submit comments', state: 'needs', act: 'submit' };
+    if (unresolvedCount() > 0) return { label: 'Awaiting response', state: 'awaiting', act: null };
     if (status === 'approved') return { label: 'Implement →', state: 'impl', act: 'implement' };
     if (status === 'draft' || status === 'in_review') return { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
     return { label: status, state: 'other', act: null }; // unknown status → inert display, never a silent approve
