@@ -9,6 +9,8 @@ which replies inline and amends the document.
 **Zero runtime dependencies.** The bundled CLI and review server use only Node
 built-ins — no `npm install`, no services to run.
 
+![SpecForge review UI — a spec open in the browser with the block-comment sidebar, threads, and the inline composer](docs/review-ui.png)
+
 ## Highlights
 
 - **Typed specs** — design · research · design+implementation · implementation-only; each scaffolds the right sections and depth.
@@ -220,7 +222,10 @@ Defaults live in `lib/config.mjs`; override per project at
 | `specsDir` | `<project>/specs` | Legacy/local spec dir (`~` expands). |
 | `defaultTheme` | `dark` | Initial theme. |
 | `port` | `4178` | Preferred daemon port (collision fall-forward). |
-| `requiredSections` | (the design-impl set) | **Advisory** — recommended sections for the skill. The lint no longer enforces sections. |
+| `requiredSections` | (the design-impl set) | **Advisory** — recommended sections for the skill; the lint no longer enforces sections. |
+| `additionalRequiredSections` | `[]` | Appends extra advisory sections to the recommended list. |
+| `naming` | `{date}-{slug}-spec.html` | Filename pattern for generated specs. |
+| `trackComments` | `false` | Whether to git-track comment stores. |
 | `cadence` | `{onePRPerStage, tddRequired}` | Implementation cadence. |
 
 The spec lint (`lib/lint-spec.mjs`) checks only universal basics — a title, a
