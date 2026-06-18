@@ -65,8 +65,13 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>
 
 Fix and re-run until `PASS`. **Do not finish on a failing lint.**
 
-## 4. Hand off
+## 4. Hand off + arm the review watcher
 
 - Print the spec `url`. The spec is attached to this session; browser review
   comments are delivered back here automatically. Mention the original file is
   left untouched (its path is recorded as the spec's `origin`).
+- **Arm the review watcher (once per session)** so comments are picked up while
+  you're idle. If it isn't already running this session, start it in the
+  **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
+  On its `{ ready, pending }` return, run review-spec for each `pending` spec then
+  relaunch it; on timeout, just relaunch. One watcher covers every spec here.

@@ -32,8 +32,9 @@ built-ins — no `npm install`, no services to run.
    tracker, and impl-time sections (decisions / deviations / tradeoffs).
 2. **Review** — a bundled, zero-dep daemon renders any spec in the browser with a
    comment layer: hover a block, click to comment, leave a batch. Submitting is
-   delivered to the spec's owning Claude session at its next turn boundary; the
-   agent replies inline **and** edits the spec. A floating **SpecForge** menu adds
+   picked up by the spec's owning Claude session **automatically** — an in-session
+   background watcher (`wait-batch`) wakes it even while idle — and the agent
+   replies inline **and** edits the spec. A floating **SpecForge** menu adds
    theme, width, contents, **Export → PDF**, and a contextual lifecycle button.
 3. **Implement** — the spec and the work stay in lockstep: the task tracker
    renders live from the plan, and hooks nudge when the implementation drifts from

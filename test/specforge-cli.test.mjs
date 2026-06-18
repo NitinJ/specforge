@@ -6,9 +6,18 @@ import { tmpdir } from 'node:os';
 
 import { readMeta } from '../lib/meta.mjs';
 import { attach } from '../lib/attach.mjs';
+import { mutateComments, createThread } from '../lib/store-comments.mjs';
+import { submitBatch } from '../lib/store-inbox.mjs';
 import {
-  cmdCreate, cmdImport, cmdOpen, cmdStart, cmdList, cmdListall, cmdDetach,
+  cmdCreate, cmdImport, cmdOpen, cmdStart, cmdWaitBatch, cmdList, cmdListall, cmdDetach,
 } from '../lib/specforge-cli.mjs';
+
+// Stamp a submitted review batch onto a spec (a human comment + submit).
+function seedBatch(id) {
+  mutateComments(id, (s) => createThread(s, { anchor: { block: { index: 0, tag: 'P', text: 'hi' } }, body: 'fix this', author: 'human' }));
+  return submitBatch(id);
+}
+const fastDeps = (session) => ({ session, sleep: async () => {} });
 
 let home;
 let prevHome;
@@ -103,6 +112,28 @@ test('list shows only this session’s specs', async () => {
 test('start ensures the daemon and returns the index url', async () => {
   const { url } = await cmdStart({}, deps());
   assert.equal(url, 'http://127.0.0.1:4180/');
+});
+
+test('wait-batch returns ready with this session’s pending batches', async () => {
+  const a = await cmdCreate({ title: 'A' }, deps('sess-1'));
+  seedBatch(a.id);
+  const r = await cmdWaitBatch({ timeout: 0 }, fastDeps('sess-1'));
+  assert.equal(r.ready, true);
+  assert.ok(r.pending.some((p) => p.specId === a.id), 'pending lists the spec');
+});
+
+test('wait-batch times out (ready:false) when nothing is pending', async () => {
+  await cmdCreate({ title: 'A' }, deps('sess-1'));
+  const r = await cmdWaitBatch({ timeout: 0 }, fastDeps('sess-1'));
+  assert.equal(r.ready, false);
+  assert.deepEqual(r.pending, []);
+});
+
+test('wait-batch ignores batches belonging to other sessions', async () => {
+  const a = await cmdCreate({ title: 'A' }, deps('sess-2'));
+  seedBatch(a.id);
+  const r = await cmdWaitBatch({ timeout: 0 }, fastDeps('sess-1'));
+  assert.equal(r.ready, false, 'sess-1 sees nothing; the batch is sess-2’s');
 });
 
 test('listall shows every spec with its attached state', async () => {
