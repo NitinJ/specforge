@@ -223,6 +223,6 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
 @media print {
   #sf-sidebar, #sf-launcher, #sf-menu, #sf-action, #sf-compose, #sf-toc, #sf-live { display: none !important; }
   .sf-hover, .sf-block-mark { outline: none !important; background: none !important; }
-  h1, h2, h3, h4 { break-after: avoid-page; }
+  h1, h2, h3, h4, h5, h6 { break-after: avoid-page; }
   figure, table, pre, blockquote, .panel, .card, .callout, .stat { break-inside: avoid; }
 }
