@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { loadComments, saveComments, mutateComments, withCommentsLock } from '../lib/store-comments.mjs';
-import { specDir, commentsLockPath } from '../lib/store-paths.mjs';
+import { specDir, commentsPath, commentsLockPath } from '../lib/store-paths.mjs';
 
 let home;
 let prevHome;
@@ -52,6 +52,20 @@ test('mutateComments releases the lock on success and on throw', () => {
   assert.equal(existsSync(commentsLockPath(ID)), false, 'released after success');
   assert.throws(() => mutateComments(ID, () => { throw new Error('boom'); }), /boom/);
   assert.equal(existsSync(commentsLockPath(ID)), false, 'released after throw');
+});
+
+test('mutateComments skips the write when fn makes no change (no mtime churn)', () => {
+  mutateComments(ID, (s) => s); // no-op on a spec with no comments.json yet
+  assert.equal(existsSync(commentsPath(ID)), false, 'a no-op mutation did not write the file');
+});
+
+test('best-effort fallback does not delete a lock it never acquired', () => {
+  mkdirSync(specDir(ID), { recursive: true });
+  const lock = commentsLockPath(ID);
+  closeSync(openSync(lock, 'wx')); // a fresh (non-stale) lock held by "another process"
+  withCommentsLock(ID, () => {}); // can't acquire within the budget → proceeds best-effort
+  assert.equal(existsSync(lock), true, "did not delete the other holder's lock");
+  rmSync(lock, { force: true });
 });
 
 test('withCommentsLock reclaims a stale lock', () => {
