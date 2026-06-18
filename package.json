@@ -1,6 +1,6 @@
 {
   "name": "specforge",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Spec authoring, review & agent collaboration for Claude Code.",
   "type": "module",
   "private": true,

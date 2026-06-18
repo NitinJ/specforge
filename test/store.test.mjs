@@ -60,6 +60,11 @@ test('createSpec honours an explicit title over the HTML', () => {
   assert.equal(readMeta(id).title, 'Explicit');
 });
 
+test('createSpec stores the spec type (default design-impl, honours explicit)', () => {
+  assert.equal(readMeta(createSpec({ html: '<h1>A</h1>' })).type, 'design-impl');
+  assert.equal(readMeta(createSpec({ html: '<h1>B</h1>', type: 'research' })).type, 'research');
+});
+
 test('writeSpecHtml overwrites an existing spec', () => {
   const id = createSpec({ html: '<h1>v1</h1>' });
   writeSpecHtml(id, '<h1>v2</h1>');

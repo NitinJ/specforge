@@ -46,6 +46,24 @@ test('create without a session scaffolds unattached (graceful degrade)', async (
   assert.equal(readMeta(r.id).attachedSession, null);
 });
 
+test('create defaults to design-impl and scaffolds the impl shell (has the tracker)', async () => {
+  const r = await cmdCreate({ title: 'D' }, deps());
+  assert.equal(r.type, 'design-impl');
+  assert.equal(readMeta(r.id).type, 'design-impl');
+  assert.match(readFileSync(r.htmlPath, 'utf8'), /id="task-tracker"/);
+});
+
+test('create --type research scaffolds the doc shell (no tracker)', async () => {
+  const r = await cmdCreate({ title: 'R', type: 'research' }, deps());
+  assert.equal(r.type, 'research');
+  assert.equal(readMeta(r.id).type, 'research');
+  assert.doesNotMatch(readFileSync(r.htmlPath, 'utf8'), /id="task-tracker"/);
+});
+
+test('create rejects an invalid type', async () => {
+  await assert.rejects(() => cmdCreate({ title: 'X', type: 'bogus' }, deps()), /invalid type/);
+});
+
 test('import ingests an existing .html spec and records its origin', async () => {
   const src = join(home, 'design.html');
   writeFileSync(src, '<!doctype html><title>t</title><h1>Imported</h1><p>body</p>');
