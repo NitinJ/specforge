@@ -136,6 +136,16 @@ test('wait-batch ignores batches belonging to other sessions', async () => {
   assert.equal(r.ready, false, 'sess-1 sees nothing; the batch is sess-2’s');
 });
 
+test('wait-batch tolerates a non-finite timeout (no infinite loop)', { timeout: 5000 }, async () => {
+  await cmdCreate({ title: 'A' }, deps('sess-1'));
+  let n = 0;
+  const r = await cmdWaitBatch(
+    { timeout: NaN },
+    { session: 'sess-1', sleep: async () => {}, now: () => (n++ === 0 ? 0 : 9e15) },
+  );
+  assert.equal(r.ready, false, 'falls back to a finite deadline and exits');
+});
+
 test('listall shows every spec with its attached state', async () => {
   const a = await cmdCreate({ title: 'A' }, deps('sess-1'));
   await cmdDetach({ id: a.id }, deps());
