@@ -9,6 +9,16 @@ which replies inline and amends the document.
 **Zero runtime dependencies.** The bundled CLI and review server use only Node
 built-ins — no `npm install`, no services to run.
 
+## Highlights
+
+- **Typed specs** — design · research · design+implementation · implementation-only; each scaffolds the right sections and depth.
+- **Browser review** — Google-Docs-style **block** comments; submit a batch and the owning Claude session replies inline **and** amends the spec.
+- **Token-efficient** — a per-spec section index (hand-rolled BM25, no embeddings) lets the agent open only the sections a comment touches instead of re-reading the whole document.
+- **Live task tracker** — impl specs render their Stages → Tasks status live from the plan.
+- **Contextual lifecycle CTA** — one button drives submit → LGTM → implement → done.
+- **Polished review UI** — light/dark, responsive, floating TOC, auto-growing composer (`⌘↵` to send), and **Export → PDF**.
+- **Zero runtime deps · fail-safe hooks** — pure Node built-ins; hooks no-op unless a spec is in play.
+
 ---
 
 ## What it does
@@ -139,6 +149,25 @@ Status lives in `data-sf-spec-status` on the document root and the header badge:
 
 ---
 
+## Review UI
+
+The review layer is injected into every served spec (no build step) and themed
+from the spec's own CSS variables:
+
+- **Block comments** — hover any block, click to comment; threads anchor to the
+  block by index + text and survive edits (falling back to the enclosing section).
+- **Comments sidebar** — `Open / Resolved / All` segmented filter, **Resolve all**,
+  and a footer carrying the lifecycle action + a "to submit" count.
+- **Composer** — a clean, auto-growing input (no drag-grip, system font),
+  `⌘↵` / `Ctrl+↵` to send, with the commented block quoted for context.
+- **SpecForge launcher menu** — Comments, Contents (auto-built TOC when the spec
+  has none), Width, Theme (light/dark, persisted), Session (+ Detach), and
+  **Export PDF** (print → Save as PDF; the review chrome is stripped from the page).
+- **Live reload** — editing the spec, or an agent reply, refreshes the open page
+  over SSE.
+
+---
+
 ## Architecture
 
 - **Global store** — every spec lives at `~/.specforge/specs/<id>/`
@@ -155,6 +184,12 @@ Status lives in `data-sf-spec-status` on the document root and the header badge:
   reclaimed on a heartbeat timeout).
 - **Review layer** — `server/public/review.{js,css}`, injected at serve time:
   block comments, the SF menu, the lifecycle button, theme/width, Export PDF.
+- **Token-efficient navigation** — `spec-nav` (`lib/spec-nav-cli.mjs`) builds a
+  per-spec section index (cached `idx.json`, regenerated on change) ranked with a
+  hand-rolled Okapi BM25 (`lib/bm25.mjs`, no embeddings). The author/review skills
+  fetch a compact `map` (sections · line ranges · token sizes) and open only the
+  sections a comment touches (`grep` / `section` / `xrefs`) instead of re-reading
+  the whole spec — a large token saving on real specs.
 - **Hooks** — fail-safe (any error exits 0) and no-op unless a spec is relevant,
   so installing the plugin never disrupts an unrelated session.
 
@@ -191,6 +226,23 @@ Defaults live in `lib/config.mjs`; override per project at
 The spec lint (`lib/lint-spec.mjs`) checks only universal basics — a title, a
 lifecycle status, unique section ids, and the light/dark theme contract — so any
 spec type passes regardless of which sections it carries.
+
+---
+
+## Tech
+
+- **Node built-ins only** at runtime — HTTP daemon, file-backed store, hooks, and
+  CLIs. No framework, no `npm install`.
+- **Dependency-free review layer** — vanilla `review.js` / `review.css` injected at
+  serve time; no bundler.
+- **Hand-rolled BM25** for spec navigation — no embeddings or vector DB (the corpus
+  is one spec's sections).
+- **Self-contained specs** — each spec is a single `.html` with inline light/dark
+  theme CSS: portable, diffable, printable.
+- **Two CLIs** — `specforge` (store / daemon / review backend) and `spec-nav`
+  (token-efficient section index).
+- **Tests** — `node --test` unit + integration (jsdom for the review-layer DOM),
+  with an optional Playwright tier for browser checks. Both are dev-only deps.
 
 ---
 
