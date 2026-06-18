@@ -18,7 +18,7 @@ import { lintSpec } from '../lib/lint-spec.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TEMPLATE = readFileSync(join(ROOT, 'templates', 'spec-base.html'), 'utf8');
-const CONFIG = { requiredSections: DEFAULTS.requiredSections };
+const DOC_TEMPLATE = readFileSync(join(ROOT, 'templates', 'spec-base-doc.html'), 'utf8');
 
 test('config: defaults expose the required section set + cadence', () => {
   assert.ok(DEFAULTS.requiredSections.includes('impl-plan'));
@@ -62,37 +62,39 @@ test('spec: template plan parses into stages + tasks', () => {
   assert.equal(hasStructuredPlan(TEMPLATE), true);
 });
 
-test('lint: the canonical template passes', () => {
-  const { ok, checks } = lintSpec(TEMPLATE, CONFIG);
-  assert.equal(ok, true, JSON.stringify(checks, null, 2));
+test('lint: both shells pass the universal checks (no per-type section enforcement)', () => {
+  for (const [name, html] of [['impl', TEMPLATE], ['doc', DOC_TEMPLATE]]) {
+    const { ok, checks } = lintSpec(html);
+    assert.equal(ok, true, `${name} shell: ${JSON.stringify(checks, null, 2)}`);
+  }
 });
 
-test('lint: fails when a required section is missing', () => {
-  const broken = TEMPLATE.replace('id="tradeoffs"', 'id="tradeoffs-renamed"');
-  const { ok, checks } = lintSpec(broken, CONFIG);
+test('lint: fails when no title is present', () => {
+  const broken = TEMPLATE.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, '').replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, '<title></title>');
+  const { ok, checks } = lintSpec(broken);
   assert.equal(ok, false);
-  assert.equal(checks.find((c) => c.name === 'required-sections').ok, false);
+  assert.equal(checks.find((c) => c.name === 'has-title').ok, false);
+});
+
+test('lint: fails when no lifecycle status is present', () => {
+  const broken = TEMPLATE.replace(/\sdata-sf-spec-status\s*=\s*"[^"]*"/i, '');
+  const { ok, checks } = lintSpec(broken);
+  assert.equal(ok, false);
+  assert.equal(checks.find((c) => c.name === 'has-status').ok, false);
 });
 
 test('lint: fails on duplicate section ids', () => {
   const broken = TEMPLATE.replace('id="appendix"', 'id="tldr"');
-  const { ok, checks } = lintSpec(broken, CONFIG);
+  const { ok, checks } = lintSpec(broken);
   assert.equal(ok, false);
   assert.equal(checks.find((c) => c.name === 'unique-section-ids').ok, false);
 });
 
 test('lint: fails when the theme contract is broken', () => {
   const broken = TEMPLATE.replaceAll('prefers-color-scheme', 'xxx');
-  const { ok, checks } = lintSpec(broken, CONFIG);
+  const { ok, checks } = lintSpec(broken);
   assert.equal(ok, false);
   assert.equal(checks.find((c) => c.name === 'theme-contract').ok, false);
-});
-
-test('lint: fails when the plan is not structured', () => {
-  const broken = TEMPLATE.replaceAll('data-sf-task', 'data-sf-xtask');
-  const { ok, checks } = lintSpec(broken, CONFIG);
-  assert.equal(ok, false);
-  assert.equal(checks.find((c) => c.name === 'structured-plan').ok, false);
 });
 
 test('lint CLI: exits 0 on the canonical template', () => {

@@ -23,14 +23,17 @@ installed plugin directory.
     structured plan) → ingest as-is (step 2A).
   - **A `.md`, or a freeform `.html`/design doc** → re-author into a house-style
     spec (step 2B).
+- **Infer the spec type** from the source — `research` (a findings report),
+  `design` (a design doc, no plan), `design-impl` (design + a plan), or `impl` (a
+  build plan). Default to `design-impl` when unsure. Pass it as `--type` below.
 
 ## 2A. Ingest an existing HTML spec
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import "<file>" --title "<title>"
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import "<file>" --title "<title>" --type <type>
 ```
 
-Prints `{ id, htmlPath, url, status }` — the file is copied into the store,
+Prints `{ id, htmlPath, url, status, type }` — the file is copied into the store,
 attached to this session, daemon ensured. Lint `htmlPath` (step 3). If lint fails
 because it isn't house-style, fall back to 2B (author into the same `htmlPath`).
 
@@ -40,22 +43,24 @@ because it isn't house-style, fall back to 2B (author into the same `htmlPath`).
 - Scaffold a fresh store spec from the template:
 
   ```
-  node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>"
+  node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type>
   ```
 
-  It prints `{ id, htmlPath, url }`. **Author into `htmlPath`.**
-- Map the source content onto the template sections (`tldr`, `overview`, `goals`,
-  `design`, `decisions`, `open-questions`) and build `impl-plan` as Stages → Tasks
-  (`data-sf-stage`/`data-sf-task`/`data-sf-status`, one stage = one PR, each task a
-  `verify:` note), mirrored into the `task-tracker`. Preserve the author's intent;
-  don't invent scope. Leave `impl-decisions`/`deviations`/`tradeoffs` as stubs.
+  It prints `{ id, htmlPath, url, type }`. **Author into `htmlPath`.**
+- Map the source onto the type's sections exactly as the `create-spec` skill
+  describes (design / research / design-impl / impl) — adapt sections to the
+  content; keep stable unique ids, the theme, and the floating TOC in sync. For
+  impl types build `impl-plan` as Stages → Tasks (`data-sf-stage`/`data-sf-task`/
+  `data-sf-status`, one stage = one PR, each task a `verify:` note) mirrored into
+  `task-tracker`, and leave the Runtime stubs. Preserve the author's intent; don't
+  invent scope.
 - Keep every `<section id="…">`, the theme CSS, and the floating `<nav class="toc">`
   (update TOC links to match the sections you keep).
 
 ## 3. Lint (must pass)
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath> --project "${CLAUDE_PLUGIN_ROOT}"
+node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>
 ```
 
 Fix and re-run until `PASS`. **Do not finish on a failing lint.**
