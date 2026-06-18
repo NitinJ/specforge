@@ -103,16 +103,23 @@
     els.sidebar.innerHTML =
       '<div class="sf-side-head"><b><span>Spec</span>Forge</b>' +
       '<span class="sf-count"></span>' +
-      '<button class="sf-resolve-all" title="Resolve every open thread">Resolve all</button>' +
-      '<span class="sf-filter">' +
+      '<button class="sf-side-close" title="Close comments" aria-label="Close comments">×</button>' +
+      '</div>' +
+      '<div class="sf-threads"></div>' +
+      '<div class="sf-side-foot">' +
+      '<div class="sf-foot-filter"><span class="sf-filter">' +
       '<button data-f="open" class="on">Open</button>' +
       '<button data-f="resolved">Resolved</button>' +
-      '<button data-f="all">All</button></span></div>' +
-      '<div class="sf-threads"></div>';
+      '<button data-f="all">All</button></span>' +
+      '<button class="sf-resolve-all" title="Resolve every open thread">Resolve all</button></div>' +
+      '<div class="sf-foot-action"><span class="sf-foot-caption"></span></div>' +
+      '</div>';
     document.body.appendChild(els.sidebar);
     els.threads = els.sidebar.querySelector('.sf-threads');
     els.count = els.sidebar.querySelector('.sf-count');
     els.resolveAll = els.sidebar.querySelector('.sf-resolve-all');
+    els.footCaption = els.sidebar.querySelector('.sf-foot-caption');
+    els.sidebar.querySelector('.sf-side-close').onclick = function () { setSidebar(false); };
     els.resolveAll.onclick = function () {
       if (!unresolvedCount()) return;
       postJSON(API + '/resolve-all').then(load).catch(function () { flash('Could not resolve threads.'); });
@@ -126,14 +133,11 @@
       };
     });
 
-    // Submit-batch bar — a footer on the comments sidebar, shown only when there
-    // are unsubmitted comments (not buried in the launcher menu).
-    els.batchbar = create('div', { id: 'sf-batchbar' });
-    els.batchbar.innerHTML = '<span class="c"></span>';
-    var submitBtn = create('button', { class: 'sf-primary' }, 'Submit batch');
-    submitBtn.onclick = submitBatch;
-    els.batchbar.appendChild(submitBtn);
-    els.sidebar.appendChild(els.batchbar);
+    // Footer lifecycle action — same state machine + handler as the floating pill,
+    // but hosted in the sidebar so the controls never overlap the floating launcher.
+    els.footAction = create('button', { class: 'sf-act', type: 'button' });
+    els.footAction.onclick = onAction;
+    els.sidebar.querySelector('.sf-foot-action').appendChild(els.footAction);
 
     buildAction();
     buildLauncher();
@@ -143,13 +147,25 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { clearHover(); hideCompose(); closeMenu(); } });
   }
 
+  // Sidebar open/close — also flags the body so the floating launcher/action can
+  // get out of the sidebar's way (CSS: body.sf-side-open).
+  function setSidebar(open) {
+    els.sidebar.classList.toggle('open', open);
+    document.body.classList.toggle('sf-side-open', open);
+  }
+  function toggleSidebar() { setSidebar(!els.sidebar.classList.contains('open')); }
+
   // ---------- lifecycle action button ----------
-  // One contextual primary CTA driven by the spec's status + pending comments:
-  //   draft/in_review + pending  → "Needs review" (submit the batch)
-  //   draft/in_review + none     → "LGTM ✓"       (status → approved)
-  //   approved                   → "Implement →"  (status → implementing; nudges
-  //                                                 the attached session to start)
-  //   implementing / done / closed → status display (no action)
+  // One contextual primary CTA. Once implementation has started the button is just
+  // a status display; before that it follows comment-resolution, then approval:
+  //   unsubmitted comment(s)         → "Submit comments"   (freeze a batch for the agent)
+  //   submitted, still unresolved    → "Awaiting response" (disabled; agent is working)
+  //   all resolved, not yet approved → "LGTM ✓"            (status → approved)
+  //   all resolved AND approved      → "Implement →"       (status → implementing;
+  //                                                          nudges the session to start)
+  //   implementing / done / closed   → status display (no action)
+  // Open comments take priority over `approved`, so new feedback on an approved
+  // doc reverts the CTA away from "Implement →".
   function buildAction() {
     els.action = create('button', { id: 'sf-action', type: 'button' });
     els.action.onclick = onAction;
@@ -157,25 +173,31 @@
   }
   function actionState() {
     var status = (state.meta && state.meta.status) || 'draft';
-    var pending = pendingCount();
-    if (status === 'draft' || status === 'in_review') {
-      return pending
-        ? { label: 'Needs review', state: 'needs', act: 'submit' }
-        : { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
-    }
-    if (status === 'approved') return { label: 'Implement →', state: 'impl', act: 'implement' };
     if (status === 'implementing') return { label: 'Implementing…', state: 'working', act: null };
     if (status === 'done') return { label: 'Done ✓', state: 'done', act: null };
     if (status === 'closed') return { label: 'Closed', state: 'closed', act: null };
-    return { label: status, state: 'other', act: null };
+    if (pendingCount() > 0) return { label: 'Submit comments', state: 'needs', act: 'submit' };
+    if (unresolvedCount() > 0) return { label: 'Awaiting response', state: 'awaiting', act: null };
+    if (status === 'approved') return { label: 'Implement →', state: 'impl', act: 'implement' };
+    if (status === 'draft' || status === 'in_review') return { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
+    return { label: status, state: 'other', act: null }; // unknown status → inert display, never a silent approve
   }
   function renderAction() {
-    if (!els.action) return;
     var s = actionState();
-    els.action.textContent = s.label;
-    els.action.setAttribute('data-state', s.state);
-    els.action.disabled = !s.act;
+    applyAction(els.action, s);
+    applyAction(els.footAction, s);
+    if (els.footCaption) {
+      var p = pendingCount();
+      els.footCaption.textContent = (s.state === 'needs' && p > 0)
+        ? p + (p === 1 ? ' thread to submit' : ' threads to submit') : '';
+    }
     if (els.resolveAll) els.resolveAll.classList.toggle('show', !!unresolvedCount());
+  }
+  function applyAction(btn, s) {
+    if (!btn) return;
+    btn.textContent = s.label;
+    btn.setAttribute('data-state', s.state);
+    btn.disabled = !s.act;
   }
   function onAction() {
     var s = actionState();
@@ -229,7 +251,7 @@
     var pending = pendingCount();
 
     // Comments — toggles the sidebar; carries the pending badge.
-    var comments = menuRow('💬', 'Comments', function () { els.sidebar.classList.toggle('open'); closeMenu(); });
+    var comments = menuRow('💬', 'Comments', function () { toggleSidebar(); closeMenu(); });
     if (pending) {
       var badge = create('span', { class: 'sf-menu-badge' }, String(pending));
       comments.querySelector('.sf-row-main').appendChild(badge);
@@ -367,7 +389,7 @@
     var el = blockAt(e.target);
     if (!el) return;
     var tid = el.getAttribute('data-sf-thread');
-    if (tid) { activate(tid, false); els.sidebar.classList.add('open'); return; }
+    if (tid) { activate(tid, false); setSidebar(true); return; }
     e.preventDefault();
     openCompose(el);
   }
@@ -458,10 +480,6 @@
     var pending = pendingCount();
     els.launcher.classList.toggle('has-pending', !!pending);
     els.launcher.querySelector('.sf-l-n').textContent = pending || '';
-    // Submit-batch bar on the sidebar — shown only when there are pending comments.
-    els.batchbar.classList.toggle('show', !!pending);
-    els.batchbar.querySelector('.c').textContent =
-      pending ? pending + (pending === 1 ? ' thread to submit' : ' threads to submit') : '';
     // Keep an open menu's pending badge in sync with fresh data.
     if (els.menu.classList.contains('open')) buildMenuRows();
   }
@@ -481,7 +499,7 @@
     save.onclick = function () {
       if (!ta.value.trim()) return;
       postJSON(API, { anchor: anchor, body: ta.value.trim(), author: 'human' })
-        .then(function () { hideCompose(); els.sidebar.classList.add('open'); load(); });
+        .then(function () { hideCompose(); setSidebar(true); load(); });
     };
     cancel.onclick = hideCompose;
     row.appendChild(save); row.appendChild(cancel);

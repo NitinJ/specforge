@@ -1,5 +1,6 @@
 ---
 name: specforge:create-spec
+user-invocable: false
 description: |
   Author a new house-style design spec into the SpecForge store. Use when the
   user asks to "write a spec", "create a design doc", "draft a spec for

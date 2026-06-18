@@ -1,5 +1,6 @@
 ---
 name: specforge:convert-spec
+user-invocable: false
 description: |
   Convert an existing design/spec file into a SpecForge spec in the store. Use
   when the user asks to "convert <file> to a spec", "import this design doc", or

@@ -1,5 +1,6 @@
 ---
 name: specforge:list-specs
+user-invocable: false
 description: |
   List SpecForge specs — either every spec in the store (mode "all") or just the
   specs attached to this session (mode "mine"). Use when the user asks to "list
