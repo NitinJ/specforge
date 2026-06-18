@@ -66,8 +66,8 @@ test('the launcher is the single floating control, is clickable, and opens the m
     // The spec no longer ships its own theme/width controls — those are gone.
     assert.equal(await page.locator('#themeToggle').count(), 0, 'spec has no theme toggle');
     assert.equal(await page.locator('#sf-toggle, #sf-width, #sf-toc-toggle').count(), 0, 'no retired standalone controls');
-    // The submit-batch bar is not retired — it now lives as a footer on the sidebar.
-    assert.equal(await page.locator('#sf-sidebar #sf-batchbar').count(), 1, 'submit-batch bar lives on the sidebar');
+    // The review command bar lives as a footer on the sidebar (filter + lifecycle action).
+    assert.equal(await page.locator('#sf-sidebar .sf-side-foot .sf-act').count(), 1, 'sidebar footer carries the lifecycle action');
 
     // The launcher is the top hit-target at its own center (nothing overlaps it).
     const clickable = await page.evaluate(() => {

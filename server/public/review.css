@@ -11,6 +11,7 @@
   --sf-green: var(--green, #3fb950);
   --sf-amber: var(--amber, #d29922);
   --sf-red: var(--red, #f85149);
+  --sf-side-w: 340px;
 }
 
 /* live-status pill — relocated into the launcher menu footer by review.js.
@@ -27,7 +28,7 @@
 
 /* sidebar */
 #sf-sidebar {
-  position: fixed; top: 0; right: 0; height: 100vh; width: 340px; z-index: 45;
+  position: fixed; top: 0; right: 0; height: 100vh; width: var(--sf-side-w); z-index: 45;
   background: var(--sf-panel); border-left: 1px solid var(--sf-line);
   color: var(--sf-ink); display: flex; flex-direction: column;
   transform: translateX(100%); transition: transform .18s ease;
@@ -37,13 +38,9 @@
 .sf-side-head { padding: 14px 16px; border-bottom: 1px solid var(--sf-line); display: flex; align-items: center; gap: 8px; }
 .sf-side-head b { font-size: 14px; } .sf-side-head b span { color: var(--sf-accent); }
 .sf-side-head .sf-count { color: var(--sf-muted); font-size: 12px; }
-.sf-filter { margin-left: auto; display: flex; gap: 4px; }
-.sf-filter button { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 999px; font-size: 11px; padding: 2px 8px; cursor: pointer; }
-.sf-filter button.on { color: var(--sf-ink); border-color: var(--sf-accent); }
-.sf-resolve-all { display: none; background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
-  border-radius: 999px; font-size: 11px; padding: 2px 8px; cursor: pointer; }
-.sf-resolve-all.show { display: inline-block; }
-.sf-resolve-all:hover { color: var(--sf-green); border-color: var(--sf-green); }
+.sf-side-close { margin-left: auto; background: none; border: none; color: var(--sf-muted);
+  font: 400 22px/1 system-ui, sans-serif; cursor: pointer; padding: 0 2px; border-radius: 6px; }
+.sf-side-close:hover { color: var(--sf-ink); }
 .sf-threads { overflow-y: auto; padding: 8px 12px 16px; flex: 1; }
 .sf-thread { border: 1px solid var(--sf-line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; background: var(--sf-panel2); cursor: pointer; }
 .sf-thread.sf-active { border-color: var(--sf-accent); }
@@ -60,19 +57,37 @@
 .sf-acts { display: flex; gap: 8px; margin-top: 6px; }
 .sf-acts button { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 6px; font-size: 11px; padding: 3px 8px; cursor: pointer; }
 .sf-acts button:hover { color: var(--sf-ink); border-color: var(--sf-accent); }
-/* submit-batch bar — a footer on the comments sidebar, shown only when pending */
-#sf-batchbar { display: none; align-items: center; gap: 10px; padding: 12px 16px;
-  border-top: 1px solid var(--sf-line); background: var(--sf-panel2); }
-#sf-batchbar.show { display: flex; }
-#sf-batchbar .c { font-size: 12px; color: var(--sf-muted); }
-#sf-batchbar button { margin-left: auto; }
+/* sidebar footer — the review command bar. View filter + resolve-all on top, the
+   single lifecycle action (with a submit caption) below. This replaces the old
+   header chips and the floating submit bar, so nothing overflows or overlaps. */
+.sf-side-foot { border-top: 1px solid var(--sf-line); background: var(--sf-panel2);
+  padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; }
+.sf-foot-filter { display: flex; align-items: center; gap: 8px; }
+.sf-filter { display: inline-flex; border: 1px solid var(--sf-line); border-radius: 8px; overflow: hidden; }
+.sf-filter button { background: none; border: none; border-right: 1px solid var(--sf-line);
+  color: var(--sf-muted); font-size: 11px; padding: 5px 10px; cursor: pointer; }
+.sf-filter button:last-child { border-right: none; }
+.sf-filter button.on { background: var(--sf-panel); color: var(--sf-ink); }
+.sf-resolve-all { display: none; margin-left: auto; background: none; border: 1px solid var(--sf-line);
+  color: var(--sf-muted); border-radius: 999px; font-size: 11px; padding: 4px 10px; cursor: pointer; }
+.sf-resolve-all.show { display: inline-block; }
+.sf-resolve-all:hover { color: var(--sf-green); border-color: var(--sf-green); }
+.sf-foot-action { display: flex; flex-direction: column; gap: 6px; }
+.sf-foot-caption { font-size: 12px; color: var(--sf-muted); }
+.sf-foot-caption:empty { display: none; }
+.sf-act { display: block; width: 100%; box-sizing: border-box; text-align: center;
+  border: 1px solid var(--sf-line); border-radius: 8px; cursor: pointer;
+  background: var(--sf-panel); color: var(--sf-ink); font: 700 13px/1 system-ui, sans-serif;
+  padding: 11px 14px; transition: filter .12s ease; }
+.sf-act:hover:not(:disabled) { filter: brightness(1.08); }
+.sf-act:disabled { cursor: default; opacity: .85; }
 .sf-reply textarea, .sf-compose textarea {
   width: 100%; box-sizing: border-box; background: var(--sf-panel); color: var(--sf-ink);
   border: 1px solid var(--sf-line); border-radius: 8px; padding: 8px; font: inherit; resize: vertical; min-height: 56px;
 }
 
 /* compose popover */
-#sf-compose { position: fixed; right: 360px; z-index: 50; width: 300px; background: var(--sf-panel); border: 1px solid var(--sf-line); border-radius: 10px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+#sf-compose { position: fixed; right: calc(var(--sf-side-w) + 20px); z-index: 50; width: 300px; background: var(--sf-panel); border: 1px solid var(--sf-line); border-radius: 10px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 #sf-compose .q { font-size: 12px; color: var(--sf-muted); border-left: 2px solid var(--sf-amber); padding-left: 8px; margin-bottom: 8px; max-height: 60px; overflow: auto; }
 
 .sf-primary { background: var(--sf-accent); color: #08101f; border: none; border-radius: 8px; font: 600 12px/1 system-ui; padding: 7px 12px; cursor: pointer; }
@@ -87,12 +102,15 @@
 }
 #sf-action:hover:not(:disabled) { transform: translateY(-1px); }
 #sf-action:disabled { cursor: default; opacity: .8; box-shadow: none; }
-#sf-action[data-state="needs"] { background: var(--sf-amber); color: #08101f; border-color: transparent; }
-#sf-action[data-state="lgtm"] { background: var(--sf-green); color: #08101f; border-color: transparent; }
-#sf-action[data-state="impl"] { background: var(--sf-accent); color: #08101f; border-color: transparent; }
-#sf-action[data-state="working"] { color: var(--sf-accent); border-color: var(--sf-accent); }
-#sf-action[data-state="done"] { color: var(--sf-green); border-color: var(--sf-green); }
-#sf-action[data-state="closed"], #sf-action[data-state="other"] { color: var(--sf-muted); }
+#sf-action[data-state="needs"], .sf-act[data-state="needs"] { background: var(--sf-amber); color: #08101f; border-color: transparent; }
+#sf-action[data-state="lgtm"], .sf-act[data-state="lgtm"] { background: var(--sf-green); color: #08101f; border-color: transparent; }
+#sf-action[data-state="impl"], .sf-act[data-state="impl"] { background: var(--sf-accent); color: #08101f; border-color: transparent; }
+#sf-action[data-state="working"], .sf-act[data-state="working"] { color: var(--sf-accent); border-color: var(--sf-accent); }
+#sf-action[data-state="done"], .sf-act[data-state="done"] { color: var(--sf-green); border-color: var(--sf-green); }
+#sf-action[data-state="closed"], #sf-action[data-state="other"],
+.sf-act[data-state="closed"], .sf-act[data-state="other"] { color: var(--sf-muted); }
+/* the open sidebar carries the lifecycle action in its footer → hide the floating pill */
+body.sf-side-open #sf-action { display: none; }
 
 /* SpecForge launcher — the single floating control */
 #sf-launcher {
@@ -100,9 +118,11 @@
   display: flex; align-items: center; justify-content: center; padding: 0;
   background: var(--sf-panel); border: 1px solid var(--sf-line); color: var(--sf-ink);
   border-radius: 50%; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.3);
-  font: 700 14px/1 system-ui, sans-serif;
+  font: 700 14px/1 system-ui, sans-serif; transition: right .18s ease;
 }
 #sf-launcher:hover { border-color: var(--sf-accent); }
+/* slide the launcher (and its menu) clear of the sidebar while it's open */
+body.sf-side-open #sf-launcher { right: calc(var(--sf-side-w) + 18px); }
 #sf-launcher b { letter-spacing: .5px; }
 #sf-launcher b span { color: var(--sf-accent); }
 #sf-launcher .sf-l-n {
@@ -118,10 +138,11 @@
   position: fixed; right: 18px; bottom: 74px; z-index: 48; width: 232px;
   background: var(--sf-panel); border: 1px solid var(--sf-line); color: var(--sf-ink);
   border-radius: 12px; padding: 6px; box-shadow: 0 12px 34px rgba(0,0,0,.4);
-  display: none; flex-direction: column; gap: 2px;
+  display: none; flex-direction: column; gap: 2px; transition: right .18s ease;
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 #sf-menu.open { display: flex; }
+body.sf-side-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
 .sf-menu-row {
   display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
   background: none; border: none; color: var(--sf-ink); border-radius: 8px;
@@ -154,3 +175,11 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
   border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
 #sf-toc a:hover { color: var(--sf-ink); background: var(--sf-panel2); }
 #sf-toc a.active { color: var(--sf-ink); border-left-color: var(--sf-accent); background: var(--sf-panel2); }
+
+/* narrow screens: the sidebar takes the full width; close it with × (the floating
+   launcher would sit under it, so hide it while open). */
+@media (max-width: 480px) {
+  :root { --sf-side-w: 100vw; }
+  #sf-compose { right: 8px; left: 8px; width: auto; }
+  body.sf-side-open #sf-launcher, body.sf-side-open #sf-menu { display: none; }
+}

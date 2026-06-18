@@ -163,19 +163,37 @@ test('clicking the review UI does not open a composer', async (t) => {
   assert.equal(document.getElementById('sf-compose'), null, 'no composer from a UI click');
 });
 
-test('the submit-batch bar lives on the sidebar, not in the launcher menu', async (t) => {
+test('the review command bar lives in the sidebar footer, not the launcher menu', async (t) => {
   const threads = [{
     id: 't1', state: 'open', comments: [{ author: 'human', body: 'x' }],
     anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
   }];
-  const { window } = await bootReviewLayer(t, { threads });
+  const { window, posts } = await bootReviewLayer(t, { threads, meta: { status: 'draft' } });
   const { document } = window;
-  const bar = document.querySelector('#sf-sidebar #sf-batchbar');
-  assert.ok(bar, 'batch bar is a child of the sidebar');
-  assert.ok(bar.classList.contains('show'), 'batch bar shows when a comment is pending');
-  assert.ok(bar.querySelector('button'), 'batch bar carries a Submit button');
+  const foot = document.querySelector('#sf-sidebar .sf-side-foot');
+  assert.ok(foot, 'footer is a child of the sidebar');
+  assert.ok(foot.querySelector('.sf-filter'), 'footer carries the view filter');
+  const action = foot.querySelector('.sf-act');
+  assert.ok(action, 'footer carries the lifecycle action button');
+  // A pending comment → the action is "Needs review" and submits the batch.
+  assert.equal(action.getAttribute('data-state'), 'needs');
+  assert.match(foot.querySelector('.sf-foot-caption').textContent, /to submit/);
+  action.click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(posts.some((p) => /\/comments\/submit$/.test(p.url)), 'footer action submits the batch');
   document.getElementById('sf-launcher').click();
   assert.ok(!rowByLabel(document, 'Submit'), 'the launcher menu has no Submit row');
+});
+
+test('opening the sidebar flags the body (floating controls clear it); × closes it', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  rowByLabel(document, 'Comments').click();
+  assert.ok(document.body.classList.contains('sf-side-open'), 'body flagged when the sidebar opens');
+  document.querySelector('.sf-side-close').click();
+  assert.ok(!document.body.classList.contains('sf-side-open'), 'close button clears the flag');
+  assert.ok(!document.getElementById('sf-sidebar').classList.contains('open'), 'sidebar is closed');
 });
 
 test('a thread re-anchors to its section when the exact block is gone', async (t) => {
@@ -208,19 +226,25 @@ const PENDING_THREAD = [{
 }];
 const tick = (window) => new Promise((r) => window.setTimeout(r, 0));
 
-test('action button: draft + pending → "Needs review" and submits the batch', async (t) => {
+// Resolved thread fixture — "all comments resolved" with no open threads.
+const RESOLVED_THREAD = [{
+  id: 't1', state: 'resolved', comments: [{ author: 'human', body: 'x', batchId: 'b1' }],
+  anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+}];
+
+test('action button: any open comment → "Submit comments" and submits the batch', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
   const btn = window.document.getElementById('sf-action');
   assert.ok(btn, 'action button present');
   assert.equal(btn.getAttribute('data-state'), 'needs');
-  assert.match(btn.textContent, /Needs review/);
+  assert.match(btn.textContent, /Submit comments/);
   btn.click();
   await tick(window);
   assert.ok(posts.some((p) => /\/comments\/submit$/.test(p.url)), 'clicking submits the batch');
 });
 
-test('action button: draft + no pending → "LGTM" and approves', async (t) => {
-  const { window, posts } = await bootReviewLayer(t, { meta: { status: 'draft' } });
+test('action button: all comments resolved, not yet approved → "LGTM" and approves', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'in_review' } });
   const btn = window.document.getElementById('sf-action');
   assert.equal(btn.getAttribute('data-state'), 'lgtm');
   btn.click();
@@ -229,14 +253,22 @@ test('action button: draft + no pending → "LGTM" and approves', async (t) => {
   assert.ok(p && p.body.status === 'approved', 'clicking LGTM POSTs status=approved');
 });
 
-test('action button: approved → "Implement →" and sets implementing', async (t) => {
-  const { window, posts } = await bootReviewLayer(t, { meta: { status: 'approved' } });
+test('action button: all resolved AND approved → "Implement →" and sets implementing', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'approved' } });
   const btn = window.document.getElementById('sf-action');
   assert.equal(btn.getAttribute('data-state'), 'impl');
+  assert.match(btn.textContent, /Implement/);
   btn.click();
   await tick(window);
   const p = posts.find((x) => /\/status$/.test(x.url));
   assert.ok(p && p.body.status === 'implementing', 'clicking Implement POSTs status=implementing');
+});
+
+test('action button: an open comment overrides approved status → "Submit comments"', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'approved' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.equal(btn.getAttribute('data-state'), 'needs', 'open comment takes priority over approved');
+  assert.match(btn.textContent, /Submit comments/);
 });
 
 test('action button: implementing is a disabled status display', async (t) => {
