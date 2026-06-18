@@ -216,3 +216,13 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
   #sf-compose { right: 8px; left: 8px; width: auto; }
   body.sf-side-open #sf-launcher, body.sf-side-open #sf-menu { display: none; }
 }
+
+/* print / "Export PDF": drop all injected review chrome so the PDF is just the
+   spec, and keep atomic blocks from splitting across pages. The spec's own CSS
+   (and the print dialog's "Background graphics" toggle) drive the look. */
+@media print {
+  #sf-sidebar, #sf-launcher, #sf-menu, #sf-action, #sf-compose, #sf-toc, #sf-live { display: none !important; }
+  .sf-hover, .sf-block-mark { outline: none !important; background: none !important; }
+  h1, h2, h3, h4, h5, h6 { break-after: avoid-page; }
+  figure, table, pre, blockquote, .panel, .card, .callout, .stat { break-inside: avoid; }
+}

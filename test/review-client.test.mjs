@@ -104,6 +104,18 @@ test('the menu carries the Comments, Width and Theme rows', async (t) => {
   assert.ok(rowByLabel(document, 'Theme'), 'Theme row present');
 });
 
+test('the menu has an Export PDF row that opens the print dialog', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  let printed = 0;
+  window.print = function () { printed++; };
+  document.getElementById('sf-launcher').click();
+  const row = rowByLabel(document, 'Export PDF');
+  assert.ok(row, 'Export PDF row present');
+  row.click();
+  assert.equal(printed, 1, 'clicking Export PDF calls window.print()');
+});
+
 test('the Comments row toggles the single sidebar', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;
