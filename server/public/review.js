@@ -286,6 +286,10 @@
     // Theme — light/dark toggle.
     els.menu.appendChild(themeRow());
 
+    // Export — open the print dialog (pick "Save as PDF"); the review chrome is
+    // hidden by the print stylesheet so the PDF is just the spec.
+    els.menu.appendChild(menuRow('⤓', 'Export PDF', function () { closeMenu(); window.print(); }));
+
     // Session — which session owns this spec, with a Detach button.
     els.menu.appendChild(sessionRow());
 
