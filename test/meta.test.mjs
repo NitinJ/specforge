@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { defaultMeta, readMeta, writeMeta, listSpecs } from '../lib/meta.mjs';
+import { defaultMeta, readMeta, writeMeta, listSpecs, SPEC_TYPES, DEFAULT_TYPE, TYPE_SHELL } from '../lib/meta.mjs';
 import { specDir } from '../lib/store.mjs';
 
 let home;
@@ -39,6 +39,11 @@ test('defaultMeta type: defaults to design-impl, honours valid, rejects unknown'
   assert.equal(defaultMeta({ id: 'a' }).type, 'design-impl');
   assert.equal(defaultMeta({ id: 'a', type: 'research' }).type, 'research');
   assert.equal(defaultMeta({ id: 'a', type: 'bogus' }).type, 'design-impl'); // defensive default
+});
+
+test('every spec type maps to a known shell (TYPE_SHELL is the source of truth)', () => {
+  for (const t of SPEC_TYPES) assert.ok(['doc', 'impl'].includes(TYPE_SHELL[t]), `${t} maps to a shell`);
+  assert.ok(SPEC_TYPES.includes(DEFAULT_TYPE), 'DEFAULT_TYPE is a valid type');
 });
 
 test('defaultMeta falls back to Untitled', () => {
