@@ -30,8 +30,15 @@ test('defaultMeta has the v2 schema with draft/unattached defaults', () => {
   assert.equal(m.origin, '/proj');
   assert.equal(m.attachedSession, null);
   assert.equal(m.heartbeat, 0);
+  assert.equal(m.type, 'design-impl');
   assert.equal(typeof m.created, 'number');
   assert.equal(typeof m.updated, 'number');
+});
+
+test('defaultMeta type: defaults to design-impl, honours valid, rejects unknown', () => {
+  assert.equal(defaultMeta({ id: 'a' }).type, 'design-impl');
+  assert.equal(defaultMeta({ id: 'a', type: 'research' }).type, 'research');
+  assert.equal(defaultMeta({ id: 'a', type: 'bogus' }).type, 'design-impl'); // defensive default
 });
 
 test('defaultMeta falls back to Untitled', () => {
