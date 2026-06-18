@@ -161,13 +161,13 @@
 
   // ---------- lifecycle action button ----------
   // One contextual primary CTA. Once implementation has started the button is just
-  // a status display; before that it follows comment-resolution, then approval:
-  //   unsubmitted comment(s)         → "Submit comments"   (freeze a batch for the agent)
-  //   submitted, still unresolved    → "Awaiting response" (disabled; agent is working)
-  //   all resolved, not yet approved → "LGTM ✓"            (status → approved)
-  //   all resolved AND approved      → "Implement →"       (status → implementing;
-  //                                                          nudges the session to start)
-  //   implementing / done / closed   → status display (no action)
+  // a status display; before that it follows comments → review → approval:
+  //   unsubmitted comment(s)          → "Submit comments"   (freeze a batch for the agent)
+  //   submitted, agent not yet replied→ "Awaiting response" (disabled; agent is working)
+  //   agent replied to every thread   → "Review replies"    (read them, then resolve)
+  //   all resolved, not yet approved  → "LGTM ✓"            (status → approved)
+  //   all resolved AND approved       → "Implement →"       (status → implementing)
+  //   implementing / done / closed    → status display (no action)
   // Open comments take priority over `approved`, so new feedback on an approved
   // doc reverts the CTA away from "Implement →".
   function buildAction() {
@@ -181,7 +181,15 @@
     if (status === 'done') return { label: 'Done ✓', state: 'done', act: null };
     if (status === 'closed') return { label: 'Closed', state: 'closed', act: null };
     if (pendingCount() > 0) return { label: 'Submit comments', state: 'needs', act: 'submit' };
-    if (unresolvedCount() > 0) return { label: 'Awaiting response', state: 'awaiting', act: null };
+    var unresolved = unresolvedCount();
+    if (unresolved > 0) {
+      // All submitted. While any open thread still lacks a reply we're waiting on
+      // the agent; once every open thread is answered it's the human's turn to
+      // read the replies and resolve them.
+      return repliedCount() < unresolved
+        ? { label: 'Awaiting response', state: 'awaiting', act: null }
+        : { label: 'Review replies', state: 'replied', act: 'review' };
+    }
     if (status === 'approved') return { label: 'Implement →', state: 'impl', act: 'implement' };
     if (status === 'draft' || status === 'in_review') return { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
     return { label: status, state: 'other', act: null }; // unknown status → inert display, never a silent approve
@@ -207,6 +215,7 @@
     var s = actionState();
     if (!s.act) return;
     if (s.act === 'submit') return submitBatch();
+    if (s.act === 'review') return setSidebar(true); // open the sidebar to read the agent's replies
     var status = s.act === 'approve' ? 'approved' : 'implementing';
     postJSON(SPEC_API + '/status', { status: status }).then(function (r) {
       if (r.ok) load(); else flash('Could not update status.');
@@ -214,6 +223,9 @@
   }
   function unresolvedCount() {
     return state.threads.filter(function (t) { return t.state !== 'resolved'; }).length;
+  }
+  function repliedCount() {
+    return state.threads.filter(function (t) { return t.state === 'replied'; }).length;
   }
 
   // ---------- launcher + menu ----------

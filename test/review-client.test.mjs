@@ -239,6 +239,14 @@ const SUBMITTED_OPEN_THREAD = [{
   anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
 }];
 
+// Replied fixture — the agent answered (a claude comment flips the thread to
+// "replied"), but the human hasn't resolved it yet.
+const REPLIED_THREAD = [{
+  id: 't1', state: 'replied',
+  comments: [{ author: 'human', body: 'x', batchId: 'b1' }, { author: 'claude', body: 'fixed in §4' }],
+  anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+}];
+
 test('action button: an unsubmitted comment → "Submit comments" and submits the batch', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
   const btn = window.document.getElementById('sf-action');
@@ -290,6 +298,27 @@ test('action button: a submitted-but-open comment still blocks Implement on an a
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'approved' } });
   const btn = window.document.getElementById('sf-action');
   assert.equal(btn.getAttribute('data-state'), 'awaiting', 'an unresolved comment overrides approved → not Implement');
+});
+
+test('action button: agent replied to every open thread → "Review replies", clicking opens the sidebar', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: REPLIED_THREAD, meta: { status: 'in_review' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.equal(btn.getAttribute('data-state'), 'replied', 'replied thread is no longer "awaiting"');
+  assert.match(btn.textContent, /Review replies/);
+  assert.equal(btn.disabled, false, 'Review replies is actionable');
+  btn.click();
+  assert.ok(window.document.getElementById('sf-sidebar').classList.contains('open'), 'clicking opens the sidebar to read replies');
+});
+
+test('action button: one unanswered thread keeps "Awaiting response" even when another was replied', async (t) => {
+  const threads = [
+    REPLIED_THREAD[0],
+    { id: 't2', state: 'open', comments: [{ author: 'human', body: 'y', batchId: 'b1' }],
+      anchor: { block: { index: 1, tag: 'P', text: 'Second.', sectionPath: [] } } },
+  ];
+  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'in_review' } });
+  const btn = window.document.getElementById('sf-action');
+  assert.equal(btn.getAttribute('data-state'), 'awaiting', 'still waiting while any open thread is unanswered');
 });
 
 test('action button: an unknown status is an inert display (no silent approve)', async (t) => {
