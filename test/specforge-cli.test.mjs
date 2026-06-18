@@ -115,6 +115,7 @@ test('listall shows every spec with its attached state', async () => {
   assert.equal(session, 'sess-1', 'listall reports the current session so the picker can classify rows');
   const free = rows.find((r) => r.id === a.id);
   assert.equal(free.attached, 'free');
+  assert.equal(free.type, 'design-impl', 'rows carry the spec type');
   assert.ok(rows.some((r) => r.attached === 'sess-2'));
 });
 

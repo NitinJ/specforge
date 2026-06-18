@@ -20,7 +20,7 @@
 
 import http from 'node:http';
 import { watch } from 'node:fs';
-import { listSpecs } from '../lib/meta.mjs';
+import { listSpecs, DEFAULT_TYPE } from '../lib/meta.mjs';
 import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -62,6 +62,7 @@ function renderIndex() {
     return `<tr>
   <td class="id"><a href="/spec/${id}">${id}</a></td>
   <td><a href="/spec/${id}">${title}</a></td>
+  <td><span class="t">${esc(m.type || DEFAULT_TYPE)}</span></td>
   <td><span class="s">${esc(m.status || 'draft')}</span></td>
   <td class="att">${attachedLabel(m)}</td>
 </tr>`;
@@ -79,6 +80,7 @@ function renderIndex() {
   a{color:#e6e8ee;text-decoration:none;font-weight:600} a:hover{color:#6ea8fe}
   .id a{font-family:ui-monospace,Menlo,monospace;font-weight:500;color:#9aa3b2}
   .s{color:#6ea8fe;font-size:11.5px;border:1px solid #2a2f3a;border-radius:999px;padding:1px 8px}
+  .t{color:#9aa3b2;font-size:11.5px;border:1px solid #2a2f3a;border-radius:999px;padding:1px 8px}
   .att{color:#9aa3b2;font-size:13px;font-family:ui-monospace,Menlo,monospace}
   .empty{color:#9aa3b2}
 </style></head><body><div class="wrap">
@@ -86,7 +88,7 @@ function renderIndex() {
 <div class="sub">${specs.length} spec${specs.length === 1 ? '' : 's'} in the store</div>
 ${specs.length
     ? `<table>
-<thead><tr><th>id</th><th>title</th><th>status</th><th>attached?</th></tr></thead>
+<thead><tr><th>id</th><th>title</th><th>type</th><th>status</th><th>attached?</th></tr></thead>
 <tbody>
 ${rows}
 </tbody>

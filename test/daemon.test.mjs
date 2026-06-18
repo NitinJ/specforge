@@ -56,6 +56,8 @@ test('GET / lists all store specs (ids + titles, linking to /spec/<id>)', async 
     assert.match(body, new RegExp(`/spec/${b}`));
     // unattached spec shows as "free"
     assert.match(body, /free/);
+    // the type column is rendered (these default to design-impl)
+    assert.match(body, /design-impl/);
   });
 });
 
