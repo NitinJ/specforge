@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { readMeta } from '../lib/meta.mjs';
 import { attach } from '../lib/attach.mjs';
 import {
-  cmdCreate, cmdImport, cmdOpen, cmdList, cmdListall, cmdDetach,
+  cmdCreate, cmdImport, cmdOpen, cmdStart, cmdList, cmdListall, cmdDetach,
 } from '../lib/specforge-cli.mjs';
 
 let home;
@@ -80,6 +80,11 @@ test('list shows only this session’s specs', async () => {
   await cmdCreate({ title: 'C' }, deps('sess-2'));
   const { rows } = await cmdList({}, deps('sess-1'));
   assert.deepEqual(rows.map((r) => r.id).sort(), [a.id, b.id].sort());
+});
+
+test('start ensures the daemon and returns the index url', async () => {
+  const { url } = await cmdStart({}, deps());
+  assert.equal(url, 'http://127.0.0.1:4180/');
 });
 
 test('listall shows every spec with its attached state', async () => {
