@@ -18,9 +18,12 @@ allowed-tools: Read, Bash, AskUserQuestion
 - **All specs** (mode "all"): `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" listall`
 - **This session's specs** (mode "mine"): `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list`
 
-Both ensure the daemon is up and return `session` (this session's id) plus `rows`
+Each returns `session` (this session's id) plus `rows`
 (`{ id, title, status, attached }`, where `attached` is a session id or `free`).
-`listall` also returns `indexUrl`.
+`listall` also ensures the daemon is up and returns `indexUrl`; `list` reads
+straight from the store (no daemon needed). The picker's actions handle the
+daemon themselves: `open` starts it when needed and returns a URL, while `detach`
+is store-only — so both work whether or not the daemon was already running.
 
 ## Present the result
 
