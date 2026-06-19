@@ -125,25 +125,15 @@
   font: 500 12px/1 system-ui, sans-serif; padding: 8px 11px; cursor: pointer; }
 .sf-ghost:hover { color: var(--sf-ink); border-color: var(--sf-muted); }
 
-/* lifecycle action button — the primary CTA, a pill left of the launcher */
-#sf-action {
-  position: fixed; right: 76px; bottom: 22px; z-index: 48;
-  border: 1px solid var(--sf-line); border-radius: 999px; cursor: pointer;
-  background: var(--sf-panel); color: var(--sf-ink); box-shadow: 0 8px 24px rgba(0,0,0,.3);
-  font: 700 12px/1 system-ui, sans-serif; padding: 10px 16px; transition: transform .1s ease;
-}
-#sf-action:hover:not(:disabled) { transform: translateY(-1px); }
-#sf-action:disabled { cursor: default; opacity: .8; box-shadow: none; }
-#sf-action[data-state="needs"], .sf-act[data-state="needs"] { background: var(--sf-amber); color: #08101f; border-color: transparent; }
-#sf-action[data-state="lgtm"], .sf-act[data-state="lgtm"] { background: var(--sf-green); color: #08101f; border-color: transparent; }
-#sf-action[data-state="impl"], .sf-act[data-state="impl"] { background: var(--sf-accent); color: #08101f; border-color: transparent; }
-#sf-action[data-state="working"], .sf-act[data-state="working"] { color: var(--sf-accent); border-color: var(--sf-accent); }
-#sf-action[data-state="replied"], .sf-act[data-state="replied"] { color: var(--sf-accent); border-color: var(--sf-accent); }
-#sf-action[data-state="done"], .sf-act[data-state="done"] { color: var(--sf-green); border-color: var(--sf-green); }
-#sf-action[data-state="closed"], #sf-action[data-state="other"], #sf-action[data-state="awaiting"],
+/* lifecycle action button state colors — the CTA lives only in the sidebar command
+   bar (.sf-act); its base style is the `.sf-act` rule under the sidebar footer. */
+.sf-act[data-state="needs"] { background: var(--sf-amber); color: #08101f; border-color: transparent; }
+.sf-act[data-state="lgtm"] { background: var(--sf-green); color: #08101f; border-color: transparent; }
+.sf-act[data-state="impl"] { background: var(--sf-accent); color: #08101f; border-color: transparent; }
+.sf-act[data-state="working"] { color: var(--sf-accent); border-color: var(--sf-accent); }
+.sf-act[data-state="replied"] { color: var(--sf-accent); border-color: var(--sf-accent); }
+.sf-act[data-state="done"] { color: var(--sf-green); border-color: var(--sf-green); }
 .sf-act[data-state="closed"], .sf-act[data-state="other"], .sf-act[data-state="awaiting"] { color: var(--sf-muted); }
-/* the open sidebar carries the lifecycle action in its footer → hide the floating pill */
-body.sf-side-open #sf-action { display: none; }
 
 /* SpecForge launcher — the single floating control */
 #sf-launcher {
@@ -221,7 +211,7 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
    spec, and keep atomic blocks from splitting across pages. The spec's own CSS
    (and the print dialog's "Background graphics" toggle) drive the look. */
 @media print {
-  #sf-sidebar, #sf-launcher, #sf-menu, #sf-action, #sf-compose, #sf-toc, #sf-live { display: none !important; }
+  #sf-sidebar, #sf-launcher, #sf-menu, #sf-compose, #sf-toc, #sf-live { display: none !important; }
   .sf-hover, .sf-block-mark { outline: none !important; background: none !important; }
   h1, h2, h3, h4, h5, h6 { break-after: avoid-page; }
   figure, table, pre, blockquote, .panel, .card, .callout, .stat { break-inside: avoid; }
