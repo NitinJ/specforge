@@ -57,6 +57,14 @@ async function bootReviewLayer(t, opts = {}) {
     }
     return Promise.resolve({ text: () => Promise.resolve(threadsJson) });
   };
+  // Optionally stub the body's computed background so the theme-detection logic
+  // (which reads body-background luminance) is deterministic — jsdom has no real
+  // CSS engine, so without this getComputedStyle returns no usable color.
+  if (opts.computedBg) {
+    const origGCS = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (el, ps) =>
+      (el === window.document.body ? { backgroundColor: opts.computedBg(window) } : origGCS(el, ps));
+  }
   await new Promise((r) => window.setTimeout(r, 0));
   window.eval(REVIEW_JS); // deferred-script execution → boot() via the readyState check
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
@@ -137,6 +145,32 @@ test('the Theme row toggles data-theme on <html>', async (t) => {
   assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'first toggle → dark (away from rendered light)');
   theme.click();
   assert.equal(document.documentElement.getAttribute('data-theme'), 'light', 'second toggle → light');
+});
+
+test('Theme row reflects the actually-rendered theme and switches a multi-theme spec', async (t) => {
+  // A spec that honors [data-theme]: the body background flips with the attribute.
+  const computedBg = (w) => (w.document.documentElement.getAttribute('data-theme') === 'dark'
+    ? 'rgb(15, 17, 21)' : 'rgb(251, 250, 247)');
+  const { window } = await bootReviewLayer(t, { computedBg });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const theme = rowByLabel(document, 'Theme');
+  assert.equal(theme.disabled, false, 'a multi-theme spec is switchable');
+  assert.equal(theme.querySelector('.sf-row-val').textContent, 'light',
+    'reflects the rendered light theme — not a hardcoded "dark" default');
+  theme.click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'toggles to dark');
+});
+
+test('Theme row is shown as fixed (disabled) when the spec defines a single theme', async (t) => {
+  // An imported spec that ignores [data-theme]: the body background never changes.
+  const { window } = await bootReviewLayer(t, { computedBg: () => 'rgb(244, 239, 230)' });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const theme = rowByLabel(document, 'Theme');
+  assert.ok(theme.disabled, 'a single-theme spec cannot be re-themed by the toggle');
+  assert.match(theme.querySelector('.sf-row-val').textContent, /light · fixed/,
+    'shows the actual (light) theme, marked fixed — the selector never lies');
 });
 
 test('hovering a block highlights it; moving moves the highlight', async (t) => {
@@ -261,7 +295,7 @@ const REPLIED_THREAD = [{
 
 test('action button: an unsubmitted comment → "Submit comments" and submits the batch', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.ok(btn, 'action button present');
   assert.equal(btn.getAttribute('data-state'), 'needs');
   assert.match(btn.textContent, /Submit comments/);
@@ -272,7 +306,7 @@ test('action button: an unsubmitted comment → "Submit comments" and submits th
 
 test('action button: all comments resolved, not yet approved → "LGTM" and approves', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'in_review' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'lgtm');
   btn.click();
   await tick(window);
@@ -282,7 +316,7 @@ test('action button: all comments resolved, not yet approved → "LGTM" and appr
 
 test('action button: all resolved AND approved → "Implement →" and sets implementing', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'approved' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'impl');
   assert.match(btn.textContent, /Implement/);
   btn.click();
@@ -293,14 +327,14 @@ test('action button: all resolved AND approved → "Implement →" and sets impl
 
 test('action button: an unsubmitted comment overrides approved status → "Submit comments"', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'approved' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'needs', 'open comment takes priority over approved');
   assert.match(btn.textContent, /Submit comments/);
 });
 
 test('action button: submitted but unresolved → "Awaiting response" (disabled, nothing to submit)', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'in_review' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'awaiting');
   assert.match(btn.textContent, /Awaiting/);
   assert.ok(btn.disabled, 'no submit action once the batch is already submitted');
@@ -308,13 +342,13 @@ test('action button: submitted but unresolved → "Awaiting response" (disabled,
 
 test('action button: a submitted-but-open comment still blocks Implement on an approved doc', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'approved' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'awaiting', 'an unresolved comment overrides approved → not Implement');
 });
 
 test('action button: agent replied to every open thread → "Review replies", clicking opens the sidebar', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: REPLIED_THREAD, meta: { status: 'in_review' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'replied', 'replied thread is no longer "awaiting"');
   assert.match(btn.textContent, /Review replies/);
   assert.equal(btn.disabled, false, 'Review replies is actionable');
@@ -329,22 +363,29 @@ test('action button: one unanswered thread keeps "Awaiting response" even when a
       anchor: { block: { index: 1, tag: 'P', text: 'Second.', sectionPath: [] } } },
   ];
   const { window } = await bootReviewLayer(t, { threads, meta: { status: 'in_review' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'awaiting', 'still waiting while any open thread is unanswered');
 });
 
 test('action button: an unknown status is an inert display (no silent approve)', async (t) => {
   const { window } = await bootReviewLayer(t, { meta: { status: 'cancelled' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'other');
   assert.ok(btn.disabled, 'an unrecognized status carries no action');
 });
 
 test('action button: implementing is a disabled status display', async (t) => {
   const { window } = await bootReviewLayer(t, { meta: { status: 'implementing' } });
-  const btn = window.document.getElementById('sf-action');
+  const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'working');
   assert.ok(btn.disabled, 'no action while implementing');
+});
+
+test('there is no floating action pill — the lifecycle CTA lives only in the sidebar footer', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  const { document } = window;
+  assert.equal(document.getElementById('sf-action'), null, 'the floating #sf-action pill is gone');
+  assert.ok(document.querySelector('#sf-sidebar .sf-side-foot .sf-act'), 'the CTA is in the sidebar command bar');
 });
 
 test('resolve-all shows when threads are open and posts resolve-all', async (t) => {

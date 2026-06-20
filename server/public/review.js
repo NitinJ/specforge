@@ -41,8 +41,48 @@
   }
 
   // ---------- theme (review-layer owned) ----------
+  // The review layer drives theme via the [data-theme] attribute on <html>, which
+  // every house spec wires to a full light/dark variable set. To keep the menu's
+  // Theme value honest we read what's ACTUALLY rendered (body background luminance)
+  // rather than trusting the attribute or the OS media query — an imported spec may
+  // ignore data-theme entirely. Such single-theme specs are detected once and their
+  // Theme row is shown as fixed (the toggle can't re-theme hardcoded colors).
   var THEME_KEY = 'sf-theme';
+  // body background as [r,g,b], or null when nothing is actually painted (e.g. jsdom
+  // has no CSS engine, or a transparent body) — then we can't detect from pixels.
+  function bodyBg() {
+    var bg = ((window.getComputedStyle(document.body) || {}).backgroundColor || '').trim();
+    if (!bg || bg === 'transparent') return null;
+    var m = bg.match(/[\d.]+/g);
+    if (!m) return null;
+    if (m.length >= 4 && parseFloat(m[3]) === 0) return null; // fully transparent
+    return [parseFloat(m[0]) || 0, parseFloat(m[1]) || 0, parseFloat(m[2]) || 0];
+  }
+  function renderedTheme() {
+    var rgb = bodyBg();
+    if (!rgb) return null;
+    var lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    return lum < 128 ? 'dark' : 'light';
+  }
+  // Does this spec actually respond to [data-theme]? Probe once: flip the attribute,
+  // see if the painted background changes, then restore. Cached — the spec's CSS is
+  // static. When pixels aren't readable (null) we assume it's switchable.
+  var _themeSupported = null;
+  function specSupportsTheme() {
+    if (_themeSupported !== null) return _themeSupported;
+    var rgb = bodyBg();
+    if (!rgb) { _themeSupported = true; return true; }
+    var root = document.documentElement;
+    var had = root.hasAttribute('data-theme');
+    var prev = root.getAttribute('data-theme');
+    root.setAttribute('data-theme', renderedTheme() === 'dark' ? 'light' : 'dark');
+    var changed = String(bodyBg()) !== String(rgb);
+    if (had) root.setAttribute('data-theme', prev); else root.removeAttribute('data-theme');
+    _themeSupported = changed;
+    return changed;
+  }
   function applyTheme(next) {
+    if (!specSupportsTheme()) return; // single-theme spec — nothing to switch
     var root = document.documentElement;
     if (next == null) next = localStorage.getItem(THEME_KEY);
     if (next !== 'light' && next !== 'dark') return; // honor the spec/OS default
@@ -51,8 +91,9 @@
   function currentTheme() {
     var a = document.documentElement.getAttribute('data-theme');
     if (a === 'light' || a === 'dark') return a;
-    // No explicit choice yet → reflect what's actually rendered (OS preference).
-    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    // No explicit choice yet → reflect what's actually rendered, else the OS hint.
+    return renderedTheme() ||
+      ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light');
   }
   function toggleTheme() {
     var next = currentTheme() === 'light' ? 'dark' : 'light';
@@ -137,13 +178,13 @@
       };
     });
 
-    // Footer lifecycle action — same state machine + handler as the floating pill,
-    // but hosted in the sidebar so the controls never overlap the floating launcher.
+    // Lifecycle action — the single primary CTA, hosted in the sidebar command bar
+    // (the comments bar). There's no floating pill; the launcher's pending badge is
+    // the at-a-glance signal, and the CTA lives where the review controls already are.
     els.footAction = create('button', { class: 'sf-act', type: 'button' });
     els.footAction.onclick = onAction;
     els.sidebar.querySelector('.sf-foot-action').appendChild(els.footAction);
 
-    buildAction();
     buildLauncher();
 
     document.addEventListener('mousemove', onHover);
@@ -151,7 +192,7 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { clearHover(); hideCompose(); closeMenu(); } });
   }
 
-  // Sidebar open/close — also flags the body so the floating launcher/action can
+  // Sidebar open/close — also flags the body so the floating launcher can
   // get out of the sidebar's way (CSS: body.sf-side-open).
   function setSidebar(open) {
     els.sidebar.classList.toggle('open', open);
@@ -160,8 +201,9 @@
   function toggleSidebar() { setSidebar(!els.sidebar.classList.contains('open')); }
 
   // ---------- lifecycle action button ----------
-  // One contextual primary CTA. Once implementation has started the button is just
-  // a status display; before that it follows comments → review → approval:
+  // One contextual primary CTA, rendered in the sidebar command bar (the comments
+  // bar). Once implementation has started the button is just a status display;
+  // before that it follows comments → review → approval:
   //   unsubmitted comment(s)          → "Submit comments"   (freeze a batch for the agent)
   //   submitted, agent not yet replied→ "Awaiting response" (disabled; agent is working)
   //   agent replied to every thread   → "Review replies"    (read them, then resolve)
@@ -170,11 +212,6 @@
   //   implementing / done / closed    → status display (no action)
   // Open comments take priority over `approved`, so new feedback on an approved
   // doc reverts the CTA away from "Implement →".
-  function buildAction() {
-    els.action = create('button', { id: 'sf-action', type: 'button' });
-    els.action.onclick = onAction;
-    document.body.appendChild(els.action);
-  }
   function actionState() {
     var status = (state.meta && state.meta.status) || 'draft';
     if (status === 'implementing') return { label: 'Implementing…', state: 'working', act: null };
@@ -196,7 +233,6 @@
   }
   function renderAction() {
     var s = actionState();
-    applyAction(els.action, s);
     applyAction(els.footAction, s);
     if (els.footCaption) {
       var p = pendingCount();
@@ -320,11 +356,17 @@
     return row;
   }
   function themeRow() {
-    var cur = currentTheme();
+    var supported = specSupportsTheme();
+    var shown = supported ? currentTheme() : (renderedTheme() || currentTheme());
     var row = menuRow('◐', 'Theme', null);
-    var val = create('span', { class: 'sf-row-val' }, cur);
+    var val = create('span', { class: 'sf-row-val' }, supported ? shown : shown + ' · fixed');
     row.querySelector('.sf-row-main').appendChild(val);
-    row.onclick = function () { val.textContent = toggleTheme(); };
+    if (supported) {
+      row.onclick = function () { val.textContent = toggleTheme(); };
+    } else {
+      row.disabled = true;
+      row.setAttribute('title', 'This spec defines a single theme');
+    }
     return row;
   }
   // Session row — shows which session owns this spec + a Detach button.
@@ -578,7 +620,7 @@
   function inUI(t) {
     while (t) {
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
-          t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-action') return true;
+          t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc') return true;
       t = t.parentElement;
     }
     return false;
