@@ -192,7 +192,7 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { clearHover(); hideCompose(); closeMenu(); } });
   }
 
-  // Sidebar open/close — also flags the body so the floating launcher/action can
+  // Sidebar open/close — also flags the body so the floating launcher can
   // get out of the sidebar's way (CSS: body.sf-side-open).
   function setSidebar(open) {
     els.sidebar.classList.toggle('open', open);
