@@ -75,37 +75,65 @@ function relativeTime(ms, now = Date.now()) {
   return mo < 12 ? `${mo}mo ago` : `${Math.floor(mo / 12)}y ago`;
 }
 
+/** Order specs into collection groups: named collections (alpha) then Uncollected. */
+function groupByCollection(specs) {
+  const groups = new Map();
+  for (const m of specs) {
+    const key = m.collection || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  }
+  const named = [...groups.keys()].filter((k) => k !== '')
+    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  const order = groups.has('') ? [...named, ''] : named;
+  return { order: order.map((k) => ({ key: k, specs: groups.get(k) })), named };
+}
+
+/** One spec row, with rename / tag / collection controls. */
+function rowHtml(m) {
+  const id = esc(m.id);
+  const titleRaw = m.title || 'Untitled';
+  const title = esc(titleRaw);
+  const rawType = m.type || DEFAULT_TYPE;
+  const rawStatus = m.status || 'draft';
+  const att = attachedLabel(m);
+  const tags = Array.isArray(m.tags) ? m.tags : [];
+  const coll = m.collection || '';
+  // lowercase haystack for search — RAW values (single outer esc() encodes once).
+  const key = esc(`${m.id} ${titleRaw} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'} ${tags.join(' ')} ${coll}`.toLowerCase());
+  const chips = tags.map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}<button class="x" type="button" title="Remove tag" aria-label="Remove tag">×</button></span>`).join('');
+  return `<tr data-k="${key}" data-id="${id}">
+  <td class="spec">
+    <div class="titlerow"><a class="title" href="/spec/${id}">${title}</a><button class="rename" type="button" title="Rename" aria-label="Rename">✎</button><input class="rename-in" type="text" value="${esc(titleRaw)}" aria-label="New name" hidden></div>
+    <div class="id">${id}</div>
+    <div class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></div>
+  </td>
+  <td><span class="badge t">${esc(rawType)}</span></td>
+  <td><span class="badge s s-${esc(rawStatus)}">${esc(rawStatus)}</span></td>
+  <td class="att">${att}</td>
+  <td class="upd">${esc(relativeTime(m.updated))}</td>
+  <td><input class="coll" list="collections" value="${esc(coll)}" placeholder="Uncollected" aria-label="Collection"></td>
+</tr>`;
+}
+
 export function renderIndex() {
   const theme = readGlobalPrefs().theme === 'dark' ? 'dark' : 'light';
   const specs = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
-  const rows = specs.map((m) => {
-    const id = esc(m.id);
-    const title = esc(m.title || 'Untitled');
-    const rawType = m.type || DEFAULT_TYPE;
-    const rawStatus = m.status || 'draft';
-    const type = esc(rawType);
-    const status = esc(rawStatus);
-    const att = attachedLabel(m);
-    // lowercase haystack for the client-side search filter — built from RAW values
-    // (the single outer esc() encodes once; pre-escaping would double-encode).
-    const key = esc(`${m.id} ${m.title || ''} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'}`.toLowerCase());
-    return `<tr data-k="${key}">
-  <td class="spec"><a href="/spec/${id}">${title}</a><div class="id">${id}</div></td>
-  <td><span class="badge t">${type}</span></td>
-  <td><span class="badge s s-${status}">${status}</span></td>
-  <td class="att">${att}</td>
-  <td class="upd">${esc(relativeTime(m.updated))}</td>
-</tr>`;
-  }).join('\n');
   const n = specs.length;
+  const { order, named } = groupByCollection(specs);
+  const datalist = `<datalist id="collections">${named.map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist>`;
+  const groups = order.map(({ key, specs: list }) => `<section class="grp">
+  <h2>${key === '' ? 'Uncollected' : esc(key)} <span class="gcount">${list.length}</span></h2>
+  <div class="card"><table><tbody>${list.map(rowHtml).join('\n')}</tbody></table></div>
+</section>`).join('\n');
   return `<!DOCTYPE html><html lang="en" data-theme="${theme}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>SpecForge</title>
 <style>
-  :root[data-theme="light"]{--bg:#fbfaf7;--panel:#fff;--ink:#1f2329;--muted:#5c6470;--line:#e6e3dc;--accent:#2f6feb;--green:#1a7f37;--amber:#9a6700;--row:#fff}
-  :root[data-theme="dark"]{--bg:#0f1115;--panel:#161922;--ink:#e6e8ee;--muted:#9aa3b2;--line:#2a2f3a;--accent:#6ea8fe;--green:#3fb950;--amber:#d29922;--row:#161922}
+  :root[data-theme="light"]{--bg:#fbfaf7;--panel:#fff;--ink:#1f2329;--muted:#5c6470;--line:#e6e3dc;--accent:#2f6feb;--green:#1a7f37;--amber:#9a6700;--red:#cf222e;--row:#fff}
+  :root[data-theme="dark"]{--bg:#0f1115;--panel:#161922;--ink:#e6e8ee;--muted:#9aa3b2;--line:#2a2f3a;--accent:#6ea8fe;--green:#3fb950;--amber:#d29922;--red:#f85149;--row:#161922}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  .wrap{max-width:960px;margin:0 auto;padding:40px 24px 64px}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 24px 64px}
   header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}
   h1{font-size:22px;margin:0;font-weight:700} h1 span{color:var(--accent)}
   .count{color:var(--muted);font-size:13px}
@@ -114,39 +142,45 @@ export function renderIndex() {
   .search:focus{outline:none;border-color:var(--accent)}
   .toggle{padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font-size:13px;cursor:pointer}
   .toggle:hover{border-color:var(--accent)}
+  .grp{margin-bottom:22px}
+  .grp h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;margin:0 0 8px 2px}
+  .grp h2 .gcount{opacity:.65;font-weight:400;margin-left:4px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
   table{border-collapse:collapse;width:100%}
-  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
   tr:last-child td{border-bottom:none}
-  th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
   tbody tr:hover{background:color-mix(in srgb,var(--accent) 7%,transparent)}
   a{color:var(--ink);text-decoration:none;font-weight:600} a:hover{color:var(--accent)}
+  .titlerow{display:flex;align-items:center;gap:6px}
+  .rename{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .1s;padding:0}
+  tr:hover .rename{opacity:1} .rename:hover{color:var(--accent)}
+  .rename-in{padding:4px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:14px;min-width:220px}
   .spec .id{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted);font-weight:400;margin-top:2px}
+  .tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:5px}
+  .chip{display:inline-flex;align-items:center;gap:3px;font-size:11px;background:color-mix(in srgb,var(--accent) 10%,transparent);border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line));border-radius:999px;padding:1px 4px 1px 8px}
+  .chip .x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;padding:0} .chip .x:hover{color:var(--red)}
+  .addtag{font-size:11px;color:var(--muted);background:none;border:1px dashed var(--line);border-radius:999px;padding:1px 8px;cursor:pointer} .addtag:hover{color:var(--accent);border-color:var(--accent)}
+  .addtag-in{font-size:12px;padding:2px 8px;border:1px solid var(--accent);border-radius:999px;background:var(--bg);color:var(--ink);width:110px}
   .badge{display:inline-block;font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:1px 9px;color:var(--muted);white-space:nowrap}
   .s{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
   .s-approved,.s-done{color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
   .s-in_review{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 40%,var(--line))}
   .s-draft,.s-closed{color:var(--muted);border-color:var(--line)}
   .att{color:var(--muted);font-size:13px} .upd{color:var(--muted);font-size:13px;white-space:nowrap}
+  .coll{width:130px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font-size:12.5px}
+  .coll:focus{outline:none;border-color:var(--accent)}
   .empty{color:var(--muted);padding:48px 0;text-align:center}
   #nohits{display:none;color:var(--muted);padding:32px 0;text-align:center}
-  @media(max-width:640px){.upd,th.upd-h{display:none}}
+  @media(max-width:680px){.upd,.att{display:none}}
 </style></head><body><div class="wrap">
 <header>
   <h1><span>Spec</span>Forge</h1>
   <span class="count" id="count">${n} spec${n === 1 ? '' : 's'}</span>
   <span class="spacer"></span>
-  <input class="search" id="search" type="search" placeholder="Search specs…" autocomplete="off" aria-label="Search specs">
+  <input class="search" id="search" type="search" placeholder="Search specs, tags, collections…" autocomplete="off" aria-label="Search">
   <button class="toggle" id="theme" type="button" aria-label="Toggle theme">${theme === 'dark' ? '☾ Dark' : '☀ Light'}</button>
 </header>
-${n
-    ? `<div class="card"><table>
-<thead><tr><th>spec</th><th>type</th><th>status</th><th>session</th><th class="upd-h">updated</th></tr></thead>
-<tbody id="rows">
-${rows}
-</tbody>
-</table></div>
-<div id="nohits">No specs match your search.</div>`
+${n ? `${datalist}\n<div id="groups">${groups}</div>\n<div id="nohits">No specs match your search.</div>`
     : '<p class="empty">No specs yet. Create one with <code>/specforge:create</code>.</p>'}
 </div>
 <script>
@@ -158,13 +192,73 @@ ${rows}
     btn.textContent=next==='dark'?'\\u263e Dark':'\\u2600 Light';
     try{fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:next})}).catch(function(){});}catch(e){}
   };
+
+  function api(id,path,method,body){return fetch('/api/spec/'+encodeURIComponent(id)+path,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
+  function tr(el){return el.closest('tr');}
+  function tagsOf(row){return [].slice.call(row.querySelectorAll('.chip')).map(function(c){return c.getAttribute('data-tag');});}
+  // Keep the search haystack in sync after an in-place edit (rename / tags) — else
+  // a search for the new name/tag wouldn't match the row until a reload.
+  function updateKey(row){
+    row.setAttribute('data-k',[row.getAttribute('data-id'),
+      row.querySelector('.title').textContent,
+      row.querySelector('.badge.t').textContent,
+      row.querySelector('.badge.s').textContent,
+      row.querySelector('.att').textContent,
+      tagsOf(row).join(' '),
+      row.querySelector('.coll').value].join(' ').toLowerCase());
+  }
+  function endRename(row){row.querySelector('.title').hidden=false;row.querySelector('.rename').hidden=false;row.querySelector('.rename-in').hidden=true;}
+  function endAddTag(row){row.querySelector('.addtag').hidden=false;row.querySelector('.addtag-in').hidden=true;}
+  function paintChips(row,tags){
+    var box=row.querySelector('.tags'), add=box.querySelector('.addtag');
+    [].slice.call(box.querySelectorAll('.chip')).forEach(function(c){c.remove();});
+    tags.forEach(function(t){
+      var s=document.createElement('span'); s.className='chip'; s.setAttribute('data-tag',t); s.textContent=t;
+      var x=document.createElement('button'); x.type='button'; x.className='x'; x.title='Remove tag'; x.setAttribute('aria-label','Remove tag'); x.textContent='\\u00d7';
+      s.appendChild(x); box.insertBefore(s,add);
+    });
+  }
+
+  document.addEventListener('click',function(e){
+    var t=e.target;
+    if(t.classList.contains('rename')){var r=tr(t);r.querySelector('.title').hidden=true;t.hidden=true;var i=r.querySelector('.rename-in');i.hidden=false;i.focus();i.select();}
+    else if(t.classList.contains('addtag')){var r2=tr(t);t.hidden=true;var a=r2.querySelector('.addtag-in');a.hidden=false;a.value='';a.focus();}
+    else if(t.classList.contains('x')){var r3=tr(t),chip=t.closest('.chip'),id=r3.getAttribute('data-id');
+      var next=tagsOf(r3).filter(function(x){return x!==chip.getAttribute('data-tag');});
+      api(id,'/organize','PATCH',{tags:next}).then(function(){chip.remove();updateKey(r3);}).catch(function(){});}
+  });
+
+  document.addEventListener('keydown',function(e){
+    var t=e.target;
+    if(t.classList.contains('rename-in')){
+      if(e.key==='Enter'){var r=tr(t),id=r.getAttribute('data-id'),v=t.value.trim();if(!v){endRename(r);return;}
+        api(id,'/rename','POST',{title:v}).then(function(x){return x.ok?x.json():null;}).then(function(d){if(d){r.querySelector('.title').textContent=d.title;t.value=d.title;updateKey(r);}endRename(r);}).catch(function(){endRename(r);});}
+      else if(e.key==='Escape'){endRename(tr(t));}
+    } else if(t.classList.contains('addtag-in')){
+      if(e.key==='Enter'){var r2=tr(t),id2=r2.getAttribute('data-id'),v2=t.value.trim(),cur=tagsOf(r2);
+        if(v2 && cur.map(function(x){return x.toLowerCase();}).indexOf(v2.toLowerCase())===-1){
+          api(id2,'/organize','PATCH',{tags:cur.concat([v2])}).then(function(x){return x.ok?x.json():null;}).then(function(d){if(d){paintChips(r2,d.tags);updateKey(r2);}endAddTag(r2);}).catch(function(){endAddTag(r2);});
+        } else {endAddTag(r2);}}
+      else if(e.key==='Escape'){endAddTag(tr(t));}
+    }
+  });
+
+  // Reassign collection → reload to regroup under the right header.
+  document.addEventListener('change',function(e){
+    if(e.target.classList.contains('coll')){var r=tr(e.target),id=r.getAttribute('data-id');
+      api(id,'/organize','PATCH',{collection:e.target.value}).then(function(){location.reload();}).catch(function(){});}
+  });
+
   var search=document.getElementById('search'), count=document.getElementById('count'), nohits=document.getElementById('nohits');
-  var rows=[].slice.call(document.querySelectorAll('#rows tr')), total=rows.length;
+  var rows=[].slice.call(document.querySelectorAll('tr[data-id]')), total=rows.length;
+  var grps=[].slice.call(document.querySelectorAll('.grp'));
   if(search) search.oninput=function(){
     var q=search.value.trim().toLowerCase(), shown=0;
-    rows.forEach(function(r){
-      var hit=!q||r.getAttribute('data-k').indexOf(q)!==-1;
-      r.style.display=hit?'':'none'; if(hit) shown++;
+    rows.forEach(function(r){var hit=!q||r.getAttribute('data-k').indexOf(q)!==-1;r.style.display=hit?'':'none';if(hit)shown++;});
+    grps.forEach(function(g){
+      var vis=[].slice.call(g.querySelectorAll('tr[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
+      var gc=g.querySelector('.gcount'); if(gc) gc.textContent=vis; // track the visible count
+      g.style.display=vis?'':'none';
     });
     if(count) count.textContent=q?(shown+' of '+total):(total+' spec'+(total===1?'':'s'));
     if(nohits) nohits.style.display=shown?'none':'block';
