@@ -372,6 +372,24 @@ test('action button: a submitted-but-open comment still blocks Implement on an a
   assert.equal(btn.getAttribute('data-state'), 'awaiting', 'an unresolved comment overrides approved → not Implement');
 });
 
+test('action button: a reopened thread with a fresh human comment → "Submit comments"', async (t) => {
+  // A previously-submitted thread (old comments carry batchId) the human reopened
+  // by adding a new, un-submitted comment — the CTA must light up again.
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [
+      { author: 'human', body: 'original', batchId: 'b1' },
+      { author: 'claude', body: 'addressed' },
+      { author: 'human', body: 'actually, reconsider' },
+    ],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+  }];
+  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'in_review' } });
+  const btn = window.document.querySelector('.sf-act');
+  assert.equal(btn.getAttribute('data-state'), 'needs');
+  assert.match(btn.textContent, /Submit comments/);
+});
+
 test('action button: agent replied to every open thread → "Review replies", clicking opens the sidebar', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: REPLIED_THREAD, meta: { status: 'in_review' } });
   const btn = window.document.querySelector('.sf-act');

@@ -565,8 +565,12 @@
   }
 
   function pendingCount() {
+    // A thread needs submitting if it's live (not resolved) and carries any
+    // un-submitted human comment — `some`, not `every`, so a reopened thread whose
+    // older comments were already submitted (have a batchId) still counts.
     return state.threads.filter(function (t) {
-      return t.state !== 'resolved' && t.comments.every(function (c) { return !c.batchId; });
+      return t.state !== 'resolved'
+        && t.comments.some(function (c) { return c.author === 'human' && !c.batchId; });
     }).length;
   }
   function renderLauncher() {
