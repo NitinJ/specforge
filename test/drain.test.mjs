@@ -8,11 +8,11 @@ import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
 import { attach, STALE_MS } from '../lib/attach.mjs';
 import { loadComments, saveComments, createThread } from '../lib/store-comments.mjs';
-import { submitBatch } from '../lib/store-inbox.mjs';
+import { submitBatch, reviewProgressForSpec } from '../lib/store-inbox.mjs';
 import { appendEvent } from '../lib/store-ledger.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { orphanedBatches, createDaemonDrain } from '../lib/store-watch.mjs';
-import { cmdComments, cmdReply, cmdBatchDone } from '../lib/specforge-cli.mjs';
+import { cmdComments, cmdReply, cmdBatchDone, cmdBatchWorking } from '../lib/specforge-cli.mjs';
 import { run as stopRun } from '../hooks/stop.mjs';
 import { run as upsRun } from '../hooks/user-prompt-submit.mjs';
 
@@ -50,6 +50,21 @@ test('pendingForSession returns the session’s submitted batches with titles', 
   assert.equal(pending[0].specId, id);
   assert.equal(pending[0].title, 'A');
   assert.deepEqual(pendingForSession('other'), []);
+});
+
+test('surfacing a batch to its owner marks it picked_up; the skill verb advances it to working', async () => {
+  const { id, batch } = specWithBatch('sess-1');
+  assert.equal(reviewProgressForSpec(id), null, 'fresh batch has no progress');
+
+  pendingForSession('sess-1'); // a hook surfacing the batch
+  assert.equal(reviewProgressForSpec(id), 'picked_up');
+
+  const w = await cmdBatchWorking({ id, batchId: batch.batchId });
+  assert.equal(w.ok, true);
+  assert.equal(reviewProgressForSpec(id), 'working');
+
+  pendingForSession('sess-1'); // a later hook must not regress working → picked_up
+  assert.equal(reviewProgressForSpec(id), 'working');
 });
 
 test('reviewReason names the batch and routes to review-spec', () => {

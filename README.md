@@ -142,10 +142,14 @@ The pill next to the SF button is one contextual call-to-action driven by the
 spec's comments + status:
 
 ```
-Submit comments → Awaiting response → Review replies → LGTM ✓ → Implement → → Implementing… → Done ✓
-   open comment     submitted, agent    agent replied;   all          approved      (work in the
-   (sends a batch)  is working          read & resolve   resolved                   attached session)
+Submit comments → Awaiting response → Picked up comments → Working on comments → Review replies → LGTM ✓ → Implement → → Implementing… → Done ✓
+   open comment     submitted, agent     the owning session    the review-spec       agent replied;   all          approved      (work in the
+   (sends a batch)  hasn't engaged       surfaced the batch    skill is amending     read & resolve   resolved                   attached session)
 ```
+
+The middle three track a submitted batch as the owning session works it: a hook
+marks it **picked up** when it surfaces the batch, and the review-spec skill marks
+it **working** when it starts amending — both reported via `meta.reviewProgress`.
 
 Status lives in `data-sf-spec-status` on the document root and the header badge:
 `draft → in_review → approved → implementing → done → closed`.

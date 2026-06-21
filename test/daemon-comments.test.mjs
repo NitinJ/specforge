@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { createDaemon } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
 import { loadComments } from '../lib/store-comments.mjs';
-import { listPendingForSpec } from '../lib/store-inbox.mjs';
+import { listPendingForSpec, advanceBatchProgress } from '../lib/store-inbox.mjs';
 import { attach } from '../lib/attach.mjs';
 
 let home;
@@ -121,6 +121,21 @@ test('POST detach frees the spec from its session', async () => {
   assert.equal(r.status, 200);
   const after = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
   assert.equal(after.attachedSession, null);
+});
+
+test('GET meta surfaces batch review progress (null → picked_up → working)', async () => {
+  const m0 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(m0.reviewProgress, null);
+
+  await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' });
+  const { batch } = await (await post(`/api/spec/${specId}/comments/submit`)).json();
+  advanceBatchProgress(specId, batch.batchId, 'picked_up');
+  const m1 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(m1.reviewProgress, 'picked_up');
+
+  advanceBatchProgress(specId, batch.batchId, 'working');
+  const m2 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(m2.reviewProgress, 'working');
 });
 
 test('POST comments/resolve-all resolves every open thread', async () => {

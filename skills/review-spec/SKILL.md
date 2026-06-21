@@ -41,7 +41,16 @@ This gives the whole shape (sections, plan, line ranges, token sizes) in a few
 hundred tokens — most of the raw HTML is boilerplate. Pull only the sections you
 touch.
 
-## 3. For each thread in the batch
+## 3. Mark the batch in-progress, then process each thread
+
+Before amending, signal you're actively on it — the browser's action button flips
+from "Picked up comments" to "Working on comments":
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" batch-working <id> <batchId>
+```
+
+Then, for each thread in the batch:
 
 1. **Locate** the commented block: grep a distinctive phrase from
    `anchor.block.text`, then open just that section (it reports the exact line

@@ -239,12 +239,15 @@
     if (pendingCount() > 0) return { label: 'Submit comments', state: 'needs', act: 'submit' };
     var unresolved = unresolvedCount();
     if (unresolved > 0) {
-      // All submitted. While any open thread still lacks a reply we're waiting on
-      // the agent; once every open thread is answered it's the human's turn to
-      // read the replies and resolve them.
-      return repliedCount() < unresolved
-        ? { label: 'Awaiting response', state: 'awaiting', act: null }
-        : { label: 'Review replies', state: 'replied', act: 'review' };
+      // All submitted. Once every open thread is answered it's the human's turn to
+      // read the replies; until then we surface how far the agent has got —
+      // Awaiting response → Picked up comments → Working on comments — from the
+      // batch progress the hooks + review-spec skill report via meta.reviewProgress.
+      if (repliedCount() >= unresolved) return { label: 'Review replies', state: 'replied', act: 'review' };
+      var prog = state.meta && state.meta.reviewProgress;
+      if (prog === 'working') return { label: 'Working on comments', state: 'reviewing', act: null };
+      if (prog === 'picked_up') return { label: 'Picked up comments', state: 'picked', act: null };
+      return { label: 'Awaiting response', state: 'awaiting', act: null };
     }
     if (status === 'approved') return { label: 'Implement →', state: 'impl', act: 'implement' };
     if (status === 'draft' || status === 'in_review') return { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
