@@ -15,11 +15,25 @@
   var SPEC_API = '/api/spec/' + encodeURIComponent(SPEC);
   var API = SPEC_API + '/comments';
 
+  // Per-spec UI prefs (theme/width/filter), embedded at serve time by inject.mjs.
+  // Source of truth is the store (origin/port-independent — survives a daemon port
+  // change, unlike localStorage), so a change PUTs back and updates this in place.
+  var PREFS = (window.SPECFORGE || {}).prefs || {};
+  function putPref(patch) {
+    for (var k in patch) PREFS[k] = patch[k];
+    try {
+      fetch(SPEC_API + '/prefs', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
   // Elements that can carry a comment. The innermost match under the pointer wins.
   var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,td,th,pre,blockquote,figure,.panel,.callout,.card,.stat,.loop .step,.matrix .q,.bar,.ns';
   var INTERACTIVE = 'a,button,input,textarea,select,summary,label';
 
-  var state = { threads: [], filter: 'open', active: null, meta: null };
+  var INIT_FILTER = (PREFS.filter === 'resolved' || PREFS.filter === 'all') ? PREFS.filter : 'open';
+  var state = { threads: [], filter: INIT_FILTER, active: null, meta: null };
   var els = {};
 
   // Submit shortcut label: ⌘↵ on Mac, Ctrl+↵ elsewhere (the handler accepts both).
@@ -47,7 +61,6 @@
   // rather than trusting the attribute or the OS media query — an imported spec may
   // ignore data-theme entirely. Such single-theme specs are detected once and their
   // Theme row is shown as fixed (the toggle can't re-theme hardcoded colors).
-  var THEME_KEY = 'sf-theme';
   // body background as [r,g,b], or null when nothing is actually painted (e.g. jsdom
   // has no CSS engine, or a transparent body) — then we can't detect from pixels.
   function bodyBg() {
@@ -69,7 +82,7 @@
   // static. When pixels aren't readable (null) we assume it's switchable.
   var _themeSupported = null;
   function specSupportsTheme() {
-    if (_themeSupported !== null) return _themeSupported;
+    if (_themeSupported != null) return _themeSupported; // != → treat null/undefined as uncached
     var rgb = bodyBg();
     if (!rgb) { _themeSupported = true; return true; }
     var root = document.documentElement;
@@ -84,7 +97,7 @@
   function applyTheme(next) {
     if (!specSupportsTheme()) return; // single-theme spec — nothing to switch
     var root = document.documentElement;
-    if (next == null) next = localStorage.getItem(THEME_KEY);
+    if (next == null) next = PREFS.theme;
     if (next !== 'light' && next !== 'dark') return; // honor the spec/OS default
     root.setAttribute('data-theme', next);
   }
@@ -98,12 +111,11 @@
   function toggleTheme() {
     var next = currentTheme() === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    putPref({ theme: next });
     return next;
   }
 
   // ---------- container width (review-layer owned) ----------
-  var WIDTH_KEY = 'sf-spec-width';
   function widthContainer() {
     return document.querySelector('.deck, .layout, main, article, .container, .wrap') || document.body;
   }
@@ -113,7 +125,7 @@
     try { c.style.maxWidth = px + 'px'; c.style.marginLeft = 'auto'; c.style.marginRight = 'auto'; } catch (e) {}
   }
   function startWidth() {
-    var saved = parseInt(localStorage.getItem(WIDTH_KEY), 10);
+    var saved = parseInt(PREFS.width, 10);
     if (saved) return saved;
     var w = widthContainer().getBoundingClientRect().width || 1040;
     return Math.min(1760, Math.max(820, Math.round(w / 20) * 20));
@@ -170,10 +182,13 @@
       postJSON(API + '/resolve-all').then(load).catch(function () { flash('Could not resolve threads.'); });
     };
     Array.prototype.forEach.call(els.sidebar.querySelectorAll('.sf-filter button'), function (b) {
+      // Reflect the persisted filter (the markup defaults "Open" to on).
+      b.classList.toggle('on', b.getAttribute('data-f') === state.filter);
       b.onclick = function () {
         state.filter = b.getAttribute('data-f');
         Array.prototype.forEach.call(els.sidebar.querySelectorAll('.sf-filter button'), function (x) { x.classList.remove('on'); });
         b.classList.add('on');
+        putPref({ filter: state.filter });
         renderSidebar();
       };
     });
@@ -351,7 +366,9 @@
     var px = startWidth();
     range.value = px;
     applyWidth(px);
-    range.oninput = function () { applyWidth(range.value); try { localStorage.setItem(WIDTH_KEY, range.value); } catch (e) {} };
+    // Apply live while dragging; persist once (on release) to avoid a PUT per pixel.
+    range.oninput = function () { applyWidth(range.value); };
+    range.onchange = function () { putPref({ width: parseInt(range.value, 10) }); };
     row.appendChild(range);
     return row;
   }

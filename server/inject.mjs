@@ -3,6 +3,7 @@
 // modified here — injection happens only in the HTTP response.
 
 import { renderLiveTracker } from '../lib/tracker.mjs';
+import { readPrefs } from '../lib/store-prefs.mjs';
 
 /**
  * @param {string} html raw spec HTML read from disk
@@ -15,7 +16,7 @@ export function injectReviewLayer(html, { specId }) {
   const head = `<link rel="stylesheet" href="/public/review.css">`;
   if (out.includes('</head>')) out = out.replace('</head>', `${head}\n</head>`);
 
-  const layer = reviewSnippet(specId);
+  const layer = reviewSnippet(specId, readPrefs(specId));
   if (out.includes('</body>')) {
     out = out.replace('</body>', `${layer}\n</body>`);
   } else {
@@ -24,11 +25,14 @@ export function injectReviewLayer(html, { specId }) {
   return out;
 }
 
-function reviewSnippet(specId) {
+function reviewSnippet(specId, prefs) {
   const id = JSON.stringify(specId);
+  // Embed the persisted per-spec prefs so review.js applies theme/width on boot
+  // with no flash and no extra round-trip.
+  const prefsJson = JSON.stringify(prefs || {});
   return `<!-- specforge:review-layer -->
 <div id="sf-live" class="sf-live">● live</div>
-<script>window.SPECFORGE = { specId: ${id} };</script>
+<script>window.SPECFORGE = { specId: ${id}, prefs: ${prefsJson} };</script>
 <script>
 (function(){
   var pill=document.getElementById('sf-live');
