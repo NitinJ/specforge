@@ -21,6 +21,7 @@
 import http from 'node:http';
 import { watch } from 'node:fs';
 import { listSpecs, DEFAULT_TYPE } from '../lib/meta.mjs';
+import { sessionDisplay } from '../lib/session-label.mjs';
 import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -48,11 +49,9 @@ function send(res, status, type, body) {
   res.end(body);
 }
 
-/** "attached?" cell: 'session abc12345' when owned, 'free' otherwise. */
+/** "attached?" cell: the friendly session label (folder · "prompt") when owned, 'free' otherwise. */
 function attachedLabel(meta) {
-  return meta.attachedSession
-    ? `session ${esc(String(meta.attachedSession).slice(0, 8))}`
-    : 'free';
+  return meta.attachedSession ? esc(sessionDisplay(meta)) : 'free';
 }
 
 function renderIndex() {

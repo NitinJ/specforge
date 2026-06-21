@@ -168,8 +168,9 @@ from the spec's own CSS variables:
 - **Composer** — a clean, auto-growing input (no drag-grip, system font),
   `⌘↵` / `Ctrl+↵` to send, with the commented block quoted for context.
 - **SpecForge launcher menu** — Comments, Contents (auto-built TOC when the spec
-  has none), Width, Theme (light/dark, persisted), Session (+ Detach), and
-  **Export PDF** (print → Save as PDF; the review chrome is stripped from the page).
+  has none), Width, Theme (light/dark), Session (shown as `folder · "first prompt"`
+  instead of a raw id, + Detach), and **Export PDF** (print → Save as PDF; the
+  review chrome is stripped from the page). Theme/width/filter persist per spec.
 - **Live reload** — editing the spec, or an agent reply, refreshes the open page
   over SSE.
 

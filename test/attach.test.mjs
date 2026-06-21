@@ -8,7 +8,7 @@ import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
 import { sessionPath } from '../lib/store-paths.mjs';
 import {
-  attach, detach, heartbeat, specsForSession, isStale, STALE_MS,
+  attach, detach, heartbeat, specsForSession, isStale, STALE_MS, recordFirstPrompt,
 } from '../lib/attach.mjs';
 
 let home;
@@ -80,6 +80,36 @@ test('detach frees the spec and drops it from the reverse index', () => {
   detach(id);
   assert.equal(readMeta(id).attachedSession, null);
   assert.deepEqual(specsForSession('sess-1'), []);
+});
+
+test('attach captures the project folder as the session label; detach clears it', () => {
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-1', '/home/nitin/workspace/figur');
+  assert.equal(readMeta(id).sessionCwd, 'figur');
+  detach(id);
+  assert.equal(readMeta(id).sessionCwd, null);
+  assert.equal(readMeta(id).sessionPrompt, null);
+});
+
+test('recordFirstPrompt stamps the first prompt once, then leaves it', () => {
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-1', '/tmp/proj');
+  assert.equal(recordFirstPrompt('sess-1', '  build the  thing\n'), 1);
+  assert.equal(readMeta(id).sessionPrompt, 'build the thing');
+  assert.equal(recordFirstPrompt('sess-1', 'a later prompt'), 0, 'not overwritten');
+  assert.equal(readMeta(id).sessionPrompt, 'build the thing');
+});
+
+test('reclaiming a stale lock resets the first prompt for the new owner', () => {
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-1', '/tmp/proj');
+  recordFirstPrompt('sess-1', 'first owner prompt');
+  const m = readMeta(id);
+  m.heartbeat = Date.now() - STALE_MS - 1;
+  writeMeta(id, m);
+  attach(id, 'sess-2', '/tmp/other');
+  assert.equal(readMeta(id).sessionPrompt, null, 'new owner starts fresh');
+  assert.equal(readMeta(id).sessionCwd, 'other');
 });
 
 test('heartbeat bumps every spec the session owns', () => {

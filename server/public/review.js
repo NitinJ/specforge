@@ -397,7 +397,10 @@
   function sessionRow() {
     var attached = state.meta && state.meta.attachedSession;
     var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
-    var label = attached ? 'Session ' + esc(String(attached).slice(0, 8)) : 'Not attached';
+    var friendly = state.meta && state.meta.sessionLabel;
+    var label = attached
+      ? esc(friendly || ('Session ' + String(attached).slice(0, 8)))
+      : 'Not attached';
     row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">🔗</span><span>' + label + '</span></span>';
     if (attached) {
       var btn = create('button', { class: 'sf-detach', type: 'button' }, 'Detach');
