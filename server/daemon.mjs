@@ -15,6 +15,8 @@
 //   POST /api/spec/<id>/comments/<tid>/resolve  → resolve a thread (human)
 //   GET/PUT  /api/spec/<id>/prefs               → per-spec UI prefs (theme/width/filter)
 //   GET/PUT  /api/prefs                         → store-wide UI prefs (index theme)
+//   POST /api/spec/<id>/rename                  → set title (meta + spec <h1>/<title>)
+//   PATCH /api/spec/<id>/organize               → set tags / collection
 //
 // ensureServer() (below) is the singleton entrypoint every v2 command calls:
 // reuse a healthy daemon if one is advertised, else acquire the lock, bind a
@@ -37,6 +39,7 @@ import {
   handleCommentReply, handleCommentResolve, handleSubmit,
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
+  handleRename, handleOrganize,
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
 
@@ -296,6 +299,20 @@ export function createDaemon() {
           .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });
+    }
+    const rename = path.match(/^\/api\/spec\/([\w-]+)\/rename$/);
+    if (rename) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((b) => handleRename(rename[1], b, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+    const organize = path.match(/^\/api\/spec\/([\w-]+)\/organize$/);
+    if (organize) {
+      if (method !== 'PATCH') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((b) => handleOrganize(organize[1], b, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
     const det = path.match(/^\/api\/spec\/([\w-]+)\/detach$/);
     if (det) {
