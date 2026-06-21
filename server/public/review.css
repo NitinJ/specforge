@@ -14,6 +14,39 @@
   --sf-side-w: 340px;
 }
 
+/* The review layer sets [data-theme] on <html>, but most specs only expose
+   --ink/--line/--accent — not the surface vars --panel/--panel2/--muted. With a
+   single var() fallback those surfaces stay DARK in light mode (dark panels +
+   flipped text = unreadable). Re-map the same spec vars with LIGHT fallbacks when
+   light is selected, so the chrome follows the theme even when the spec omits
+   them; a spec that does define --panel etc. still wins (the blend is preserved). */
+:root[data-theme="light"] {
+  --sf-panel: var(--panel, #ffffff);
+  --sf-panel2: var(--panel2, #f1f3f5);
+  --sf-ink: var(--ink, #1f2329);
+  --sf-muted: var(--muted, #5c6470);
+  --sf-line: var(--line, #d8dce2);
+  --sf-accent: var(--accent, #2f6feb);
+  --sf-green: var(--green, #1a7f37);
+  --sf-amber: var(--amber, #9a6700);
+  --sf-red: var(--red, #cf222e);
+}
+/* No explicit choice persisted yet → follow the OS, mirroring how house specs
+   fall back via prefers-color-scheme. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --sf-panel: var(--panel, #ffffff);
+    --sf-panel2: var(--panel2, #f1f3f5);
+    --sf-ink: var(--ink, #1f2329);
+    --sf-muted: var(--muted, #5c6470);
+    --sf-line: var(--line, #d8dce2);
+    --sf-accent: var(--accent, #2f6feb);
+    --sf-green: var(--green, #1a7f37);
+    --sf-amber: var(--amber, #9a6700);
+    --sf-red: var(--red, #cf222e);
+  }
+}
+
 /* live-status pill — relocated into the launcher menu footer by review.js.
    Hidden until then so it never renders as a stray block in the document flow. */
 .sf-live { display: none; }

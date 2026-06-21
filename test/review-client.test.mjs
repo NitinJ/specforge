@@ -45,11 +45,12 @@ async function bootReviewLayer(t, opts = {}) {
   // review.js installs a setInterval poll; close the window after the test so
   // the timer is cleared and the test runner can exit.
   t.after(() => window.close());
-  window.SPECFORGE = { specId: 'test-spec' };
+  window.SPECFORGE = { specId: 'test-spec', prefs: opts.prefs || {} };
   const posts = [];
+  const puts = [];
   window.fetch = (url, init) => {
-    if (init && init.method === 'POST') {
-      posts.push({ url, body: init.body ? JSON.parse(init.body) : {} });
+    if (init && (init.method === 'POST' || init.method === 'PUT')) {
+      (init.method === 'PUT' ? puts : posts).push({ url, body: init.body ? JSON.parse(init.body) : {} });
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }), text: () => Promise.resolve('{"ok":true}') });
     }
     if (String(url).indexOf('/meta') !== -1) {
@@ -69,7 +70,7 @@ async function bootReviewLayer(t, opts = {}) {
   window.eval(REVIEW_JS); // deferred-script execution → boot() via the readyState check
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
   await new Promise((r) => window.setTimeout(r, 0)); // flush load()/render microtasks
-  return { window, posts };
+  return { window, posts, puts };
 }
 
 const mouse = (window, el, type) => el.dispatchEvent(new window.MouseEvent(type, { bubbles: true }));
@@ -409,6 +410,47 @@ test('menu shows the attached session + a Detach button that posts /detach', asy
   detach.click();
   await tick(window);
   assert.ok(posts.some((p) => /\/detach$/.test(p.url)), 'Detach posts /detach');
+});
+
+// ---------- per-spec UI prefs (theme · width · filter) ----------
+test('injected prefs initialize theme, width and filter on boot', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { theme: 'dark', width: 1400, filter: 'all' } });
+  const { document } = window;
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'theme applied from prefs');
+  document.getElementById('sf-launcher').click();
+  const range = rowByLabel(document, 'Width').querySelector('input[type=range]');
+  assert.equal(range.value, '1400', 'width initialized from prefs');
+  const allBtn = document.querySelector('.sf-filter button[data-f="all"]');
+  assert.ok(allBtn.classList.contains('on'), 'persisted filter reflected as the active segment');
+});
+
+test('toggling the theme PUTs the new theme to /prefs', async (t) => {
+  const { window, puts } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  rowByLabel(document, 'Theme').click();
+  const p = puts.find((x) => /\/prefs$/.test(x.url));
+  assert.ok(p, 'a PUT to /prefs fired');
+  assert.equal(p.body.theme, 'dark', 'persists the toggled-to theme');
+});
+
+test('releasing the width slider PUTs the width to /prefs', async (t) => {
+  const { window, puts } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const range = rowByLabel(document, 'Width').querySelector('input[type=range]');
+  range.value = '1300';
+  range.dispatchEvent(new window.Event('change'));
+  const p = puts.find((x) => /\/prefs$/.test(x.url));
+  assert.ok(p && p.body.width === 1300, 'width persisted on change');
+});
+
+test('changing the comments filter PUTs it to /prefs', async (t) => {
+  const { window, puts } = await bootReviewLayer(t);
+  const { document } = window;
+  document.querySelector('.sf-filter button[data-f="resolved"]').click();
+  const p = puts.find((x) => /\/prefs$/.test(x.url));
+  assert.ok(p && p.body.filter === 'resolved', 'filter persisted on change');
 });
 
 test('menu shows "Not attached" with no Detach button when free', async (t) => {
