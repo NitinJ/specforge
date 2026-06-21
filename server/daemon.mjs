@@ -196,6 +196,17 @@ ${n ? `${datalist}\n<div id="groups">${groups}</div>\n<div id="nohits">No specs 
   function api(id,path,method,body){return fetch('/api/spec/'+encodeURIComponent(id)+path,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
   function tr(el){return el.closest('tr');}
   function tagsOf(row){return [].slice.call(row.querySelectorAll('.chip')).map(function(c){return c.getAttribute('data-tag');});}
+  // Keep the search haystack in sync after an in-place edit (rename / tags) — else
+  // a search for the new name/tag wouldn't match the row until a reload.
+  function updateKey(row){
+    row.setAttribute('data-k',[row.getAttribute('data-id'),
+      row.querySelector('.title').textContent,
+      row.querySelector('.badge.t').textContent,
+      row.querySelector('.badge.s').textContent,
+      row.querySelector('.att').textContent,
+      tagsOf(row).join(' '),
+      row.querySelector('.coll').value].join(' ').toLowerCase());
+  }
   function endRename(row){row.querySelector('.title').hidden=false;row.querySelector('.rename').hidden=false;row.querySelector('.rename-in').hidden=true;}
   function endAddTag(row){row.querySelector('.addtag').hidden=false;row.querySelector('.addtag-in').hidden=true;}
   function paintChips(row,tags){
@@ -203,7 +214,7 @@ ${n ? `${datalist}\n<div id="groups">${groups}</div>\n<div id="nohits">No specs 
     [].slice.call(box.querySelectorAll('.chip')).forEach(function(c){c.remove();});
     tags.forEach(function(t){
       var s=document.createElement('span'); s.className='chip'; s.setAttribute('data-tag',t); s.textContent=t;
-      var x=document.createElement('button'); x.type='button'; x.className='x'; x.title='Remove tag'; x.textContent='\\u00d7';
+      var x=document.createElement('button'); x.type='button'; x.className='x'; x.title='Remove tag'; x.setAttribute('aria-label','Remove tag'); x.textContent='\\u00d7';
       s.appendChild(x); box.insertBefore(s,add);
     });
   }
@@ -214,19 +225,19 @@ ${n ? `${datalist}\n<div id="groups">${groups}</div>\n<div id="nohits">No specs 
     else if(t.classList.contains('addtag')){var r2=tr(t);t.hidden=true;var a=r2.querySelector('.addtag-in');a.hidden=false;a.value='';a.focus();}
     else if(t.classList.contains('x')){var r3=tr(t),chip=t.closest('.chip'),id=r3.getAttribute('data-id');
       var next=tagsOf(r3).filter(function(x){return x!==chip.getAttribute('data-tag');});
-      api(id,'/organize','PATCH',{tags:next}).then(function(){chip.remove();}).catch(function(){});}
+      api(id,'/organize','PATCH',{tags:next}).then(function(){chip.remove();updateKey(r3);}).catch(function(){});}
   });
 
   document.addEventListener('keydown',function(e){
     var t=e.target;
     if(t.classList.contains('rename-in')){
       if(e.key==='Enter'){var r=tr(t),id=r.getAttribute('data-id'),v=t.value.trim();if(!v){endRename(r);return;}
-        api(id,'/rename','POST',{title:v}).then(function(x){return x.ok?x.json():null;}).then(function(d){if(d){r.querySelector('.title').textContent=d.title;t.value=d.title;}endRename(r);}).catch(function(){endRename(r);});}
+        api(id,'/rename','POST',{title:v}).then(function(x){return x.ok?x.json():null;}).then(function(d){if(d){r.querySelector('.title').textContent=d.title;t.value=d.title;updateKey(r);}endRename(r);}).catch(function(){endRename(r);});}
       else if(e.key==='Escape'){endRename(tr(t));}
     } else if(t.classList.contains('addtag-in')){
       if(e.key==='Enter'){var r2=tr(t),id2=r2.getAttribute('data-id'),v2=t.value.trim(),cur=tagsOf(r2);
         if(v2 && cur.map(function(x){return x.toLowerCase();}).indexOf(v2.toLowerCase())===-1){
-          api(id2,'/organize','PATCH',{tags:cur.concat([v2])}).then(function(x){return x.ok?x.json():null;}).then(function(d){if(d)paintChips(r2,d.tags);endAddTag(r2);}).catch(function(){endAddTag(r2);});
+          api(id2,'/organize','PATCH',{tags:cur.concat([v2])}).then(function(x){return x.ok?x.json():null;}).then(function(d){if(d){paintChips(r2,d.tags);updateKey(r2);}endAddTag(r2);}).catch(function(){endAddTag(r2);});
         } else {endAddTag(r2);}}
       else if(e.key==='Escape'){endAddTag(tr(t));}
     }
@@ -244,7 +255,11 @@ ${n ? `${datalist}\n<div id="groups">${groups}</div>\n<div id="nohits">No specs 
   if(search) search.oninput=function(){
     var q=search.value.trim().toLowerCase(), shown=0;
     rows.forEach(function(r){var hit=!q||r.getAttribute('data-k').indexOf(q)!==-1;r.style.display=hit?'':'none';if(hit)shown++;});
-    grps.forEach(function(g){var any=[].slice.call(g.querySelectorAll('tr[data-id]')).some(function(r){return r.style.display!=='none';});g.style.display=any?'':'none';});
+    grps.forEach(function(g){
+      var vis=[].slice.call(g.querySelectorAll('tr[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
+      var gc=g.querySelector('.gcount'); if(gc) gc.textContent=vis; // track the visible count
+      g.style.display=vis?'':'none';
+    });
     if(count) count.textContent=q?(shown+' of '+total):(total+' spec'+(total===1?'':'s'));
     if(nohits) nohits.style.display=shown?'none':'block';
   };

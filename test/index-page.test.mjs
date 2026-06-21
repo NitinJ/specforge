@@ -141,6 +141,20 @@ test('search filters rows + groups and updates the count', (t) => {
   assert.match(document.getElementById('count').textContent, /1 of 2/);
 });
 
+test('search updates per-group counts to the visible rows', (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  createSpec({ title: 'Beta', html: '<h1>B</h1>' });
+  setCollection(a, 'Launch'); // Alpha under "Launch", Beta under "Uncollected"
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const search = document.getElementById('search');
+  search.value = 'alpha';
+  search.dispatchEvent(new window.Event('input'));
+  const launch = [].slice.call(document.querySelectorAll('.grp')).find((g) => /Launch/.test(g.querySelector('h2').textContent));
+  assert.match(launch.querySelector('.gcount').textContent, /^1$/, 'Launch group shows 1 match');
+  assert.equal(launch.style.display !== 'none', true, 'matching group stays visible');
+});
+
 function enter(window, el) { el.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); }
 
 test('inline rename POSTs /rename and updates the title in place', async (t) => {
@@ -156,6 +170,7 @@ test('inline rename POSTs /rename and updates the title in place', async (t) => 
   const c = calls.find((x) => /\/rename$/.test(x.url));
   assert.ok(c && c.method === 'POST' && c.body.title === 'After', 'POST /rename {title:After}');
   assert.equal(document.querySelector('.title').textContent, 'After', 'title updated in place');
+  assert.match(document.querySelector('tr[data-id]').getAttribute('data-k'), /after/, 'search key refreshed after rename');
 });
 
 test('adding a tag PATCHes /organize and shows a chip', async (t) => {
@@ -169,7 +184,10 @@ test('adding a tag PATCHes /organize and shows a chip', async (t) => {
   await tick(window);
   const c = calls.find((x) => /\/organize$/.test(x.url));
   assert.ok(c && c.method === 'PATCH' && c.body.tags.indexOf('urgent') !== -1, 'PATCH /organize with the new tag');
-  assert.ok(document.querySelector('.chip[data-tag="urgent"]'), 'chip rendered');
+  const chip = document.querySelector('.chip[data-tag="urgent"]');
+  assert.ok(chip, 'chip rendered');
+  assert.equal(chip.querySelector('.x').getAttribute('aria-label'), 'Remove tag', 'dynamic chip × is labelled');
+  assert.match(document.querySelector('tr[data-id]').getAttribute('data-k'), /urgent/, 'search key includes the new tag');
 });
 
 test('removing a tag PATCHes /organize without it and drops the chip', async (t) => {
