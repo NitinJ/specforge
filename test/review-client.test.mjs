@@ -341,6 +341,31 @@ test('action button: submitted but unresolved → "Awaiting response" (disabled,
   assert.ok(btn.disabled, 'no submit action once the batch is already submitted');
 });
 
+test('action button: picked-up batch → "Picked up comments" (disabled)', async (t) => {
+  const meta = { status: 'in_review', attachedSession: null, reviewProgress: 'picked_up' };
+  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
+  const btn = window.document.querySelector('.sf-act');
+  assert.equal(btn.getAttribute('data-state'), 'picked');
+  assert.match(btn.textContent, /Picked up comments/);
+  assert.ok(btn.disabled, 'no action while the agent has it');
+});
+
+test('action button: working batch → "Working on comments" (disabled)', async (t) => {
+  const meta = { status: 'in_review', attachedSession: null, reviewProgress: 'working' };
+  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
+  const btn = window.document.querySelector('.sf-act');
+  assert.equal(btn.getAttribute('data-state'), 'reviewing');
+  assert.match(btn.textContent, /Working on comments/);
+  assert.ok(btn.disabled);
+});
+
+test('action button: a replied thread beats reviewProgress → "Review replies"', async (t) => {
+  const meta = { status: 'in_review', attachedSession: null, reviewProgress: 'working' };
+  const { window } = await bootReviewLayer(t, { threads: REPLIED_THREAD, meta });
+  const btn = window.document.querySelector('.sf-act');
+  assert.equal(btn.getAttribute('data-state'), 'replied', 'reply state wins once every open thread is answered');
+});
+
 test('action button: a submitted-but-open comment still blocks Implement on an approved doc', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'approved' } });
   const btn = window.document.querySelector('.sf-act');
