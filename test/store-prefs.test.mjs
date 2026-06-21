@@ -54,3 +54,9 @@ test('sanitize clamps width into [820,1760] and rounds it', () => {
   assert.equal(sanitizePrefs({ width: 1199.6 }).width, 1200);
   assert.equal('width' in sanitizePrefs({ width: 'wide' }), false);
 });
+
+test('sanitize drops non-number width (null/false/empty), not coercing to 0→820', () => {
+  assert.equal('width' in sanitizePrefs({ width: null }), false);
+  assert.equal('width' in sanitizePrefs({ width: false }), false);
+  assert.equal('width' in sanitizePrefs({ width: '' }), false);
+});

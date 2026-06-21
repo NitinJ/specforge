@@ -40,6 +40,11 @@
   var IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
   var MOD_HINT = IS_MAC ? '⌘↵' : 'Ctrl+↵';
 
+  // Initialized here (not at the theme section below) because boot() runs on the
+  // readyState check above — before that section's top-level code executes — and
+  // applyTheme() reads this; a mid-file init would leave it `undefined` on boot.
+  var _themeSupported = null;
+
   var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState !== 'loading') boot();
@@ -80,9 +85,8 @@
   // Does this spec actually respond to [data-theme]? Probe once: flip the attribute,
   // see if the painted background changes, then restore. Cached — the spec's CSS is
   // static. When pixels aren't readable (null) we assume it's switchable.
-  var _themeSupported = null;
   function specSupportsTheme() {
-    if (_themeSupported != null) return _themeSupported; // != → treat null/undefined as uncached
+    if (_themeSupported !== null) return _themeSupported;
     var rgb = bodyBg();
     if (!rgb) { _themeSupported = true; return true; }
     var root = document.documentElement;

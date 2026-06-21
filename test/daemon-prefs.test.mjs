@@ -64,7 +64,12 @@ test('PUT merges a partial patch and drops invalid values', async () => {
   assert.deepEqual((await r.json()).prefs, { theme: 'light', width: 1000 });
 });
 
-test('prefs endpoint 404s for an unknown spec', async () => {
+test('PUT prefs 404s for an unknown spec', async () => {
   const r = await put('/api/spec/deadbeef00/prefs', { theme: 'light' });
+  assert.equal(r.status, 404);
+});
+
+test('GET prefs 404s for an unknown spec', async () => {
+  const r = await fetch(`${base}/api/spec/deadbeef00/prefs`);
   assert.equal(r.status, 404);
 });
