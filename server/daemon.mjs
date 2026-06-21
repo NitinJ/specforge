@@ -22,6 +22,7 @@ import http from 'node:http';
 import { watch } from 'node:fs';
 import { listSpecs, DEFAULT_TYPE } from '../lib/meta.mjs';
 import { sessionDisplay } from '../lib/session-label.mjs';
+import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -33,7 +34,7 @@ import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
   handleCommentReply, handleCommentResolve, handleSubmit,
   handleMeta, handleStatus, handleResolveAll, handleDetach,
-  handlePrefsGet, handlePrefsPut,
+  handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
 
@@ -54,47 +55,115 @@ function attachedLabel(meta) {
   return meta.attachedSession ? esc(sessionDisplay(meta)) : 'free';
 }
 
-function renderIndex() {
+/** Compact "x ago" for the Updated column (empty when unknown). */
+function relativeTime(ms, now = Date.now()) {
+  if (!ms) return '';
+  const s = Math.max(0, Math.floor((now - ms) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  const mo = Math.floor(d / 30);
+  return mo < 12 ? `${mo}mo ago` : `${Math.floor(mo / 12)}y ago`;
+}
+
+export function renderIndex() {
+  const theme = readGlobalPrefs().theme === 'dark' ? 'dark' : 'light';
   const specs = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const rows = specs.map((m) => {
     const id = esc(m.id);
     const title = esc(m.title || 'Untitled');
-    return `<tr>
-  <td class="id"><a href="/spec/${id}">${id}</a></td>
-  <td><a href="/spec/${id}">${title}</a></td>
-  <td><span class="t">${esc(m.type || DEFAULT_TYPE)}</span></td>
-  <td><span class="s">${esc(m.status || 'draft')}</span></td>
-  <td class="att">${attachedLabel(m)}</td>
+    const type = esc(m.type || DEFAULT_TYPE);
+    const status = esc(m.status || 'draft');
+    const att = attachedLabel(m);
+    // lowercase haystack for the client-side search filter
+    const key = esc(`${m.id} ${m.title || ''} ${type} ${status} ${m.attachedSession ? sessionDisplay(m) : 'free'}`.toLowerCase());
+    return `<tr data-k="${key}">
+  <td class="spec"><a href="/spec/${id}">${title}</a><div class="id">${id}</div></td>
+  <td><span class="badge t">${type}</span></td>
+  <td><span class="badge s s-${status}">${status}</span></td>
+  <td class="att">${att}</td>
+  <td class="upd">${esc(relativeTime(m.updated))}</td>
 </tr>`;
   }).join('\n');
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+  const n = specs.length;
+  return `<!DOCTYPE html><html lang="en" data-theme="${theme}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>SpecForge</title>
 <style>
-  body{margin:0;background:#0f1115;color:#e6e8ee;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  .wrap{max-width:880px;margin:0 auto;padding:48px 24px}
-  h1{font-size:22px;margin:0 0 4px} h1 span{color:#6ea8fe}
-  .sub{color:#9aa3b2;font-size:14px;margin-bottom:24px}
+  :root[data-theme="light"]{--bg:#fbfaf7;--panel:#fff;--ink:#1f2329;--muted:#5c6470;--line:#e6e3dc;--accent:#2f6feb;--green:#1a7f37;--amber:#9a6700;--row:#fff}
+  :root[data-theme="dark"]{--bg:#0f1115;--panel:#161922;--ink:#e6e8ee;--muted:#9aa3b2;--line:#2a2f3a;--accent:#6ea8fe;--green:#3fb950;--amber:#d29922;--row:#161922}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:40px 24px 64px}
+  header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+  h1{font-size:22px;margin:0;font-weight:700} h1 span{color:var(--accent)}
+  .count{color:var(--muted);font-size:13px}
+  .spacer{flex:1}
+  .search{flex:1;min-width:160px;max-width:320px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font-size:14px}
+  .search:focus{outline:none;border-color:var(--accent)}
+  .toggle{padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font-size:13px;cursor:pointer}
+  .toggle:hover{border-color:var(--accent)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
   table{border-collapse:collapse;width:100%}
-  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #2a2f3a;vertical-align:top}
-  th{color:#9aa3b2;font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
-  a{color:#e6e8ee;text-decoration:none;font-weight:600} a:hover{color:#6ea8fe}
-  .id a{font-family:ui-monospace,Menlo,monospace;font-weight:500;color:#9aa3b2}
-  .s{color:#6ea8fe;font-size:11.5px;border:1px solid #2a2f3a;border-radius:999px;padding:1px 8px}
-  .t{color:#9aa3b2;font-size:11.5px;border:1px solid #2a2f3a;border-radius:999px;padding:1px 8px}
-  .att{color:#9aa3b2;font-size:13px;font-family:ui-monospace,Menlo,monospace}
-  .empty{color:#9aa3b2}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+  tbody tr:hover{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+  a{color:var(--ink);text-decoration:none;font-weight:600} a:hover{color:var(--accent)}
+  .spec .id{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted);font-weight:400;margin-top:2px}
+  .badge{display:inline-block;font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:1px 9px;color:var(--muted);white-space:nowrap}
+  .s{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+  .s-approved,.s-done{color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
+  .s-in_review{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 40%,var(--line))}
+  .s-draft,.s-closed{color:var(--muted);border-color:var(--line)}
+  .att{color:var(--muted);font-size:13px} .upd{color:var(--muted);font-size:13px;white-space:nowrap}
+  .empty{color:var(--muted);padding:48px 0;text-align:center}
+  #nohits{display:none;color:var(--muted);padding:32px 0;text-align:center}
+  @media(max-width:640px){.upd,th.upd-h{display:none}}
 </style></head><body><div class="wrap">
-<h1><span>Spec</span>Forge</h1>
-<div class="sub">${specs.length} spec${specs.length === 1 ? '' : 's'} in the store</div>
-${specs.length
-    ? `<table>
-<thead><tr><th>id</th><th>title</th><th>type</th><th>status</th><th>attached?</th></tr></thead>
-<tbody>
+<header>
+  <h1><span>Spec</span>Forge</h1>
+  <span class="count" id="count">${n} spec${n === 1 ? '' : 's'}</span>
+  <span class="spacer"></span>
+  <input class="search" id="search" type="search" placeholder="Search specs…" autocomplete="off" aria-label="Search specs">
+  <button class="toggle" id="theme" type="button" aria-label="Toggle theme">${theme === 'dark' ? '☾ Dark' : '☀ Light'}</button>
+</header>
+${n
+    ? `<div class="card"><table>
+<thead><tr><th>spec</th><th>type</th><th>status</th><th>session</th><th class="upd-h">updated</th></tr></thead>
+<tbody id="rows">
 ${rows}
 </tbody>
-</table>`
-    : '<p class="empty">No specs yet. Create one with the create command.</p>'}
-</div></body></html>`;
+</table></div>
+<div id="nohits">No specs match your search.</div>`
+    : '<p class="empty">No specs yet. Create one with <code>/specforge:create</code>.</p>'}
+</div>
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('theme');
+  if(btn) btn.onclick=function(){
+    var next=root.getAttribute('data-theme')==='dark'?'light':'dark';
+    root.setAttribute('data-theme',next);
+    btn.textContent=next==='dark'?'\\u263e Dark':'\\u2600 Light';
+    try{fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:next})}).catch(function(){});}catch(e){}
+  };
+  var search=document.getElementById('search'), count=document.getElementById('count'), nohits=document.getElementById('nohits');
+  var rows=[].slice.call(document.querySelectorAll('#rows tr')), total=rows.length;
+  if(search) search.oninput=function(){
+    var q=search.value.trim().toLowerCase(), shown=0;
+    rows.forEach(function(r){
+      var hit=!q||r.getAttribute('data-k').indexOf(q)!==-1;
+      r.style.display=hit?'':'none'; if(hit) shown++;
+    });
+    if(count) count.textContent=q?(shown+' of '+total):(total+' spec'+(total===1?'':'s'));
+    if(nohits) nohits.style.display=shown?'none':'block';
+  };
+})();
+</script>
+</body></html>`;
 }
 
 function serveSpec(id, res) {
@@ -156,6 +225,17 @@ export function createDaemon() {
     const url = new URL(req.url, 'http://localhost');
     const path = url.pathname;
     const method = req.method;
+
+    // --- Store-wide prefs (the index theme) ---
+    if (path === '/api/prefs') {
+      if (method === 'GET') return handleGlobalPrefsGet(res);
+      if (method === 'PUT') {
+        return readJsonBody(req)
+          .then((b) => handleGlobalPrefsPut(b, res))
+          .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
+    }
 
     // --- Comments API (store-keyed) ---
     const list = path.match(/^\/api\/spec\/([\w-]+)\/comments$/);
