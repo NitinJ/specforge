@@ -32,6 +32,23 @@ test('createThread + addComment lifecycle; claude reply flips to replied', () =>
   assert.equal(t.state, 'replied'); // human reply does not un-reply
 });
 
+test('a human reply to a resolved thread reopens it (resolved → open)', () => {
+  const store = { specId: 'id1', specPath: 'x.html', threads: [] };
+  const t = createThread(store, { anchor, body: 'why this?' });
+  resolveThread(store, t.id);
+  assert.equal(t.state, 'resolved');
+  addComment(store, t.id, { body: 'actually, reconsider', author: 'human' });
+  assert.equal(t.state, 'open', 'new human feedback reopens a resolved thread');
+});
+
+test('a claude reply to a resolved thread leaves it resolved', () => {
+  const store = { specId: 'id1', specPath: 'x.html', threads: [] };
+  const t = createThread(store, { anchor, body: 'q' });
+  resolveThread(store, t.id);
+  addComment(store, t.id, { body: 'fyi', author: 'claude' });
+  assert.equal(t.state, 'resolved');
+});
+
 test('editComment + resolveThread', () => {
   const store = { specId: 'id1', specPath: 'x.html', threads: [] };
   const t = createThread(store, { anchor, body: 'first' });

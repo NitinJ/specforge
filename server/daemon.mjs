@@ -13,6 +13,8 @@
 //   POST /api/spec/<id>/comments/submit         → freeze a review batch
 //   POST /api/spec/<id>/comments/<tid>/reply    → reply to a thread
 //   POST /api/spec/<id>/comments/<tid>/resolve  → resolve a thread (human)
+//   GET/PUT  /api/spec/<id>/prefs               → per-spec UI prefs (theme/width/filter)
+//   GET/PUT  /api/prefs                         → store-wide UI prefs (index theme)
 //
 // ensureServer() (below) is the singleton entrypoint every v2 command calls:
 // reuse a healthy daemon if one is advertised, else acquire the lock, bind a
@@ -76,11 +78,14 @@ export function renderIndex() {
   const rows = specs.map((m) => {
     const id = esc(m.id);
     const title = esc(m.title || 'Untitled');
-    const type = esc(m.type || DEFAULT_TYPE);
-    const status = esc(m.status || 'draft');
+    const rawType = m.type || DEFAULT_TYPE;
+    const rawStatus = m.status || 'draft';
+    const type = esc(rawType);
+    const status = esc(rawStatus);
     const att = attachedLabel(m);
-    // lowercase haystack for the client-side search filter
-    const key = esc(`${m.id} ${m.title || ''} ${type} ${status} ${m.attachedSession ? sessionDisplay(m) : 'free'}`.toLowerCase());
+    // lowercase haystack for the client-side search filter — built from RAW values
+    // (the single outer esc() encodes once; pre-escaping would double-encode).
+    const key = esc(`${m.id} ${m.title || ''} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'}`.toLowerCase());
     return `<tr data-k="${key}">
   <td class="spec"><a href="/spec/${id}">${title}</a><div class="id">${id}</div></td>
   <td><span class="badge t">${type}</span></td>
