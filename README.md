@@ -183,9 +183,12 @@ from the spec's own CSS variables:
   are not kept in your project repo.
 - **Singleton daemon** (`server/daemon.mjs`) — one zero-dep Node HTTP server per
   machine, bound to `127.0.0.1`, advertised at `~/.specforge/server.json`
-  (lockfile + pid/health check, port fall-forward). Serves the index, each spec
-  with the review layer injected, an SSE live-reload stream, and a **human-only**
-  comments API. Every command auto-starts or reuses it.
+  (lockfile + pid/health check, port fall-forward). Serves the index (a
+  searchable, light/dark list of every spec with type/status badges and the
+  friendly session label), each spec with the review layer injected, an SSE
+  live-reload stream, and a **human-only** comments API (per-spec prefs +
+  store-wide index theme persisted under `~/.specforge`). Every command
+  auto-starts or reuses it.
 - **Session attachment** — a spec is attached to one Claude session (via
   `$CLAUDE_CODE_SESSION_ID`); that session receives its review batches. 1 session
   ↔ many specs; a spec is held by at most one live session (stale locks are
