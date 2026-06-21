@@ -51,6 +51,13 @@ test('setTitle rewrites the <title> and the first <h1>, escaping', () => {
   assert.match(out, /<h1>keep<\/h1>/, 'only the first h1 is rewritten');
 });
 
+test('setTitle keeps $-tokens literal (no replacement-pattern corruption)', () => {
+  const html = '<html><head><title>x</title></head><body><h1>x</h1></body></html>';
+  const out = setTitle(html, 'Cost $2/mo');
+  assert.match(out, /<h1>Cost \$2\/mo<\/h1>/, '$2 stays literal, not replaced by the captured tag');
+  assert.match(out, /<title>Cost \$2\/mo<\/title>/);
+});
+
 test('renameSpec updates meta.title and the spec HTML heading', () => {
   const id = createSpec({ title: 'Before', html: '<html><head><title>Before</title></head><body><h1>Before</h1></body></html>' });
   const meta = renameSpec(id, 'After');
