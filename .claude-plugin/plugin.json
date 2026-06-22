@@ -1,6 +1,6 @@
 {
   "name": "specforge",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "description": "Spec authoring, review & agent collaboration for Claude Code — house-style HTML specs, a browser review server with Google-Docs-style comments, and hook-based implementation enforcement.",
   "author": {
     "name": "Nitin Jaglan",

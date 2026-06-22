@@ -2,21 +2,36 @@
 // SpecForge — SessionStart hook (v2, session-aware).
 //
 // Gate: read $CLAUDE_CODE_SESSION_ID → the specs attached to it. A fresh session
-// owns nothing (attachment happens later, via create/convert/open), so this is a
-// sub-ms no-op in the common case.
+// owns nothing (attachment happens later, via create/convert/open) → sub-ms no-op.
 //
-// (Drain-fallback — surfacing batches submitted while no session was running —
-// is drain routing, design §7, and lands in Stage 5. Reserved here.)
+// When a RESUMED session already owns specs, the in-session review watcher
+// (`wait-batch`) it had launched died with the previous run — and nothing else
+// re-arms it. So nudge the agent to relaunch it, otherwise browser comments are
+// only picked up on the next manual turn (the Stop/UserPromptSubmit hooks), never
+// while idle.
 //
 // Fail-safe: any error exits 0.
 
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
 
+const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
+
 export function run(input, env = process.env) {
   const { mine } = mineFor(env);
-  if (!mine.length) return null; // ← idle no-op
-  return null; // Stage 5 wires drain-fallback for owned specs here.
+  if (!mine.length) return null; // ← idle no-op (the common fresh-session case)
+  const context = [
+    `SpecForge: this session owns ${mine.length} spec(s) under browser review. The`,
+    'in-session review watcher does not survive a restart — if it is not already',
+    'running this session, relaunch it in the background so submitted comments are',
+    'picked up while you are idle:',
+    `  node "${CLI}" wait-batch`,
+    'On completion it returns { ready, pending } — on ready, run specforge:review-spec',
+    'for each pending spec then relaunch it; on timeout (ready:false) just relaunch.',
+  ].join('\n');
+  return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
 }
 
 async function main() {
