@@ -455,6 +455,18 @@ test('menu shows the attached session + a Detach button that posts /detach', asy
   assert.ok(posts.some((p) => /\/detach$/.test(p.url)), 'Detach posts /detach');
 });
 
+test('session row shows a live pill when connected, disconnected when not', async (t) => {
+  const live = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678', connected: true } });
+  live.window.document.getElementById('sf-launcher').click();
+  const onPill = live.window.document.querySelector('#sf-menu .sf-conn.on');
+  assert.ok(onPill && /live/.test(onPill.textContent), 'connected → ● live');
+
+  const off = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678', connected: false } });
+  off.window.document.getElementById('sf-launcher').click();
+  const offPill = off.window.document.querySelector('#sf-menu .sf-conn.off');
+  assert.ok(offPill && /disconnected/.test(offPill.textContent), 'not connected → ● disconnected');
+});
+
 // ---------- per-spec UI prefs (theme · width · filter) ----------
 test('injected prefs initialize theme, width and filter on boot', async (t) => {
   const { window } = await bootReviewLayer(t, { prefs: { theme: 'dark', width: 1400, filter: 'all' } });

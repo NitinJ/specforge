@@ -8,7 +8,8 @@ import { createDaemon } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
 import { loadComments } from '../lib/store-comments.mjs';
 import { listPendingForSpec, advanceBatchProgress } from '../lib/store-inbox.mjs';
-import { attach } from '../lib/attach.mjs';
+import { attach, STALE_MS } from '../lib/attach.mjs';
+import { readMeta, writeMeta } from '../lib/meta.mjs';
 
 let home;
 let prevHome;
@@ -117,6 +118,19 @@ test('GET meta exposes the short session id as the label', async () => {
   attach(specId, 'sess-abcdefgh');
   const m = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
   assert.equal(m.sessionLabel, 'session sess-abc');
+});
+
+test('GET meta reports connected: fresh→true, stale→false, free→false', async () => {
+  const free = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(free.connected, false, 'unattached is not connected');
+
+  attach(specId, 'sess-1');
+  const live = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(live.connected, true, 'attached + fresh heartbeat → connected');
+
+  const m = readMeta(specId); m.heartbeat = Date.now() - STALE_MS - 1000; writeMeta(specId, m);
+  const dead = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(dead.connected, false, 'stale heartbeat → disconnected');
 });
 
 test('POST detach frees the spec from its session', async () => {

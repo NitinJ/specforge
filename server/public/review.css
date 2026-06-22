@@ -214,6 +214,9 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
 .sf-detach { margin-left: auto; background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
   border-radius: 6px; font-size: 11px; padding: 3px 9px; cursor: pointer; }
 .sf-detach:hover { color: var(--sf-amber); border-color: var(--sf-amber); }
+.sf-conn { margin-left: 8px; font-size: 11px; white-space: nowrap; }
+.sf-conn.on { color: var(--sf-green); }
+.sf-conn.off { color: var(--sf-muted); }
 .sf-menu-foot { border-top: 1px solid var(--sf-line); margin-top: 4px; padding: 7px 10px 3px; }
 
 /* injected floating TOC drawer (only when the spec has no TOC of its own) */

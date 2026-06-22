@@ -150,6 +150,7 @@
       var metaStr = meta && JSON.stringify(meta);
       if (metaStr && metaStr !== lastMeta) { lastMeta = metaStr; state.meta = meta; changed = true; }
       if (changed) render();
+      updateConn(); // keep the menu's live/disconnected pill fresh on every poll
     }).catch(function () {});
   }
   function postJSON(url, body) {
@@ -393,6 +394,19 @@
     }
     return row;
   }
+  // Live/disconnected pill for the owning session (connected comes from /meta,
+  // which the 6s poll keeps fresh — see updateConn).
+  function connPill(connected) {
+    return '<span class="sf-conn ' + (connected ? 'on' : 'off') + '">'
+      + (connected ? '● live' : '● disconnected') + '</span>';
+  }
+  // Refresh the pill in the open menu on each poll, so liveness updates without reopening.
+  function updateConn() {
+    if (!els.menu || !els.menu.classList.contains('open')) return;
+    var el = els.menu.querySelector('.sf-conn');
+    if (!el || !state.meta || !state.meta.attachedSession) return;
+    el.outerHTML = connPill(state.meta.connected);
+  }
   // Session row — shows which session owns this spec + a Detach button.
   function sessionRow() {
     var attached = state.meta && state.meta.attachedSession;
@@ -401,7 +415,8 @@
     var label = attached
       ? esc(friendly || ('Session ' + String(attached).slice(0, 8)))
       : 'Not attached';
-    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">🔗</span><span>' + label + '</span></span>';
+    var conn = attached ? connPill(state.meta.connected) : '';
+    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">🔗</span><span>' + label + '</span>' + conn + '</span>';
     if (attached) {
       var btn = create('button', { class: 'sf-detach', type: 'button' }, 'Detach');
       btn.onclick = function (e) { e.stopPropagation(); detachSpec(); };
