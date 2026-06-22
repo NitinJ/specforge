@@ -12,6 +12,7 @@ import { JSDOM } from 'jsdom';
 import { createDaemon, renderIndex } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
+import { attach, STALE_MS } from '../lib/attach.mjs';
 import { writeGlobalPrefs } from '../lib/global-prefs.mjs';
 
 const setCollection = (id, c) => { const m = readMeta(id); m.collection = c; writeMeta(id, m); };
@@ -68,6 +69,21 @@ test('specs render grouped under collection headers (+ Uncollected)', () => {
   assert.match(html, /<h2>Uncollected <span class="gcount">1<\/span>/);
   // The collection name is offered in the datalist for reassignment autocomplete.
   assert.match(html, /<datalist id="collections"><option value="Launch">/);
+});
+
+test('rows show live / disconnected from the owning session heartbeat', () => {
+  const live = createSpec({ title: 'Live one', html: '<h1>L</h1>' });
+  attach(live, 'sess-live'); // fresh heartbeat → live
+  const dead = createSpec({ title: 'Dead one', html: '<h1>D</h1>' });
+  attach(dead, 'sess-dead');
+  const m = readMeta(dead); m.heartbeat = Date.now() - STALE_MS - 1000; writeMeta(dead, m); // stale → disconnected
+  createSpec({ title: 'Free one', html: '<h1>F</h1>' }); // unattached → neither
+  const html = renderIndex();
+  assert.match(html, /class="live">● live/);
+  assert.match(html, /class="off">● disconnected/);
+  // exactly one live + one disconnected (the free spec shows neither)
+  assert.equal((html.match(/● live/g) || []).length, 1);
+  assert.equal((html.match(/● disconnected/g) || []).length, 1);
 });
 
 test('a tagged spec renders chips + the rename and collection controls', () => {

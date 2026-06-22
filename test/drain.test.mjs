@@ -12,7 +12,7 @@ import { submitBatch, reviewProgressForSpec } from '../lib/store-inbox.mjs';
 import { appendEvent } from '../lib/store-ledger.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { orphanedBatches, createDaemonDrain } from '../lib/store-watch.mjs';
-import { cmdComments, cmdReply, cmdBatchDone, cmdBatchWorking } from '../lib/specforge-cli.mjs';
+import { cmdComments, cmdReply, cmdBatchDone, cmdBatchWorking, cmdWaitBatch } from '../lib/specforge-cli.mjs';
 import { run as stopRun } from '../hooks/stop.mjs';
 import { run as upsRun } from '../hooks/user-prompt-submit.mjs';
 
@@ -65,6 +65,18 @@ test('surfacing a batch to its owner marks it picked_up; the skill verb advances
 
   pendingForSession('sess-1'); // a later hook must not regress working → picked_up
   assert.equal(reviewProgressForSpec(id), 'working');
+});
+
+test('wait-batch bumps the owned specs heartbeat each poll (keeps the session live)', async () => {
+  const { id } = specWithBatch('sess-1');
+  // Reply + mark done so there's no pending batch → wait-batch loops instead of returning early.
+  const c = await cmdComments({ id });
+  await cmdReply({ id, tid: c.threads[0].id, body: 'x' });
+  await cmdBatchDone({ id, batchId: c.pending[0].batchId });
+  const m = readMeta(id); m.heartbeat = 1000; writeMeta(id, m); // backdate
+  const r = await cmdWaitBatch({ timeout: 0 }, { session: 'sess-1', now: () => 5000, sleep: async () => {} });
+  assert.equal(r.ready, false);
+  assert.ok(readMeta(id).heartbeat > 1000, 'heartbeat bumped by the poll');
 });
 
 test('reviewReason names the batch and routes to review-spec', () => {

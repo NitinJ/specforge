@@ -10,7 +10,7 @@
 
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
-import { heartbeat, recordFirstPrompt } from '../lib/attach.mjs';
+import { heartbeat } from '../lib/attach.mjs';
 import {
   pendingForSession, reviewReason,
   implementSignalsForSession, clearImplementSignal, implementReason,
@@ -20,7 +20,6 @@ export function run(input, env = process.env) {
   const { me, mine } = mineFor(env);
   if (!mine.length) return null; // ← idle no-op
   heartbeat(me);
-  recordFirstPrompt(me, input.prompt); // friendly session label (once per spec)
   const batches = pendingForSession(me);
   if (batches.length) {
     return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: reviewReason(batches) } };

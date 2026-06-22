@@ -455,6 +455,18 @@ test('menu shows the attached session + a Detach button that posts /detach', asy
   assert.ok(posts.some((p) => /\/detach$/.test(p.url)), 'Detach posts /detach');
 });
 
+test('session row shows a live pill when connected, disconnected when not', async (t) => {
+  const live = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678', connected: true } });
+  live.window.document.getElementById('sf-launcher').click();
+  const onPill = live.window.document.querySelector('#sf-menu .sf-conn.on');
+  assert.ok(onPill && /live/.test(onPill.textContent), 'connected → ● live');
+
+  const off = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678', connected: false } });
+  off.window.document.getElementById('sf-launcher').click();
+  const offPill = off.window.document.querySelector('#sf-menu .sf-conn.off');
+  assert.ok(offPill && /disconnected/.test(offPill.textContent), 'not connected → ● disconnected');
+});
+
 // ---------- per-spec UI prefs (theme · width · filter) ----------
 test('injected prefs initialize theme, width and filter on boot', async (t) => {
   const { window } = await bootReviewLayer(t, { prefs: { theme: 'dark', width: 1400, filter: 'all' } });
@@ -494,16 +506,6 @@ test('changing the comments filter PUTs it to /prefs', async (t) => {
   document.querySelector('.sf-filter button[data-f="resolved"]').click();
   const p = puts.find((x) => /\/prefs$/.test(x.url));
   assert.ok(p && p.body.filter === 'resolved', 'filter persisted on change');
-});
-
-test('menu shows the friendly session label when one is provided', async (t) => {
-  const meta = { status: 'draft', attachedSession: 'sess-12345678', sessionLabel: 'workspace · "improve the home page"' };
-  const { window } = await bootReviewLayer(t, { meta });
-  const { document } = window;
-  document.getElementById('sf-launcher').click();
-  const row = rowByLabel(document, 'workspace · "improve the home page"');
-  assert.ok(row, 'session row shows the friendly label, not the raw id');
-  assert.ok(row.querySelector('.sf-detach'), 'Detach still present');
 });
 
 test('menu shows "Not attached" with no Detach button when free', async (t) => {
