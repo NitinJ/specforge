@@ -16,14 +16,19 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
+import { readMeta } from '../lib/meta.mjs';
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
 
 export function run(input, env = process.env) {
   const { mine } = mineFor(env);
   if (!mine.length) return null; // ← idle no-op (the common fresh-session case)
+  // Only arm for specs that can still receive review comments — a session owning
+  // only `closed` specs has nothing for the watcher to deliver (it would spin forever).
+  const active = mine.filter((id) => { const m = readMeta(id); return m && m.status !== 'closed'; });
+  if (!active.length) return null;
   const context = [
-    `SpecForge: this session owns ${mine.length} spec(s) under browser review. The`,
+    `SpecForge: this session owns ${active.length} spec(s) under browser review. The`,
     'in-session review watcher does not survive a restart — if it is not already',
     'running this session, relaunch it in the background so submitted comments are',
     'picked up while you are idle:',

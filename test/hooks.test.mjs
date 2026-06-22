@@ -65,6 +65,13 @@ test('SessionStart re-arms the watcher when the (resumed) session owns specs', (
   assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
 });
 
+test('SessionStart does not re-arm when the session owns only closed specs', () => {
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-2');
+  const m = readMeta(id); m.status = 'closed'; writeMeta(id, m);
+  assert.equal(sessionStartRun({}, { CLAUDE_CODE_SESSION_ID: 'sess-2' }), null);
+});
+
 // --- heartbeat: owned specs get their lock bumped each turn ---
 
 test('Stop bumps heartbeat for the session’s specs', () => {
