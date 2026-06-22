@@ -133,7 +133,8 @@ export function renderIndex() {
   :root[data-theme="dark"]{--bg:#0f1115;--panel:#161922;--ink:#e6e8ee;--muted:#9aa3b2;--line:#2a2f3a;--accent:#6ea8fe;--green:#3fb950;--amber:#d29922;--red:#f85149;--row:#161922}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  .wrap{max-width:980px;margin:0 auto;padding:40px 24px 64px}
+  .wrap{max-width:1280px;margin:0 auto;padding:40px 24px 64px}
+  td.spec{width:60%}
   header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}
   h1{font-size:22px;margin:0;font-weight:700} h1 span{color:var(--accent)}
   .count{color:var(--muted);font-size:13px}
