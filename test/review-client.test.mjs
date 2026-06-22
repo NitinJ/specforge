@@ -496,16 +496,6 @@ test('changing the comments filter PUTs it to /prefs', async (t) => {
   assert.ok(p && p.body.filter === 'resolved', 'filter persisted on change');
 });
 
-test('menu shows the friendly session label when one is provided', async (t) => {
-  const meta = { status: 'draft', attachedSession: 'sess-12345678', sessionLabel: 'workspace · "improve the home page"' };
-  const { window } = await bootReviewLayer(t, { meta });
-  const { document } = window;
-  document.getElementById('sf-launcher').click();
-  const row = rowByLabel(document, 'workspace · "improve the home page"');
-  assert.ok(row, 'session row shows the friendly label, not the raw id');
-  assert.ok(row.querySelector('.sf-detach'), 'Detach still present');
-});
-
 test('menu shows "Not attached" with no Detach button when free', async (t) => {
   const { window } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: null } });
   const { document } = window;

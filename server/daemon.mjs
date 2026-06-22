@@ -27,6 +27,7 @@ import { watch } from 'node:fs';
 import { listSpecs, DEFAULT_TYPE } from '../lib/meta.mjs';
 import { sessionDisplay } from '../lib/session-label.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
+import { isStale } from '../lib/attach.mjs';
 import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -111,6 +112,7 @@ function rowHtml(m) {
   <td><span class="badge t">${esc(rawType)}</span></td>
   <td><span class="badge s s-${esc(rawStatus)}">${esc(rawStatus)}</span></td>
   <td class="att">${att}</td>
+  <td class="link">${m.attachedSession ? (isStale(m) ? '<span class="off">● disconnected</span>' : '<span class="live">● live</span>') : ''}</td>
   <td class="upd">${esc(relativeTime(m.updated))}</td>
   <td><input class="coll" list="collections" value="${esc(coll)}" placeholder="Uncollected" aria-label="Collection"></td>
 </tr>`;
@@ -168,6 +170,7 @@ export function renderIndex() {
   .s-in_review{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 40%,var(--line))}
   .s-draft,.s-closed{color:var(--muted);border-color:var(--line)}
   .att{color:var(--muted);font-size:13px} .upd{color:var(--muted);font-size:13px;white-space:nowrap}
+  .link{font-size:12.5px;white-space:nowrap} .link .live{color:var(--green)} .link .off{color:var(--muted)}
   .coll{width:130px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font-size:12.5px}
   .coll:focus{outline:none;border-color:var(--accent)}
   .empty{color:var(--muted);padding:48px 0;text-align:center}

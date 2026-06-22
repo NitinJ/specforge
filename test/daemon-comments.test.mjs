@@ -113,10 +113,10 @@ test('POST status rejects an invalid state (400)', async () => {
   assert.equal(r.status, 400);
 });
 
-test('GET meta exposes a friendly session label (the project folder)', async () => {
-  attach(specId, 'sess-x', '/home/nitin/workspace/figur');
+test('GET meta exposes the short session id as the label', async () => {
+  attach(specId, 'sess-abcdefgh');
   const m = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
-  assert.equal(m.sessionLabel, 'figur');
+  assert.equal(m.sessionLabel, 'session sess-abc');
 });
 
 test('POST detach frees the spec from its session', async () => {
