@@ -3,14 +3,14 @@
   "owner": { "name": "Nitin Jaglan" },
   "metadata": {
     "description": "Spec authoring, review & agent collaboration for Claude Code.",
-    "version": "0.2.16"
+    "version": "0.2.17"
   },
   "plugins": [
     {
       "name": "specforge",
       "source": "./",
       "description": "House-style HTML specs, a browser review server with Google-Docs-style comments, and hook-based implementation enforcement.",
-      "version": "0.2.16",
+      "version": "0.2.17",
       "author": { "name": "Nitin Jaglan" },
       "keywords": ["spec", "design-docs", "review", "comments", "claude-code", "hooks"],
       "category": "workflow"
