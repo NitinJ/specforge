@@ -493,7 +493,15 @@
     var el = blockAt(e.target);
     if (!el) return;
     var tid = el.getAttribute('data-sf-thread');
-    if (tid) { activate(tid, false); setSidebar(true); return; }
+    if (tid) {
+      // Block already has a thread → open it and drop straight into a reply, so
+      // adding another comment to the same thread is one click (no hunting for
+      // the Reply button). Every comment on a block lives in that one thread.
+      setSidebar(true);
+      activate(tid, false);
+      focusReply(tid);
+      return;
+    }
     e.preventDefault();
     openCompose(el);
   }
@@ -519,7 +527,7 @@
     }
     list.forEach(function (t) {
       var block = (t.anchor && t.anchor.block) || {};
-      var card = create('div', { class: 'sf-thread state-' + t.state });
+      var card = create('div', { class: 'sf-thread state-' + t.state, 'data-tid': t.id });
       if (state.active === t.id) card.classList.add('sf-active');
       card.innerHTML =
         '<div class="sf-meta"><span class="sf-badge ' + t.state + '">' + esc(t.state) + '</span>' +
@@ -576,6 +584,15 @@
     card.appendChild(box);
     wireInput(ta, submit);
     ta.focus();
+  }
+
+  // Open (and focus) the reply box on a thread's sidebar card — used when a click
+  // on an already-commented block should let you add another comment to it.
+  function focusReply(tid) {
+    var t = state.threads.filter(function (x) { return x.id === tid; })[0];
+    if (!t) return;
+    var card = els.threads.querySelector('[data-tid="' + tid + '"]');
+    if (card) openReply(card, t);
   }
 
   // Inline edit of an own, not-yet-submitted comment — swaps the body for a

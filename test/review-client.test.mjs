@@ -321,6 +321,33 @@ test('a claude (agent) comment has no Edit control', async (t) => {
   assert.ok(!c2.querySelector('.sf-edit-c'), 'claude comments are not editable');
 });
 
+test('clicking an already-commented block opens a focused reply on that thread', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'human', body: 'first', batchId: 'b1' }],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window, posts } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  const block = document.querySelector('[data-sf-thread="t1"]');
+  assert.ok(block, 'the commented block is highlighted with its thread id');
+
+  mouse(window, block, 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(document.getElementById('sf-sidebar').classList.contains('open'), 'the sidebar opens');
+  const card = document.querySelector('.sf-thread[data-tid="t1"]');
+  assert.ok(card, 'the thread card is present');
+  const ta = card.querySelector('.sf-reply textarea');
+  assert.ok(ta, 'a reply box opens on the thread so you can add another comment');
+
+  ta.value = 'a second comment';
+  card.querySelector('.sf-reply .sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments\/t1\/reply$/.test(x.url));
+  assert.ok(p, 'sending posts to the thread reply endpoint');
+  assert.equal(p.body.body, 'a second comment', 'the new comment lands on the same thread');
+});
+
 // ---------- lifecycle action button ----------
 const PENDING_THREAD = [{
   id: 't1', state: 'open', comments: [{ author: 'human', body: 'x' }],
