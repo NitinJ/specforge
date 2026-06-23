@@ -170,7 +170,8 @@ test('PATCH edits an unsubmitted human comment', async () => {
   const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'edited' });
   assert.equal(r.status, 200);
   assert.equal((await r.json()).comment.body, 'edited');
-  assert.equal(loadComments(specId).threads[0].comments[0].body, 'edited');
+  const edited = loadComments(specId).threads.find((t) => t.id === thread.id);
+  assert.equal(edited.comments[0].body, 'edited');
 });
 
 test('PATCH refuses a comment already frozen into a batch', async () => {
@@ -179,7 +180,8 @@ test('PATCH refuses a comment already frozen into a batch', async () => {
   await post(`/api/spec/${specId}/comments/submit`); // stamps a batchId onto the comment
   const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'too late' });
   assert.equal(r.status, 400);
-  assert.equal(loadComments(specId).threads[0].comments[0].body, 'q', 'a submitted comment is left unchanged');
+  const frozen = loadComments(specId).threads.find((t) => t.id === thread.id);
+  assert.equal(frozen.comments[0].body, 'q', 'a submitted comment is left unchanged');
 });
 
 test('PATCH 400s for an unknown comment or an empty body', async () => {
