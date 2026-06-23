@@ -12,6 +12,7 @@
 //   GET/POST /api/spec/<id>/comments            → list / create threads
 //   POST /api/spec/<id>/comments/submit         → freeze a review batch
 //   POST /api/spec/<id>/comments/<tid>/reply    → reply to a thread
+//   PATCH /api/spec/<id>/comments/<tid>/comment/<cid> → edit an unsubmitted comment
 //   POST /api/spec/<id>/comments/<tid>/resolve  → resolve a thread (human)
 //   GET/PUT  /api/spec/<id>/prefs               → per-spec UI prefs (theme/width/filter)
 //   GET/PUT  /api/prefs                         → store-wide UI prefs (index theme)
@@ -37,7 +38,7 @@ import {
 } from '../lib/daemon-state.mjs';
 import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
-  handleCommentReply, handleCommentResolve, handleSubmit,
+  handleCommentReply, handleCommentResolve, handleCommentEdit, handleSubmit,
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
   handleRename, handleOrganize,
@@ -364,6 +365,13 @@ export function createDaemon() {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return readJsonBody(req)
         .then((b) => handleCommentReply(reply[1], reply[2], b, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+    const editC = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/comment\/([\w-]+)$/);
+    if (editC) {
+      if (method !== 'PATCH') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((b) => handleCommentEdit(editC[1], editC[2], editC[3], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
     const resolveAll = path.match(/^\/api\/spec\/([\w-]+)\/comments\/resolve-all$/);

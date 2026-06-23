@@ -526,9 +526,23 @@
         '<span class="sf-loc">' + esc((block.tag || 'block').toLowerCase()) + '</span></div>' +
         '<div class="sf-quote">' + esc((block.text || '').slice(0, 140)) + '</div>' +
         t.comments.map(function (c) {
-          return '<div class="sf-comment"><span class="who ' + (c.author === 'claude' ? 'claude' : '') + '">' +
-            esc(c.author) + '</span><div class="body">' + esc(c.body) + '</div></div>';
+          // Only your own, not-yet-submitted comments can be edited (the server
+          // enforces the same rule); once frozen into a batch the agent may be
+          // acting on it. id-less fixture comments aren't addressable → no control.
+          var editable = c.author === 'human' && !c.batchId && c.id;
+          return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
+            (c.author === 'claude' ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
+            '<div class="body">' + esc(c.body) + '</div>' +
+            (editable ? '<button class="sf-edit-c" type="button" aria-label="Edit comment">Edit</button>' : '') +
+            '</div>';
         }).join('');
+      Array.prototype.forEach.call(card.querySelectorAll('.sf-comment'), function (cEl) {
+        var btn = cEl.querySelector('.sf-edit-c');
+        if (!btn) return;
+        var cid = cEl.getAttribute('data-cid');
+        var c = t.comments.filter(function (x) { return x.id === cid; })[0];
+        if (c) btn.onclick = function (e) { e.stopPropagation(); openCommentEdit(cEl, t, c); };
+      });
       var acts = create('div', { class: 'sf-acts' });
       var replyBtn = create('button', {}, 'Reply');
       replyBtn.onclick = function (e) { e.stopPropagation(); openReply(card, t); };
@@ -560,6 +574,45 @@
     row.appendChild(send);
     box.appendChild(ta); box.appendChild(row);
     card.appendChild(box);
+    wireInput(ta, submit);
+    ta.focus();
+  }
+
+  // Inline edit of an own, not-yet-submitted comment — swaps the body for a
+  // prefilled textarea. Save PATCHes the comment; Cancel restores the body.
+  function openCommentEdit(commentEl, t, c) {
+    if (commentEl.querySelector('.sf-edit')) return; // already editing this one
+    var bodyEl = commentEl.querySelector('.body');
+    var trigger = commentEl.querySelector('.sf-edit-c');
+    var box = create('div', { class: 'sf-edit' });
+    box.onclick = function (e) { e.stopPropagation(); }; // editing shouldn't re-activate the card
+    var ta = create('textarea', { class: 'sf-input', rows: '2' });
+    ta.value = c.body;
+    var row = create('div', { class: 'sf-compose-foot' });
+    var save = create('button', { class: 'sf-primary' }, 'Save');
+    var cancel = create('button', { class: 'sf-ghost' }, 'Cancel');
+    function close() {
+      box.remove();
+      if (bodyEl) bodyEl.style.display = '';
+      if (trigger) trigger.style.display = '';
+    }
+    function submit() {
+      var v = ta.value.trim();
+      if (!v) return;
+      if (v === c.body) return close(); // no change — just put the body back
+      fetch(API + '/' + t.id + '/comment/' + c.id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: v }),
+      }).then(function (r) { if (r.ok) load(); else flash('Could not save the edit.'); })
+        .catch(function () { flash('Could not save the edit.'); });
+    }
+    save.onclick = submit;
+    cancel.onclick = close;
+    row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to save'));
+    row.appendChild(cancel); row.appendChild(save);
+    box.appendChild(ta); box.appendChild(row);
+    if (bodyEl) bodyEl.style.display = 'none';
+    if (trigger) trigger.style.display = 'none';
+    commentEl.appendChild(box);
     wireInput(ta, submit);
     ta.focus();
   }

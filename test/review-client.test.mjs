@@ -48,9 +48,11 @@ async function bootReviewLayer(t, opts = {}) {
   window.SPECFORGE = { specId: 'test-spec', prefs: opts.prefs || {} };
   const posts = [];
   const puts = [];
+  const patches = [];
   window.fetch = (url, init) => {
-    if (init && (init.method === 'POST' || init.method === 'PUT')) {
-      (init.method === 'PUT' ? puts : posts).push({ url, body: init.body ? JSON.parse(init.body) : {} });
+    if (init && (init.method === 'POST' || init.method === 'PUT' || init.method === 'PATCH')) {
+      const bucket = init.method === 'PUT' ? puts : init.method === 'PATCH' ? patches : posts;
+      bucket.push({ url, body: init.body ? JSON.parse(init.body) : {} });
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }), text: () => Promise.resolve('{"ok":true}') });
     }
     if (String(url).indexOf('/meta') !== -1) {
@@ -70,7 +72,7 @@ async function bootReviewLayer(t, opts = {}) {
   window.eval(REVIEW_JS); // deferred-script execution → boot() via the readyState check
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
   await new Promise((r) => window.setTimeout(r, 0)); // flush load()/render microtasks
-  return { window, posts, puts };
+  return { window, posts, puts, patches };
 }
 
 const mouse = (window, el, type) => el.dispatchEvent(new window.MouseEvent(type, { bubbles: true }));
@@ -264,6 +266,59 @@ test('a thread re-anchors to the parent section when its own section is removed'
   const { window } = await bootReviewLayer(t, { body, threads });
   assert.equal(window.document.getElementById('parent').getAttribute('data-sf-thread'), 't1',
     'falls back to the parent section when the original section is removed');
+});
+
+// ---------- editing an unsubmitted comment ----------
+const EDIT_ANCHOR = { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } };
+
+test('an unsubmitted human comment shows an Edit control that PATCHes the new body', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'human', body: 'original' }],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window, patches } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  const cEl = document.querySelector('.sf-comment[data-cid="c1"]');
+  assert.ok(cEl, 'comment rendered');
+  const editBtn = cEl.querySelector('.sf-edit-c');
+  assert.ok(editBtn, 'Edit control present on an unsubmitted human comment');
+
+  editBtn.click();
+  const ta = cEl.querySelector('.sf-edit textarea');
+  assert.ok(ta, 'clicking Edit opens an inline editor');
+  assert.equal(ta.value, 'original', 'editor is prefilled with the current body');
+
+  ta.value = 'edited body';
+  cEl.querySelector('.sf-edit .sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = patches.find((x) => /\/comments\/t1\/comment\/c1$/.test(x.url));
+  assert.ok(p, 'Save PATCHes the comment endpoint');
+  assert.equal(p.body.body, 'edited body', 'with the new body');
+});
+
+test('a submitted (batched) comment has no Edit control', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'human', body: 'x', batchId: 'b1' }],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const cEl = window.document.querySelector('.sf-comment[data-cid="c1"]');
+  assert.ok(cEl, 'comment rendered');
+  assert.ok(!cEl.querySelector('.sf-edit-c'), 'no Edit control once the comment is frozen into a batch');
+});
+
+test('a claude (agent) comment has no Edit control', async (t) => {
+  const threads = [{
+    id: 't1', state: 'replied',
+    comments: [{ id: 'c1', author: 'human', body: 'x', batchId: 'b1' }, { id: 'c2', author: 'claude', body: 'fixed' }],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const c2 = window.document.querySelector('.sf-comment[data-cid="c2"]');
+  assert.ok(c2, 'claude comment rendered');
+  assert.ok(!c2.querySelector('.sf-edit-c'), 'claude comments are not editable');
 });
 
 // ---------- lifecycle action button ----------
