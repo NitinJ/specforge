@@ -87,6 +87,12 @@
 .sf-comment .who { font-weight: 700; font-size: 11px; }
 .sf-comment .who.claude { color: var(--sf-accent); }
 .sf-comment .body { white-space: pre-wrap; }
+/* Edit affordance for an own, not-yet-submitted comment — a quiet text button
+   that warms to the accent on hover. The inline editor reuses the reply spacing. */
+.sf-edit-c { background: none; border: none; color: var(--sf-muted); cursor: pointer;
+  font-size: 11px; padding: 2px 0; margin-top: 2px; text-decoration: underline; }
+.sf-edit-c:hover { color: var(--sf-accent); }
+.sf-edit { margin-top: 8px; }
 .sf-acts { display: flex; gap: 8px; margin-top: 6px; }
 .sf-acts button { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 6px; font-size: 11px; padding: 3px 8px; cursor: pointer; }
 .sf-acts button:hover { color: var(--sf-ink); border-color: var(--sf-accent); }

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 
 import { createDaemon } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
-import { loadComments } from '../lib/store-comments.mjs';
+import { loadComments, mutateComments, addComment } from '../lib/store-comments.mjs';
 import { listPendingForSpec, advanceBatchProgress } from '../lib/store-inbox.mjs';
 import { attach, STALE_MS } from '../lib/attach.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
@@ -42,6 +42,12 @@ afterEach(() => {
 
 const post = (path, body) => fetch(base + path, {
   method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
+const patch = (path, body) => fetch(base + path, {
+  method: 'PATCH',
   headers: { 'Content-Type': 'application/json' },
   body: body === undefined ? undefined : JSON.stringify(body),
 });
@@ -156,6 +162,40 @@ test('GET meta surfaces batch review progress (null → picked_up → working)',
   advanceBatchProgress(specId, batch.batchId, 'working');
   const m2 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
   assert.equal(m2.reviewProgress, 'working');
+});
+
+test('PATCH edits an unsubmitted human comment', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'first' })).json();
+  const cid = thread.comments[0].id;
+  const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'edited' });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).comment.body, 'edited');
+  assert.equal(loadComments(specId).threads[0].comments[0].body, 'edited');
+});
+
+test('PATCH refuses a comment already frozen into a batch', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' })).json();
+  const cid = thread.comments[0].id;
+  await post(`/api/spec/${specId}/comments/submit`); // stamps a batchId onto the comment
+  const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'too late' });
+  assert.equal(r.status, 400);
+  assert.equal(loadComments(specId).threads[0].comments[0].body, 'q', 'a submitted comment is left unchanged');
+});
+
+test('PATCH 400s for an unknown comment or an empty body', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' })).json();
+  const cid = thread.comments[0].id;
+  assert.equal((await patch(`/api/spec/${specId}/comments/${thread.id}/comment/nope`, { body: 'x' })).status, 400);
+  assert.equal((await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: '   ' })).status, 400);
+});
+
+test('PATCH refuses to edit a claude (agent) comment', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' })).json();
+  // The agent reply path writes to the store directly, never over HTTP.
+  mutateComments(specId, (store) => addComment(store, thread.id, { body: 'fixed', author: 'claude' }));
+  const claude = loadComments(specId).threads[0].comments.find((c) => c.author === 'claude');
+  const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${claude.id}`, { body: 'hijack' });
+  assert.equal(r.status, 400);
 });
 
 test('POST comments/resolve-all resolves every open thread', async () => {
