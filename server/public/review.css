@@ -84,6 +84,30 @@
   --ink: #3c3836; --muted: #7c6f64; --line: #e6d8a8;
   --accent: #076678; --green: #79740e; --amber: #b57614; --red: #9d0006;
 }
+/* Secondary house vars, derived from each variant's core colors above so they stay
+   coherent per theme. House specs come in palette dialects — some use --code for
+   code blocks, --redbg/--greybg/… for callouts, --rowalt for table stripes, --ecru
+   for a warm surface — and a variant that left those un-mapped kept the spec's
+   original (often dark) value, so e.g. code blocks rendered near-black under a light
+   variant. These mixes win the same specificity tie (loaded after the spec) for any
+   of the listed variants. Tints are computed off var(--ink)/var(--bg)/the accent
+   set in the matching block above. */
+:root[data-theme="dracula"], :root[data-theme="nord"], :root[data-theme="solarized-dark"],
+:root[data-theme="solarized-light"], :root[data-theme="github-light"], :root[data-theme="gruvbox-light"] {
+  --code: color-mix(in srgb, var(--ink) 7%, var(--bg));   /* code-block surface */
+  --shadow: color-mix(in srgb, #000 22%, transparent);
+  --ecru: var(--panel2);                                  /* warm/secondary surface */
+  --toc: var(--panel);
+  --rowalt: color-mix(in srgb, var(--ink) 4%, var(--bg)); /* table row stripe */
+  --grey: var(--muted);
+  --greybg: color-mix(in srgb, var(--ink) 7%, var(--bg));
+  --accent2: var(--accent);
+  --blue: var(--accent);
+  --redbg: color-mix(in srgb, var(--red) 15%, var(--bg));     /* callout fills */
+  --amberbg: color-mix(in srgb, var(--amber) 17%, var(--bg));
+  --greenbg: color-mix(in srgb, var(--green) 15%, var(--bg));
+  --bluebg: color-mix(in srgb, var(--accent) 15%, var(--bg));
+}
 
 /* reading font (review-layer owned) — review.js sets [data-sf-font] on the spec's
    content container only, so the review chrome (appended to <body>, with its own

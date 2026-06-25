@@ -46,16 +46,17 @@
   // runs on the readyState check before that section's top-level code executes —
   // applyTheme reads THEME_IDS on boot). The two spec-native palettes plus the
   // review-layer variants whose palettes live in review.css (keyed on
-  // [data-theme="<id>"]). `base` groups the swatches (light family, then dark).
+  // [data-theme="<id>"]). Order matters: light family first, then dark — the 4-up
+  // swatch grid then lands each family on its own row.
   var THEMES = [
-    { id: 'light', name: 'Light', base: 'light' },
-    { id: 'solarized-light', name: 'Solarized Light', base: 'light' },
-    { id: 'github-light', name: 'GitHub Light', base: 'light' },
-    { id: 'gruvbox-light', name: 'Gruvbox Light', base: 'light' },
-    { id: 'dark', name: 'Dark', base: 'dark' },
-    { id: 'dracula', name: 'Dracula', base: 'dark' },
-    { id: 'nord', name: 'Nord', base: 'dark' },
-    { id: 'solarized-dark', name: 'Solarized Dark', base: 'dark' },
+    { id: 'light', name: 'Light' },
+    { id: 'solarized-light', name: 'Solarized Light' },
+    { id: 'github-light', name: 'GitHub Light' },
+    { id: 'gruvbox-light', name: 'Gruvbox Light' },
+    { id: 'dark', name: 'Dark' },
+    { id: 'dracula', name: 'Dracula' },
+    { id: 'nord', name: 'Nord' },
+    { id: 'solarized-dark', name: 'Solarized Dark' },
   ];
   var THEME_IDS = THEMES.map(function (t) { return t.id; });
 
