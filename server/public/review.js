@@ -504,9 +504,12 @@
     }
     if (st === 'done' && ex.url) {
       var done = create('div', { class: 'sf-menu-row sf-menu-ctl' });
-      done.innerHTML = '<span class="sf-row-main" role="link" tabindex="0">' +
-        '<span class="sf-row-ic">↗</span><span>Open Google Doc</span></span>';
-      done.querySelector('.sf-row-main').onclick = function () { window.open(ex.url, '_blank', 'noopener'); closeMenu(); };
+      // A real anchor — natively keyboard-activatable + opens in a new tab; no
+      // role/tabindex/window.open dance.
+      var link = create('a', { class: 'sf-row-main sf-doc-link', href: ex.url, target: '_blank', rel: 'noopener' });
+      link.innerHTML = '<span class="sf-row-ic">↗</span><span>Open Google Doc</span>';
+      link.onclick = function () { closeMenu(); };
+      done.appendChild(link);
       var re = create('button', { class: 'sf-detach sf-reexport', type: 'button', title: 'Export again' }, 'Re-export');
       re.onclick = function (e) { e.stopPropagation(); doExport(); };
       done.appendChild(re);

@@ -597,13 +597,12 @@ test('once done, the row opens the Google Doc and offers re-export', async (t) =
   const meta = { status: 'draft', attachedSession: 'sess-1', export: { state: 'done', url } };
   const { window, posts } = await bootReviewLayer(t, { meta });
   const { document } = window;
-  let opened = null;
-  window.open = function (u) { opened = u; return null; };
   document.getElementById('sf-launcher').click();
   const row = rowByLabel(document, 'Open Google Doc');
   assert.ok(row, 'shows an Open Google Doc row when done');
-  row.querySelector('.sf-row-main').click();
-  assert.equal(opened, url, 'opens the Doc link');
+  const link = row.querySelector('a.sf-doc-link');
+  assert.equal(link.getAttribute('href'), url, 'a native anchor to the Doc (keyboard-activatable)');
+  assert.equal(link.getAttribute('target'), '_blank', 'opens in a new tab');
   row.querySelector('.sf-reexport').click();
   await tick(window);
   assert.ok(posts.some((p) => /\/export$/.test(p.url)), 're-export POSTs /export again');
