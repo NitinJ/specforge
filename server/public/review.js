@@ -384,6 +384,10 @@
     // hidden by the print stylesheet so the PDF is just the spec.
     els.menu.appendChild(menuRow('⤓', 'Export PDF', function () { closeMenu(); window.print(); }));
 
+    // Export to Google Docs — relayed through the attached session (it runs the
+    // Drive MCP); the row reflects meta.export and updates live on the poll.
+    els.menu.appendChild(exportRow());
+
     // Session — which session owns this spec, with a Detach button.
     els.menu.appendChild(sessionRow());
 
@@ -482,6 +486,49 @@
   function detachSpec() {
     postJSON(SPEC_API + '/detach').then(function () { closeMenu(); load(); })
       .catch(function () { flash('Could not detach.'); });
+  }
+
+  // Export-to-Google-Docs row — reflects meta.export. The browser can't run the
+  // MCP, so this only queues the request; the attached session fulfills it and the
+  // link arrives on a later /meta poll (the menu rebuilds in place, so it updates
+  // live while open). States: idle/error → action · requested/working → spinner ·
+  // done → open-link + re-export.
+  function exportRow() {
+    var ex = (state.meta && state.meta.export) || null;
+    var st = ex && ex.state;
+    if (st === 'requested' || st === 'working') {
+      var busy = menuRow('', 'Exporting to Google Docs…', null);
+      busy.disabled = true;
+      busy.querySelector('.sf-row-ic').appendChild(create('span', { class: 'sf-spin', 'aria-hidden': 'true' }));
+      return busy;
+    }
+    if (st === 'done' && ex.url) {
+      var done = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+      // A real anchor — natively keyboard-activatable + opens in a new tab; no
+      // role/tabindex/window.open dance.
+      var link = create('a', { class: 'sf-row-main sf-doc-link', href: ex.url, target: '_blank', rel: 'noopener' });
+      link.innerHTML = '<span class="sf-row-ic">↗</span><span>Open Google Doc</span>';
+      link.onclick = function () { closeMenu(); };
+      done.appendChild(link);
+      var re = create('button', { class: 'sf-detach sf-reexport', type: 'button', title: 'Export again' }, 'Re-export');
+      re.onclick = function (e) { e.stopPropagation(); doExport(); };
+      done.appendChild(re);
+      return done;
+    }
+    var label = st === 'error' ? 'Export to Google Docs — retry' : 'Export to Google Docs';
+    var row = menuRow('⤴', label, function () { doExport(); });
+    if (st === 'error' && ex.error) row.setAttribute('title', ex.error);
+    return row;
+  }
+  // Queue the export, then refresh — the row flips to "Exporting…" (menu stays open
+  // so the user watches it resolve to the link). A 409 (no session / already running)
+  // flashes the server's reason.
+  function doExport() {
+    postJSON(SPEC_API + '/export').then(function (r) {
+      if (r.ok) return load();
+      r.json().then(function (b) { flash((b && b.error) || 'Could not start the export.'); })
+        .catch(function () { flash('Could not start the export.'); });
+    }).catch(function () { flash('Could not start the export.'); });
   }
 
   // ---------- block targeting ----------

@@ -566,6 +566,48 @@ test('the menu Comments row badge mirrors the unresolved count', async (t) => {
   assert.equal(badge.textContent, '1', 'badge shows the unresolved count');
 });
 
+// ---------- Export to Google Docs (dropdown row) ----------
+test('the menu has an Export to Google Docs row that POSTs /export', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-1', connected: true } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const row = rowByLabel(document, 'Export to Google Docs');
+  assert.ok(row, 'Export to Google Docs row present');
+  row.click();
+  await tick(window);
+  assert.ok(posts.some((p) => /\/export$/.test(p.url)), 'clicking POSTs /export');
+});
+
+test('while exporting, the row shows a spinner and is inert', async (t) => {
+  const meta = { status: 'draft', attachedSession: 'sess-1', export: { state: 'working' } };
+  const { window, posts } = await bootReviewLayer(t, { meta });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const row = rowByLabel(document, 'Exporting');
+  assert.ok(row, 'shows an Exporting… row while in progress');
+  assert.ok(row.querySelector('.sf-spin'), 'with the SpecForge spinner');
+  assert.ok(row.disabled, 'inert while the agent works');
+  row.click();
+  await tick(window);
+  assert.ok(!posts.some((p) => /\/export$/.test(p.url)), 'no re-POST while in flight');
+});
+
+test('once done, the row opens the Google Doc and offers re-export', async (t) => {
+  const url = 'https://docs.google.com/document/d/abc/edit';
+  const meta = { status: 'draft', attachedSession: 'sess-1', export: { state: 'done', url } };
+  const { window, posts } = await bootReviewLayer(t, { meta });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const row = rowByLabel(document, 'Open Google Doc');
+  assert.ok(row, 'shows an Open Google Doc row when done');
+  const link = row.querySelector('a.sf-doc-link');
+  assert.equal(link.getAttribute('href'), url, 'a native anchor to the Doc (keyboard-activatable)');
+  assert.equal(link.getAttribute('target'), '_blank', 'opens in a new tab');
+  row.querySelector('.sf-reexport').click();
+  await tick(window);
+  assert.ok(posts.some((p) => /\/export$/.test(p.url)), 're-export POSTs /export again');
+});
+
 // ---------- launcher session row (attached + detach) ----------
 test('menu shows the attached session + a Detach button that posts /detach', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678' } });
