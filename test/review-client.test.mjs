@@ -382,6 +382,7 @@ test('action button: an unsubmitted comment → "Submit comments" and submits th
   assert.ok(btn, 'action button present');
   assert.equal(btn.getAttribute('data-state'), 'needs');
   assert.match(btn.textContent, /Submit comments/);
+  assert.ok(!btn.querySelector('.sf-spin'), 'an actionable state shows no loading spinner');
   btn.click();
   await tick(window);
   assert.ok(posts.some((p) => /\/comments\/submit$/.test(p.url)), 'clicking submits the batch');
@@ -421,6 +422,7 @@ test('action button: submitted but unresolved → "Awaiting response" (disabled,
   assert.equal(btn.getAttribute('data-state'), 'awaiting');
   assert.match(btn.textContent, /Awaiting/);
   assert.ok(btn.disabled, 'no submit action once the batch is already submitted');
+  assert.ok(btn.querySelector('.sf-spin'), 'a loading spinner shows while the agent is working');
 });
 
 test('action button: picked-up batch → "Picked up comments" (disabled)', async (t) => {
@@ -430,6 +432,7 @@ test('action button: picked-up batch → "Picked up comments" (disabled)', async
   assert.equal(btn.getAttribute('data-state'), 'picked');
   assert.match(btn.textContent, /Picked up comments/);
   assert.ok(btn.disabled, 'no action while the agent has it');
+  assert.ok(btn.querySelector('.sf-spin'), 'a loading spinner shows once the agent picks the batch up');
 });
 
 test('action button: working batch → "Working on comments" (disabled)', async (t) => {
@@ -439,6 +442,7 @@ test('action button: working batch → "Working on comments" (disabled)', async 
   assert.equal(btn.getAttribute('data-state'), 'reviewing');
   assert.match(btn.textContent, /Working on comments/);
   assert.ok(btn.disabled);
+  assert.ok(btn.querySelector('.sf-spin'), 'a loading spinner shows while the agent works the comments');
 });
 
 test('action button: a replied thread beats reviewProgress → "Review replies"', async (t) => {

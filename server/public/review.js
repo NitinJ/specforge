@@ -245,10 +245,12 @@
       // Awaiting response → Picked up comments → Working on comments — from the
       // batch progress the hooks + review-spec skill report via meta.reviewProgress.
       if (repliedCount() >= unresolved) return { label: 'Review replies', state: 'replied', act: 'review' };
+      // Comments submitted, agent processing, not yet ready to review — one phase, so
+      // all three steps carry the loading spinner (loading) to signal work in flight.
       var prog = state.meta && state.meta.reviewProgress;
-      if (prog === 'working') return { label: 'Working on comments', state: 'reviewing', act: null };
-      if (prog === 'picked_up') return { label: 'Picked up comments', state: 'picked', act: null };
-      return { label: 'Awaiting response', state: 'awaiting', act: null };
+      if (prog === 'working') return { label: 'Working on comments', state: 'reviewing', act: null, loading: true };
+      if (prog === 'picked_up') return { label: 'Picked up comments', state: 'picked', act: null, loading: true };
+      return { label: 'Awaiting response', state: 'awaiting', act: null, loading: true };
     }
     if (status === 'approved') return { label: 'Implement →', state: 'impl', act: 'implement' };
     if (status === 'draft' || status === 'in_review') return { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
@@ -266,9 +268,13 @@
   }
   function applyAction(btn, s) {
     if (!btn) return;
-    btn.textContent = s.label;
     btn.setAttribute('data-state', s.state);
     btn.disabled = !s.act;
+    // While the agent is working a submitted batch, prefix the label with a custom
+    // SpecForge spinner (a CSS ring) so the disabled button reads as "in progress".
+    btn.textContent = '';
+    if (s.loading) btn.appendChild(create('span', { class: 'sf-spin', 'aria-hidden': 'true' }));
+    btn.appendChild(document.createTextNode(s.label));
   }
   function onAction() {
     var s = actionState();
