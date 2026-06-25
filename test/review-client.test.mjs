@@ -139,18 +139,30 @@ test('the Comments row toggles the single sidebar', async (t) => {
   assert.ok(!sidebar.classList.contains('open'), 'Comments row closes the sidebar');
 });
 
-test('the Theme row toggles data-theme on <html>', async (t) => {
+test('the Theme picker sets data-theme on <html> from a swatch', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
   const theme = rowByLabel(document, 'Theme');
-  theme.click();
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'first toggle → dark (away from rendered light)');
-  theme.click();
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'light', 'second toggle → light');
+  theme.querySelector('.sf-swatch[data-theme="dark"]').click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'dark swatch → dark');
+  theme.querySelector('.sf-swatch[data-theme="light"]').click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'light', 'light swatch → light');
 });
 
-test('Theme row reflects the actually-rendered theme and switches a multi-theme spec', async (t) => {
+test('the Theme picker offers the named variants and applies one', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const theme = rowByLabel(document, 'Theme');
+  for (const id of ['light', 'dark', 'dracula', 'nord', 'solarized-dark', 'solarized-light', 'github-light', 'gruvbox-light']) {
+    assert.ok(theme.querySelector('.sf-swatch[data-theme="' + id + '"]'), id + ' swatch present');
+  }
+  theme.querySelector('.sf-swatch[data-theme="dracula"]').click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dracula', 'a variant applies to <html>');
+});
+
+test('Theme picker reflects the rendered theme and switches a multi-theme spec', async (t) => {
   // A spec that honors [data-theme]: the body background flips with the attribute.
   const computedBg = (w) => (w.document.documentElement.getAttribute('data-theme') === 'dark'
     ? 'rgb(15, 17, 21)' : 'rgb(251, 250, 247)');
@@ -158,20 +170,20 @@ test('Theme row reflects the actually-rendered theme and switches a multi-theme 
   const { document } = window;
   document.getElementById('sf-launcher').click();
   const theme = rowByLabel(document, 'Theme');
-  assert.equal(theme.disabled, false, 'a multi-theme spec is switchable');
-  assert.equal(theme.querySelector('.sf-row-val').textContent, 'light',
-    'reflects the rendered light theme — not a hardcoded "dark" default');
-  theme.click();
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'toggles to dark');
+  assert.ok(theme.querySelector('.sf-themes'), 'a multi-theme spec shows the picker');
+  assert.equal(theme.querySelector('.sf-swatch.on').getAttribute('data-theme'), 'light',
+    'the active swatch reflects the rendered light theme — not a hardcoded default');
+  theme.querySelector('.sf-swatch[data-theme="dark"]').click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'switches to dark');
 });
 
-test('Theme row is shown as fixed (disabled) when the spec defines a single theme', async (t) => {
+test('Theme row is fixed (no picker) when the spec defines a single theme', async (t) => {
   // An imported spec that ignores [data-theme]: the body background never changes.
   const { window } = await bootReviewLayer(t, { computedBg: () => 'rgb(244, 239, 230)' });
   const { document } = window;
   document.getElementById('sf-launcher').click();
   const theme = rowByLabel(document, 'Theme');
-  assert.ok(theme.disabled, 'a single-theme spec cannot be re-themed by the toggle');
+  assert.ok(!theme.querySelector('.sf-themes'), 'a single-theme spec offers no picker');
   assert.match(theme.querySelector('.sf-row-val').textContent, /light · fixed/,
     'shows the actual (light) theme, marked fixed — the selector never lies');
 });
@@ -698,14 +710,23 @@ test('the Font selector reflects the persisted font', async (t) => {
   assert.ok(on && on.getAttribute('data-font') === 'mono', 'the stored font is the active segment');
 });
 
-test('toggling the theme PUTs the new theme to /prefs', async (t) => {
+test('picking a theme PUTs it to /prefs', async (t) => {
   const { window, puts } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  rowByLabel(document, 'Theme').click();
+  rowByLabel(document, 'Theme').querySelector('.sf-swatch[data-theme="nord"]').click();
   const p = puts.find((x) => /\/prefs$/.test(x.url));
   assert.ok(p, 'a PUT to /prefs fired');
-  assert.equal(p.body.theme, 'dark', 'persists the toggled-to theme');
+  assert.equal(p.body.theme, 'nord', 'persists the picked theme variant');
+});
+
+test('the picker reflects a persisted variant on boot', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { theme: 'dracula' } });
+  const { document } = window;
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dracula', 'variant applied on boot');
+  document.getElementById('sf-launcher').click();
+  assert.equal(rowByLabel(document, 'Theme').querySelector('.sf-swatch.on').getAttribute('data-theme'), 'dracula',
+    'the active swatch matches the persisted theme');
 });
 
 test('releasing the width slider PUTs the width to /prefs', async (t) => {

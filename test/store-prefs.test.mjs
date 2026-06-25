@@ -48,6 +48,13 @@ test('sanitize drops unknown keys and invalid enum values', () => {
   assert.deepEqual(sanitizePrefs({ theme: 'neon', filter: 'bogus', junk: 1 }), {});
 });
 
+test('sanitize keeps the named theme variants', () => {
+  for (const t of ['light', 'dark', 'dracula', 'nord', 'solarized-dark', 'solarized-light', 'github-light', 'gruvbox-light']) {
+    assert.equal(sanitizePrefs({ theme: t }).theme, t, `${t} is a valid theme`);
+  }
+  assert.equal('theme' in sanitizePrefs({ theme: 'monokai' }), false, 'unknown theme dropped');
+});
+
 test('sanitize keeps a valid font and drops an invalid one', () => {
   assert.equal(sanitizePrefs({ font: 'serif' }).font, 'serif');
   assert.equal(sanitizePrefs({ font: 'mono' }).font, 'mono');

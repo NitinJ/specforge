@@ -42,6 +42,23 @@
   var FONTS = ['sans', 'serif', 'mono'];
   function initFont() { return FONTS.indexOf(PREFS.font) !== -1 ? PREFS.font : 'sans'; }
 
+  // Theme catalog (defined up here, not in the theme section below, because boot()
+  // runs on the readyState check before that section's top-level code executes —
+  // applyTheme reads THEME_IDS on boot). The two spec-native palettes plus the
+  // review-layer variants whose palettes live in review.css (keyed on
+  // [data-theme="<id>"]). `base` groups the swatches (light family, then dark).
+  var THEMES = [
+    { id: 'light', name: 'Light', base: 'light' },
+    { id: 'solarized-light', name: 'Solarized Light', base: 'light' },
+    { id: 'github-light', name: 'GitHub Light', base: 'light' },
+    { id: 'gruvbox-light', name: 'Gruvbox Light', base: 'light' },
+    { id: 'dark', name: 'Dark', base: 'dark' },
+    { id: 'dracula', name: 'Dracula', base: 'dark' },
+    { id: 'nord', name: 'Nord', base: 'dark' },
+    { id: 'solarized-dark', name: 'Solarized Dark', base: 'dark' },
+  ];
+  var THEME_IDS = THEMES.map(function (t) { return t.id; });
+
   // Submit shortcut label: ⌘↵ on Mac, Ctrl+↵ elsewhere (the handler accepts both).
   var IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
   var MOD_HINT = IS_MAC ? '⌘↵' : 'Ctrl+↵';
@@ -112,23 +129,21 @@
   }
   function applyTheme(next) {
     if (!specSupportsTheme()) return; // single-theme spec — nothing to switch
-    var root = document.documentElement;
     if (next == null) next = PREFS.theme;
-    if (next !== 'light' && next !== 'dark') return; // honor the spec/OS default
-    root.setAttribute('data-theme', next);
+    if (THEME_IDS.indexOf(next) === -1) return; // honor the spec/OS default
+    document.documentElement.setAttribute('data-theme', next);
   }
   function currentTheme() {
     var a = document.documentElement.getAttribute('data-theme');
-    if (a === 'light' || a === 'dark') return a;
+    if (THEME_IDS.indexOf(a) !== -1) return a;
     // No explicit choice yet → reflect what's actually rendered, else the OS hint.
     return renderedTheme() ||
       ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light');
   }
-  function toggleTheme() {
-    var next = currentTheme() === 'light' ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', next);
-    putPref({ theme: next });
-    return next;
+  function setTheme(id) {
+    if (THEME_IDS.indexOf(id) === -1) return;
+    document.documentElement.setAttribute('data-theme', id);
+    putPref({ theme: id });
   }
 
   // ---------- container width (review-layer owned) ----------
@@ -420,17 +435,29 @@
     return row;
   }
   function themeRow() {
-    var supported = specSupportsTheme();
-    var shown = supported ? currentTheme() : (renderedTheme() || currentTheme());
-    var row = menuRow('◐', 'Theme', null);
-    var val = create('span', { class: 'sf-row-val' }, supported ? shown : shown + ' · fixed');
-    row.querySelector('.sf-row-main').appendChild(val);
-    if (supported) {
-      row.onclick = function () { val.textContent = toggleTheme(); };
-    } else {
-      row.disabled = true;
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">◐</span><span>Theme</span></span>';
+    // A spec that hardcodes one palette can't be re-themed — show it fixed.
+    if (!specSupportsTheme()) {
+      var shown = renderedTheme() || currentTheme();
+      row.querySelector('.sf-row-main').appendChild(create('span', { class: 'sf-row-val' }, shown + ' · fixed'));
       row.setAttribute('title', 'This spec defines a single theme');
+      return row;
     }
+    // Swatch picker — light family then dark, each swatch tinted in review.css.
+    var cur = currentTheme();
+    var grid = create('span', { class: 'sf-themes' });
+    THEMES.forEach(function (th) {
+      var sw = create('button', { class: 'sf-swatch', type: 'button', 'data-theme': th.id, title: th.name, 'aria-label': th.name });
+      if (th.id === cur) sw.classList.add('on');
+      sw.onclick = function () {
+        Array.prototype.forEach.call(grid.querySelectorAll('.sf-swatch'), function (x) { x.classList.remove('on'); });
+        sw.classList.add('on');
+        setTheme(th.id);
+      };
+      grid.appendChild(sw);
+    });
+    row.appendChild(grid);
     return row;
   }
   // Font — a segmented Sans/Serif/Mono control; applies live and persists the pick.
