@@ -11,8 +11,12 @@ import { loadComments, saveComments, createThread } from '../lib/store-comments.
 import { submitBatch, reviewProgressForSpec } from '../lib/store-inbox.mjs';
 import { appendEvent } from '../lib/store-ledger.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
+import { requestExport, exportRequestsForSession } from '../lib/store-export.mjs';
 import { orphanedBatches, createDaemonDrain } from '../lib/store-watch.mjs';
-import { cmdComments, cmdReply, cmdBatchDone, cmdBatchWorking, cmdWaitBatch } from '../lib/specforge-cli.mjs';
+import {
+  cmdComments, cmdReply, cmdBatchDone, cmdBatchWorking, cmdWaitBatch,
+  cmdExportWorking, cmdExportDone,
+} from '../lib/specforge-cli.mjs';
 import { run as stopRun } from '../hooks/stop.mjs';
 import { run as upsRun } from '../hooks/user-prompt-submit.mjs';
 
@@ -102,6 +106,51 @@ test('UserPromptSubmit surfaces pending batches as additionalContext', () => {
   const out = upsRun({ prompt: 'hi' }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
   assert.equal(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
   assert.match(out.hookSpecificOutput.additionalContext, /review batch/i);
+});
+
+// ---------- Google Docs export relay ----------
+function specWithExportRequest(session = 'sess-1') {
+  const id = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  attach(id, session);
+  requestExport(id);
+  return id;
+}
+
+test('Stop blocks on a queued export and routes to the export skill (surfaced once)', () => {
+  const id = specWithExportRequest('sess-1');
+  const out = stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
+  assert.equal(out.decision, 'block');
+  assert.match(out.reason, /specforge:export/);
+  assert.match(out.reason, /Google Docs/);
+  assert.equal(readMeta(id).export.state, 'working', 'surfacing advances it so a re-Stop won’t repeat');
+  assert.deepEqual(exportRequestsForSession('sess-1'), []);
+});
+
+test('a pending review batch takes priority over an export request', () => {
+  const { id } = specWithBatch('sess-1');
+  requestExport(id);
+  const out = stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
+  assert.match(out.reason, /review batch/i, 'the batch wins');
+  assert.equal(readMeta(id).export.state, 'requested', 'the export waits, not consumed');
+});
+
+test('UserPromptSubmit surfaces a queued export as additionalContext', () => {
+  specWithExportRequest('sess-1');
+  const out = upsRun({ prompt: 'hi' }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
+  assert.match(out.hookSpecificOutput.additionalContext, /specforge:export/);
+});
+
+test('export CLI: working then done records the Doc link; --error records a failure', async () => {
+  const id = specWithExportRequest('sess-1');
+  assert.equal((await cmdExportWorking({ id })).ok, true);
+  const d = await cmdExportDone({ id, url: 'https://docs.google.com/document/d/abc/edit' });
+  assert.equal(d.ok, true);
+  assert.equal(readMeta(id).export.state, 'done');
+  assert.equal(readMeta(id).export.url, 'https://docs.google.com/document/d/abc/edit');
+
+  requestExport(id);
+  await cmdExportDone({ id, error: 'drive auth failed' });
+  assert.equal(readMeta(id).export.state, 'error');
 });
 
 test('orphanedBatches: attached+fresh is not orphaned; unattached/stale is', () => {

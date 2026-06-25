@@ -41,7 +41,7 @@ import {
   handleCommentReply, handleCommentResolve, handleCommentEdit, handleSubmit,
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
-  handleRename, handleOrganize,
+  handleRename, handleOrganize, handleExport,
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
 
@@ -424,6 +424,11 @@ export function createDaemon() {
     if (det) {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleDetach(det[1], res);
+    }
+    const exp = path.match(/^\/api\/spec\/([\w-]+)\/export$/);
+    if (exp) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleExport(exp[1], res);
     }
 
     if (method === 'GET') {
