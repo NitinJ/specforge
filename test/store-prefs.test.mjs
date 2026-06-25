@@ -55,15 +55,17 @@ test('sanitize keeps the named theme variants', () => {
   assert.equal('theme' in sanitizePrefs({ theme: 'monokai' }), false, 'unknown theme dropped');
 });
 
-test('sanitize keeps a valid font and drops an invalid one', () => {
-  assert.equal(sanitizePrefs({ font: 'serif' }).font, 'serif');
-  assert.equal(sanitizePrefs({ font: 'mono' }).font, 'mono');
-  assert.equal('font' in sanitizePrefs({ font: 'comic-sans' }), false);
+test('sanitize keeps a valid named font and drops an invalid one', () => {
+  for (const f of ['default', 'inter', 'merriweather', 'jetbrains-mono', 'lora']) {
+    assert.equal(sanitizePrefs({ font: f }).font, f, `${f} is a valid font`);
+  }
+  assert.equal('font' in sanitizePrefs({ font: 'comic-sans' }), false, 'unknown font dropped');
+  assert.equal('font' in sanitizePrefs({ font: 'serif' }), false, 'the old category ids are no longer valid');
 });
 
 test('writePrefs round-trips the font alongside the other prefs', () => {
-  writePrefs(id, { font: 'serif', theme: 'dark' });
-  assert.deepEqual(readPrefs(id), { font: 'serif', theme: 'dark' });
+  writePrefs(id, { font: 'merriweather', theme: 'dark' });
+  assert.deepEqual(readPrefs(id), { font: 'merriweather', theme: 'dark' });
 });
 
 test('sanitize clamps width into [820,1760] and rounds it', () => {

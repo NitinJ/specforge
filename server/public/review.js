@@ -36,11 +36,37 @@
   var state = { threads: [], filter: INIT_FILTER, active: null, meta: null };
   var els = {};
 
-  // Reading-font options (review-layer owned). Default = sans, so the selector
-  // always shows an active choice and house specs — already system-sans — render
-  // unchanged; serif/mono are the new readability picks.
-  var FONTS = ['sans', 'serif', 'mono'];
-  function initFont() { return FONTS.indexOf(PREFS.font) !== -1 ? PREFS.font : 'sans'; }
+  // Reading-font catalog (review-layer owned) — the famous reader/blog fonts, 3 per
+  // category. `cat` (sans/serif/mono) drives the code-block exemption in review.css;
+  // `google` is the Fonts API family spec, loaded on demand only when picked (so a
+  // spec fetches nothing until you choose a web font); `stack` always lists a system
+  // fallback so it degrades gracefully offline. Default ('default') leaves the spec's
+  // own font untouched — no override, no fetch.
+  var FONTS = [
+    { id: 'inter', name: 'Inter', cat: 'sans', google: 'Inter:wght@400;600', stack: '"Inter", system-ui, sans-serif' },
+    { id: 'source-sans', name: 'Source Sans 3', cat: 'sans', google: 'Source+Sans+3:wght@400;600', stack: '"Source Sans 3", system-ui, sans-serif' },
+    { id: 'work-sans', name: 'Work Sans', cat: 'sans', google: 'Work+Sans:wght@400;600', stack: '"Work Sans", system-ui, sans-serif' },
+    { id: 'source-serif', name: 'Source Serif 4', cat: 'serif', google: 'Source+Serif+4:wght@400;600', stack: '"Source Serif 4", Georgia, serif' },
+    { id: 'merriweather', name: 'Merriweather', cat: 'serif', google: 'Merriweather:wght@400;700', stack: '"Merriweather", Georgia, serif' },
+    { id: 'lora', name: 'Lora', cat: 'serif', google: 'Lora:wght@400;600', stack: '"Lora", Georgia, serif' },
+    { id: 'jetbrains-mono', name: 'JetBrains Mono', cat: 'mono', google: 'JetBrains+Mono:wght@400;600', stack: '"JetBrains Mono", ui-monospace, monospace' },
+    { id: 'fira-code', name: 'Fira Code', cat: 'mono', google: 'Fira+Code:wght@400;600', stack: '"Fira Code", ui-monospace, monospace' },
+    { id: 'ibm-plex-mono', name: 'IBM Plex Mono', cat: 'mono', google: 'IBM+Plex+Mono:wght@400;600', stack: '"IBM Plex Mono", ui-monospace, monospace' },
+  ];
+  var FONT_CATS = ['sans', 'serif', 'mono'];
+  function fontById(id) { return FONTS.filter(function (f) { return f.id === id; })[0] || null; }
+  function initFont() { return fontById(PREFS.font) ? PREFS.font : 'default'; }
+
+  // Inject the Google Fonts stylesheet for a font once, the first time it's picked.
+  var _loadedFonts = {};
+  function loadGoogleFont(f) {
+    if (!f || !f.google || _loadedFonts[f.id]) return;
+    _loadedFonts[f.id] = true;
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=' + f.google + '&display=swap';
+    document.head.appendChild(link);
+  }
 
   // Theme catalog (defined up here, not in the theme section below, because boot()
   // runs on the readyState check before that section's top-level code executes —
@@ -171,9 +197,19 @@
   // chrome root (#sf-sidebar/#sf-menu/#sf-launcher/#sf-compose/#sf-toc) declares its
   // own font-family, so the reading font can't inherit in. Code stays monospace
   // unless the whole doc is set to mono.
-  function applyFont(kind) {
-    if (FONTS.indexOf(kind) === -1) kind = 'sans';
-    widthContainer().setAttribute('data-sf-font', kind);
+  function applyFont(id) {
+    var c = widthContainer();
+    var f = fontById(id);
+    if (!f) { // 'default' / unknown → spec's own font, no override, no fetch
+      c.removeAttribute('data-sf-font');
+      c.style.removeProperty('--sf-reading-font');
+      return;
+    }
+    loadGoogleFont(f);
+    // data-sf-font carries the CATEGORY (sans/serif/mono) — review.css keys the
+    // code-block exemption off it; the actual family is the inline --sf-reading-font.
+    c.setAttribute('data-sf-font', f.cat);
+    c.style.setProperty('--sf-reading-font', f.stack);
   }
 
   // ---------- data ----------
@@ -461,24 +497,23 @@
     row.appendChild(grid);
     return row;
   }
-  // Font — a segmented Sans/Serif/Mono control; applies live and persists the pick.
+  // Font — a dropdown of reading fonts grouped Sans/Serif/Mono; applies live and
+  // persists the pick. "Default" leaves the spec's own font alone.
   function fontRow() {
     var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
     row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">A</span><span>Font</span></span>';
-    var seg = create('span', { class: 'sf-seg' });
-    var current = initFont();
-    [['sans', 'Sans'], ['serif', 'Serif'], ['mono', 'Mono']].forEach(function (o) {
-      var b = create('button', { type: 'button', 'data-font': o[0] }, o[1]);
-      if (o[0] === current) b.classList.add('on');
-      b.onclick = function () {
-        Array.prototype.forEach.call(seg.children, function (x) { x.classList.remove('on'); });
-        b.classList.add('on');
-        applyFont(o[0]);
-        putPref({ font: o[0] });
-      };
-      seg.appendChild(b);
+    var sel = create('select', { class: 'sf-font-select', 'aria-label': 'Reading font' });
+    sel.appendChild(create('option', { value: 'default' }, 'Default'));
+    FONT_CATS.forEach(function (cat) {
+      var group = create('optgroup', { label: cat.charAt(0).toUpperCase() + cat.slice(1) });
+      FONTS.filter(function (f) { return f.cat === cat; }).forEach(function (f) {
+        group.appendChild(create('option', { value: f.id }, f.name));
+      });
+      sel.appendChild(group);
     });
-    row.appendChild(seg);
+    sel.value = initFont();
+    sel.onchange = function () { applyFont(sel.value); putPref({ font: sel.value }); };
+    row.appendChild(sel);
     return row;
   }
   // Live/disconnected pill for the owning session (connected comes from /meta,
