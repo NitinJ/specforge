@@ -527,6 +527,45 @@ test('resolve-all shows when threads are open and posts resolve-all', async (t) 
   assert.ok(posts.some((p) => /\/comments\/resolve-all$/.test(p.url)), 'posts resolve-all');
 });
 
+// ---------- launcher unresolved-comment pill ----------
+test('the SF launcher shows a pill with the unresolved-thread count', async (t) => {
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ author: 'human', body: 'a' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } },
+    { id: 't2', state: 'open', comments: [{ author: 'human', body: 'b' }],
+      anchor: { block: { index: 1, tag: 'P', text: 'Second paragraph for hover.', sectionPath: [] } } },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  const launcher = window.document.getElementById('sf-launcher');
+  assert.ok(launcher.classList.contains('has-count'), 'launcher flagged when threads are unresolved');
+  assert.equal(launcher.querySelector('.sf-l-n').textContent, '2', 'pill shows the unresolved count');
+});
+
+test('the launcher pill counts unresolved comments, not just un-submitted ones', async (t) => {
+  // Submitted (batchId) but still open → pending=0, unresolved=1. The old pending
+  // badge hid here; the unresolved pill must stay visible at 1.
+  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD });
+  const launcher = window.document.getElementById('sf-launcher');
+  assert.ok(launcher.classList.contains('has-count'), 'still flagged after submit while a thread is open');
+  assert.equal(launcher.querySelector('.sf-l-n').textContent, '1');
+});
+
+test('the launcher pill clears when every thread is resolved', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: RESOLVED_THREAD });
+  const launcher = window.document.getElementById('sf-launcher');
+  assert.ok(!launcher.classList.contains('has-count'), 'no pill when nothing is unresolved');
+  assert.equal(launcher.querySelector('.sf-l-n').textContent, '', 'pill is empty');
+});
+
+test('the menu Comments row badge mirrors the unresolved count', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const badge = rowByLabel(document, 'Comments').querySelector('.sf-menu-badge');
+  assert.ok(badge, 'Comments row carries a count badge');
+  assert.equal(badge.textContent, '1', 'badge shows the unresolved count');
+});
+
 // ---------- launcher session row (attached + detach) ----------
 test('menu shows the attached session + a Detach button that posts /detach', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678' } });
