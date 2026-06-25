@@ -282,10 +282,23 @@
     els.sidebar.querySelector('.sf-foot-action').appendChild(els.footAction);
 
     buildLauncher();
+    buildTop();
 
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { clearHover(); hideCompose(); closeMenu(); } });
+  }
+
+  // Floating "↑ Top" button (top-right) — smooth-scrolls to the top of the spec.
+  // Hidden until the reader has scrolled down a bit, so it never clutters the top.
+  function buildTop() {
+    els.top = create('button', { id: 'sf-top', type: 'button', 'aria-label': 'Back to top', title: 'Back to top' });
+    els.top.innerHTML = '<span aria-hidden="true">↑</span> Top';
+    els.top.onclick = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    document.body.appendChild(els.top);
+    function onScroll() { els.top.classList.toggle('show', (window.scrollY || window.pageYOffset || 0) > 400); }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
   }
 
   // Sidebar open/close — also flags the body so the floating launcher can
@@ -883,7 +896,7 @@
   function inUI(t) {
     while (t) {
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
-          t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc') return true;
+          t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-top') return true;
       t = t.parentElement;
     }
     return false;
