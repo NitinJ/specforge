@@ -46,6 +46,29 @@ The spec must support a seamless light/dark switch:
 
 `spec-base.html` already satisfies this — don't remove it.
 
+## Palette tokens (enforced)
+
+Use the **canonical palette tokens** for every color — don't invent per-spec names
+(`--card`, `--ecru`, `--redbg`, …). The review layer's theme variants re-tint a spec
+by overriding exactly these tokens, so a spec that strays into its own dialect won't
+re-theme cleanly. The lint requires all of them to be defined:
+
+| Token | Role | | Token | Role |
+|-------|------|-|-------|------|
+| `--bg` | page background | | `--accent` | links / primary accent |
+| `--panel` | card / panel surface | | `--green` | good / success (tags, callouts) |
+| `--panel2` | elevated / alt surface | | `--amber` | warning |
+| `--ink` | primary text | | `--red` | bad / danger |
+| `--muted` | secondary text | | `--code` | code-block background |
+| `--line` | borders / dividers | | `--shadow` | shadow color |
+| `--mono` | monospace font stack | | | |
+
+Define each under `:root` (dark) with a `[data-theme="light"]` override (as
+`spec-base.html` does). Need a tint (e.g. a colored callout fill)? Derive it from a
+token — `background: color-mix(in srgb, var(--amber) 16%, var(--bg))` — rather than
+adding a new color token. The list lives in `lib/config.mjs` (`paletteTokens`) and is
+overridable per project via `.specforge/config.json`.
+
 ## Implementation plan (enforced structure)
 
 Use the structured markup so the tracker and enforcement hooks can read it:

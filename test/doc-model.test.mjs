@@ -6,11 +6,12 @@ import { dirname, resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
-import { DEFAULTS, loadConfig } from '../lib/config.mjs';
+import { DEFAULTS, PALETTE_TOKENS, loadConfig } from '../lib/config.mjs';
 import {
   getSectionIds,
   duplicateSectionIds,
   checkThemeContract,
+  checkPalette,
   parsePlan,
   hasStructuredPlan,
 } from '../lib/spec.mjs';
@@ -52,6 +53,28 @@ test('spec: template has the required sections with unique ids', () => {
 test('spec: template satisfies the theme contract', () => {
   const t = checkThemeContract(TEMPLATE);
   assert.equal(t.ok, true, `missing: ${t.missing.join(', ')}`);
+});
+
+test('config: exposes the canonical palette tokens', () => {
+  assert.ok(PALETTE_TOKENS.includes('code'), 'code-block token is canonical');
+  assert.ok(PALETTE_TOKENS.includes('panel'));
+  assert.deepEqual(DEFAULTS.paletteTokens, PALETTE_TOKENS);
+});
+
+test('spec: both shells define every canonical palette token', () => {
+  for (const [name, html] of [['impl', TEMPLATE], ['doc', DOC_TEMPLATE]]) {
+    const p = checkPalette(html);
+    assert.equal(p.ok, true, `${name} shell missing: ${p.missing.join(', ')}`);
+  }
+});
+
+test('lint: fails when a canonical palette token is undefined', () => {
+  const broken = TEMPLATE.replaceAll('--code:', '--xcode:'); // drop the code-block token
+  const { ok, checks } = lintSpec(broken);
+  assert.equal(ok, false);
+  const c = checks.find((x) => x.name === 'palette-tokens');
+  assert.equal(c.ok, false);
+  assert.match(c.detail, /--code/);
 });
 
 test('spec: template plan parses into stages + tasks', () => {
