@@ -47,6 +47,68 @@
   }
 }
 
+/* Named theme variants (review-layer owned). The review layer sets
+   [data-theme="<id>"] on <html>; each block overrides the HOUSE palette vars
+   (--bg/--ink/--accent/… that house specs read) plus --panel/--panel2 (the chrome
+   surfaces). Because review.css loads after the spec's own <style>, these win the
+   specificity tie against the spec's :root[data-theme] rules — re-tinting the spec
+   AND the review chrome together. (Imported specs that don't use the house vars
+   keep their own colors — same limit as the light/dark toggle.) */
+:root[data-theme="dracula"] {
+  --bg: #282a36; --card: #343746; --panel: #343746; --panel2: #21222c;
+  --ink: #f8f8f2; --muted: #9aa0c4; --line: #44475a;
+  --accent: #bd93f9; --green: #50fa7b; --amber: #f1fa8c; --red: #ff5555;
+}
+:root[data-theme="nord"] {
+  --bg: #2e3440; --card: #3b4252; --panel: #3b4252; --panel2: #353c4a;
+  --ink: #eceff4; --muted: #9aa4b8; --line: #434c5e;
+  --accent: #88c0d0; --green: #a3be8c; --amber: #ebcb8b; --red: #bf616a;
+}
+:root[data-theme="solarized-dark"] {
+  --bg: #002b36; --card: #073642; --panel: #073642; --panel2: #062d38;
+  --ink: #93a1a1; --muted: #7d9392; --line: #0a3b47;
+  --accent: #268bd2; --green: #859900; --amber: #b58900; --red: #dc322f;
+}
+:root[data-theme="solarized-light"] {
+  --bg: #fdf6e3; --card: #eee8d5; --panel: #eee8d5; --panel2: #f5efdc;
+  --ink: #586e75; --muted: #93a1a1; --line: #e6e0cc;
+  --accent: #268bd2; --green: #859900; --amber: #b58900; --red: #dc322f;
+}
+:root[data-theme="github-light"] {
+  --bg: #ffffff; --card: #f6f8fa; --panel: #f6f8fa; --panel2: #eaeef2;
+  --ink: #1f2328; --muted: #59636e; --line: #d1d9e0;
+  --accent: #0969da; --green: #1a7f37; --amber: #9a6700; --red: #cf222e;
+}
+:root[data-theme="gruvbox-light"] {
+  --bg: #fbf1c7; --card: #f2e5bc; --panel: #f2e5bc; --panel2: #ebdbb2;
+  --ink: #3c3836; --muted: #7c6f64; --line: #e6d8a8;
+  --accent: #076678; --green: #79740e; --amber: #b57614; --red: #9d0006;
+}
+/* Secondary house vars, derived from each variant's core colors above so they stay
+   coherent per theme. House specs come in palette dialects — some use --code for
+   code blocks, --redbg/--greybg/… for callouts, --rowalt for table stripes, --ecru
+   for a warm surface — and a variant that left those un-mapped kept the spec's
+   original (often dark) value, so e.g. code blocks rendered near-black under a light
+   variant. These mixes win the same specificity tie (loaded after the spec) for any
+   of the listed variants. Tints are computed off var(--ink)/var(--bg)/the accent
+   set in the matching block above. */
+:root[data-theme="dracula"], :root[data-theme="nord"], :root[data-theme="solarized-dark"],
+:root[data-theme="solarized-light"], :root[data-theme="github-light"], :root[data-theme="gruvbox-light"] {
+  --code: color-mix(in srgb, var(--ink) 7%, var(--bg));   /* code-block surface */
+  --shadow: color-mix(in srgb, #000 22%, transparent);
+  --ecru: var(--panel2);                                  /* warm/secondary surface */
+  --toc: var(--panel);
+  --rowalt: color-mix(in srgb, var(--ink) 4%, var(--bg)); /* table row stripe */
+  --grey: var(--muted);
+  --greybg: color-mix(in srgb, var(--ink) 7%, var(--bg));
+  --accent2: var(--accent);
+  --blue: var(--accent);
+  --redbg: color-mix(in srgb, var(--red) 15%, var(--bg));     /* callout fills */
+  --amberbg: color-mix(in srgb, var(--amber) 17%, var(--bg));
+  --greenbg: color-mix(in srgb, var(--green) 15%, var(--bg));
+  --bluebg: color-mix(in srgb, var(--accent) 15%, var(--bg));
+}
+
 /* reading font (review-layer owned) — review.js sets [data-sf-font] on the spec's
    content container only, so the review chrome (appended to <body>, with its own
    fonts) is never restyled. The container rule wins over the spec's own body/wrapper
@@ -258,6 +320,23 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
 .sf-seg button.on { background: var(--sf-panel2); color: var(--sf-ink); }
 .sf-seg button[data-font="serif"] { font-family: Georgia, Cambria, "Times New Roman", serif; }
 .sf-seg button[data-font="mono"] { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+/* Theme swatch picker — 4 columns, so the light family lands on the top row and
+   the dark family on the bottom. Each swatch shows the theme bg + an accent dot. */
+.sf-themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; margin: 7px 0 2px; }
+.sf-swatch { position: relative; height: 26px; padding: 0; border: 1px solid var(--sf-line);
+  border-radius: 7px; cursor: pointer; }
+.sf-swatch::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 7px; height: 7px;
+  border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .15); }
+.sf-swatch:hover { border-color: var(--sf-accent); }
+.sf-swatch.on { outline: 2px solid var(--sf-accent); outline-offset: 1px; border-color: transparent; }
+.sf-swatch[data-theme="light"] { background: #ffffff; } .sf-swatch[data-theme="light"]::after { background: #2f6feb; }
+.sf-swatch[data-theme="dark"] { background: #171a21; } .sf-swatch[data-theme="dark"]::after { background: #6ea8fe; }
+.sf-swatch[data-theme="solarized-light"] { background: #fdf6e3; } .sf-swatch[data-theme="solarized-light"]::after { background: #268bd2; }
+.sf-swatch[data-theme="github-light"] { background: #ffffff; } .sf-swatch[data-theme="github-light"]::after { background: #0969da; }
+.sf-swatch[data-theme="gruvbox-light"] { background: #fbf1c7; } .sf-swatch[data-theme="gruvbox-light"]::after { background: #076678; }
+.sf-swatch[data-theme="dracula"] { background: #282a36; } .sf-swatch[data-theme="dracula"]::after { background: #bd93f9; }
+.sf-swatch[data-theme="nord"] { background: #2e3440; } .sf-swatch[data-theme="nord"]::after { background: #88c0d0; }
+.sf-swatch[data-theme="solarized-dark"] { background: #002b36; } .sf-swatch[data-theme="solarized-dark"]::after { background: #268bd2; }
 .sf-detach { margin-left: auto; background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
   border-radius: 6px; font-size: 11px; padding: 3px 9px; cursor: pointer; }
 .sf-detach:hover { color: var(--sf-amber); border-color: var(--sf-amber); }
