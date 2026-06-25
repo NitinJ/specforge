@@ -227,7 +227,6 @@
       var metaStr = meta && JSON.stringify(meta);
       if (metaStr && metaStr !== lastMeta) { lastMeta = metaStr; state.meta = meta; changed = true; }
       if (changed) render();
-      updateConn(); // keep the menu's live/disconnected pill fresh on every poll
     }).catch(function () {});
   }
   function postJSON(url, body) {
@@ -440,16 +439,26 @@
     // Drive MCP); the row reflects meta.export and updates live on the poll.
     els.menu.appendChild(exportRow());
 
-    // Session — which session owns this spec, with a Detach button.
-    els.menu.appendChild(sessionRow());
+    // Footer — one bottom row: the live pill (left), the attached session id
+    // (center), and Detach (right). els.live survives the innerHTML reset above
+    // (#sf-live, the same node re-appended each rebuild).
+    els.menu.appendChild(sessionFoot());
+  }
 
-    // Footer — relocate the live-status pill into the menu. Held at els.live so it
-    // survives the innerHTML reset above (we re-append the same node each rebuild).
-    if (els.live) {
-      var foot = create('div', { class: 'sf-menu-foot' });
-      foot.appendChild(els.live);
-      els.menu.appendChild(foot);
+  // The bottom row: [● live]  [session id / "Not attached"]  [Detach].
+  function sessionFoot() {
+    var foot = create('div', { class: 'sf-menu-foot' });
+    if (els.live) foot.appendChild(els.live); // the green SSE live pill, left
+    var attached = state.meta && state.meta.attachedSession;
+    var friendly = state.meta && state.meta.sessionLabel;
+    var label = attached ? (friendly || ('Session ' + String(attached).slice(0, 8))) : 'Not attached';
+    foot.appendChild(create('span', { class: 'sf-foot-session', title: label }, label));
+    if (attached) {
+      var btn = create('button', { class: 'sf-detach', type: 'button' }, 'Detach');
+      btn.onclick = function (e) { e.stopPropagation(); detachSpec(); };
+      foot.appendChild(btn);
     }
+    return foot;
   }
 
   function menuRow(icon, label, onclick) {
@@ -514,36 +523,6 @@
     sel.value = initFont();
     sel.onchange = function () { applyFont(sel.value); putPref({ font: sel.value }); };
     row.appendChild(sel);
-    return row;
-  }
-  // Live/disconnected pill for the owning session (connected comes from /meta,
-  // which the 6s poll keeps fresh — see updateConn).
-  function connPill(connected) {
-    return '<span class="sf-conn ' + (connected ? 'on' : 'off') + '">'
-      + (connected ? '● live' : '● disconnected') + '</span>';
-  }
-  // Refresh the pill in the open menu on each poll, so liveness updates without reopening.
-  function updateConn() {
-    if (!els.menu || !els.menu.classList.contains('open')) return;
-    var el = els.menu.querySelector('.sf-conn');
-    if (!el || !state.meta || !state.meta.attachedSession) return;
-    el.outerHTML = connPill(state.meta.connected);
-  }
-  // Session row — shows which session owns this spec + a Detach button.
-  function sessionRow() {
-    var attached = state.meta && state.meta.attachedSession;
-    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
-    var friendly = state.meta && state.meta.sessionLabel;
-    var label = attached
-      ? esc(friendly || ('Session ' + String(attached).slice(0, 8)))
-      : 'Not attached';
-    var conn = attached ? connPill(state.meta.connected) : '';
-    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">🔗</span><span>' + label + '</span>' + conn + '</span>';
-    if (attached) {
-      var btn = create('button', { class: 'sf-detach', type: 'button' }, 'Detach');
-      btn.onclick = function (e) { e.stopPropagation(); detachSpec(); };
-      row.appendChild(btn);
-    }
     return row;
   }
   function detachSpec() {
