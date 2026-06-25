@@ -340,10 +340,12 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
 a.sf-doc-link { text-decoration: none; color: var(--sf-ink); cursor: pointer; }
 a.sf-doc-link:hover { color: var(--sf-accent); }
 .sf-reexport:hover { color: var(--sf-accent); border-color: var(--sf-accent); }
-.sf-conn { margin-left: 8px; font-size: 11px; white-space: nowrap; }
-.sf-conn.on { color: var(--sf-green); }
-.sf-conn.off { color: var(--sf-muted); }
-.sf-menu-foot { border-top: 1px solid var(--sf-line); margin-top: 4px; padding: 7px 10px 3px; }
+/* Footer — one bottom row: live pill (left) · session id (center, truncates) ·
+   Detach (right). */
+.sf-menu-foot { border-top: 1px solid var(--sf-line); margin-top: 4px; padding: 7px 10px;
+  display: flex; align-items: center; gap: 8px; }
+.sf-foot-session { flex: 1; min-width: 0; text-align: center; color: var(--sf-muted);
+  font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* injected floating TOC drawer (only when the spec has no TOC of its own) */
 #sf-toc {

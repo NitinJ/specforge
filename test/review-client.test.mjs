@@ -620,30 +620,21 @@ test('once done, the row opens the Google Doc and offers re-export', async (t) =
   assert.ok(posts.some((p) => /\/export$/.test(p.url)), 're-export POSTs /export again');
 });
 
-// ---------- launcher session row (attached + detach) ----------
-test('menu shows the attached session + a Detach button that posts /detach', async (t) => {
+// ---------- launcher footer (live pill · session id · detach) ----------
+test('the footer shows the attached session id + Detach (posts /detach), alongside the live pill', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678' } });
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  const row = rowByLabel(document, 'Session sess-123');
-  assert.ok(row, 'session row shows the attached session id');
-  const detach = row.querySelector('.sf-detach');
-  assert.ok(detach, 'Detach button present when attached');
+  const foot = document.querySelector('#sf-menu .sf-menu-foot');
+  assert.ok(foot, 'a single bottom footer row');
+  assert.ok(foot.querySelector('#sf-live'), 'the live pill sits in the footer');
+  const session = foot.querySelector('.sf-foot-session');
+  assert.match(session.textContent, /Session sess-123/, 'the session id is shown centered');
+  const detach = foot.querySelector('.sf-detach');
+  assert.ok(detach, 'Detach present when attached');
   detach.click();
   await tick(window);
   assert.ok(posts.some((p) => /\/detach$/.test(p.url)), 'Detach posts /detach');
-});
-
-test('session row shows a live pill when connected, disconnected when not', async (t) => {
-  const live = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678', connected: true } });
-  live.window.document.getElementById('sf-launcher').click();
-  const onPill = live.window.document.querySelector('#sf-menu .sf-conn.on');
-  assert.ok(onPill && /live/.test(onPill.textContent), 'connected → ● live');
-
-  const off = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678', connected: false } });
-  off.window.document.getElementById('sf-launcher').click();
-  const offPill = off.window.document.querySelector('#sf-menu .sf-conn.off');
-  assert.ok(offPill && /disconnected/.test(offPill.textContent), 'not connected → ● disconnected');
 });
 
 // ---------- per-spec UI prefs (theme · width · filter) ----------
@@ -773,11 +764,11 @@ test('changing the comments filter PUTs it to /prefs', async (t) => {
   assert.ok(p && p.body.filter === 'resolved', 'filter persisted on change');
 });
 
-test('menu shows "Not attached" with no Detach button when free', async (t) => {
+test('the footer shows "Not attached" with no Detach when free', async (t) => {
   const { window } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: null } });
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  const row = rowByLabel(document, 'Not attached');
-  assert.ok(row, 'session row shows Not attached');
-  assert.equal(row.querySelector('.sf-detach'), null, 'no Detach button when free');
+  const foot = document.querySelector('#sf-menu .sf-menu-foot');
+  assert.match(foot.querySelector('.sf-foot-session').textContent, /Not attached/, 'shows Not attached');
+  assert.equal(foot.querySelector('.sf-detach'), null, 'no Detach button when free');
 });
