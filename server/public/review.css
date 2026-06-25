@@ -120,6 +120,19 @@
   padding: 11px 14px; transition: filter .12s ease; }
 .sf-act:hover:not(:disabled) { filter: brightness(1.08); }
 .sf-act:disabled { cursor: default; opacity: .85; }
+/* custom SpecForge loading indicator — shown on the action button while the agent
+   is working a submitted batch (awaiting / picked up / working). An accent ring
+   that spins; reduced-motion falls back to a static ring. `currentColor` ties the
+   ring to the button's own text color so it tracks each state's theme. */
+.sf-spin {
+  display: inline-block; box-sizing: border-box; width: 12px; height: 12px;
+  vertical-align: -2px; margin-right: 8px;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor; border-radius: 50%;
+  animation: sf-spin-rot .7s linear infinite;
+}
+@keyframes sf-spin-rot { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sf-spin { animation: none; } }
 /* comment input — shared by the composer and inline replies. A calm filled field,
    system sans (no monospace), no drag-grip; it auto-grows via JS and shows an
    accent focus ring. (The old rule targeted `.sf-compose`, but the popover is
