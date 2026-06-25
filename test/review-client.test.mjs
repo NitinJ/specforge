@@ -604,6 +604,25 @@ test('injected prefs initialize theme, width and filter on boot', async (t) => {
   assert.ok(allBtn.classList.contains('on'), 'persisted filter reflected as the active segment');
 });
 
+test('a saved width is applied to the document on boot — without opening the menu', async (t) => {
+  // The bug: width only took effect when the width row was built (first menu open),
+  // so every spec auto-reload reset the page to its default width until you clicked
+  // the SpecForge icon. The saved width must apply on load, no interaction.
+  const { window } = await bootReviewLayer(t, { prefs: { width: 1400 } });
+  const { document } = window;
+  assert.equal(document.documentElement.style.getPropertyValue('--maxw'), '1400px',
+    'the --maxw variable is set on boot from the saved pref');
+  assert.equal(document.querySelector('main').style.maxWidth, '1400px',
+    'the width container is constrained on boot, before any menu interaction');
+});
+
+test('with no saved width, boot imposes no max-width', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  assert.equal(document.documentElement.style.getPropertyValue('--maxw'), '',
+    'no width is forced when nothing is persisted (the spec keeps its natural layout)');
+});
+
 test('toggling the theme PUTs the new theme to /prefs', async (t) => {
   const { window, puts } = await bootReviewLayer(t);
   const { document } = window;

@@ -52,6 +52,11 @@
     if (booted) return;
     booted = true;
     applyTheme(); // review-layer owns theme — apply the persisted choice on load
+    // Apply the persisted width on load too. Without this a saved width only took
+    // effect when the menu first built its width row, so every spec auto-reload
+    // reset the page to its default width until you clicked the SpecForge icon.
+    var savedW = parseInt(PREFS.width, 10);
+    if (savedW) applyWidth(savedW);
     buildChrome();
     load();
     // Poll so Claude's replies appear without a manual refresh; pause while the
