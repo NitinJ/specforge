@@ -36,6 +36,12 @@
   var state = { threads: [], filter: INIT_FILTER, active: null, meta: null };
   var els = {};
 
+  // Reading-font options (review-layer owned). Default = sans, so the selector
+  // always shows an active choice and house specs — already system-sans — render
+  // unchanged; serif/mono are the new readability picks.
+  var FONTS = ['sans', 'serif', 'mono'];
+  function initFont() { return FONTS.indexOf(PREFS.font) !== -1 ? PREFS.font : 'sans'; }
+
   // Submit shortcut label: ⌘↵ on Mac, Ctrl+↵ elsewhere (the handler accepts both).
   var IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
   var MOD_HINT = IS_MAC ? '⌘↵' : 'Ctrl+↵';
@@ -57,6 +63,7 @@
     // reset the page to its default width until you clicked the SpecForge icon.
     var savedW = parseInt(PREFS.width, 10);
     if (savedW) applyWidth(savedW);
+    applyFont(initFont()); // reading font — persisted choice (or sans) on load
     buildChrome();
     load();
     // Poll so Claude's replies appear without a manual refresh; pause while the
@@ -138,6 +145,16 @@
     if (saved) return saved;
     var w = widthContainer().getBoundingClientRect().width || 1040;
     return Math.min(1760, Math.max(820, Math.round(w / 20) * 20));
+  }
+
+  // ---------- reading font (review-layer owned) ----------
+  // Set a data-attr on the content container only; review.css maps it to a stack.
+  // Scoping to the container (not <html>) keeps the review chrome — appended to
+  // <body> with its own fonts — untouched. The CSS keeps code monospace unless the
+  // whole doc is set to mono.
+  function applyFont(kind) {
+    if (FONTS.indexOf(kind) === -1) kind = 'sans';
+    widthContainer().setAttribute('data-sf-font', kind);
   }
 
   // ---------- data ----------
@@ -357,6 +374,9 @@
     // Theme — light/dark toggle.
     els.menu.appendChild(themeRow());
 
+    // Font — sans/serif/mono reading font, persisted.
+    els.menu.appendChild(fontRow());
+
     // Export — open the print dialog (pick "Save as PDF"); the review chrome is
     // hidden by the print stylesheet so the PDF is just the spec.
     els.menu.appendChild(menuRow('⤓', 'Export PDF', function () { closeMenu(); window.print(); }));
@@ -404,6 +424,26 @@
       row.disabled = true;
       row.setAttribute('title', 'This spec defines a single theme');
     }
+    return row;
+  }
+  // Font — a segmented Sans/Serif/Mono control; applies live and persists the pick.
+  function fontRow() {
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">A</span><span>Font</span></span>';
+    var seg = create('span', { class: 'sf-seg' });
+    var current = initFont();
+    [['sans', 'Sans'], ['serif', 'Serif'], ['mono', 'Mono']].forEach(function (o) {
+      var b = create('button', { type: 'button', 'data-font': o[0] }, o[1]);
+      if (o[0] === current) b.classList.add('on');
+      b.onclick = function () {
+        Array.prototype.forEach.call(seg.children, function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        applyFont(o[0]);
+        putPref({ font: o[0] });
+      };
+      seg.appendChild(b);
+    });
+    row.appendChild(seg);
     return row;
   }
   // Live/disconnected pill for the owning session (connected comes from /meta,
