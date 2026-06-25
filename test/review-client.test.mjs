@@ -677,37 +677,62 @@ test('with no saved width, boot imposes no max-width', async (t) => {
     'no width is forced when nothing is persisted (the spec keeps its natural layout)');
 });
 
-// ---------- reading font (sans · serif · mono) ----------
-test('a saved font is applied to the content container on boot', async (t) => {
-  const { window } = await bootReviewLayer(t, { prefs: { font: 'serif' } });
-  assert.equal(window.document.querySelector('main').getAttribute('data-sf-font'), 'serif',
-    'the content container carries the chosen font on load, before any interaction');
+// ---------- reading font (Google-Fonts dropdown) ----------
+test('a saved font is applied on boot — category + family + on-demand Google load', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { font: 'merriweather' } });
+  const c = window.document.querySelector('main');
+  assert.equal(c.getAttribute('data-sf-font'), 'serif', 'data-sf-font carries the CATEGORY (for code exemption)');
+  assert.match(c.style.getPropertyValue('--sf-reading-font'), /Merriweather/, 'the family stack is set inline');
+  const link = window.document.querySelector('head link[href*="Merriweather"]');
+  assert.ok(link && /fonts\.googleapis\.com/.test(link.href), 'the Google font is loaded on boot for a saved web font');
 });
 
-test('font defaults to sans when nothing is persisted', async (t) => {
+test('with no saved font, boot imposes no override and fetches nothing', async (t) => {
   const { window } = await bootReviewLayer(t);
-  assert.equal(window.document.querySelector('main').getAttribute('data-sf-font'), 'sans',
-    'unset → sans (the control always shows an active choice; house specs are system-sans)');
+  const c = window.document.querySelector('main');
+  assert.equal(c.getAttribute('data-sf-font'), null, 'default → no override, the spec keeps its own font');
+  assert.equal(window.document.querySelector('head link[href*="fonts.googleapis.com"]'), null, 'no font fetched until one is picked');
 });
 
-test('the menu Font selector applies the choice to the content and persists it', async (t) => {
+test('the Font dropdown groups 3 fonts per category and applies + persists a pick', async (t) => {
   const { window, puts } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  const row = rowByLabel(document, 'Font');
-  assert.ok(row, 'Font row present in the SF menu');
-  row.querySelector('[data-font="serif"]').click();
-  assert.equal(document.querySelector('main').getAttribute('data-sf-font'), 'serif', 'applied to content');
+  const sel = rowByLabel(document, 'Font').querySelector('select.sf-font-select');
+  assert.ok(sel, 'Font dropdown present');
+  const groups = sel.querySelectorAll('optgroup');
+  assert.equal(groups.length, 3, 'Sans / Serif / Mono groups');
+  Array.prototype.forEach.call(groups, (g) => assert.equal(g.children.length, 3, g.label + ' has 3 fonts'));
+  assert.ok(sel.querySelector('option[value="default"]'), 'a Default option');
+
+  sel.value = 'jetbrains-mono';
+  sel.dispatchEvent(new window.Event('change'));
+  const c = document.querySelector('main');
+  assert.equal(c.getAttribute('data-sf-font'), 'mono', 'a mono pick sets the mono category');
+  assert.match(c.style.getPropertyValue('--sf-reading-font'), /JetBrains Mono/, 'family applied');
+  assert.ok(document.querySelector('head link[href*="JetBrains"]'), 'JetBrains Mono loaded from Google on pick');
   const p = puts.find((x) => /\/prefs$/.test(x.url));
-  assert.ok(p && p.body.font === 'serif', 'PUT /prefs persists the font choice');
+  assert.ok(p && p.body.font === 'jetbrains-mono', 'PUT /prefs persists the font id');
 });
 
-test('the Font selector reflects the persisted font', async (t) => {
-  const { window } = await bootReviewLayer(t, { prefs: { font: 'mono' } });
+test('the Font dropdown reflects the persisted font', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { font: 'lora' } });
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  const on = rowByLabel(document, 'Font').querySelector('button.on');
-  assert.ok(on && on.getAttribute('data-font') === 'mono', 'the stored font is the active segment');
+  assert.equal(rowByLabel(document, 'Font').querySelector('select.sf-font-select').value, 'lora',
+    'the dropdown shows the stored font');
+});
+
+test('picking Default clears the override', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { font: 'inter' } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const sel = rowByLabel(document, 'Font').querySelector('select.sf-font-select');
+  sel.value = 'default';
+  sel.dispatchEvent(new window.Event('change'));
+  const c = document.querySelector('main');
+  assert.equal(c.getAttribute('data-sf-font'), null, 'Default removes the category attr');
+  assert.equal(c.style.getPropertyValue('--sf-reading-font'), '', 'and the inline family');
 });
 
 test('picking a theme PUTs it to /prefs', async (t) => {

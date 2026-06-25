@@ -109,15 +109,13 @@
   --bluebg: color-mix(in srgb, var(--accent) 15%, var(--bg));
 }
 
-/* reading font (review-layer owned) — review.js sets [data-sf-font] on the spec's
-   content container only, so the review chrome (appended to <body>, with its own
-   fonts) is never restyled. The container rule wins over the spec's own body/wrapper
-   font (review.css loads after the spec's <style>). Code stays monospace unless the
-   whole doc is set to mono. */
+/* reading font (review-layer owned) — review.js sets data-sf-font (the category:
+   sans/serif/mono) + an inline --sf-reading-font (the chosen font's stack) on the
+   spec's content container only, so the review chrome (appended to <body>, with its
+   own fonts) is never restyled. The container rule wins over the spec's own
+   body/wrapper font (review.css loads after the spec's <style>). Code stays
+   monospace unless the chosen font is itself a mono. */
 [data-sf-font] { font-family: var(--sf-reading-font); }
-[data-sf-font="sans"]  { --sf-reading-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif; }
-[data-sf-font="serif"] { --sf-reading-font: Georgia, Cambria, "Times New Roman", Times, serif; }
-[data-sf-font="mono"]  { --sf-reading-font: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
 [data-sf-font]:not([data-sf-font="mono"]) pre,
 [data-sf-font]:not([data-sf-font="mono"]) code,
 [data-sf-font]:not([data-sf-font="mono"]) kbd,
@@ -312,14 +310,11 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
 .sf-row-val { margin-left: auto; color: var(--sf-muted); font-size: 11px; }
 .sf-menu-badge { margin-left: auto; background: var(--sf-accent); color: #08101f; border-radius: 999px; padding: 0 7px; font: 700 10.5px/1.5 system-ui, sans-serif; }
 .sf-menu-row input[type=range] { width: 100%; margin: 6px 0 2px; accent-color: var(--sf-accent); cursor: pointer; }
-/* Font segmented control — full-width Sans/Serif/Mono, mirrors the comments filter. */
-.sf-seg { display: flex; width: 100%; margin: 6px 0 2px; border: 1px solid var(--sf-line); border-radius: 8px; overflow: hidden; }
-.sf-seg button { flex: 1; background: none; border: none; border-right: 1px solid var(--sf-line);
-  color: var(--sf-muted); font-size: 11px; padding: 5px 0; cursor: pointer; }
-.sf-seg button:last-child { border-right: none; }
-.sf-seg button.on { background: var(--sf-panel2); color: var(--sf-ink); }
-.sf-seg button[data-font="serif"] { font-family: Georgia, Cambria, "Times New Roman", serif; }
-.sf-seg button[data-font="mono"] { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+/* Font dropdown — full-width select grouped Sans/Serif/Mono. */
+.sf-font-select { width: 100%; margin: 6px 0 2px; box-sizing: border-box;
+  background: var(--sf-panel2); color: var(--sf-ink); border: 1px solid var(--sf-line);
+  border-radius: 8px; padding: 5px 8px; font: 12px/1.4 system-ui, sans-serif; cursor: pointer; }
+.sf-font-select:focus { outline: none; border-color: var(--sf-accent); }
 /* Theme swatch picker — 4 columns, so the light family lands on the top row and
    the dark family on the bottom. Each swatch shows the theme bg + an accent dot. */
 .sf-themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; margin: 7px 0 2px; }
