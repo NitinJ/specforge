@@ -58,7 +58,9 @@ test('spec: template satisfies the theme contract', () => {
 test('config: exposes the canonical palette tokens', () => {
   assert.ok(PALETTE_TOKENS.includes('code'), 'code-block token is canonical');
   assert.ok(PALETTE_TOKENS.includes('panel'));
-  assert.deepEqual(DEFAULTS.paletteTokens, PALETTE_TOKENS);
+  assert.ok(PALETTE_TOKENS.includes('shadow'));
+  // The lint enforces the fixed PALETTE_TOKENS set directly — not a config knob.
+  assert.equal('paletteTokens' in DEFAULTS, false);
 });
 
 test('spec: both shells define every canonical palette token', () => {

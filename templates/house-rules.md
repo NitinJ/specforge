@@ -66,8 +66,8 @@ re-theme cleanly. The lint requires all of them to be defined:
 Define each under `:root` (dark) with a `[data-theme="light"]` override (as
 `spec-base.html` does). Need a tint (e.g. a colored callout fill)? Derive it from a
 token — `background: color-mix(in srgb, var(--amber) 16%, var(--bg))` — rather than
-adding a new color token. The list lives in `lib/config.mjs` (`paletteTokens`) and is
-overridable per project via `.specforge/config.json`.
+adding a new color token. The list is `PALETTE_TOKENS` in `lib/config.mjs`, fixed
+house-wide (the lint enforces exactly this set).
 
 ## Implementation plan (enforced structure)
 
