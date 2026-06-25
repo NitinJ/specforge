@@ -55,6 +55,11 @@ topic calls for). Whatever sections you keep:
 - **Keep every `<section>` with a stable, unique `id`** (anchors + comments depend
   on them). Keep the theme CSS (light/dark vars, `[data-theme]`,
   `prefers-color-scheme`, `--maxw`) — the review layer drives theme + width.
+- **Color only via the canonical palette tokens** (`--bg --panel --panel2 --ink
+  --muted --line --accent --green --amber --red --code --shadow --mono`) — the lint
+  requires them and the review-layer theme variants re-tint by overriding exactly
+  these. Don't invent per-spec color names (`--card`, `--ecru`, …); derive any tint
+  with `color-mix(... var(--token) …)`. See `templates/house-rules.md` → Palette tokens.
 - **Keep `<nav class="toc">` as the floating left sidebar** and keep its
   `<a href="#…">` entries in sync with the sections you end up with.
 
