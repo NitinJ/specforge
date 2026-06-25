@@ -623,6 +623,39 @@ test('with no saved width, boot imposes no max-width', async (t) => {
     'no width is forced when nothing is persisted (the spec keeps its natural layout)');
 });
 
+// ---------- reading font (sans · serif · mono) ----------
+test('a saved font is applied to the content container on boot', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { font: 'serif' } });
+  assert.equal(window.document.querySelector('main').getAttribute('data-sf-font'), 'serif',
+    'the content container carries the chosen font on load, before any interaction');
+});
+
+test('font defaults to sans when nothing is persisted', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  assert.equal(window.document.querySelector('main').getAttribute('data-sf-font'), 'sans',
+    'unset → sans (the control always shows an active choice; house specs are system-sans)');
+});
+
+test('the menu Font selector applies the choice to the content and persists it', async (t) => {
+  const { window, puts } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const row = rowByLabel(document, 'Font');
+  assert.ok(row, 'Font row present in the SF menu');
+  row.querySelector('[data-font="serif"]').click();
+  assert.equal(document.querySelector('main').getAttribute('data-sf-font'), 'serif', 'applied to content');
+  const p = puts.find((x) => /\/prefs$/.test(x.url));
+  assert.ok(p && p.body.font === 'serif', 'PUT /prefs persists the font choice');
+});
+
+test('the Font selector reflects the persisted font', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { font: 'mono' } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const on = rowByLabel(document, 'Font').querySelector('button.on');
+  assert.ok(on && on.getAttribute('data-font') === 'mono', 'the stored font is the active segment');
+});
+
 test('toggling the theme PUTs the new theme to /prefs', async (t) => {
   const { window, puts } = await bootReviewLayer(t);
   const { document } = window;

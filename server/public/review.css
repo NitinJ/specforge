@@ -47,6 +47,22 @@
   }
 }
 
+/* reading font (review-layer owned) — review.js sets [data-sf-font] on the spec's
+   content container only, so the review chrome (appended to <body>, with its own
+   fonts) is never restyled. The container rule wins over the spec's own body/wrapper
+   font (review.css loads after the spec's <style>). Code stays monospace unless the
+   whole doc is set to mono. */
+[data-sf-font] { font-family: var(--sf-reading-font); }
+[data-sf-font="sans"]  { --sf-reading-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif; }
+[data-sf-font="serif"] { --sf-reading-font: Georgia, Cambria, "Times New Roman", Times, serif; }
+[data-sf-font="mono"]  { --sf-reading-font: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+[data-sf-font]:not([data-sf-font="mono"]) pre,
+[data-sf-font]:not([data-sf-font="mono"]) code,
+[data-sf-font]:not([data-sf-font="mono"]) kbd,
+[data-sf-font]:not([data-sf-font="mono"]) samp {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+}
+
 /* live-status pill — relocated into the launcher menu footer by review.js.
    Hidden until then so it never renders as a stray block in the document flow. */
 .sf-live { display: none; }
@@ -157,6 +173,10 @@
   position: fixed; right: calc(var(--sf-side-w) + 20px); z-index: 50; width: 320px;
   background: var(--sf-panel); border: 1px solid var(--sf-line); border-radius: 12px;
   padding: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.45); animation: sf-pop .14s ease;
+  /* Own font-family so the reading-font override can't bleed in via inheritance
+     when data-sf-font lands on <body> (a spec with no content container). The
+     other chrome roots (#sf-sidebar/#sf-menu/#sf-launcher/#sf-toc) already set one. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 @keyframes sf-pop { from { opacity: 0; transform: translateY(4px) scale(.985); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #sf-compose { animation: none; } }
@@ -230,6 +250,14 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
 .sf-row-val { margin-left: auto; color: var(--sf-muted); font-size: 11px; }
 .sf-menu-badge { margin-left: auto; background: var(--sf-accent); color: #08101f; border-radius: 999px; padding: 0 7px; font: 700 10.5px/1.5 system-ui, sans-serif; }
 .sf-menu-row input[type=range] { width: 100%; margin: 6px 0 2px; accent-color: var(--sf-accent); cursor: pointer; }
+/* Font segmented control — full-width Sans/Serif/Mono, mirrors the comments filter. */
+.sf-seg { display: flex; width: 100%; margin: 6px 0 2px; border: 1px solid var(--sf-line); border-radius: 8px; overflow: hidden; }
+.sf-seg button { flex: 1; background: none; border: none; border-right: 1px solid var(--sf-line);
+  color: var(--sf-muted); font-size: 11px; padding: 5px 0; cursor: pointer; }
+.sf-seg button:last-child { border-right: none; }
+.sf-seg button.on { background: var(--sf-panel2); color: var(--sf-ink); }
+.sf-seg button[data-font="serif"] { font-family: Georgia, Cambria, "Times New Roman", serif; }
+.sf-seg button[data-font="mono"] { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .sf-detach { margin-left: auto; background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
   border-radius: 6px; font-size: 11px; padding: 3px 9px; cursor: pointer; }
 .sf-detach:hover { color: var(--sf-amber); border-color: var(--sf-amber); }

@@ -48,6 +48,17 @@ test('sanitize drops unknown keys and invalid enum values', () => {
   assert.deepEqual(sanitizePrefs({ theme: 'neon', filter: 'bogus', junk: 1 }), {});
 });
 
+test('sanitize keeps a valid font and drops an invalid one', () => {
+  assert.equal(sanitizePrefs({ font: 'serif' }).font, 'serif');
+  assert.equal(sanitizePrefs({ font: 'mono' }).font, 'mono');
+  assert.equal('font' in sanitizePrefs({ font: 'comic-sans' }), false);
+});
+
+test('writePrefs round-trips the font alongside the other prefs', () => {
+  writePrefs(id, { font: 'serif', theme: 'dark' });
+  assert.deepEqual(readPrefs(id), { font: 'serif', theme: 'dark' });
+});
+
 test('sanitize clamps width into [820,1760] and rounds it', () => {
   assert.equal(sanitizePrefs({ width: 100 }).width, 820);
   assert.equal(sanitizePrefs({ width: 99999 }).width, 1760);
