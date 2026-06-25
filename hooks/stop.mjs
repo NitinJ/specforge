@@ -21,6 +21,7 @@ import {
   pendingForSession, reviewReason,
   implementSignalsForSession, clearImplementSignal, implementReason,
 } from '../lib/store-drain.mjs';
+import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
 
 export function run(input, env = process.env) {
   // Loop guard: if this stop already followed a stop-hook continuation, settle.
@@ -40,6 +41,13 @@ export function run(input, env = process.env) {
   if (toImplement.length) {
     toImplement.forEach((m) => clearImplementSignal(m.id));
     return { decision: 'block', reason: implementReason(toImplement) };
+  }
+
+  // Human clicked "Export to Google Docs" — route to the export skill once.
+  const toExport = exportRequestsForSession(me);
+  if (toExport.length) {
+    toExport.forEach((m) => markExportWorking(m.id));
+    return { decision: 'block', reason: exportReason(toExport) };
   }
 
   const nudges = [];
