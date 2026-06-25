@@ -329,12 +329,13 @@
 
   function buildMenuRows() {
     els.menu.innerHTML = '';
-    var pending = pendingCount();
+    var unresolved = unresolvedCount();
 
-    // Comments — toggles the sidebar; carries the pending badge.
+    // Comments — toggles the sidebar; carries the unresolved-count badge (mirrors
+    // the launcher pill, so the two never disagree).
     var comments = menuRow('💬', 'Comments', function () { toggleSidebar(); closeMenu(); });
-    if (pending) {
-      var badge = create('span', { class: 'sf-menu-badge' }, String(pending));
+    if (unresolved) {
+      var badge = create('span', { class: 'sf-menu-badge' }, String(unresolved));
       comments.querySelector('.sf-row-main').appendChild(badge);
     }
     els.menu.appendChild(comments);
@@ -665,10 +666,13 @@
     }).length;
   }
   function renderLauncher() {
-    var pending = pendingCount();
-    els.launcher.classList.toggle('has-pending', !!pending);
-    els.launcher.querySelector('.sf-l-n').textContent = pending || '';
-    // Keep an open menu's pending badge in sync with fresh data.
+    // The launcher pill is the at-a-glance signal: how many threads are still
+    // unresolved (not how many are un-submitted). It stays visible through the
+    // agent's working phase, when pending=0 but threads remain open.
+    var n = unresolvedCount();
+    els.launcher.classList.toggle('has-count', !!n);
+    els.launcher.querySelector('.sf-l-n').textContent = n || '';
+    // Keep an open menu's count badge in sync with fresh data.
     if (els.menu.classList.contains('open')) buildMenuRows();
   }
 

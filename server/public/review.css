@@ -206,7 +206,7 @@ body.sf-side-open #sf-launcher { right: calc(var(--sf-side-w) + 18px); }
   background: var(--sf-accent); color: #08101f; border-radius: 999px;
   font: 700 10px/1 system-ui, sans-serif;
 }
-#sf-launcher.has-pending .sf-l-n { display: flex; }
+#sf-launcher.has-count .sf-l-n { display: flex; }
 
 /* launcher popover menu — anchored above the launcher */
 #sf-menu {
