@@ -261,6 +261,11 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
 .sf-detach { margin-left: auto; background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
   border-radius: 6px; font-size: 11px; padding: 3px 9px; cursor: pointer; }
 .sf-detach:hover { color: var(--sf-amber); border-color: var(--sf-amber); }
+/* "Open Google Doc" link row + its Re-export button (re-export warms to accent,
+   not the amber detach signals). */
+.sf-menu-row .sf-row-main[role="link"] { cursor: pointer; }
+.sf-menu-row .sf-row-main[role="link"]:hover { color: var(--sf-accent); }
+.sf-reexport:hover { color: var(--sf-accent); border-color: var(--sf-accent); }
 .sf-conn { margin-left: 8px; font-size: 11px; white-space: nowrap; }
 .sf-conn.on { color: var(--sf-green); }
 .sf-conn.off { color: var(--sf-muted); }
