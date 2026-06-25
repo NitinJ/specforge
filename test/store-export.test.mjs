@@ -81,6 +81,11 @@ test('finishExport records the Doc url (done) or the error', () => {
   assert.equal(errored.error, 'drive auth failed');
 });
 
+test('finishExport requires a url or an error (no "undefined" url)', () => {
+  requestExport(id);
+  assert.throws(() => finishExport(id, {}), /url or error/);
+});
+
 test('exportReason names the specs and points at the export skill', () => {
   const reason = exportReason([{ id, title: 'A spec' }]);
   assert.match(reason, /A spec/);

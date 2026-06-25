@@ -66,6 +66,19 @@ test('/meta surfaces the finished Doc link', async () => {
   assert.equal(m.export.url, 'https://docs.google.com/document/d/xyz/edit');
 });
 
+test('a second export while one is in progress 409s (no double run)', async () => {
+  attach(specId, 'sess-1');
+  assert.equal((await post(`/api/spec/${specId}/export`)).status, 202);
+  assert.equal((await post(`/api/spec/${specId}/export`)).status, 409, 'already requested → refused');
+});
+
+test('re-export is allowed once the previous one finished', async () => {
+  attach(specId, 'sess-1');
+  await post(`/api/spec/${specId}/export`);
+  finishExport(specId, { url: 'https://docs.google.com/document/d/done/edit' });
+  assert.equal((await post(`/api/spec/${specId}/export`)).status, 202, 'done → re-export allowed');
+});
+
 test('POST export 404s for an unknown spec', async () => {
   const r = await post('/api/spec/deadbeef00/export');
   assert.equal(r.status, 404);
