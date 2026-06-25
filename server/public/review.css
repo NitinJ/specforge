@@ -173,6 +173,10 @@
   position: fixed; right: calc(var(--sf-side-w) + 20px); z-index: 50; width: 320px;
   background: var(--sf-panel); border: 1px solid var(--sf-line); border-radius: 12px;
   padding: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.45); animation: sf-pop .14s ease;
+  /* Own font-family so the reading-font override can't bleed in via inheritance
+     when data-sf-font lands on <body> (a spec with no content container). The
+     other chrome roots (#sf-sidebar/#sf-menu/#sf-launcher/#sf-toc) already set one. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 @keyframes sf-pop { from { opacity: 0; transform: translateY(4px) scale(.985); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #sf-compose { animation: none; } }

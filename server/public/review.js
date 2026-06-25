@@ -149,9 +149,12 @@
 
   // ---------- reading font (review-layer owned) ----------
   // Set a data-attr on the content container only; review.css maps it to a stack.
-  // Scoping to the container (not <html>) keeps the review chrome — appended to
-  // <body> with its own fonts — untouched. The CSS keeps code monospace unless the
-  // whole doc is set to mono.
+  // Scoping to the container (not <html>) keeps the review chrome untouched. When a
+  // spec has no container element, widthContainer() falls back to <body> (same as
+  // applyWidth) and the attr lands there — the chrome is still safe because every
+  // chrome root (#sf-sidebar/#sf-menu/#sf-launcher/#sf-compose/#sf-toc) declares its
+  // own font-family, so the reading font can't inherit in. Code stays monospace
+  // unless the whole doc is set to mono.
   function applyFont(kind) {
     if (FONTS.indexOf(kind) === -1) kind = 'sans';
     widthContainer().setAttribute('data-sf-font', kind);
