@@ -89,6 +89,28 @@ test('review chrome is built exactly once (defer run + DOMContentLoaded)', async
   assert.equal(document.querySelectorAll('#sf-sidebar').length, 1, 'exactly one sidebar');
 });
 
+test('a back-to-top button is built and scrolls to the top on click', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  assert.equal(document.querySelectorAll('#sf-top').length, 1, 'exactly one Top button');
+  let scrolledTo = null;
+  window.scrollTo = function (opts) { scrolledTo = opts; };
+  document.getElementById('sf-top').click();
+  assert.ok(scrolledTo && scrolledTo.top === 0, 'clicking scrolls to the top');
+});
+
+test('the Top button hides at the top and shows after scrolling down', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const top = window.document.getElementById('sf-top');
+  assert.ok(!top.classList.contains('show'), 'hidden at the top of the page');
+  Object.defineProperty(window, 'scrollY', { configurable: true, get: function () { return 500; } });
+  window.dispatchEvent(new window.Event('scroll'));
+  assert.ok(top.classList.contains('show'), 'shows after scrolling down past the threshold');
+  Object.defineProperty(window, 'scrollY', { configurable: true, get: function () { return 0; } });
+  window.dispatchEvent(new window.Event('scroll'));
+  assert.ok(!top.classList.contains('show'), 'hides again near the top');
+});
+
 test('the launcher menu opens and closes', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;
