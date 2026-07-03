@@ -714,7 +714,7 @@ test('the Font dropdown groups 3 fonts per category and applies + persists a pic
   const sel = rowByLabel(document, 'Font').querySelector('select.sf-font-select');
   assert.ok(sel, 'Font dropdown present');
   const groups = sel.querySelectorAll('optgroup');
-  assert.equal(groups.length, 3, 'Sans / Serif / Mono groups');
+  assert.equal(groups.length, 4, 'Sans / Serif / Mono / Presentation groups');
   Array.prototype.forEach.call(groups, (g) => assert.equal(g.children.length, 3, g.label + ' has 3 fonts'));
   assert.ok(sel.querySelector('option[value="default"]'), 'a Default option');
 
@@ -726,6 +726,27 @@ test('the Font dropdown groups 3 fonts per category and applies + persists a pic
   assert.ok(document.querySelector('head link[href*="JetBrains"]'), 'JetBrains Mono loaded from Google on pick');
   const p = puts.find((x) => /\/prefs$/.test(x.url));
   assert.ok(p && p.body.font === 'jetbrains-mono', 'PUT /prefs persists the font id');
+});
+
+test('the Presentation group offers display fonts that keep code monospace', async (t) => {
+  const { window, puts } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const sel = rowByLabel(document, 'Font').querySelector('select.sf-font-select');
+  const pres = Array.prototype.find.call(sel.querySelectorAll('optgroup'), (g) => g.label === 'Presentation');
+  assert.ok(pres, 'a Presentation group is present');
+  assert.equal(pres.children.length, 3, 'Presentation has 3 fonts');
+  assert.ok(pres.querySelector('option[value="poppins"]'), 'Poppins is offered');
+
+  sel.value = 'playfair-display';
+  sel.dispatchEvent(new window.Event('change'));
+  const c = document.querySelector('main');
+  assert.equal(c.getAttribute('data-sf-font'), 'presentation',
+    'a presentation pick sets the presentation category (not mono, so code stays monospace)');
+  assert.match(c.style.getPropertyValue('--sf-reading-font'), /Playfair Display/, 'family applied');
+  assert.ok(document.querySelector('head link[href*="Playfair"]'), 'Playfair Display loaded from Google on pick');
+  const p = puts.find((x) => /\/prefs$/.test(x.url));
+  assert.ok(p && p.body.font === 'playfair-display', 'PUT /prefs persists the presentation font id');
 });
 
 test('the Font dropdown reflects the persisted font', async (t) => {

@@ -56,7 +56,7 @@ test('sanitize keeps the named theme variants', () => {
 });
 
 test('sanitize keeps a valid named font and drops an invalid one', () => {
-  for (const f of ['default', 'inter', 'merriweather', 'jetbrains-mono', 'lora']) {
+  for (const f of ['default', 'inter', 'merriweather', 'jetbrains-mono', 'lora', 'poppins', 'playfair-display']) {
     assert.equal(sanitizePrefs({ font: f }).font, f, `${f} is a valid font`);
   }
   assert.equal('font' in sanitizePrefs({ font: 'comic-sans' }), false, 'unknown font dropped');
