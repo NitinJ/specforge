@@ -544,7 +544,14 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
 
   // 3. We hold the lock — bind and advertise. The daemon owner also seeds the
   // per-type template specs (idempotent — existing/edited templates untouched).
-  ensureTemplates();
+  // Best-effort: a failed seed (read-only/full disk) must not abort startup —
+  // it would leak the just-acquired lock, and create falls back to the bundled
+  // shells anyway.
+  try {
+    ensureTemplates();
+  } catch {
+    /* templateHtmlFor falls back to the bundled shells */
+  }
   const server = createDaemon();
   let boundPort;
   try {
