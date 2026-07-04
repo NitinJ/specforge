@@ -96,6 +96,37 @@ test('GET /spec/<unknown> returns 404', async (t) => {
   });
 });
 
+test('the daemon also answers on IPv6 loopback — localhost from a Windows browser', async (t) => {
+  // Under WSL2 mirrored networking the Windows browser resolves `localhost` to
+  // ::1 first; an IPv4-only listener makes localhost links flake while
+  // 127.0.0.1 works. The daemon mirrors its listener onto [::1] (best-effort).
+  createSpec({ title: 'One', html: '<h1>One</h1>' });
+  const first = await ensureServer({ port: 0 });
+  t.after(() => new Promise((r) => first.server.close(r)));
+  t.after(() => { clearServerState(); releaseLock(); });
+
+  const res = await fetch(`http://[::1]:${first.port}/healthz`);
+  assert.equal(res.status, 200, 'the same port answers on ::1');
+});
+
+test('the ::1 mirror retries EADDRINUSE — a fast restart still ends up dual-stack', async (t) => {
+  // Fast-restart race: the previous daemon's ::1 socket can still be closing
+  // when the next daemon binds. Simulate it: hold ::1 on a port, release it
+  // shortly after ensureServer starts — the retry must pick it up.
+  createSpec({ title: 'One', html: '<h1>One</h1>' });
+  const blocker = createDaemon();
+  await new Promise((r) => blocker.listen(0, '::1', r));
+  const port = blocker.address().port;
+  setTimeout(() => blocker.close(), 200);
+
+  const first = await ensureServer({ port });
+  t.after(() => new Promise((r) => first.server.close(r)));
+  t.after(() => { clearServerState(); releaseLock(); });
+
+  const res = await fetch(`http://[::1]:${first.port}/healthz`);
+  assert.equal(res.status, 200, '::1 answers after the blocker released the port');
+});
+
 test('ensureServer is a singleton: a second call reuses the same port', async (t) => {
   createSpec({ title: 'One', html: '<h1>One</h1>' });
 

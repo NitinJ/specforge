@@ -532,10 +532,34 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
   const url = `http://127.0.0.1:${boundPort}/`;
   writeServerState({ port: boundPort, pid: process.pid, url });
 
+  // Mirror the listener onto IPv6 loopback (best-effort). A Windows browser
+  // resolves `localhost` to ::1 first — under WSL2 mirrored networking an
+  // IPv4-only bind makes localhost links flake while 127.0.0.1 works. Same
+  // port, same handler; skipped silently where ::1 is unavailable. EADDRINUSE
+  // is retried briefly: on a fast restart the previous daemon's ::1 socket can
+  // still be closing after its lock is released (cleanup can't await close),
+  // and giving up on the first conflict would silently regress to IPv4-only.
+  let server6 = null;
+  for (let attempt = 0; attempt < 3 && !server6; attempt++) {
+    if (attempt > 0) await sleep(150);
+    const candidate = createDaemon();
+    try {
+      await new Promise((resolve, reject) => {
+        candidate.once('error', reject);
+        candidate.listen(boundPort, '::1', resolve);
+      });
+      candidate.on('error', () => {}); // a later runtime error must never crash the daemon
+      server6 = candidate;
+    } catch (err) {
+      if (err.code !== 'EADDRINUSE') break; // no IPv6 / other failure → skip for good
+    }
+  }
+
   let cleaned = false;
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
+    if (server6) server6.close();
     clearServerState();
     releaseLock();
   };

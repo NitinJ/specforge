@@ -136,6 +136,16 @@ test('wait-batch ignores batches belonging to other sessions', async () => {
   assert.equal(r.ready, false, 'sess-1 sees nothing; the batch is sess-2’s');
 });
 
+test('wait-batch fails loudly with no session id (never silently watches nothing)', async () => {
+  // A detached background process can lack CLAUDE_CODE_SESSION_ID. Before this
+  // guard the watcher polled an always-empty list until timeout — "running" but
+  // unable to ever deliver a batch.
+  await assert.rejects(
+    () => cmdWaitBatch({ timeout: 0 }, fastDeps('')),
+    /no session id|CLAUDE_CODE_SESSION_ID/,
+  );
+});
+
 test('wait-batch tolerates a non-finite timeout (no infinite loop)', { timeout: 5000 }, async () => {
   await cmdCreate({ title: 'A' }, deps('sess-1'));
   let n = 0;

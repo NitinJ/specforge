@@ -27,7 +27,7 @@ export function run(input, env = process.env) {
   // Loop guard: if this stop already followed a stop-hook continuation, settle.
   if (input.stop_hook_active) return null;
 
-  const { me, mine } = mineFor(env);
+  const { me, mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op
 
   heartbeat(me);
