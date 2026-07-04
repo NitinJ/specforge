@@ -44,6 +44,7 @@ import {
   handleRename, handleOrganize, handleExport,
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
+import { ensureTemplates } from '../lib/store-templates.mjs';
 
 const DEFAULT_PORT = 4180;
 const PORT_RETRY_LIMIT = 20; // up to 20 retries after the first attempt = 21 ports probed
@@ -85,9 +86,13 @@ function groupByCollection(specs) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(m);
   }
-  const named = [...groups.keys()].filter((k) => k !== '')
+  // Templates (the protected scaffolding sources) always sit last — below
+  // Uncollected — so working documents keep the top of the page.
+  const named = [...groups.keys()].filter((k) => k !== '' && k !== 'Templates')
     .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-  const order = groups.has('') ? [...named, ''] : named;
+  const order = [...named];
+  if (groups.has('')) order.push('');
+  if (groups.has('Templates')) order.push('Templates');
   return { order: order.map((k) => ({ key: k, specs: groups.get(k) })), named };
 }
 
@@ -104,6 +109,22 @@ function rowHtml(m) {
   // lowercase haystack for search — RAW values (single outer esc() encodes once).
   const key = esc(`${m.id} ${titleRaw} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'} ${tags.join(' ')} ${coll}`.toLowerCase());
   const chips = tags.map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}<button class="x" type="button" title="Remove tag" aria-label="Remove tag">×</button></span>`).join('');
+  // Template specs are protected scaffolding sources: badge them, keep the
+  // lifecycle/status noise off, and pin their collection (no reassign input).
+  if (m.template) {
+    return `<tr data-k="${key}" data-id="${id}" class="tplrow">
+  <td class="spec">
+    <div class="titlerow"><a class="title" href="/spec/${id}">${title}</a></div>
+    <div class="id">${id}</div>
+  </td>
+  <td><span class="badge t">${esc(rawType)}</span></td>
+  <td><span class="badge tpl">template</span></td>
+  <td class="att">${att}</td>
+  <td class="link">${m.attachedSession ? (isStale(m) ? '<span class="off">● disconnected</span>' : '<span class="live">● live</span>') : ''}</td>
+  <td class="upd">${esc(relativeTime(m.updated))}</td>
+  <td></td>
+</tr>`;
+  }
   return `<tr data-k="${key}" data-id="${id}">
   <td class="spec">
     <div class="titlerow"><a class="title" href="/spec/${id}">${title}</a><button class="rename" type="button" title="Rename" aria-label="Rename">✎</button><input class="rename-in" type="text" value="${esc(titleRaw)}" aria-label="New name" hidden></div>
@@ -170,6 +191,7 @@ export function renderIndex() {
   .s-approved,.s-done{color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,var(--line))}
   .s-in_review{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 40%,var(--line))}
   .s-draft,.s-closed{color:var(--muted);border-color:var(--line)}
+  .tpl{color:var(--accent);border-style:dashed;border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
   .att{color:var(--muted);font-size:13px} .upd{color:var(--muted);font-size:13px;white-space:nowrap}
   .link{font-size:12.5px;white-space:nowrap} .link .live{color:var(--green)} .link .off{color:var(--muted)}
   .coll{width:130px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font-size:12.5px}
@@ -520,7 +542,9 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
     }
   }
 
-  // 3. We hold the lock — bind and advertise.
+  // 3. We hold the lock — bind and advertise. The daemon owner also seeds the
+  // per-type template specs (idempotent — existing/edited templates untouched).
+  ensureTemplates();
   const server = createDaemon();
   let boundPort;
   try {

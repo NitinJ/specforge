@@ -45,6 +45,11 @@ copied the right shell to `htmlPath` (impl types → the full Stages/tracker/Run
 shell; design/research → a chrome-only doc shell), and attached the spec to this
 session. **Author into `htmlPath`** — that file IS the spec.
 
+The shell comes from the store's per-type **template spec** (`template-<type>`,
+listed under Templates on the index) when one exists, else the bundled file. To
+change what future specs start from, edit the template spec like any other spec
+(open `template-<type>` and edit its html). Never delete a template spec.
+
 ## 3. Author from the shell — sections by type
 
 Replace every `{{ … }}` placeholder (`{{TITLE}}`, `{{DATE}}` = today YYYY-MM-DD,

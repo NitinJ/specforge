@@ -73,6 +73,17 @@ test('create rejects an invalid type', async () => {
   await assert.rejects(() => cmdCreate({ title: 'X', type: 'bogus' }, deps()), /invalid type/);
 });
 
+test('create scaffolds from the store template when one exists (template editing works)', async () => {
+  const { ensureTemplates, templateId } = await import('../lib/store-templates.mjs');
+  const { readSpecHtml, writeSpecHtml } = await import('../lib/store.mjs');
+  ensureTemplates();
+  const tid = templateId('design');
+  writeSpecHtml(tid, readSpecHtml(tid) + '<!-- custom-house-marker -->');
+  const r = await cmdCreate({ title: 'From Edited Template', type: 'design' }, deps());
+  assert.match(readFileSync(r.htmlPath, 'utf8'), /custom-house-marker/,
+    'new specs pick up edits made to the template spec');
+});
+
 test('import ingests an existing .html spec and records its origin', async () => {
   const src = join(home, 'design.html');
   writeFileSync(src, '<!doctype html><title>t</title><h1>Imported</h1><p>body</p>');
