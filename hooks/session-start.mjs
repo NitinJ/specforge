@@ -21,7 +21,7 @@ import { readMeta } from '../lib/meta.mjs';
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
 
 export function run(input, env = process.env) {
-  const { mine } = mineFor(env);
+  const { mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op (the common fresh-session case)
   // Only arm for specs that can still receive review comments — a session owning
   // only `closed` specs has nothing for the watcher to deliver (it would spin forever).

@@ -18,7 +18,7 @@ import {
 import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
 
 export function run(input, env = process.env) {
-  const { me, mine } = mineFor(env);
+  const { me, mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op
   heartbeat(me);
   const batches = pendingForSession(me);

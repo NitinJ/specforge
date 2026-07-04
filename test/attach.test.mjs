@@ -51,6 +51,22 @@ test('attach is exclusive — a second live session cannot steal it', () => {
   assert.equal(readMeta(id).attachedSession, 'sess-1');
 });
 
+test('the exclusivity error is actionable — owner, lock age, and the detach remedy', () => {
+  // The post-crash trap: a new session hits the lock of a dead one and, without
+  // a remedy in the error, dead-ends for up to STALE_MS. The message must say
+  // who holds it, when it frees itself, and how to free it now.
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-1-abcdef99');
+  try {
+    attach(id, 'sess-2');
+    assert.fail('attach should throw');
+  } catch (err) {
+    assert.match(err.message, /sess-1-a/, 'names the owning session (short id)');
+    assert.match(err.message, /stale in ~?\d+m/, 'says when the lock frees itself');
+    assert.match(err.message, new RegExp(`detach ${id}`), 'gives the exact detach remedy');
+  }
+});
+
 test('a stale lock can be reclaimed by another session', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-1');

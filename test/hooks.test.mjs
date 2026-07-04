@@ -56,6 +56,25 @@ test('hooks no-op when the session owns no specs', () => {
   assert.equal(sessionStartRun({}, env), null);
 });
 
+test('hooks take the session id from the stdin payload when env lacks it', () => {
+  // Claude Code sends session_id in every hook payload; the env var is the
+  // fallback. A hook context without CLAUDE_CODE_SESSION_ID must still find
+  // the session's specs — otherwise heartbeats stop and the lock goes stale
+  // under a live session.
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-stdin');
+  const out = sessionStartRun({ session_id: 'sess-stdin' }, {});
+  assert.ok(out, 'SessionStart acts on the stdin session id');
+  assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
+});
+
+test('the stdin session id wins over a conflicting env var', () => {
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-stdin');
+  const out = sessionStartRun({ session_id: 'sess-stdin' }, { CLAUDE_CODE_SESSION_ID: 'sess-env' });
+  assert.ok(out, 'the payload id (authoritative, per-invocation) is preferred');
+});
+
 test('SessionStart re-arms the watcher when the (resumed) session owns specs', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-1');

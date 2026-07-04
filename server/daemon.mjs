@@ -532,10 +532,27 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
   const url = `http://127.0.0.1:${boundPort}/`;
   writeServerState({ port: boundPort, pid: process.pid, url });
 
+  // Mirror the listener onto IPv6 loopback (best-effort). A Windows browser
+  // resolves `localhost` to ::1 first — under WSL2 mirrored networking an
+  // IPv4-only bind makes localhost links flake while 127.0.0.1 works. Same
+  // port, same handler; skipped silently where ::1 is unavailable or taken.
+  let server6 = null;
+  try {
+    server6 = createDaemon();
+    await new Promise((resolve, reject) => {
+      server6.once('error', reject);
+      server6.listen(boundPort, '::1', resolve);
+    });
+    server6.on('error', () => {}); // a later runtime error must never crash the daemon
+  } catch {
+    server6 = null;
+  }
+
   let cleaned = false;
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
+    if (server6) server6.close();
     clearServerState();
     releaseLock();
   };

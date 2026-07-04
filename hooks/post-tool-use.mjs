@@ -36,7 +36,7 @@ function classify(input) {
 }
 
 export function run(input, env = process.env) {
-  const { mine } = mineFor(env);
+  const { mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op
   const ev = classify(input);
   if (!ev) return null;

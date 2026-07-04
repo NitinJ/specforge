@@ -9,11 +9,17 @@
 import { specsForSession } from '../../lib/attach.mjs';
 
 /**
+ * Claude Code sends `session_id` in every hook payload — that per-invocation id
+ * is authoritative; $CLAUDE_CODE_SESSION_ID is the fallback for contexts where
+ * only the env is available. Without the payload preference, a hook env missing
+ * the var silently no-ops for a session that owns specs — heartbeats stop and
+ * its locks go stale under a live session.
  * @param {Record<string,string|undefined>} env
+ * @param {string} [inputSessionId] the hook payload's session_id
  * @returns {{ me: string, mine: string[] }} the session id + the spec ids it owns
  */
-export function mineFor(env = process.env) {
-  const me = env.CLAUDE_CODE_SESSION_ID || '';
+export function mineFor(env = process.env, inputSessionId = '') {
+  const me = inputSessionId || env.CLAUDE_CODE_SESSION_ID || '';
   if (!me) return { me: '', mine: [] };
   return { me, mine: specsForSession(me) };
 }

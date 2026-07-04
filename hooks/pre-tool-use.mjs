@@ -17,7 +17,7 @@ export function run(input, env = process.env) {
   const file = input.tool_input && input.tool_input.file_path;
   if (!file) return null;
 
-  const { mine } = mineFor(env);
+  const { mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op
 
   for (const id of mine) {
