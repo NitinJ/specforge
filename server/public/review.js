@@ -37,7 +37,7 @@
   var els = {};
 
   // Reading-font catalog (review-layer owned) — the famous reader/blog fonts, 3 per
-  // category. `cat` (sans/serif/mono) drives the code-block exemption in review.css;
+  // category. `cat` (sans/serif/mono/presentation) drives the code-block exemption in review.css;
   // `google` is the Fonts API family spec, loaded on demand only when picked (so a
   // spec fetches nothing until you choose a web font); `stack` always lists a system
   // fallback so it degrades gracefully offline. Default ('default') leaves the spec's
@@ -52,8 +52,14 @@
     { id: 'jetbrains-mono', name: 'JetBrains Mono', cat: 'mono', google: 'JetBrains+Mono:wght@400;600', stack: '"JetBrains Mono", ui-monospace, monospace' },
     { id: 'fira-code', name: 'Fira Code', cat: 'mono', google: 'Fira+Code:wght@400;600', stack: '"Fira Code", ui-monospace, monospace' },
     { id: 'ibm-plex-mono', name: 'IBM Plex Mono', cat: 'mono', google: 'IBM+Plex+Mono:wght@400;600', stack: '"IBM Plex Mono", ui-monospace, monospace' },
+    // Presentation — high-personality display faces for slide-heavy / showcase specs.
+    // A 700 weight is loaded so headings render crisp bold, not synthetic. They behave
+    // like sans/serif for the code-block exemption (any cat but 'mono' keeps code mono).
+    { id: 'poppins', name: 'Poppins', cat: 'presentation', google: 'Poppins:wght@400;600;700', stack: '"Poppins", system-ui, sans-serif' },
+    { id: 'montserrat', name: 'Montserrat', cat: 'presentation', google: 'Montserrat:wght@400;600;700', stack: '"Montserrat", system-ui, sans-serif' },
+    { id: 'playfair-display', name: 'Playfair Display', cat: 'presentation', google: 'Playfair+Display:wght@400;600;700', stack: '"Playfair Display", Georgia, serif' },
   ];
-  var FONT_CATS = ['sans', 'serif', 'mono'];
+  var FONT_CATS = ['sans', 'serif', 'mono', 'presentation'];
   function fontById(id) { return FONTS.filter(function (f) { return f.id === id; })[0] || null; }
   function initFont() { return fontById(PREFS.font) ? PREFS.font : 'default'; }
 
