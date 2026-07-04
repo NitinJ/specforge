@@ -96,6 +96,20 @@ test('GET /spec/<unknown> returns 404', async (t) => {
   });
 });
 
+test('ensureServer seeds the template specs and the index shows them as templates', async (t) => {
+  const first = await ensureServer({ port: 0 });
+  t.after(() => new Promise((r) => first.server.close(r)));
+  t.after(() => { clearServerState(); releaseLock(); });
+
+  const { templateId } = await import('../lib/store-templates.mjs');
+  const { readMeta } = await import('../lib/meta.mjs');
+  assert.ok(readMeta(templateId('design')), 'daemon start seeds the templates');
+
+  const body = await (await fetch(first.url)).text();
+  assert.match(body, new RegExp(`/spec/${templateId('design')}`), 'templates are listed on the index');
+  assert.match(body, /badge tpl/, 'template rows carry the template badge');
+});
+
 test('the daemon also answers on IPv6 loopback — localhost from a Windows browser', async (t) => {
   // Under WSL2 mirrored networking the Windows browser resolves `localhost` to
   // ::1 first; an IPv4-only listener makes localhost links flake while

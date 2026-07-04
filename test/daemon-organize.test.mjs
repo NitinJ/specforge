@@ -42,6 +42,25 @@ const send = (method, path, body) => fetch(base + path, {
   method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
 });
 
+test('template specs are protected: rename / organize / status are refused (403)', async () => {
+  const { ensureTemplates, templateId } = await import('../lib/store-templates.mjs');
+  ensureTemplates();
+  const tid = templateId('design');
+  assert.equal((await send('POST', `/api/spec/${tid}/rename`, { title: 'Hijack' })).status, 403);
+  assert.equal((await send('PATCH', `/api/spec/${tid}/organize`, { collection: 'Elsewhere' })).status, 403);
+  assert.equal((await send('POST', `/api/spec/${tid}/status`, { status: 'closed' })).status, 403);
+  const m = readMeta(tid);
+  assert.equal(m.title, 'Template · design', 'title untouched');
+  assert.equal(m.collection, 'Templates', 'collection untouched');
+  assert.equal(m.status, 'draft', 'status untouched');
+});
+
+test('the Templates collection is reserved — normal specs cannot be organized into it', async () => {
+  const r = await send('PATCH', `/api/spec/${specId}/organize`, { collection: 'templates' });
+  assert.equal(r.status, 400);
+  assert.equal(readMeta(specId).collection, null, 'collection unchanged');
+});
+
 test('POST /rename updates the title and the spec heading', async () => {
   const r = await send('POST', `/api/spec/${specId}/rename`, { title: '  After  ' });
   assert.equal(r.status, 200);
