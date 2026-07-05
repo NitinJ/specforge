@@ -555,6 +555,40 @@ a.sf-doc-link:hover { color: var(--sf-accent); }
 .sf-foot-session { flex: 1; min-width: 0; text-align: center; color: var(--sf-muted);
   font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* view options — fit-to-width + collapsible left TOC */
+/* "Fit" pill in the Width row: stretch the layout to the viewport. */
+.sf-fit { margin-left: auto; background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
+  border-radius: 999px; font: 600 10.5px/1 system-ui, sans-serif; padding: 4px 9px; cursor: pointer;
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
+.sf-fit:hover { color: var(--sf-ink); border-color: var(--sf-accent); }
+.sf-fit.on { color: var(--sf-accent); border-color: var(--sf-accent);
+  background: color-mix(in srgb, var(--sf-accent) 12%, transparent); }
+.sf-fit:focus-visible { outline: none; box-shadow: var(--sf-ring); }
+/* Collapsed left TOC: drop the nav AND its grid column so the content reflows
+   (review.css loads after the spec's <style>, so these win the tie). */
+html[data-sf-toc="hidden"] nav.toc, html[data-sf-toc="hidden"] .side-toc { display: none; }
+html[data-sf-toc="hidden"] .layout { grid-template-columns: minmax(0, 1fr); }
+/* The chevron tab — a fixed glass lip on the left edge, mid-height. Built only
+   when the spec has its own left TOC. */
+#sf-tocbtn {
+  position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 46;
+  width: 22px; height: 56px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--sf-glass);
+  -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  border: 1px solid var(--sf-hairline); border-left: none;
+  border-radius: 0 var(--sf-r-sm) var(--sf-r-sm) 0;
+  color: var(--sf-muted); cursor: pointer; box-shadow: var(--sf-shadow-1);
+  font: 400 15px/1 system-ui, sans-serif;
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #sf-tocbtn { background: var(--sf-panel); }
+}
+#sf-tocbtn:hover { color: var(--sf-accent); border-color: var(--sf-accent); }
+#sf-tocbtn:focus-visible { outline: none; box-shadow: var(--sf-ring); }
+
 /* injected floating TOC drawer (only when the spec has no TOC of its own) —
    solid like the sidebar, single-edge shadow on the left. */
 #sf-toc {
@@ -589,7 +623,7 @@ a.sf-doc-link:hover { color: var(--sf-accent); }
    spec, and keep atomic blocks from splitting across pages. The spec's own CSS
    (and the print dialog's "Background graphics" toggle) drive the look. */
 @media print {
-  #sf-sidebar, #sf-launcher, #sf-menu, #sf-compose, #sf-toc, #sf-live, #sf-top { display: none !important; }
+  #sf-sidebar, #sf-launcher, #sf-menu, #sf-compose, #sf-toc, #sf-live, #sf-top, #sf-tocbtn { display: none !important; }
   .sf-hover, .sf-block-mark { outline: none !important; background: none !important; }
   h1, h2, h3, h4, h5, h6 { break-after: avoid-page; }
   figure, table, pre, blockquote, .panel, .card, .callout, .stat { break-inside: avoid; }
