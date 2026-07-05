@@ -1,5 +1,7 @@
 /* SpecForge review layer — injected onto served specs. Uses the spec's own theme
-   variables (--panel/--ink/--line/--accent/...) with safe fallbacks. */
+   variables (--panel/--ink/--line/--accent/...) with safe fallbacks, plus a
+   theme-independent structural layer (radius/spacing/motion/elevation) so every
+   piece of chrome shares one design language. */
 
 :root {
   --sf-panel: var(--panel, #171a21);
@@ -12,6 +14,34 @@
   --sf-amber: var(--amber, #d29922);
   --sf-red: var(--red, #f85149);
   --sf-side-w: 340px;
+
+  /* --- structural layer (theme-independent) --- */
+  /* on-accent / on-state text (used wherever a state color becomes a fill) */
+  --sf-on-accent: #08101f;
+  /* radius scale */
+  --sf-r-xs: 6px;   /* badges, filter segments, small chips */
+  --sf-r-sm: 8px;   /* buttons, inputs */
+  --sf-r-md: 12px;  /* thread cards, compose popover */
+  --sf-r-lg: 16px;  /* menu, launcher squircle */
+  /* motion */
+  --sf-dur-fast: 120ms;
+  --sf-dur-base: 160ms;
+  --sf-dur-pop: 180ms;
+  --sf-ease: cubic-bezier(.2, .8, .2, 1);
+  --sf-ease-out: cubic-bezier(.16, 1, .3, 1);
+  /* focus ring — one definition used everywhere */
+  --sf-ring: 0 0 0 3px color-mix(in srgb, var(--sf-accent) 30%, transparent);
+  /* hairline border for floating surfaces (interior dividers keep --sf-line) */
+  --sf-hairline: color-mix(in srgb, var(--sf-ink) 12%, transparent);
+  /* glass surfaces (panel tint + blur; @supports fallback goes solid) */
+  --sf-glass: color-mix(in srgb, var(--sf-panel) 86%, transparent);
+  --sf-blur: 20px;
+  --sf-blur-sat: 160%;
+  /* elevation — dark values; light theme overrides below */
+  --sf-shadow-1: 0 1px 2px rgba(0, 0, 0, .30), 0 4px 10px rgba(0, 0, 0, .22);
+  --sf-shadow-2: 0 2px 4px rgba(0, 0, 0, .30), 0 10px 26px rgba(0, 0, 0, .32);
+  --sf-shadow-3: 0 4px 10px rgba(0, 0, 0, .28), 0 22px 48px -10px rgba(0, 0, 0, .50);
+  --sf-inner-hi: inset 0 1px 0 rgba(255, 255, 255, .06); /* glass top edge */
 }
 
 /* The review layer sets [data-theme] on <html>, but most specs only expose
@@ -30,6 +60,13 @@
   --sf-green: var(--green, #1a7f37);
   --sf-amber: var(--amber, #9a6700);
   --sf-red: var(--red, #cf222e);
+
+  --sf-hairline: color-mix(in srgb, #0b1220 10%, transparent);
+  --sf-glass: color-mix(in srgb, var(--sf-panel) 82%, transparent);
+  --sf-shadow-1: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 10px rgba(16, 24, 40, .08);
+  --sf-shadow-2: 0 2px 6px rgba(16, 24, 40, .08), 0 12px 28px rgba(16, 24, 40, .12);
+  --sf-shadow-3: 0 4px 10px rgba(16, 24, 40, .08), 0 24px 48px -12px rgba(16, 24, 40, .20);
+  --sf-inner-hi: inset 0 1px 0 rgba(255, 255, 255, .6);
 }
 /* No explicit choice persisted yet → follow the OS, mirroring how house specs
    fall back via prefers-color-scheme. */
@@ -44,6 +81,13 @@
     --sf-green: var(--green, #1a7f37);
     --sf-amber: var(--amber, #9a6700);
     --sf-red: var(--red, #cf222e);
+
+    --sf-hairline: color-mix(in srgb, #0b1220 10%, transparent);
+    --sf-glass: color-mix(in srgb, var(--sf-panel) 82%, transparent);
+    --sf-shadow-1: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 10px rgba(16, 24, 40, .08);
+    --sf-shadow-2: 0 2px 6px rgba(16, 24, 40, .08), 0 12px 28px rgba(16, 24, 40, .12);
+    --sf-shadow-3: 0 4px 10px rgba(16, 24, 40, .08), 0 24px 48px -12px rgba(16, 24, 40, .20);
+    --sf-inner-hi: inset 0 1px 0 rgba(255, 255, 255, .6);
   }
 }
 
@@ -110,11 +154,11 @@
 }
 
 /* reading font (review-layer owned) — review.js sets data-sf-font (the category:
-   sans/serif/mono) + an inline --sf-reading-font (the chosen font's stack) on the
-   spec's content container only, so the review chrome (appended to <body>, with its
-   own fonts) is never restyled. The container rule wins over the spec's own
-   body/wrapper font (review.css loads after the spec's <style>). Code stays
-   monospace unless the chosen font is itself a mono. */
+   sans/serif/mono/presentation) + an inline --sf-reading-font (the chosen font's
+   stack) on the spec's content container only, so the review chrome (appended to
+   <body>, with its own fonts) is never restyled. The container rule wins over the
+   spec's own body/wrapper font (review.css loads after the spec's <style>). Code
+   stays monospace unless the chosen font is itself a mono. */
 [data-sf-font] { font-family: var(--sf-reading-font); }
 [data-sf-font]:not([data-sf-font="mono"]) pre,
 [data-sf-font]:not([data-sf-font="mono"]) code,
@@ -135,29 +179,41 @@
 .sf-loc { color: var(--sf-muted); font-size: 11px; }
 .sf-quote { font-size: 12px; color: var(--sf-muted); border-left: 2px solid var(--sf-amber); padding-left: 8px; margin: 4px 0 8px; max-height: 54px; overflow: auto; }
 
-/* sidebar */
+/* sidebar — solid (not glass): a long-lived reading panel, not a transient
+   popover; definition comes from a single-edge shadow instead of blur. */
 #sf-sidebar {
   position: fixed; top: 0; right: 0; height: 100vh; width: var(--sf-side-w); z-index: 45;
-  background: var(--sf-panel); border-left: 1px solid var(--sf-line);
+  background: var(--sf-panel); border-left: 1px solid var(--sf-hairline);
   color: var(--sf-ink); display: flex; flex-direction: column;
-  transform: translateX(100%); transition: transform .18s ease;
+  box-shadow: -12px 0 32px rgba(0, 0, 0, .18);
+  transform: translateX(100%); transition: transform var(--sf-dur-pop) var(--sf-ease-out);
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 #sf-sidebar.open { transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) { #sf-sidebar { transition: none; } }
 .sf-side-head { padding: 14px 16px; border-bottom: 1px solid var(--sf-line); display: flex; align-items: center; gap: 8px; }
-.sf-side-head b { font-size: 14px; } .sf-side-head b span { color: var(--sf-accent); }
+.sf-side-head b { font-size: 14px; font-weight: 800; letter-spacing: .2px; } .sf-side-head b span { color: var(--sf-accent); }
 .sf-side-head .sf-count { color: var(--sf-muted); font-size: 12px; }
 .sf-side-close { margin-left: auto; background: none; border: none; color: var(--sf-muted);
-  font: 400 22px/1 system-ui, sans-serif; cursor: pointer; padding: 0 2px; border-radius: 6px; }
-.sf-side-close:hover { color: var(--sf-ink); }
+  font: 400 20px/1 system-ui, sans-serif; cursor: pointer; padding: 4px 6px; border-radius: var(--sf-r-xs);
+  transition: color var(--sf-dur-fast) var(--sf-ease), background var(--sf-dur-fast) var(--sf-ease); }
+.sf-side-close:hover { color: var(--sf-ink); background: var(--sf-panel2); }
 .sf-threads { overflow-y: auto; padding: 8px 12px 16px; flex: 1; }
-.sf-thread { border: 1px solid var(--sf-line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; background: var(--sf-panel2); cursor: pointer; }
-.sf-thread.sf-active { border-color: var(--sf-accent); }
+/* thread card — flat fill + hairline at rest; accent border + inset accent bar
+   when active (box-shadow, not border, so the radius is undisturbed). */
+.sf-thread { border: 1px solid var(--sf-line); border-radius: var(--sf-r-md); padding: 10px 12px; margin: 8px 0;
+  background: var(--sf-panel2); cursor: pointer;
+  transition: border-color var(--sf-dur-fast) var(--sf-ease), box-shadow var(--sf-dur-fast) var(--sf-ease), opacity var(--sf-dur-fast) var(--sf-ease); }
+.sf-thread:hover { border-color: color-mix(in srgb, var(--sf-accent) 35%, var(--sf-line)); }
+.sf-thread.sf-active { border-color: var(--sf-accent); box-shadow: inset 3px 0 0 var(--sf-accent); }
 .sf-thread.state-resolved { opacity: .55; }
+.sf-thread.state-resolved:hover { opacity: .8; }
 .sf-thread .sf-meta { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--sf-muted); margin-bottom: 6px; }
-.sf-badge { border: 1px solid var(--sf-line); border-radius: 999px; padding: 0 7px; font-size: 10.5px; }
-.sf-badge.open { color: var(--sf-amber); } .sf-badge.replied { color: var(--sf-accent); }
-.sf-badge.resolved { color: var(--sf-green); }
+.sf-badge { border: 1px solid var(--sf-line); border-radius: 999px; padding: 1px 8px; font-size: 10.5px;
+  font-weight: 600; letter-spacing: .2px; }
+.sf-badge.open { color: var(--sf-amber); border-color: color-mix(in srgb, var(--sf-amber) 40%, var(--sf-line)); }
+.sf-badge.replied { color: var(--sf-accent); border-color: color-mix(in srgb, var(--sf-accent) 40%, var(--sf-line)); }
+.sf-badge.resolved { color: var(--sf-green); border-color: color-mix(in srgb, var(--sf-green) 40%, var(--sf-line)); }
 .sf-comment { border-top: 1px dashed var(--sf-line); padding: 6px 0; }
 .sf-comment:first-of-type { border-top: none; }
 .sf-comment .who { font-weight: 700; font-size: 11px; }
@@ -166,36 +222,46 @@
 /* Edit affordance for an own, not-yet-submitted comment — a quiet text button
    that warms to the accent on hover. The inline editor reuses the reply spacing. */
 .sf-edit-c { background: none; border: none; color: var(--sf-muted); cursor: pointer;
-  font-size: 11px; padding: 2px 0; margin-top: 2px; text-decoration: underline; }
+  font-size: 11px; padding: 2px 0; margin-top: 2px; text-decoration: underline;
+  transition: color var(--sf-dur-fast) var(--sf-ease); }
 .sf-edit-c:hover { color: var(--sf-accent); }
 .sf-edit { margin-top: 8px; }
 .sf-acts { display: flex; gap: 8px; margin-top: 6px; }
-.sf-acts button { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 6px; font-size: 11px; padding: 3px 8px; cursor: pointer; }
+.sf-acts button { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
+  border-radius: var(--sf-r-xs); font-size: 11px; padding: 4px 9px; cursor: pointer;
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
 .sf-acts button:hover { color: var(--sf-ink); border-color: var(--sf-accent); }
 /* sidebar footer — the review command bar. View filter + resolve-all on top, the
-   single lifecycle action (with a submit caption) below. This replaces the old
-   header chips and the floating submit bar, so nothing overflows or overlaps. */
+   single lifecycle action (with a submit caption) below. Lifted slightly so it
+   reads as the fixed control deck under a scrolling list. */
 .sf-side-foot { border-top: 1px solid var(--sf-line); background: var(--sf-panel2);
-  padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; }
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 -8px 16px -8px rgba(0, 0, 0, .12); }
 .sf-foot-filter { display: flex; align-items: center; gap: 8px; }
-.sf-filter { display: inline-flex; border: 1px solid var(--sf-line); border-radius: 8px; overflow: hidden; }
+.sf-filter { display: inline-flex; border: 1px solid var(--sf-line); border-radius: var(--sf-r-sm); overflow: hidden; }
 .sf-filter button { background: none; border: none; border-right: 1px solid var(--sf-line);
-  color: var(--sf-muted); font-size: 11px; padding: 5px 10px; cursor: pointer; }
+  color: var(--sf-muted); font-size: 11px; padding: 6px 11px; cursor: pointer;
+  transition: background var(--sf-dur-fast) var(--sf-ease), color var(--sf-dur-fast) var(--sf-ease); }
 .sf-filter button:last-child { border-right: none; }
-.sf-filter button.on { background: var(--sf-panel); color: var(--sf-ink); }
+.sf-filter button.on { background: var(--sf-panel); color: var(--sf-ink); font-weight: 600; }
+.sf-filter button:not(.on):hover { color: var(--sf-ink); }
 .sf-resolve-all { display: none; margin-left: auto; background: none; border: 1px solid var(--sf-line);
-  color: var(--sf-muted); border-radius: 999px; font-size: 11px; padding: 4px 10px; cursor: pointer; }
+  color: var(--sf-muted); border-radius: 999px; font-size: 11px; padding: 4px 10px; cursor: pointer;
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
 .sf-resolve-all.show { display: inline-block; }
 .sf-resolve-all:hover { color: var(--sf-green); border-color: var(--sf-green); }
 .sf-foot-action { display: flex; flex-direction: column; gap: 6px; }
 .sf-foot-caption { font-size: 12px; color: var(--sf-muted); }
 .sf-foot-caption:empty { display: none; }
 .sf-act { display: block; width: 100%; box-sizing: border-box; text-align: center;
-  border: 1px solid var(--sf-line); border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--sf-line); border-radius: var(--sf-r-sm); cursor: pointer;
   background: var(--sf-panel); color: var(--sf-ink); font: 700 13px/1 system-ui, sans-serif;
-  padding: 11px 14px; transition: filter .12s ease; }
-.sf-act:hover:not(:disabled) { filter: brightness(1.08); }
+  padding: 12px 14px;
+  transition: filter var(--sf-dur-fast) var(--sf-ease), transform var(--sf-dur-fast) var(--sf-ease); }
+.sf-act:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+.sf-act:active:not(:disabled) { transform: translateY(0); }
 .sf-act:disabled { cursor: default; opacity: .85; }
+.sf-act:focus-visible { outline: none; box-shadow: var(--sf-ring); }
 /* custom SpecForge loading indicator — shown on the action button while the agent
    is working a submitted batch (awaiting / picked up / working). An accent ring
    that spins; reduced-motion falls back to a static ring. `currentColor` ties the
@@ -216,29 +282,33 @@
 .sf-input {
   width: 100%; box-sizing: border-box; display: block;
   background: var(--sf-panel2); color: var(--sf-ink);
-  border: 1px solid var(--sf-line); border-radius: 9px; padding: 9px 10px;
+  border: 1px solid var(--sf-line); border-radius: var(--sf-r-sm); padding: 10px 11px;
   font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   resize: none; min-height: 64px; max-height: 240px; overflow-y: auto;
-  transition: border-color .12s ease, box-shadow .12s ease;
+  transition: border-color var(--sf-dur-fast) var(--sf-ease), box-shadow var(--sf-dur-fast) var(--sf-ease);
 }
 .sf-input::placeholder { color: var(--sf-muted); }
-.sf-input:focus {
-  outline: none; border-color: var(--sf-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sf-accent) 22%, transparent);
-}
+.sf-input:focus { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
 .sf-reply { margin-top: 8px; }
 
-/* compose popover — a comment card anchored beside the block */
+/* compose popover — a glass comment card anchored beside the block */
 #sf-compose {
   position: fixed; right: calc(var(--sf-side-w) + 20px); z-index: 50; width: 320px;
-  background: var(--sf-panel); border: 1px solid var(--sf-line); border-radius: 12px;
-  padding: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.45); animation: sf-pop .14s ease;
+  background: var(--sf-glass);
+  -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  border: 1px solid var(--sf-hairline); border-radius: var(--sf-r-md);
+  padding: 13px; box-shadow: var(--sf-shadow-3), var(--sf-inner-hi);
+  animation: sf-pop var(--sf-dur-pop) var(--sf-ease-out);
   /* Own font-family so the reading-font override can't bleed in via inheritance
      when data-sf-font lands on <body> (a spec with no content container). The
      other chrome roots (#sf-sidebar/#sf-menu/#sf-launcher/#sf-toc) already set one. */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
-@keyframes sf-pop { from { opacity: 0; transform: translateY(4px) scale(.985); } to { opacity: 1; transform: none; } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #sf-compose { background: var(--sf-panel); }
+}
+@keyframes sf-pop { from { opacity: 0; transform: translateY(4px) scale(.97); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #sf-compose { animation: none; } }
 #sf-compose .q {
   font-size: 12px; line-height: 1.45; color: var(--sf-muted);
@@ -250,94 +320,198 @@
    primary button (it used to, rendering "Comment" as a muted ghost). */
 .sf-compose-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .sf-compose-foot .sf-hint { margin-right: auto; font-size: 11px; color: var(--sf-muted); }
-.sf-primary { background: var(--sf-accent); color: #08101f; border: none; border-radius: 8px;
-  font: 600 12px/1 system-ui, sans-serif; padding: 8px 13px; cursor: pointer; }
-.sf-primary:hover { filter: brightness(1.08); }
-.sf-ghost { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: 8px;
-  font: 500 12px/1 system-ui, sans-serif; padding: 8px 11px; cursor: pointer; }
+.sf-primary { background: var(--sf-accent); color: var(--sf-on-accent); border: none; border-radius: var(--sf-r-sm);
+  font: 700 12px/1 system-ui, sans-serif; padding: 9px 14px; cursor: pointer;
+  transition: filter var(--sf-dur-fast) var(--sf-ease), transform var(--sf-dur-fast) var(--sf-ease); }
+.sf-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.sf-primary:active { transform: translateY(0); }
+.sf-ghost { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted); border-radius: var(--sf-r-sm);
+  font: 600 12px/1 system-ui, sans-serif; padding: 9px 12px; cursor: pointer;
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
 .sf-ghost:hover { color: var(--sf-ink); border-color: var(--sf-muted); }
 
 /* lifecycle action button state colors — the CTA lives only in the sidebar command
    bar (.sf-act); its base style is the `.sf-act` rule under the sidebar footer. */
-.sf-act[data-state="needs"] { background: var(--sf-amber); color: #08101f; border-color: transparent; }
-.sf-act[data-state="lgtm"] { background: var(--sf-green); color: #08101f; border-color: transparent; }
-.sf-act[data-state="impl"] { background: var(--sf-accent); color: #08101f; border-color: transparent; }
+.sf-act[data-state="needs"] { background: var(--sf-amber); color: var(--sf-on-accent); border-color: transparent; }
+.sf-act[data-state="lgtm"] { background: var(--sf-green); color: var(--sf-on-accent); border-color: transparent; }
+.sf-act[data-state="impl"] { background: var(--sf-accent); color: var(--sf-on-accent); border-color: transparent; }
 .sf-act[data-state="working"] { color: var(--sf-accent); border-color: var(--sf-accent); }
 .sf-act[data-state="replied"] { color: var(--sf-accent); border-color: var(--sf-accent); }
 .sf-act[data-state="done"] { color: var(--sf-green); border-color: var(--sf-green); }
 .sf-act[data-state="closed"], .sf-act[data-state="other"], .sf-act[data-state="awaiting"] { color: var(--sf-muted); }
 
-/* SpecForge launcher — the single floating control */
-/* "↑ Top" back-to-top button — top-right, shown once scrolled down. Its own font
-   so the reading-font override can't bleed in (it's appended to <body>). */
+/* "↑ Top" back-to-top button — top-right glass pill, shown once scrolled down.
+   Base state stays laid out (opacity/visibility, not display) so both directions
+   animate; visibility flips at the transition tail so it's unreachable while
+   hidden. Its own font so the reading-font override can't bleed in. */
 #sf-top {
-  position: fixed; top: 18px; right: 18px; z-index: 47; display: none; align-items: center; gap: 5px;
-  background: var(--sf-panel); border: 1px solid var(--sf-line); color: var(--sf-ink);
-  border-radius: 999px; padding: 7px 13px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.25);
-  font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  transition: right .18s ease, border-color .12s ease, color .12s ease;
+  position: fixed; top: 18px; right: 18px; z-index: 47;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--sf-glass);
+  -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  border: 1px solid var(--sf-hairline); color: var(--sf-ink);
+  border-radius: 999px; padding: 7px 13px; cursor: pointer;
+  box-shadow: var(--sf-shadow-1);
+  font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  opacity: 0; transform: translateY(-6px); visibility: hidden; pointer-events: none;
+  transition: opacity var(--sf-dur-base) var(--sf-ease-out),
+              transform var(--sf-dur-base) var(--sf-ease-out),
+              right var(--sf-dur-base) var(--sf-ease),
+              border-color var(--sf-dur-fast) var(--sf-ease),
+              color var(--sf-dur-fast) var(--sf-ease),
+              visibility 0s linear var(--sf-dur-base);
 }
-#sf-top.show { display: inline-flex; }
+#sf-top.show {
+  opacity: 1; transform: translateY(0); visibility: visible; pointer-events: auto;
+  transition: opacity var(--sf-dur-base) var(--sf-ease-out),
+              transform var(--sf-dur-base) var(--sf-ease-out),
+              right var(--sf-dur-base) var(--sf-ease),
+              border-color var(--sf-dur-fast) var(--sf-ease),
+              color var(--sf-dur-fast) var(--sf-ease),
+              visibility 0s linear 0s;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #sf-top { background: var(--sf-panel); }
+}
+@media (prefers-reduced-motion: reduce) { #sf-top { transition: opacity var(--sf-dur-fast) linear, visibility 0s linear; transform: none !important; } }
 #sf-top:hover { border-color: var(--sf-accent); color: var(--sf-accent); }
 /* clear the sidebar while it's open, like the launcher */
 body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
 
+/* SpecForge launcher — the single floating control. A glass squircle (reads as a
+   modern tool trigger, not a generic FAB); the SF mark cross-fades to a × while
+   the menu is open (generated content — no DOM change). */
 #sf-launcher {
-  position: fixed; right: 18px; bottom: 18px; z-index: 48; width: 46px; height: 46px;
+  position: fixed; right: 18px; bottom: 18px; z-index: 48; width: 48px; height: 48px;
   display: flex; align-items: center; justify-content: center; padding: 0;
-  background: var(--sf-panel); border: 1px solid var(--sf-line); color: var(--sf-ink);
-  border-radius: 50%; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.3);
-  font: 700 14px/1 system-ui, sans-serif; transition: right .18s ease;
+  background: var(--sf-glass);
+  -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  border: 1px solid var(--sf-hairline); color: var(--sf-ink);
+  border-radius: var(--sf-r-lg); cursor: pointer;
+  box-shadow: var(--sf-shadow-2), var(--sf-inner-hi);
+  font: 700 14px/1 system-ui, sans-serif;
+  transition: right var(--sf-dur-base) var(--sf-ease),
+              box-shadow var(--sf-dur-fast) var(--sf-ease),
+              transform var(--sf-dur-fast) var(--sf-ease),
+              border-color var(--sf-dur-fast) var(--sf-ease);
 }
-#sf-launcher:hover { border-color: var(--sf-accent); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #sf-launcher { background: var(--sf-panel); }
+}
+#sf-launcher:hover {
+  border-color: color-mix(in srgb, var(--sf-accent) 45%, var(--sf-hairline));
+  box-shadow: var(--sf-shadow-3), var(--sf-inner-hi);
+  transform: translateY(-1px);
+}
+#sf-launcher:active { transform: translateY(0) scale(.96); }
+#sf-launcher:focus-visible { outline: none; box-shadow: var(--sf-ring), var(--sf-shadow-2); }
 /* slide the launcher (and its menu) clear of the sidebar while it's open */
 body.sf-side-open #sf-launcher { right: calc(var(--sf-side-w) + 18px); }
-#sf-launcher b { letter-spacing: .5px; }
+#sf-launcher b { letter-spacing: .3px; font-weight: 800; transition: opacity var(--sf-dur-fast) var(--sf-ease); }
 #sf-launcher b span { color: var(--sf-accent); }
+#sf-launcher[aria-expanded="true"] b { opacity: 0; }
+#sf-launcher::after {
+  content: '×'; position: absolute; font: 300 22px/1 system-ui, sans-serif;
+  color: var(--sf-ink); opacity: 0; transform: scale(.7) rotate(-90deg);
+  transition: opacity var(--sf-dur-base) var(--sf-ease), transform var(--sf-dur-base) var(--sf-ease-out);
+  pointer-events: none;
+}
+#sf-launcher[aria-expanded="true"]::after { opacity: 1; transform: scale(1) rotate(0deg); }
+@media (prefers-reduced-motion: reduce) {
+  #sf-launcher::after { transition: opacity var(--sf-dur-fast) linear; transform: none; }
+}
+/* count pill — opacity/scale (not display) so appearance/disappearance animates;
+   the same .has-count toggle drives it, no JS change. */
 #sf-launcher .sf-l-n {
-  position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
-  display: none; align-items: center; justify-content: center; box-sizing: border-box;
-  background: var(--sf-accent); color: #08101f; border-radius: 999px;
-  font: 700 10px/1 system-ui, sans-serif;
+  position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+  background: var(--sf-accent); color: var(--sf-on-accent);
+  border-radius: 999px; box-shadow: 0 0 0 2px var(--sf-panel);
+  font: 800 10px/1 system-ui, sans-serif;
+  opacity: 0; transform: scale(.4); pointer-events: none;
+  transition: opacity var(--sf-dur-base) var(--sf-ease-out), transform var(--sf-dur-base) var(--sf-ease-out);
 }
-#sf-launcher.has-count .sf-l-n { display: flex; }
+#sf-launcher.has-count .sf-l-n { opacity: 1; transform: scale(1); }
 
-/* launcher popover menu — anchored above the launcher */
+/* launcher popover menu — glass, anchored above the launcher. Base state stays
+   laid out (opacity/transform/visibility) so open AND close animate; visibility
+   flips at the tail so the closed menu is unreachable by keyboard/AT. */
 #sf-menu {
-  position: fixed; right: 18px; bottom: 74px; z-index: 48; width: 232px;
-  background: var(--sf-panel); border: 1px solid var(--sf-line); color: var(--sf-ink);
-  border-radius: 12px; padding: 6px; box-shadow: 0 12px 34px rgba(0,0,0,.4);
-  display: none; flex-direction: column; gap: 2px; transition: right .18s ease;
+  position: fixed; right: 18px; bottom: 74px; z-index: 48; width: 248px;
+  background: var(--sf-glass);
+  -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  border: 1px solid var(--sf-hairline); color: var(--sf-ink);
+  border-radius: var(--sf-r-lg); padding: 8px;
+  box-shadow: var(--sf-shadow-3), var(--sf-inner-hi);
+  display: flex; flex-direction: column; gap: 1px;
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  visibility: hidden; opacity: 0; pointer-events: none;
+  transform: translateY(6px) scale(.98); transform-origin: bottom right;
+  transition: opacity var(--sf-dur-pop) var(--sf-ease-out),
+              transform var(--sf-dur-pop) var(--sf-ease-out),
+              right var(--sf-dur-base) var(--sf-ease),
+              visibility 0s linear var(--sf-dur-pop);
 }
-#sf-menu.open { display: flex; }
+#sf-menu.open {
+  visibility: visible; opacity: 1; pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition: opacity var(--sf-dur-pop) var(--sf-ease-out),
+              transform var(--sf-dur-pop) var(--sf-ease-out),
+              right var(--sf-dur-base) var(--sf-ease),
+              visibility 0s linear 0s;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #sf-menu { background: var(--sf-panel); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #sf-menu { transition: opacity var(--sf-dur-fast) linear, visibility 0s linear; transform: none !important; }
+}
 body.sf-side-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
 .sf-menu-row {
   display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
-  background: none; border: none; color: var(--sf-ink); border-radius: 8px;
-  padding: 8px 10px; font: inherit; text-align: left; cursor: pointer;
+  background: none; border: none; color: var(--sf-ink); border-radius: var(--sf-r-sm);
+  padding: 9px 10px; font: inherit; text-align: left; cursor: pointer;
+  transition: background var(--sf-dur-fast) var(--sf-ease);
 }
 button.sf-menu-row:hover { background: var(--sf-panel2); }
+button.sf-menu-row:focus-visible { outline: none; box-shadow: var(--sf-ring); }
 .sf-menu-row.sf-menu-ctl { cursor: default; flex-wrap: wrap; }
+/* Section rhythm: a hairline before the first control row (the start of the
+   Width/Theme/Font controls) — every other row separates by gap + hover fill.
+   Row order is fixed by buildMenuRows(), so first-of-type is stable: control
+   rows are <div>s, action rows are <button>s. */
+div.sf-menu-row.sf-menu-ctl:first-of-type { margin-top: 4px; padding-top: 12px; position: relative; }
+div.sf-menu-row.sf-menu-ctl:first-of-type::before {
+  content: ''; position: absolute; top: 0; left: 8px; right: 8px; height: 1px;
+  background: var(--sf-hairline);
+}
 .sf-row-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-.sf-row-ic { width: 18px; text-align: center; color: var(--sf-muted); }
+.sf-row-ic { width: 18px; text-align: center; color: var(--sf-muted); font-size: 14px; }
 .sf-row-val { margin-left: auto; color: var(--sf-muted); font-size: 11px; }
-.sf-menu-badge { margin-left: auto; background: var(--sf-accent); color: #08101f; border-radius: 999px; padding: 0 7px; font: 700 10.5px/1.5 system-ui, sans-serif; }
-.sf-menu-row input[type=range] { width: 100%; margin: 6px 0 2px; accent-color: var(--sf-accent); cursor: pointer; }
-/* Font dropdown — full-width select grouped Sans/Serif/Mono. */
+.sf-menu-badge { margin-left: auto; background: var(--sf-accent); color: var(--sf-on-accent); border-radius: 999px; padding: 1px 7px; font: 800 10.5px/1.5 system-ui, sans-serif; }
+.sf-menu-row input[type=range] { width: 100%; margin: 8px 0 2px; height: 4px; accent-color: var(--sf-accent); cursor: pointer; }
+/* Font dropdown — full-width select grouped Sans/Serif/Mono/Presentation. */
 .sf-font-select { width: 100%; margin: 6px 0 2px; box-sizing: border-box;
   background: var(--sf-panel2); color: var(--sf-ink); border: 1px solid var(--sf-line);
-  border-radius: 8px; padding: 5px 8px; font: 12px/1.4 system-ui, sans-serif; cursor: pointer; }
-.sf-font-select:focus { outline: none; border-color: var(--sf-accent); }
+  border-radius: var(--sf-r-sm); padding: 6px 8px; font: 12px/1.4 system-ui, sans-serif; cursor: pointer;
+  transition: border-color var(--sf-dur-fast) var(--sf-ease); }
+.sf-font-select:hover { border-color: color-mix(in srgb, var(--sf-accent) 40%, var(--sf-line)); }
+.sf-font-select:focus { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
 /* Theme swatch picker — 4 columns, so the light family lands on the top row and
    the dark family on the bottom. Each swatch shows the theme bg + an accent dot. */
-.sf-themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; margin: 7px 0 2px; }
-.sf-swatch { position: relative; height: 26px; padding: 0; border: 1px solid var(--sf-line);
-  border-radius: 7px; cursor: pointer; }
+.sf-themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; margin: 8px 0 2px; }
+.sf-swatch { position: relative; height: 28px; padding: 0; border: 1px solid var(--sf-line);
+  border-radius: var(--sf-r-xs); cursor: pointer;
+  transition: border-color var(--sf-dur-fast) var(--sf-ease), transform var(--sf-dur-fast) var(--sf-ease); }
 .sf-swatch::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 7px; height: 7px;
   border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .15); }
-.sf-swatch:hover { border-color: var(--sf-accent); }
+.sf-swatch:hover { border-color: var(--sf-accent); transform: translateY(-1px); }
+.sf-swatch:active { transform: translateY(0) scale(.94); }
 .sf-swatch.on { outline: 2px solid var(--sf-accent); outline-offset: 1px; border-color: transparent; }
+@media (prefers-reduced-motion: reduce) { .sf-swatch { transition: border-color var(--sf-dur-fast) linear; } }
 .sf-swatch[data-theme="light"] { background: #ffffff; } .sf-swatch[data-theme="light"]::after { background: #2f6feb; }
 .sf-swatch[data-theme="dark"] { background: #171a21; } .sf-swatch[data-theme="dark"]::after { background: #6ea8fe; }
 .sf-swatch[data-theme="solarized-light"] { background: #fdf6e3; } .sf-swatch[data-theme="solarized-light"]::after { background: #268bd2; }
@@ -347,7 +521,8 @@ button.sf-menu-row:hover { background: var(--sf-panel2); }
 .sf-swatch[data-theme="nord"] { background: #2e3440; } .sf-swatch[data-theme="nord"]::after { background: #88c0d0; }
 .sf-swatch[data-theme="solarized-dark"] { background: #002b36; } .sf-swatch[data-theme="solarized-dark"]::after { background: #268bd2; }
 .sf-detach { margin-left: auto; background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
-  border-radius: 6px; font-size: 11px; padding: 3px 9px; cursor: pointer; }
+  border-radius: var(--sf-r-xs); font-size: 11px; padding: 3px 9px; cursor: pointer;
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
 .sf-detach:hover { color: var(--sf-amber); border-color: var(--sf-amber); }
 /* "Open Google Doc" link row + its Re-export button (re-export warms to accent,
    not the amber detach signals). The link is a real <a> styled as a row. */
@@ -356,26 +531,32 @@ a.sf-doc-link:hover { color: var(--sf-accent); }
 .sf-reexport:hover { color: var(--sf-accent); border-color: var(--sf-accent); }
 /* Footer — one bottom row: live pill (left) · session id (center, truncates) ·
    Detach (right). */
-.sf-menu-foot { border-top: 1px solid var(--sf-line); margin-top: 4px; padding: 7px 10px;
+.sf-menu-foot { border-top: 1px solid var(--sf-hairline); margin-top: 5px; padding: 8px 10px 4px;
   display: flex; align-items: center; gap: 8px; }
 .sf-foot-session { flex: 1; min-width: 0; text-align: center; color: var(--sf-muted);
   font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* injected floating TOC drawer (only when the spec has no TOC of its own) */
+/* injected floating TOC drawer (only when the spec has no TOC of its own) —
+   solid like the sidebar, single-edge shadow on the left. */
 #sf-toc {
   position: fixed; top: 0; left: 0; height: 100vh; width: 280px; z-index: 44;
-  background: var(--sf-panel); border-right: 1px solid var(--sf-line); color: var(--sf-ink);
-  display: flex; flex-direction: column; transform: translateX(-100%); transition: transform .18s ease;
+  background: var(--sf-panel); border-right: 1px solid var(--sf-hairline); color: var(--sf-ink);
+  box-shadow: 12px 0 32px rgba(0, 0, 0, .18);
+  display: flex; flex-direction: column; transform: translateX(-100%);
+  transition: transform var(--sf-dur-pop) var(--sf-ease-out);
   font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 #sf-toc.open { transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) { #sf-toc { transition: none; } }
 #sf-toc .sf-toc-head { padding: 20px 16px 12px; border-bottom: 1px solid var(--sf-line); }
+#sf-toc .sf-toc-head b { font-weight: 800; }
 #sf-toc .sf-toc-head b span { color: var(--sf-accent); }
 #sf-toc .sf-toc-list { overflow-y: auto; padding: 8px 10px 80px; flex: 1; }
-#sf-toc a { display: block; color: var(--sf-muted); text-decoration: none; padding: 4px 10px;
-  border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
+#sf-toc a { display: block; color: var(--sf-muted); text-decoration: none; padding: 6px 10px;
+  border-left: 2px solid transparent; border-radius: 0 var(--sf-r-xs) var(--sf-r-xs) 0;
+  transition: color var(--sf-dur-fast) var(--sf-ease), background var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
 #sf-toc a:hover { color: var(--sf-ink); background: var(--sf-panel2); }
-#sf-toc a.active { color: var(--sf-ink); border-left-color: var(--sf-accent); background: var(--sf-panel2); }
+#sf-toc a.active { color: var(--sf-ink); border-left-color: var(--sf-accent); background: var(--sf-panel2); font-weight: 600; }
 
 /* narrow screens: the sidebar takes the full width; close it with × (the floating
    launcher would sit under it, so hide it while open). */
