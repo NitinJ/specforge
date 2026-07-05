@@ -29,12 +29,14 @@
   --sf-dur-pop: 180ms;
   --sf-ease: cubic-bezier(.2, .8, .2, 1);
   --sf-ease-out: cubic-bezier(.16, 1, .3, 1);
-  /* focus ring — one definition used everywhere */
-  --sf-ring: 0 0 0 3px color-mix(in srgb, var(--sf-accent) 30%, transparent);
-  /* hairline border for floating surfaces (interior dividers keep --sf-line) */
-  --sf-hairline: color-mix(in srgb, var(--sf-ink) 12%, transparent);
-  /* glass surfaces (panel tint + blur; @supports fallback goes solid) */
-  --sf-glass: color-mix(in srgb, var(--sf-panel) 86%, transparent);
+  /* focus ring / hairline / glass — SOLID defaults here; the color-mix versions
+     are layered on in the @supports block below. A var() whose substitution
+     fails (color-mix unsupported) makes the whole property unset — a floating
+     panel would lose its background entirely — so the mixes must be gated, not
+     defaulted. */
+  --sf-ring: 0 0 0 3px var(--sf-accent);
+  --sf-hairline: var(--sf-line);
+  --sf-glass: var(--sf-panel);
   --sf-blur: 20px;
   --sf-blur-sat: 160%;
   /* elevation — dark values; light theme overrides below */
@@ -42,6 +44,27 @@
   --sf-shadow-2: 0 2px 4px rgba(0, 0, 0, .30), 0 10px 26px rgba(0, 0, 0, .32);
   --sf-shadow-3: 0 4px 10px rgba(0, 0, 0, .28), 0 22px 48px -10px rgba(0, 0, 0, .50);
   --sf-inner-hi: inset 0 1px 0 rgba(255, 255, 255, .06); /* glass top edge */
+}
+
+/* color-mix-derived refinements — only where the function actually computes.
+   Without support the solid :root defaults above hold (opaque panels, full-
+   strength focus ring, --sf-line hairlines): duller, never broken. */
+@supports (color: color-mix(in srgb, red 10%, blue)) {
+  :root {
+    --sf-ring: 0 0 0 3px color-mix(in srgb, var(--sf-accent) 30%, transparent);
+    --sf-hairline: color-mix(in srgb, var(--sf-ink) 12%, transparent);
+    --sf-glass: color-mix(in srgb, var(--sf-panel) 86%, transparent);
+  }
+  :root[data-theme="light"] {
+    --sf-hairline: color-mix(in srgb, #0b1220 10%, transparent);
+    --sf-glass: color-mix(in srgb, var(--sf-panel) 82%, transparent);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --sf-hairline: color-mix(in srgb, #0b1220 10%, transparent);
+      --sf-glass: color-mix(in srgb, var(--sf-panel) 82%, transparent);
+    }
+  }
 }
 
 /* The review layer sets [data-theme] on <html>, but most specs only expose
@@ -61,8 +84,6 @@
   --sf-amber: var(--amber, #9a6700);
   --sf-red: var(--red, #cf222e);
 
-  --sf-hairline: color-mix(in srgb, #0b1220 10%, transparent);
-  --sf-glass: color-mix(in srgb, var(--sf-panel) 82%, transparent);
   --sf-shadow-1: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 10px rgba(16, 24, 40, .08);
   --sf-shadow-2: 0 2px 6px rgba(16, 24, 40, .08), 0 12px 28px rgba(16, 24, 40, .12);
   --sf-shadow-3: 0 4px 10px rgba(16, 24, 40, .08), 0 24px 48px -12px rgba(16, 24, 40, .20);
@@ -82,8 +103,6 @@
     --sf-amber: var(--amber, #9a6700);
     --sf-red: var(--red, #cf222e);
 
-    --sf-hairline: color-mix(in srgb, #0b1220 10%, transparent);
-    --sf-glass: color-mix(in srgb, var(--sf-panel) 82%, transparent);
     --sf-shadow-1: 0 1px 2px rgba(16, 24, 40, .06), 0 4px 10px rgba(16, 24, 40, .08);
     --sf-shadow-2: 0 2px 6px rgba(16, 24, 40, .08), 0 12px 28px rgba(16, 24, 40, .12);
     --sf-shadow-3: 0 4px 10px rgba(16, 24, 40, .08), 0 24px 48px -12px rgba(16, 24, 40, .20);
