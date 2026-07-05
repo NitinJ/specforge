@@ -117,7 +117,10 @@
       var savedW = parseInt(PREFS.width, 10);
       if (savedW) applyWidth(savedW);
     }
-    if (PREFS.toc === 'hidden') applyToc('hidden'); // left-TOC visibility
+    // Left-TOC visibility — only when this document still HAS its own TOC: the
+    // hidden state also reflows .layout to one column, which a stale pref must
+    // not impose on a spec whose TOC was removed.
+    if (PREFS.toc === 'hidden' && specToc()) applyToc('hidden');
     applyFont(initFont()); // reading font — persisted choice (or sans) on load
     buildChrome();
     load();
@@ -557,9 +560,11 @@
       applyWidth(range.value);
     };
     range.onchange = function () {
-      var patch = { width: parseInt(range.value, 10) };
-      if (!isFit()) patch.fit = false; // a slider release always means px mode
-      putPref(patch);
+      // A slider release always means px mode. `change` can fire without a
+      // preceding `input` — exit fit here too, or a stale fit:true would win
+      // the next boot over the width the user just picked.
+      if (isFit()) { applyFit(false); fit.classList.remove('on'); applyWidth(range.value); }
+      putPref({ width: parseInt(range.value, 10), fit: false });
     };
     row.appendChild(range);
     return row;

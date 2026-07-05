@@ -721,6 +721,21 @@ test('a saved fit pref is applied on boot; dragging the slider turns fit off', a
   assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.fit === false), 'exit is persisted');
 });
 
+test('a bare slider change (no input event) still exits and persists out of fit mode', async (t) => {
+  // `change` can fire without a preceding `input` — the release must
+  // unconditionally mean px mode or a stale fit:true wins the next boot.
+  const { window, puts } = await bootReviewLayer(t, { prefs: { fit: true, width: 1400 } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const range = rowByLabel(document, 'Width').querySelector('input[type=range]');
+  range.value = '1000';
+  range.dispatchEvent(new window.Event('change'));
+  assert.equal(document.documentElement.getAttribute('data-sf-fit'), null, 'fit exited on change');
+  assert.equal(document.documentElement.style.getPropertyValue('--maxw'), '1000px', 'px width applied');
+  const p = puts.find((x) => /\/prefs$/.test(x.url) && x.body.width === 1000);
+  assert.ok(p && p.body.fit === false, 'the release persists {width, fit:false}');
+});
+
 // ---------- TOC hide chevron ----------
 const TOC_BODY = `
   <div class="layout">
@@ -758,6 +773,14 @@ test('a saved toc:hidden pref collapses the TOC on boot', async (t) => {
 test('no chevron on a spec without its own TOC', async (t) => {
   const { window } = await bootReviewLayer(t);
   assert.equal(window.document.getElementById('sf-tocbtn'), null, 'chevron only when nav.toc exists');
+});
+
+test('a stale toc:hidden pref is ignored on a spec without its own TOC', async (t) => {
+  // The hidden state also collapses .layout to one column — a spec that no
+  // longer has a TOC (or never did) must not inherit that reflow from an old pref.
+  const { window } = await bootReviewLayer(t, { prefs: { toc: 'hidden' } });
+  assert.equal(window.document.documentElement.getAttribute('data-sf-toc'), null,
+    'no data-sf-toc without a spec-owned TOC');
 });
 
 // ---------- reading font (Google-Fonts dropdown) ----------
