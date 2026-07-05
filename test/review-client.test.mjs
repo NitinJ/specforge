@@ -690,6 +690,99 @@ test('with no saved width, boot imposes no max-width', async (t) => {
     'no width is forced when nothing is persisted (the spec keeps its natural layout)');
 });
 
+// ---------- fit-to-width ----------
+test('the Width row has a Fit toggle that stretches the page and persists', async (t) => {
+  const { window, puts } = await bootReviewLayer(t, { prefs: { width: 1400 } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const fit = rowByLabel(document, 'Width').querySelector('.sf-fit');
+  assert.ok(fit, 'Fit toggle present in the Width row');
+  fit.click();
+  assert.equal(document.documentElement.getAttribute('data-sf-fit'), '', 'fit attr set on <html>');
+  assert.equal(document.documentElement.style.getPropertyValue('--maxw'), '100%', '--maxw stretched');
+  assert.equal(document.querySelector('main').style.maxWidth, 'none', 'container cap removed');
+  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.fit === true), 'PUT persists fit:true');
+  fit.click(); // toggle off → back to the slider width
+  assert.equal(document.documentElement.getAttribute('data-sf-fit'), null, 'fit attr removed');
+  assert.equal(document.documentElement.style.getPropertyValue('--maxw'), '1400px', 'slider width restored');
+  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.fit === false), 'PUT persists fit:false');
+});
+
+test('a saved fit pref is applied on boot; dragging the slider turns fit off', async (t) => {
+  const { window, puts } = await bootReviewLayer(t, { prefs: { fit: true, width: 1400 } });
+  const { document } = window;
+  assert.equal(document.documentElement.getAttribute('data-sf-fit'), '', 'fit applied on boot');
+  document.getElementById('sf-launcher').click();
+  const range = rowByLabel(document, 'Width').querySelector('input[type=range]');
+  range.value = '1200';
+  range.dispatchEvent(new window.Event('input'));
+  assert.equal(document.documentElement.getAttribute('data-sf-fit'), null, 'slider use exits fit mode');
+  range.dispatchEvent(new window.Event('change'));
+  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.fit === false), 'exit is persisted');
+});
+
+test('a bare slider change (no input event) still exits and persists out of fit mode', async (t) => {
+  // `change` can fire without a preceding `input` — the release must
+  // unconditionally mean px mode or a stale fit:true wins the next boot.
+  const { window, puts } = await bootReviewLayer(t, { prefs: { fit: true, width: 1400 } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const range = rowByLabel(document, 'Width').querySelector('input[type=range]');
+  range.value = '1000';
+  range.dispatchEvent(new window.Event('change'));
+  assert.equal(document.documentElement.getAttribute('data-sf-fit'), null, 'fit exited on change');
+  assert.equal(document.documentElement.style.getPropertyValue('--maxw'), '1000px', 'px width applied');
+  const p = puts.find((x) => /\/prefs$/.test(x.url) && x.body.width === 1000);
+  assert.ok(p && p.body.fit === false, 'the release persists {width, fit:false}');
+});
+
+// ---------- TOC hide chevron ----------
+const TOC_BODY = `
+  <div class="layout">
+    <nav class="toc"><a href="#a">A</a><a href="#b">B</a></nav>
+    <main>
+      <h1>Test Spec</h1>
+      <p class="a">The quick brown fox.</p>
+    </main>
+  </div>
+  <div id="sf-live">● live</div>
+`;
+
+test('a spec with its own left TOC gets a chevron that collapses it (persisted)', async (t) => {
+  const { window, puts } = await bootReviewLayer(t, { body: TOC_BODY });
+  const { document } = window;
+  const btn = document.getElementById('sf-tocbtn');
+  assert.ok(btn, 'chevron button built');
+  assert.equal(btn.textContent, '‹', 'shows a collapse chevron while the TOC is visible');
+  btn.click();
+  assert.equal(document.documentElement.getAttribute('data-sf-toc'), 'hidden', 'TOC flagged hidden on <html>');
+  assert.equal(btn.textContent, '›', 'chevron flips to expand');
+  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.toc === 'hidden'), 'PUT persists toc:hidden');
+  btn.click();
+  assert.equal(document.documentElement.getAttribute('data-sf-toc'), null, 'TOC restored');
+  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.toc === 'shown'), 'PUT persists toc:shown');
+});
+
+test('a saved toc:hidden pref collapses the TOC on boot', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: TOC_BODY, prefs: { toc: 'hidden' } });
+  const { document } = window;
+  assert.equal(document.documentElement.getAttribute('data-sf-toc'), 'hidden', 'hidden on boot');
+  assert.equal(document.getElementById('sf-tocbtn').textContent, '›', 'chevron starts in expand state');
+});
+
+test('no chevron on a spec without its own TOC', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  assert.equal(window.document.getElementById('sf-tocbtn'), null, 'chevron only when nav.toc exists');
+});
+
+test('a stale toc:hidden pref is ignored on a spec without its own TOC', async (t) => {
+  // The hidden state also collapses .layout to one column — a spec that no
+  // longer has a TOC (or never did) must not inherit that reflow from an old pref.
+  const { window } = await bootReviewLayer(t, { prefs: { toc: 'hidden' } });
+  assert.equal(window.document.documentElement.getAttribute('data-sf-toc'), null,
+    'no data-sf-toc without a spec-owned TOC');
+});
+
 // ---------- reading font (Google-Fonts dropdown) ----------
 test('a saved font is applied on boot — category + family + on-demand Google load', async (t) => {
   const { window } = await bootReviewLayer(t, { prefs: { font: 'merriweather' } });

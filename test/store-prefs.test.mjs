@@ -48,6 +48,15 @@ test('sanitize drops unknown keys and invalid enum values', () => {
   assert.deepEqual(sanitizePrefs({ theme: 'neon', filter: 'bogus', junk: 1 }), {});
 });
 
+test('sanitize keeps the view prefs: fit (boolean) and toc (shown|hidden)', () => {
+  assert.equal(sanitizePrefs({ fit: true }).fit, true);
+  assert.equal(sanitizePrefs({ fit: false }).fit, false);
+  assert.equal('fit' in sanitizePrefs({ fit: 'yes' }), false, 'non-boolean fit dropped');
+  assert.equal(sanitizePrefs({ toc: 'hidden' }).toc, 'hidden');
+  assert.equal(sanitizePrefs({ toc: 'shown' }).toc, 'shown');
+  assert.equal('toc' in sanitizePrefs({ toc: 'sideways' }), false, 'unknown toc value dropped');
+});
+
 test('sanitize keeps the named theme variants', () => {
   for (const t of ['light', 'dark', 'dracula', 'nord', 'solarized-dark', 'solarized-light', 'github-light', 'gruvbox-light']) {
     assert.equal(sanitizePrefs({ theme: t }).theme, t, `${t} is a valid theme`);

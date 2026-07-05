@@ -108,11 +108,19 @@
     if (booted) return;
     booted = true;
     applyTheme(); // review-layer owns theme — apply the persisted choice on load
-    // Apply the persisted width on load too. Without this a saved width only took
+    // Apply the persisted view on load too. Without this a saved width only took
     // effect when the menu first built its width row, so every spec auto-reload
     // reset the page to its default width until you clicked the SpecForge icon.
-    var savedW = parseInt(PREFS.width, 10);
-    if (savedW) applyWidth(savedW);
+    if (PREFS.fit) {
+      applyFit(true);
+    } else {
+      var savedW = parseInt(PREFS.width, 10);
+      if (savedW) applyWidth(savedW);
+    }
+    // Left-TOC visibility — only when this document still HAS its own TOC: the
+    // hidden state also reflows .layout to one column, which a stale pref must
+    // not impose on a spec whose TOC was removed.
+    if (PREFS.toc === 'hidden' && specToc()) applyToc('hidden');
     applyFont(initFont()); // reading font — persisted choice (or sans) on load
     buildChrome();
     load();
@@ -188,11 +196,52 @@
     var c = widthContainer();
     try { c.style.maxWidth = px + 'px'; c.style.marginLeft = 'auto'; c.style.marginRight = 'auto'; } catch (e) {}
   }
+  // Fit-to-width: stretch the layout to the full viewport instead of a px cap.
+  // On exit, restore the persisted/derived slider width so the page never lands
+  // in a half-state. The html attr lets CSS opt other things in later.
+  function applyFit(on) {
+    if (on) {
+      document.documentElement.setAttribute('data-sf-fit', '');
+      document.documentElement.style.setProperty('--maxw', '100%');
+      try { widthContainer().style.maxWidth = 'none'; } catch (e) {}
+    } else {
+      document.documentElement.removeAttribute('data-sf-fit');
+      applyWidth(startWidth());
+    }
+  }
+  function isFit() { return document.documentElement.hasAttribute('data-sf-fit'); }
   function startWidth() {
     var saved = parseInt(PREFS.width, 10);
     if (saved) return saved;
     var w = widthContainer().getBoundingClientRect().width || 1040;
     return Math.min(1760, Math.max(820, Math.round(w / 20) * 20));
+  }
+
+  // ---------- left-TOC visibility (review-layer owned) ----------
+  // Specs with their own left TOC (nav.toc / .side-toc) get a fixed chevron tab
+  // that collapses it (review.css drops the grid column). The injected #sf-toc
+  // drawer has its own toggle and is not affected.
+  function specToc() { return document.querySelector('nav.toc, .side-toc'); }
+  function applyToc(state) {
+    if (state === 'hidden') document.documentElement.setAttribute('data-sf-toc', 'hidden');
+    else document.documentElement.removeAttribute('data-sf-toc');
+    var btn = document.getElementById('sf-tocbtn');
+    if (btn) {
+      btn.textContent = state === 'hidden' ? '›' : '‹'; // › / ‹
+      btn.setAttribute('aria-label', state === 'hidden' ? 'Show contents' : 'Hide contents');
+      btn.setAttribute('title', state === 'hidden' ? 'Show contents' : 'Hide contents');
+    }
+  }
+  function buildTocBtn() {
+    if (!specToc()) return;
+    var btn = create('button', { id: 'sf-tocbtn', type: 'button' });
+    btn.onclick = function () {
+      var next = document.documentElement.hasAttribute('data-sf-toc') ? 'shown' : 'hidden';
+      applyToc(next);
+      putPref({ toc: next });
+    };
+    document.body.appendChild(btn);
+    applyToc(PREFS.toc === 'hidden' ? 'hidden' : 'shown'); // set glyph/labels
   }
 
   // ---------- reading font (review-layer owned) ----------
@@ -289,6 +338,7 @@
 
     buildLauncher();
     buildTop();
+    buildTocBtn();
 
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
@@ -489,13 +539,33 @@
   function widthRow() {
     var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
     row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">↔</span><span>Width</span></span>';
+    // Fit-to-width toggle — stretches the layout to the viewport; the slider is
+    // the alternative, so using it exits fit mode.
+    var fit = create('button', { class: 'sf-fit', type: 'button', title: 'Fit to width' }, 'Fit');
+    fit.classList.toggle('on', isFit());
+    fit.onclick = function () {
+      var on = !isFit();
+      applyFit(on);
+      fit.classList.toggle('on', on);
+      putPref({ fit: on });
+    };
+    row.querySelector('.sf-row-main').appendChild(fit);
     var range = create('input', { type: 'range', min: '820', max: '1760', step: '20' });
     var px = startWidth();
     range.value = px;
-    applyWidth(px);
+    if (!isFit()) applyWidth(px);
     // Apply live while dragging; persist once (on release) to avoid a PUT per pixel.
-    range.oninput = function () { applyWidth(range.value); };
-    range.onchange = function () { putPref({ width: parseInt(range.value, 10) }); };
+    range.oninput = function () {
+      if (isFit()) { applyFit(false); fit.classList.remove('on'); }
+      applyWidth(range.value);
+    };
+    range.onchange = function () {
+      // A slider release always means px mode. `change` can fire without a
+      // preceding `input` — exit fit here too, or a stale fit:true would win
+      // the next boot over the width the user just picked.
+      if (isFit()) { applyFit(false); fit.classList.remove('on'); applyWidth(range.value); }
+      putPref({ width: parseInt(range.value, 10), fit: false });
+    };
     row.appendChild(range);
     return row;
   }
@@ -902,7 +972,8 @@
   function inUI(t) {
     while (t) {
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
-          t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-top') return true;
+          t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-top' ||
+          t.id === 'sf-tocbtn') return true;
       t = t.parentElement;
     }
     return false;
