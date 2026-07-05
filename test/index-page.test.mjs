@@ -79,11 +79,14 @@ test('rows show live / disconnected from the owning session heartbeat', () => {
   const m = readMeta(dead); m.heartbeat = Date.now() - STALE_MS - 1000; writeMeta(dead, m); // stale → disconnected
   createSpec({ title: 'Free one', html: '<h1>F</h1>' }); // unattached → neither
   const html = renderIndex();
-  assert.match(html, /class="live">● live/);
-  assert.match(html, /class="off">● disconnected/);
+  assert.match(html, /class="live"[^>]*><span class="dot"><\/span> live/);
+  assert.match(html, /class="off"[^>]*>○ disconnected/);
   // exactly one live + one disconnected (the free spec shows neither)
-  assert.equal((html.match(/● live/g) || []).length, 1);
-  assert.equal((html.match(/● disconnected/g) || []).length, 1);
+  assert.equal((html.match(/ live</g) || []).length, 1);
+  assert.equal((html.match(/○ disconnected/g) || []).length, 1);
+  // live/disconnected rows carry the edge accent; the free row does not
+  assert.equal((html.match(/row edge-live/g) || []).length, 1);
+  assert.equal((html.match(/row edge-off/g) || []).length, 1);
 });
 
 test('a tagged spec renders chips + the rename and collection controls', () => {
@@ -152,7 +155,7 @@ test('search filters rows + groups and updates the count', (t) => {
   const search = document.getElementById('search');
   search.value = 'alpha';
   search.dispatchEvent(new window.Event('input'));
-  const visible = [].slice.call(document.querySelectorAll('tr[data-id]')).filter((r) => r.style.display !== 'none');
+  const visible = [].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none');
   assert.equal(visible.length, 1, 'only the matching row stays visible');
   assert.match(document.getElementById('count').textContent, /1 of 2/);
 });
@@ -186,7 +189,7 @@ test('inline rename POSTs /rename and updates the title in place', async (t) => 
   const c = calls.find((x) => /\/rename$/.test(x.url));
   assert.ok(c && c.method === 'POST' && c.body.title === 'After', 'POST /rename {title:After}');
   assert.equal(document.querySelector('.title').textContent, 'After', 'title updated in place');
-  assert.match(document.querySelector('tr[data-id]').getAttribute('data-k'), /after/, 'search key refreshed after rename');
+  assert.match(document.querySelector('.row[data-id]').getAttribute('data-k'), /after/, 'search key refreshed after rename');
 });
 
 test('adding a tag PATCHes /organize and shows a chip', async (t) => {
@@ -203,7 +206,7 @@ test('adding a tag PATCHes /organize and shows a chip', async (t) => {
   const chip = document.querySelector('.chip[data-tag="urgent"]');
   assert.ok(chip, 'chip rendered');
   assert.equal(chip.querySelector('.x').getAttribute('aria-label'), 'Remove tag', 'dynamic chip × is labelled');
-  assert.match(document.querySelector('tr[data-id]').getAttribute('data-k'), /urgent/, 'search key includes the new tag');
+  assert.match(document.querySelector('.row[data-id]').getAttribute('data-k'), /urgent/, 'search key includes the new tag');
 });
 
 test('removing a tag PATCHes /organize without it and drops the chip', async (t) => {
@@ -216,6 +219,72 @@ test('removing a tag PATCHes /organize without it and drops the chip', async (t)
   const c = calls.find((x) => /\/organize$/.test(x.url));
   assert.deepEqual(c.body.tags, ['keep'], 'PATCH /organize tags without the removed one');
   assert.equal(document.querySelector('.chip[data-tag="drop"]'), null, 'chip removed');
+});
+
+const setStatusMeta = (id, s) => { const m = readMeta(id); m.status = s; writeMeta(id, m); };
+
+test('status chips filter rows; clicking the active chip resets to All', (t) => {
+  const a = createSpec({ title: 'Doing', html: '<h1>A</h1>' });
+  createSpec({ title: 'Drafting', html: '<h1>B</h1>' });
+  setStatusMeta(a, 'implementing');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const chip = [].slice.call(document.querySelectorAll('.fchip')).find((c) => c.getAttribute('data-f') === 'implementing');
+  chip.click();
+  let visible = [].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none');
+  assert.equal(visible.length, 1, 'only the implementing spec shows');
+  assert.match(document.getElementById('count').textContent, /1 of 2/);
+  chip.click(); // toggle off → All
+  visible = [].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none');
+  assert.equal(visible.length, 2, 'clicking the active chip resets the filter');
+});
+
+test('the type select filters rows and combines with search', (t) => {
+  createSpec({ title: 'Alpha research', html: '<h1>A</h1>', type: 'research' });
+  createSpec({ title: 'Alpha design', html: '<h1>B</h1>', type: 'design' });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const ftype = document.getElementById('ftype');
+  ftype.value = 'research';
+  ftype.dispatchEvent(new window.Event('change', { bubbles: true }));
+  const visible = [].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none');
+  assert.equal(visible.length, 1, 'only the research spec shows');
+  assert.equal(visible[0].getAttribute('data-t'), 'research');
+});
+
+test('sort by title reorders rows within a group', (t) => {
+  createSpec({ title: 'Zulu', html: '<h1>Z</h1>' });
+  createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const fsort = document.getElementById('fsort');
+  fsort.value = 'title';
+  fsort.dispatchEvent(new window.Event('change', { bubbles: true }));
+  const titles = [].slice.call(document.querySelectorAll('.row .title')).map((a) => a.textContent);
+  assert.deepEqual(titles, ['Alpha', 'Zulu'], 'rows reordered A–Z');
+});
+
+test('"/" focuses the search input', (t) => {
+  createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '/', bubbles: true }));
+  assert.equal(document.activeElement, document.getElementById('search'), 'search focused via /');
+});
+
+test('template specs render as a bottom strip, excluded from rows and filters', async (t) => {
+  const { ensureTemplates, templateId } = await import('../lib/store-templates.mjs');
+  createSpec({ title: 'Working spec', html: '<h1>W</h1>' });
+  ensureTemplates();
+  const { window } = loadIndex(t);
+  const { document } = window;
+  // strip renders one card per type, badge included
+  assert.equal(document.querySelectorAll('.tcard').length, 4, '4 template cards');
+  assert.ok(document.querySelector(`.tcard[data-id="${templateId('design')}"]`), 'design template card');
+  assert.equal(document.querySelectorAll('.tcard .badge.tpl').length, 4, 'template badge on each card');
+  // templates are not filterable rows
+  assert.equal(document.querySelectorAll(`.row[data-id="${templateId('design')}"]`).length, 0, 'no template row');
+  assert.match(document.getElementById('count').textContent, /1 spec/, 'count excludes templates');
 });
 
 test('changing the collection input PATCHes /organize', async (t) => {
