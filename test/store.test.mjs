@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 
 import {
   newSpecId, createSpec, readSpecHtml, writeSpecHtml, listSpecIds,
-  extractTitle, specHtmlPath, metaPath, specsDir, storeRoot,
+  extractTitle, specHtmlPath, metaPath, specsDir, storeRoot, deleteSpec, specDir,
 } from '../lib/store.mjs';
 import { readMeta } from '../lib/meta.mjs';
 
@@ -28,6 +28,17 @@ afterEach(() => {
 test('SPECFORGE_HOME is honoured at call time, not import time', () => {
   assert.equal(storeRoot(), home);
   assert.equal(specsDir(), join(home, 'specs'));
+});
+
+test('deleteSpec removes the whole spec dir and returns true; a second call is false', () => {
+  const id = createSpec({ title: 'Doomed', html: '<h1>Doomed</h1>' });
+  assert.ok(existsSync(specDir(id)), 'dir created');
+  assert.ok(listSpecIds().includes(id));
+  assert.equal(deleteSpec(id), true, 'delete reports it removed the spec');
+  assert.equal(existsSync(specDir(id)), false, 'the spec dir is gone');
+  assert.equal(readMeta(id), null, 'meta no longer readable');
+  assert.equal(listSpecIds().includes(id), false, 'dropped from the listing');
+  assert.equal(deleteSpec(id), false, 'deleting an absent spec is a no-op → false');
 });
 
 test('newSpecId is a 10-char hex id and is unique', () => {

@@ -298,3 +298,47 @@ test('changing the collection input PATCHes /organize', async (t) => {
   const c = calls.find((x) => /\/organize$/.test(x.url));
   assert.ok(c && c.method === 'PATCH' && c.body.collection === 'Backlog', 'PATCH /organize {collection:Backlog}');
 });
+
+// ---- delete a spec (two-step confirm) ----
+test('delete needs confirmation: the trash button reveals a confirm, Cancel aborts', async (t) => {
+  const a = createSpec({ title: 'Keep', html: '<h1>K</h1>' });
+  const del = createSpec({ title: 'Zap', html: '<h1>Z</h1>' });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  const row = document.querySelector(`.row[data-id="${del}"]`);
+  row.querySelector('.del').click();
+  assert.ok(row.classList.contains('confirming'), 'the row enters a confirming state');
+  assert.equal(row.querySelector('.delconfirm').hidden, false, 'the confirm strip is shown');
+  // Cancel: no request, row stays, confirm hidden.
+  row.querySelector('.dcno').click();
+  assert.ok(!row.classList.contains('confirming'), 'Cancel exits the confirm');
+  assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0, 'nothing deleted on cancel');
+  assert.ok(document.querySelector(`.row[data-id="${del}"]`), 'the row is still present');
+  assert.ok(document.querySelector(`.row[data-id="${a}"]`), 'the other row untouched');
+});
+
+test('confirming a delete DELETEs the spec, removes the row, and updates the count', async (t) => {
+  createSpec({ title: 'Keep', html: '<h1>K</h1>' });
+  const del = createSpec({ title: 'Zap', html: '<h1>Z</h1>' });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  assert.match(document.getElementById('count').textContent, /2 specs/);
+  const row = document.querySelector(`.row[data-id="${del}"]`);
+  row.querySelector('.del').click();
+  row.querySelector('.dcyes').click();
+  await tick(window);
+  const c = calls.find((x) => x.method === 'DELETE');
+  assert.ok(c && new RegExp(`/api/spec/${del}$`).test(c.url), 'DELETE /api/spec/:id fired');
+  assert.equal(document.querySelector(`.row[data-id="${del}"]`), null, 'the row is removed from the DOM');
+  assert.match(document.getElementById('count').textContent, /1 spec/, 'the total count drops');
+});
+
+test('template cards have no delete affordance', async (t) => {
+  const { ensureTemplates } = await import('../lib/store-templates.mjs');
+  createSpec({ title: 'Real', html: '<h1>R</h1>' });
+  ensureTemplates();
+  const { window } = loadIndex(t);
+  const { document } = window;
+  assert.equal(document.querySelector('.tcard .del'), null, 'no delete button on template cards');
+  assert.equal(document.querySelectorAll('.row .del').length, 1, 'only the real spec row has delete');
+});
