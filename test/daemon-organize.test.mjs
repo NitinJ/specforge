@@ -61,6 +61,33 @@ test('the Templates collection is reserved — normal specs cannot be organized 
   assert.equal(readMeta(specId).collection, null, 'collection unchanged');
 });
 
+test('DELETE /api/spec/:id removes a spec and drops it from its session', async () => {
+  const { attach, specsForSession } = await import('../lib/attach.mjs');
+  const { existsSync } = await import('node:fs');
+  const { specDir } = await import('../lib/store.mjs');
+  attach(specId, 'sess-del');
+  assert.deepEqual(specsForSession('sess-del'), [specId], 'attached first');
+  const r = await send('DELETE', `/api/spec/${specId}`);
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { ok: true, id: specId });
+  assert.equal(existsSync(specDir(specId)), false, 'spec dir removed');
+  assert.equal(readMeta(specId), null, 'meta gone');
+  assert.deepEqual(specsForSession('sess-del'), [], 'dropped from the session index');
+});
+
+test('DELETE /api/spec/:id 404s for an unknown spec', async () => {
+  assert.equal((await send('DELETE', '/api/spec/deadbeef00')).status, 404);
+});
+
+test('DELETE is refused for a protected template spec (403)', async () => {
+  const { ensureTemplates, templateId } = await import('../lib/store-templates.mjs');
+  ensureTemplates();
+  const tid = templateId('impl');
+  const r = await send('DELETE', `/api/spec/${tid}`);
+  assert.equal(r.status, 403);
+  assert.ok(readMeta(tid), 'template spec survives');
+});
+
 test('POST /rename updates the title and the spec heading', async () => {
   const r = await send('POST', `/api/spec/${specId}/rename`, { title: '  After  ' });
   assert.equal(r.status, 200);

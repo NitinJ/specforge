@@ -72,8 +72,9 @@ function rowHtml(m) {
   </div>
   <div class="meta">
     <div class="l1"><span class="badge t">${esc(rawType)}</span><span class="badge s s-${esc(rawStatus)}"><span class="sdot"></span>${esc(label(rawStatus))}</span></div>
-    <div class="l2">${live}<span class="upd">${esc(relativeTime(m.updated))}</span><button class="collbtn" type="button" title="Move to collection" aria-label="Move to collection">▣</button><input class="coll" list="collections" value="${esc(coll)}" placeholder="Uncollected" aria-label="Collection" hidden></div>
+    <div class="l2">${live}<span class="upd">${esc(relativeTime(m.updated))}</span><button class="collbtn" type="button" title="Move to collection" aria-label="Move to collection">▣</button><input class="coll" list="collections" value="${esc(coll)}" placeholder="Uncollected" aria-label="Collection" hidden><button class="del" type="button" title="Delete spec" aria-label="Delete spec">🗑</button></div>
   </div>
+  <div class="delconfirm" hidden><span class="dcmsg">Delete <b>${title}</b>? This can't be undone.</span><button class="dcno" type="button">Cancel</button><button class="dcyes" type="button">Delete</button></div>
 </li>`;
 }
 
@@ -167,7 +168,7 @@ export function renderIndex() {
   .gcount{display:inline-block;background:var(--surface2);border-radius:999px;padding:0 7px;color:var(--faint);font-weight:500;margin-left:4px}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
   .rows{list-style:none;margin:0;padding:0}
-  .row{display:grid;grid-template-columns:1fr auto;gap:4px 16px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line);border-left:2px solid transparent;transition:background .12s}
+  .row{position:relative;display:grid;grid-template-columns:1fr auto;gap:4px 16px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line);border-left:2px solid transparent;transition:background .12s}
   .row:last-child{border-bottom:none}
   .row:hover{background:color-mix(in srgb,var(--ink) 3%,transparent)}
   .row.edge-live{border-left-color:var(--live)}
@@ -208,6 +209,19 @@ export function renderIndex() {
   .collbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s;padding:0 2px}
   .row:hover .collbtn,.collbtn:focus-visible{opacity:1}
   .collbtn:hover{color:var(--accent)}
+  .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s,color .12s;padding:0 2px;filter:grayscale(1)}
+  .row:hover .del,.del:focus-visible{opacity:.75}
+  .del:hover{opacity:1;color:var(--red);filter:none}
+  /* two-step confirm — an overlay bar over the row, so the layout never shifts */
+  .delconfirm{position:absolute;inset:0;display:none;align-items:center;justify-content:flex-end;gap:10px;padding:0 16px;border-radius:0;background:color-mix(in srgb,var(--surface) 92%,var(--red));border-left:2px solid var(--red)}
+  .row.confirming .delconfirm{display:flex}
+  .row.confirming .main,.row.confirming .meta{opacity:.25}
+  .dcmsg{margin-right:auto;font-size:13px;color:var(--ink)}
+  .dcmsg b{font-weight:600}
+  .dcno{background:none;border:1px solid var(--line2);color:var(--muted);border-radius:6px;font-size:12px;padding:4px 12px;cursor:pointer;transition:color .12s,border-color .12s}
+  .dcno:hover{color:var(--ink);border-color:var(--muted)}
+  .dcyes{background:var(--red);border:1px solid var(--red);color:#fff;border-radius:6px;font-size:12px;font-weight:560;padding:4px 12px;cursor:pointer;transition:filter .12s}
+  .dcyes:hover{filter:brightness(1.08)}
   .coll{width:130px;padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font-size:12px}
   .coll:focus{outline:none;border-color:var(--accent)}
 
@@ -293,6 +307,15 @@ ${strip}
     else if(t.classList.contains('x')){var r3=rowOf(t),chip=t.closest('.chip'),id=r3.getAttribute('data-id');
       var next=tagsOf(r3).filter(function(x){return x!==chip.getAttribute('data-tag');});
       api(id,'/organize','PATCH',{tags:next}).then(function(){chip.remove();updateKey(r3);}).catch(function(){});}
+    else if(t.classList.contains('del')){var rd=rowOf(t);rd.querySelector('.delconfirm').hidden=false;rd.classList.add('confirming');}
+    else if(t.classList.contains('dcno')){var rn=rowOf(t);rn.classList.remove('confirming');rn.querySelector('.delconfirm').hidden=true;}
+    else if(t.classList.contains('dcyes')){var rz=rowOf(t),idz=rz.getAttribute('data-id');t.disabled=true;
+      // Key on the HTTP status: a non-2xx (404/403-template/500) means the spec
+      // was NOT deleted, so keep the row and back out of the confirm.
+      api(idz,'','DELETE').then(function(x){
+        if(!x||!x.ok){throw new Error('delete failed');}
+        rz.remove(); removeRow(idz);
+      }).catch(function(){t.disabled=false;rz.classList.remove('confirming');rz.querySelector('.delconfirm').hidden=true;});}
   });
 
   document.addEventListener('keydown',function(e){
@@ -361,6 +384,12 @@ ${strip}
     });
     if(count) count.textContent=(q||fstatus!=='all'||ty)?(shown+' of '+total):(total+' spec'+(total===1?'':'s'));
     if(nohits) nohits.style.display=shown?'none':'block';
+  }
+  // Drop a deleted row from the in-memory set and refresh counts/groups.
+  function removeRow(id){
+    rows=rows.filter(function(r){return r.getAttribute('data-id')!==id;});
+    total=rows.length;
+    applyFilters();
   }
   function applySort(){
     var mode=(fsort&&fsort.value)||'recent';

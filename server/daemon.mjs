@@ -38,7 +38,7 @@ import {
   handleCommentReply, handleCommentResolve, handleCommentEdit, handleSubmit,
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
-  handleRename, handleOrganize, handleExport,
+  handleRename, handleOrganize, handleExport, handleDelete,
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
@@ -211,6 +211,13 @@ export function createDaemon() {
     if (exp) {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleExport(exp[1], res);
+    }
+    // Bare spec resource — DELETE removes it (the id is anchored, so this never
+    // shadows the /meta, /prefs, /comments, … sub-routes above).
+    const specRes = path.match(/^\/api\/spec\/([\w-]+)$/);
+    if (specRes) {
+      if (method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleDelete(specRes[1], res);
     }
 
     if (method === 'GET') {
