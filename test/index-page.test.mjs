@@ -333,6 +333,19 @@ test('confirming a delete DELETEs the spec, removes the row, and updates the cou
   assert.match(document.getElementById('count').textContent, /1 spec/, 'the total count drops');
 });
 
+test('a failed delete (non-2xx) keeps the row and backs out of the confirm', async (t) => {
+  const del = createSpec({ title: 'Guarded', html: '<h1>G</h1>' });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  window.fetch = () => Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ error: 'nope' }) });
+  const row = document.querySelector(`.row[data-id="${del}"]`);
+  row.querySelector('.del').click();
+  row.querySelector('.dcyes').click();
+  await tick(window);
+  assert.ok(document.querySelector(`.row[data-id="${del}"]`), 'the row survives a rejected delete');
+  assert.ok(!row.classList.contains('confirming'), 'the confirm is dismissed');
+});
+
 test('template cards have no delete affordance', async (t) => {
   const { ensureTemplates } = await import('../lib/store-templates.mjs');
   createSpec({ title: 'Real', html: '<h1>R</h1>' });

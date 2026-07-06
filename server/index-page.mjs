@@ -310,8 +310,10 @@ ${strip}
     else if(t.classList.contains('del')){var rd=rowOf(t);rd.querySelector('.delconfirm').hidden=false;rd.classList.add('confirming');}
     else if(t.classList.contains('dcno')){var rn=rowOf(t);rn.classList.remove('confirming');rn.querySelector('.delconfirm').hidden=true;}
     else if(t.classList.contains('dcyes')){var rz=rowOf(t),idz=rz.getAttribute('data-id');t.disabled=true;
+      // Key on the HTTP status: a non-2xx (404/403-template/500) means the spec
+      // was NOT deleted, so keep the row and back out of the confirm.
       api(idz,'','DELETE').then(function(x){
-        if(x&&x.ok===false){throw new Error('failed');}
+        if(!x||!x.ok){throw new Error('delete failed');}
         rz.remove(); removeRow(idz);
       }).catch(function(){t.disabled=false;rz.classList.remove('confirming');rz.querySelector('.delconfirm').hidden=true;});}
   });
