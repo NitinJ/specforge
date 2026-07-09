@@ -59,11 +59,22 @@ test('templateHtmlFor prefers the store template over the bundled shell', () => 
 });
 
 test('templateHtmlFor falls back to the bundled shell when the store template is missing or empty', () => {
-  // No seed at all → bundled shell.
+  // No seed at all → bundled shell (design uses the shared doc shell).
   const bundledDoc = readFileSync(join(ROOT, 'templates', 'spec-base-doc.html'), 'utf8');
-  assert.equal(templateHtmlFor('research'), bundledDoc);
+  assert.equal(templateHtmlFor('design'), bundledDoc);
   // Seeded but emptied (a broken edit) → bundled shell, never an empty spec.
   ensureTemplates();
-  writeSpecHtml(templateId('research'), '   ');
-  assert.equal(templateHtmlFor('research'), bundledDoc);
+  writeSpecHtml(templateId('design'), '   ');
+  assert.equal(templateHtmlFor('design'), bundledDoc);
+});
+
+test('a per-type bundled seed (spec-base-<type>.html) wins over the shared shell', () => {
+  const research = readFileSync(join(ROOT, 'templates', 'spec-base-research.html'), 'utf8');
+  const doc = readFileSync(join(ROOT, 'templates', 'spec-base-doc.html'), 'utf8');
+  // research has its own shell now — not the design shell it used to clone.
+  assert.equal(templateHtmlFor('research'), research);
+  assert.notEqual(templateHtmlFor('research'), doc, 'research no longer clones the design shell');
+  // and a fresh seed carries the research shape, not design's.
+  ensureTemplates();
+  assert.match(readSpecHtml(templateId('research')), /id="findings"/, 'research template has a Findings section');
 });
