@@ -994,7 +994,7 @@
   var SF = window.SPECFORGE || {};
   var PREFS = SF.prefs || {};
   var docEl = document.documentElement;
-  var NARROW = 1360; // below this the TOC would crowd the centered content → auto-collapse
+  var TOC_W = 240; // keep in sync with --sf-toc-w in review.css
   var auto = (PREFS.toc !== 'shown' && PREFS.toc !== 'hidden'); // no explicit choice yet
   var done = false;
   document.addEventListener('DOMContentLoaded', init);
@@ -1024,17 +1024,35 @@
     document.body.appendChild(btn);
 
     resolve();
+    // Re-resolve once all resources (incl. review.css) have loaded, so the
+    // initial auto decision can't be made against a not-yet-styled layout.
+    window.addEventListener('load', function () { if (auto) resolve(); }, { once: true });
     window.addEventListener('resize', function () { if (auto) resolve(); }, { passive: true });
     // On a narrow window, tapping a TOC link should reveal the section, not leave
     // the overlay covering it.
     Array.prototype.forEach.call(panel.querySelectorAll('a'), function (a) {
-      a.addEventListener('click', function () { if (auto && window.innerWidth < NARROW) apply('hidden'); });
+      a.addEventListener('click', function () { if (auto && tooNarrow()) apply('hidden'); });
     });
     spy(items, panel);
   }
-  // Show/hide by the user's explicit pref, or (in auto mode) by viewport width.
+  // The centered content column's width, from --maxw (the width slider's value)
+  // or the 820px reading default in review.css — NOT a getBoundingClientRect
+  // read, which would race the stylesheet at init and mis-measure a full-width
+  // .layout. Fit mode (--maxw:100%) means full width → treat as the viewport.
+  function contentWidth() {
+    var raw = getComputedStyle(docEl).getPropertyValue('--maxw').trim();
+    if (raw.indexOf('%') !== -1) return window.innerWidth; // fit-to-width
+    var mw = parseInt(raw, 10);
+    return Math.min((mw > 0 ? mw : 820), window.innerWidth);
+  }
+  // Auto-collapse when the TOC can't sit beside the centered content without
+  // overlapping it: content is centered, so its left edge is (vw - cw)/2 — that
+  // must clear the TOC (width TOC_W) plus a small gap. Uses the content width, so
+  // a slider-widened (or fit) column collapses the TOC sooner.
+  function tooNarrow() { return window.innerWidth < contentWidth() + 2 * TOC_W + 24; }
+  // Show/hide by the user's explicit pref, or (in auto mode) by the geometry.
   function resolve() {
-    if (auto) apply(window.innerWidth < NARROW ? 'hidden' : 'shown');
+    if (auto) apply(tooNarrow() ? 'hidden' : 'shown');
     else apply(PREFS.toc === 'hidden' ? 'hidden' : 'shown');
   }
   function apply(state) {
