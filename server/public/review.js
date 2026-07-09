@@ -131,10 +131,8 @@
       var savedW = parseInt(PREFS.width, 10);
       if (savedW) applyWidth(savedW);
     }
-    // Left-TOC visibility — only when this document still HAS its own TOC: the
-    // hidden state also reflows .layout to one column, which a stale pref must
-    // not impose on a spec whose TOC was removed.
-    if (PREFS.toc === 'hidden' && specToc()) applyToc('hidden');
+    // The floating "Contents" TOC + its collapse state are owned by the #sf-toc
+    // injector (the second IIFE below), which builds after this chrome.
     applyFont(initFont()); // reading font — persisted choice (or sans) on load
     buildChrome();
     load();
@@ -231,33 +229,6 @@
     return Math.min(1760, Math.max(820, Math.round(w / 20) * 20));
   }
 
-  // ---------- left-TOC visibility (review-layer owned) ----------
-  // Specs with their own left TOC (nav.toc / .side-toc) get a fixed chevron tab
-  // that collapses it (review.css drops the grid column). The injected #sf-toc
-  // drawer has its own toggle and is not affected.
-  function specToc() { return document.querySelector('nav.toc, .side-toc'); }
-  function applyToc(state) {
-    if (state === 'hidden') document.documentElement.setAttribute('data-sf-toc', 'hidden');
-    else document.documentElement.removeAttribute('data-sf-toc');
-    var btn = document.getElementById('sf-tocbtn');
-    if (btn) {
-      btn.textContent = state === 'hidden' ? '›' : '‹'; // › / ‹
-      btn.setAttribute('aria-label', state === 'hidden' ? 'Show contents' : 'Hide contents');
-      btn.setAttribute('title', state === 'hidden' ? 'Show contents' : 'Hide contents');
-    }
-  }
-  function buildTocBtn() {
-    if (!specToc()) return;
-    var btn = create('button', { id: 'sf-tocbtn', type: 'button' });
-    btn.onclick = function () {
-      var next = document.documentElement.hasAttribute('data-sf-toc') ? 'shown' : 'hidden';
-      applyToc(next);
-      putPref({ toc: next });
-    };
-    document.body.appendChild(btn);
-    applyToc(PREFS.toc === 'hidden' ? 'hidden' : 'shown'); // set glyph/labels
-  }
-
   // ---------- reading font (review-layer owned) ----------
   // Set a data-attr on the content container only; review.css maps it to a stack.
   // Scoping to the container (not <html>) keeps the review chrome untouched. When a
@@ -352,7 +323,6 @@
 
     buildLauncher();
     buildTop();
-    buildTocBtn();
 
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
@@ -499,10 +469,11 @@
     }
     els.menu.appendChild(comments);
 
-    // Contents — only when the review layer injected its own TOC drawer.
-    var toc = document.getElementById('sf-toc');
-    if (toc) {
-      els.menu.appendChild(menuRow('📑', 'Contents', function () { toc.classList.toggle('open'); closeMenu(); }));
+    // Contents — show/hide the floating TOC. Delegates to the chevron so the two
+    // controls (and the persisted state) never disagree.
+    var tocBtn = document.getElementById('sf-tocbtn');
+    if (tocBtn) {
+      els.menu.appendChild(menuRow('📑', 'Contents', function () { tocBtn.click(); closeMenu(); }));
     }
 
     // Width — inline range, persisted.
@@ -1011,48 +982,104 @@
   }
 })();
 
-/* Serve-time enhancement, added to EVERY served spec: an auto-built floating TOC
- * drawer (#sf-toc), injected only when the spec has no TOC of its own. The
- * SpecForge launcher's "Contents" row toggles it. The on-disk file is untouched —
- * this lives purely in the served page. */
+/* Serve-time enhancement on EVERY served spec: the floating "Contents" TOC
+ * (#sf-toc) pinned to the left, with the spec content centered (docs layout, via
+ * html[data-sf-docs]). Built from the spec's own TOC links when it has one (else
+ * its sections/headings); any native in-flow TOC is hidden and replaced. A chevron
+ * (#sf-tocbtn) collapses/expands it — persisted per spec (toc: shown|hidden) — and
+ * it auto-collapses on windows too narrow to fit it beside the centered content,
+ * until the reader makes an explicit choice. The on-disk file is untouched. */
 (function () {
   'use strict';
+  var SF = window.SPECFORGE || {};
+  var PREFS = SF.prefs || {};
+  var docEl = document.documentElement;
+  var NARROW = 1360; // below this the TOC would crowd the centered content → auto-collapse
+  var auto = (PREFS.toc !== 'shown' && PREFS.toc !== 'hidden'); // no explicit choice yet
   var done = false;
   document.addEventListener('DOMContentLoaded', init);
   if (document.readyState !== 'loading') init();
   function init() { if (done) return; done = true; ensureToc(); }
 
-  // ---------- auto floating TOC ----------
+  // ---------- floating "Contents" TOC ----------
   function ensureToc() {
-    if (document.querySelector('nav.toc, .side-toc')) return; // spec has its own TOC
     var items = collect();
-    if (items.length < 3) return; // too few sections to bother
+    if (items.length < 3) return; // too few sections to bother; leave the layout as-is
+    // Enter docs mode: hide any native TOC + center the content (review.css).
+    docEl.setAttribute('data-sf-docs', '');
+
     var panel = document.createElement('nav');
     panel.id = 'sf-toc'; panel.setAttribute('aria-label', 'Contents');
-    var html = '<div class="sf-toc-head"><b><span>On this</span> page</b></div><div class="sf-toc-list">';
+    var html = '<div class="sf-toc-head">Contents</div><div class="sf-toc-list">';
     items.forEach(function (it) { html += '<a href="#' + it.id + '">' + esc(it.text) + '</a>'; });
     panel.innerHTML = html + '</div>';
     document.body.appendChild(panel);
+
+    var btn = document.createElement('button');
+    btn.id = 'sf-tocbtn'; btn.type = 'button';
+    btn.onclick = function () {
+      var next = docEl.getAttribute('data-sf-toc') === 'hidden' ? 'shown' : 'hidden';
+      auto = false; PREFS.toc = next; apply(next); putToc(next); // explicit choice sticks
+    };
+    document.body.appendChild(btn);
+
+    resolve();
+    window.addEventListener('resize', function () { if (auto) resolve(); }, { passive: true });
+    // On a narrow window, tapping a TOC link should reveal the section, not leave
+    // the overlay covering it.
     Array.prototype.forEach.call(panel.querySelectorAll('a'), function (a) {
-      a.addEventListener('click', function () { if (window.innerWidth < 1100) panel.classList.remove('open'); });
+      a.addEventListener('click', function () { if (auto && window.innerWidth < NARROW) apply('hidden'); });
     });
     spy(items, panel);
   }
+  // Show/hide by the user's explicit pref, or (in auto mode) by viewport width.
+  function resolve() {
+    if (auto) apply(window.innerWidth < NARROW ? 'hidden' : 'shown');
+    else apply(PREFS.toc === 'hidden' ? 'hidden' : 'shown');
+  }
+  function apply(state) {
+    if (state === 'hidden') docEl.setAttribute('data-sf-toc', 'hidden');
+    else docEl.removeAttribute('data-sf-toc');
+    var btn = document.getElementById('sf-tocbtn');
+    if (btn) {
+      btn.textContent = state === 'hidden' ? '›' : '‹'; // › expand / ‹ collapse
+      btn.setAttribute('aria-label', state === 'hidden' ? 'Show contents' : 'Hide contents');
+      btn.setAttribute('title', state === 'hidden' ? 'Show contents' : 'Hide contents');
+    }
+  }
+  function putToc(state) {
+    if (!SF.specId) return;
+    try {
+      fetch('/api/spec/' + encodeURIComponent(SF.specId) + '/prefs', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ toc: state }),
+      }).catch(function () {});
+    } catch (e) {}
+  }
   function collect() {
-    var out = [], seen = {};
+    // Prefer the spec's own TOC links (curated labels) when it has a TOC.
+    var native = document.querySelector('nav.toc, .side-toc');
+    if (native) {
+      var out = [];
+      Array.prototype.forEach.call(native.querySelectorAll('a[href^="#"]'), function (a) {
+        var id = a.getAttribute('href').slice(1);
+        if (id && document.getElementById(id)) out.push({ id: id, text: txt(a) });
+      });
+      if (out.length >= 2) return out;
+    }
+    var byId = [], seen = {};
     var secs = document.querySelectorAll('section[id]');
     if (secs.length >= 3) {
       Array.prototype.forEach.call(secs, function (s) {
-        var h = s.querySelector('h1,h2,h3'); if (h) out.push({ id: s.id, text: txt(h) });
+        var h = s.querySelector('h1,h2,h3'); if (h) byId.push({ id: s.id, text: txt(h) });
       });
-      return out;
+      return byId;
     }
     Array.prototype.forEach.call(document.querySelectorAll('h2,h3'), function (h) {
       var id = h.id;
-      if (!id) { id = slug(txt(h)) || 'sec'; if (seen[id]) id = id + '-' + out.length; h.id = id; }
-      seen[id] = 1; out.push({ id: id, text: txt(h) });
+      if (!id) { id = slug(txt(h)) || 'sec'; if (seen[id]) id = id + '-' + byId.length; h.id = id; }
+      seen[id] = 1; byId.push({ id: id, text: txt(h) });
     });
-    return out;
+    return byId;
   }
   function spy(items, panel) {
     if (!('IntersectionObserver' in window)) return;
