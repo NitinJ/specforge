@@ -31,8 +31,11 @@
   function putPref(patch) {
     var global = null, spec = null;
     for (var k in patch) {
+      if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
       PREFS[k] = patch[k];
-      if (GLOBAL_PREF_KEYS[k]) { (global = global || {})[k] = patch[k]; }
+      // Strict === against the sentinel so an inherited key (constructor,
+      // toString) can never be misread as a global pref.
+      if (GLOBAL_PREF_KEYS[k] === 1) { (global = global || {})[k] = patch[k]; }
       else { (spec = spec || {})[k] = patch[k]; }
     }
     if (global) putJSON('/api/prefs', global);
