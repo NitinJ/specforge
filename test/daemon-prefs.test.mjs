@@ -49,19 +49,45 @@ test('GET prefs returns {} before anything is stored', async () => {
   assert.deepEqual((await r.json()).prefs, {});
 });
 
-test('PUT persists prefs; a later GET returns them', async () => {
+test('PUT persists per-spec prefs; a later GET returns them (theme/font dropped)', async () => {
   const w = await put(`/api/spec/${specId}/prefs`, { theme: 'light', width: 1200 });
   assert.equal(w.status, 200);
-  assert.deepEqual((await w.json()).prefs, { theme: 'light', width: 1200 });
+  // theme is store-wide now → dropped from the per-spec store.
+  assert.deepEqual((await w.json()).prefs, { width: 1200 });
 
   const g = await fetch(`${base}/api/spec/${specId}/prefs`);
-  assert.deepEqual((await g.json()).prefs, { theme: 'light', width: 1200 });
+  assert.deepEqual((await g.json()).prefs, { width: 1200 });
 });
 
 test('PUT merges a partial patch and drops invalid values', async () => {
-  await put(`/api/spec/${specId}/prefs`, { theme: 'dark', width: 1000 });
-  const r = await put(`/api/spec/${specId}/prefs`, { theme: 'light', filter: 'bogus' });
-  assert.deepEqual((await r.json()).prefs, { theme: 'light', width: 1000 });
+  await put(`/api/spec/${specId}/prefs`, { width: 1000, filter: 'all' });
+  const r = await put(`/api/spec/${specId}/prefs`, { filter: 'bogus', fit: true });
+  assert.deepEqual((await r.json()).prefs, { width: 1000, filter: 'all', fit: true });
+});
+
+test('theme + font are store-wide via /api/prefs and reach every served spec', async () => {
+  const other = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  const g = await put('/api/prefs', { theme: 'dracula', font: 'lora' });
+  assert.equal(g.status, 200);
+  assert.deepEqual((await g.json()).prefs, { theme: 'dracula', font: 'lora' });
+  // Both specs' served HTML embed the store-wide theme/font.
+  for (const sid of [specId, other]) {
+    const html = await (await fetch(`${base}/spec/${sid}`)).text();
+    const m = html.match(/window\.SPECFORGE = \{ specId: [^,]+, prefs: (\{.*?\}) \}/);
+    assert.ok(m, `prefs embedded for ${sid}`);
+    const prefs = JSON.parse(m[1]);
+    assert.equal(prefs.theme, 'dracula');
+    assert.equal(prefs.font, 'lora');
+  }
+});
+
+test('the served spec merges store-wide theme/font with per-spec width', async () => {
+  await put('/api/prefs', { theme: 'nord' });
+  await put(`/api/spec/${specId}/prefs`, { width: 1300 });
+  const html = await (await fetch(`${base}/spec/${specId}`)).text();
+  const prefs = JSON.parse(html.match(/prefs: (\{.*?\}) \}/)[1]);
+  assert.equal(prefs.theme, 'nord', 'store-wide theme');
+  assert.equal(prefs.width, 1300, 'per-spec width');
 });
 
 test('PUT prefs 404s for an unknown spec', async () => {

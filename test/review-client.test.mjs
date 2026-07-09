@@ -872,6 +872,24 @@ test('picking a theme PUTs it to /prefs', async (t) => {
   assert.equal(p.body.theme, 'nord', 'persists the picked theme variant');
 });
 
+test('theme + font persist store-wide (/api/prefs); width stays per-spec', async (t) => {
+  const { window, puts } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  rowByLabel(document, 'Theme').querySelector('.sf-swatch[data-theme="nord"]').click();
+  const fsel = rowByLabel(document, 'Font').querySelector('select.sf-font-select');
+  fsel.value = 'lora'; fsel.dispatchEvent(new window.Event('change'));
+  const range = rowByLabel(document, 'Width').querySelector('input[type=range]');
+  range.value = '1300'; range.dispatchEvent(new window.Event('change'));
+
+  const theme = puts.find((p) => p.body.theme === 'nord');
+  assert.equal(theme.url, '/api/prefs', 'theme → the store-wide endpoint (applies to every spec)');
+  const font = puts.find((p) => p.body.font === 'lora');
+  assert.equal(font.url, '/api/prefs', 'font → the store-wide endpoint');
+  const width = puts.find((p) => p.body.width === 1300);
+  assert.match(width.url, /\/api\/spec\/test-spec\/prefs$/, 'width stays per-spec');
+});
+
 test('the picker reflects a persisted variant on boot', async (t) => {
   const { window } = await bootReviewLayer(t, { prefs: { theme: 'dracula' } });
   const { document } = window;

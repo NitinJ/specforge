@@ -1,4 +1,5 @@
-// Unit tests for store-wide UI prefs (lib/global-prefs.mjs) — the index theme.
+// Unit tests for store-wide UI prefs (lib/global-prefs.mjs) — theme + font, the
+// reading settings that apply to every spec.
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,12 +28,24 @@ test('readGlobalPrefs is {} before anything is stored', () => {
   assert.deepEqual(readGlobalPrefs(), {});
 });
 
-test('writeGlobalPrefs persists a valid theme and round-trips', () => {
-  assert.deepEqual(writeGlobalPrefs({ theme: 'dark' }), { theme: 'dark' });
-  assert.deepEqual(readGlobalPrefs(), { theme: 'dark' });
+test('writeGlobalPrefs persists theme + font and round-trips', () => {
+  assert.deepEqual(writeGlobalPrefs({ theme: 'dark', font: 'lora' }), { theme: 'dark', font: 'lora' });
+  assert.deepEqual(readGlobalPrefs(), { theme: 'dark', font: 'lora' });
 });
 
-test('sanitize drops unknown keys and invalid themes', () => {
-  assert.deepEqual(sanitizeGlobalPrefs({ theme: 'neon', width: 9 }), {});
-  assert.deepEqual(sanitizeGlobalPrefs({ theme: 'light' }), { theme: 'light' });
+test('sanitize accepts every named theme variant (store-wide)', () => {
+  for (const t of ['light', 'dark', 'dracula', 'nord', 'solarized-dark', 'solarized-light', 'github-light', 'gruvbox-light']) {
+    assert.equal(sanitizeGlobalPrefs({ theme: t }).theme, t, `${t} is a valid theme`);
+  }
+  assert.equal('theme' in sanitizeGlobalPrefs({ theme: 'monokai' }), false, 'unknown theme dropped');
+});
+
+test('sanitize accepts a named font and drops invalid ones', () => {
+  assert.equal(sanitizeGlobalPrefs({ font: 'playfair-display' }).font, 'playfair-display');
+  assert.equal(sanitizeGlobalPrefs({ font: 'default' }).font, 'default');
+  assert.equal('font' in sanitizeGlobalPrefs({ font: 'comic-sans' }), false, 'unknown font dropped');
+});
+
+test('sanitize drops per-spec + unknown keys', () => {
+  assert.deepEqual(sanitizeGlobalPrefs({ width: 9, filter: 'all', fit: true, junk: 1 }), {});
 });

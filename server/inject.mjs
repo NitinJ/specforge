@@ -4,6 +4,7 @@
 
 import { renderLiveTracker } from '../lib/tracker.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
+import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 
 /**
  * @param {string} html raw spec HTML read from disk
@@ -16,7 +17,9 @@ export function injectReviewLayer(html, { specId }) {
   const head = `<link rel="stylesheet" href="/public/review.css">`;
   if (out.includes('</head>')) out = out.replace('</head>', `${head}\n</head>`);
 
-  const layer = reviewSnippet(specId, readPrefs(specId));
+  // theme + font are store-wide (global-prefs); width/filter/fit/toc are per-spec.
+  // Merge so the client boots with one flat prefs object as before.
+  const layer = reviewSnippet(specId, { ...readGlobalPrefs(), ...readPrefs(specId) });
   if (out.includes('</body>')) {
     out = out.replace('</body>', `${layer}\n</body>`);
   } else {
@@ -27,8 +30,8 @@ export function injectReviewLayer(html, { specId }) {
 
 function reviewSnippet(specId, prefs) {
   const id = JSON.stringify(specId);
-  // Embed the persisted per-spec prefs so review.js applies theme/width on boot
-  // with no flash and no extra round-trip.
+  // Embed the persisted prefs (store-wide theme/font + per-spec width/…) so
+  // review.js applies them on boot with no flash and no extra round-trip.
   const prefsJson = JSON.stringify(prefs || {});
   return `<!-- specforge:review-layer -->
 <div id="sf-live" class="sf-live">● live</div>

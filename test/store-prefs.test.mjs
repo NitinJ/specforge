@@ -33,15 +33,21 @@ test('readPrefs returns {} when nothing is stored', () => {
 });
 
 test('writePrefs persists and readPrefs round-trips', () => {
-  writePrefs(id, { theme: 'light', width: 1200, filter: 'all' });
-  assert.deepEqual(readPrefs(id), { theme: 'light', width: 1200, filter: 'all' });
+  writePrefs(id, { width: 1200, filter: 'all' });
+  assert.deepEqual(readPrefs(id), { width: 1200, filter: 'all' });
 });
 
 test('writePrefs merges a partial patch into existing prefs', () => {
-  writePrefs(id, { theme: 'dark', width: 1000 });
-  const merged = writePrefs(id, { theme: 'light' });
-  assert.deepEqual(merged, { theme: 'light', width: 1000 });
-  assert.deepEqual(readPrefs(id), { theme: 'light', width: 1000 });
+  writePrefs(id, { filter: 'all', width: 1000 });
+  const merged = writePrefs(id, { filter: 'open' });
+  assert.deepEqual(merged, { filter: 'open', width: 1000 });
+  assert.deepEqual(readPrefs(id), { filter: 'open', width: 1000 });
+});
+
+test('theme and font are store-wide, not per-spec — sanitizePrefs drops them', () => {
+  // They live in global-prefs now; the per-spec store must ignore them so a
+  // stray write can never re-introduce a per-spec theme/font.
+  assert.deepEqual(sanitizePrefs({ theme: 'dracula', font: 'lora', width: 1200 }), { width: 1200 });
 });
 
 test('sanitize drops unknown keys and invalid enum values', () => {
@@ -57,24 +63,9 @@ test('sanitize keeps the view prefs: fit (boolean) and toc (shown|hidden)', () =
   assert.equal('toc' in sanitizePrefs({ toc: 'sideways' }), false, 'unknown toc value dropped');
 });
 
-test('sanitize keeps the named theme variants', () => {
-  for (const t of ['light', 'dark', 'dracula', 'nord', 'solarized-dark', 'solarized-light', 'github-light', 'gruvbox-light']) {
-    assert.equal(sanitizePrefs({ theme: t }).theme, t, `${t} is a valid theme`);
-  }
-  assert.equal('theme' in sanitizePrefs({ theme: 'monokai' }), false, 'unknown theme dropped');
-});
-
-test('sanitize keeps a valid named font and drops an invalid one', () => {
-  for (const f of ['default', 'inter', 'merriweather', 'jetbrains-mono', 'lora', 'poppins', 'playfair-display']) {
-    assert.equal(sanitizePrefs({ font: f }).font, f, `${f} is a valid font`);
-  }
-  assert.equal('font' in sanitizePrefs({ font: 'comic-sans' }), false, 'unknown font dropped');
-  assert.equal('font' in sanitizePrefs({ font: 'serif' }), false, 'the old category ids are no longer valid');
-});
-
-test('writePrefs round-trips the font alongside the other prefs', () => {
-  writePrefs(id, { font: 'merriweather', theme: 'dark' });
-  assert.deepEqual(readPrefs(id), { font: 'merriweather', theme: 'dark' });
+test('writePrefs round-trips the view options (fit/toc) with the other per-spec prefs', () => {
+  writePrefs(id, { width: 1400, fit: true, toc: 'hidden', filter: 'all' });
+  assert.deepEqual(readPrefs(id), { width: 1400, fit: true, toc: 'hidden', filter: 'all' });
 });
 
 test('sanitize clamps width into [820,1760] and rounds it', () => {
