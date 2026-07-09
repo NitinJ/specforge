@@ -15,17 +15,28 @@
   var SPEC_API = '/api/spec/' + encodeURIComponent(SPEC);
   var API = SPEC_API + '/comments';
 
-  // Per-spec UI prefs (theme/width/filter), embedded at serve time by inject.mjs.
-  // Source of truth is the store (origin/port-independent — survives a daemon port
-  // change, unlike localStorage), so a change PUTs back and updates this in place.
+  // UI prefs, embedded at serve time by inject.mjs. Source of truth is the store
+  // (origin/port-independent — survives a daemon port change, unlike localStorage),
+  // so a change PUTs back and updates this in place.
+  //
+  // theme + font are STORE-WIDE (apply to every spec) → PUT /api/prefs.
+  // width / filter / fit / toc are per-spec → PUT /api/spec/<id>/prefs.
   var PREFS = (window.SPECFORGE || {}).prefs || {};
-  function putPref(patch) {
-    for (var k in patch) PREFS[k] = patch[k];
+  var GLOBAL_PREF_KEYS = { theme: 1, font: 1 };
+  function putJSON(url, body) {
     try {
-      fetch(SPEC_API + '/prefs', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
-      }).catch(function () {});
+      fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(function () {});
     } catch (e) {}
+  }
+  function putPref(patch) {
+    var global = null, spec = null;
+    for (var k in patch) {
+      PREFS[k] = patch[k];
+      if (GLOBAL_PREF_KEYS[k]) { (global = global || {})[k] = patch[k]; }
+      else { (spec = spec || {})[k] = patch[k]; }
+    }
+    if (global) putJSON('/api/prefs', global);
+    if (spec) putJSON(SPEC_API + '/prefs', spec);
   }
 
   // Elements that can carry a comment. The innermost match under the pointer wins.
