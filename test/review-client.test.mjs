@@ -46,6 +46,9 @@ async function bootReviewLayer(t, opts = {}) {
   // the timer is cleared and the test runner can exit.
   t.after(() => window.close());
   window.SPECFORGE = { specId: 'test-spec', prefs: opts.prefs || {} };
+  // jsdom defaults innerWidth to 1024 (below the TOC auto-collapse threshold);
+  // let tests widen it so the floating TOC shows in auto mode.
+  if (opts.innerWidth) Object.defineProperty(window, 'innerWidth', { value: opts.innerWidth, configurable: true });
   const posts = [];
   const puts = [];
   const patches = [];
@@ -736,51 +739,84 @@ test('a bare slider change (no input event) still exits and persists out of fit 
   assert.ok(p && p.body.fit === false, 'the release persists {width, fit:false}');
 });
 
-// ---------- TOC hide chevron ----------
+// ---------- docs layout: floating "Contents" TOC + centered content ----------
+// A spec whose own left TOC links to real sections (like every house spec).
 const TOC_BODY = `
   <div class="layout">
-    <nav class="toc"><a href="#a">A</a><a href="#b">B</a></nav>
+    <nav class="toc"><a href="#s-intro">Intro</a><a href="#s-design">Design</a><a href="#s-plan">Plan</a></nav>
     <main>
-      <h1>Test Spec</h1>
-      <p class="a">The quick brown fox.</p>
+      <section id="s-intro"><h2>Intro</h2><p>The quick brown fox.</p></section>
+      <section id="s-design"><h2>Design</h2><p>Body.</p></section>
+      <section id="s-plan"><h2>Plan</h2><p>Body.</p></section>
     </main>
   </div>
   <div id="sf-live">● live</div>
 `;
+// A spec with NO native TOC but enough sections to auto-build one.
+const SECTIONS_BODY = `
+  <main>
+    <section id="a"><h2>Alpha</h2><p>x</p></section>
+    <section id="b"><h2>Beta</h2><p>x</p></section>
+    <section id="c"><h2>Gamma</h2><p>x</p></section>
+  </main>
+  <div id="sf-live">● live</div>
+`;
 
-test('a spec with its own left TOC gets a chevron that collapses it (persisted)', async (t) => {
-  const { window, puts } = await bootReviewLayer(t, { body: TOC_BODY });
+test('every spec with sections gets the floating Contents TOC + docs (centered) mode', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: SECTIONS_BODY, innerWidth: 1500 });
+  const { document } = window;
+  assert.ok(document.getElementById('sf-toc'), 'floating #sf-toc built from the sections');
+  assert.equal(document.documentElement.getAttribute('data-sf-docs'), '', 'docs mode set on <html>');
+  const links = document.querySelectorAll('#sf-toc a');
+  assert.equal(links.length, 3, 'one TOC link per section');
+  assert.equal(links[0].getAttribute('href'), '#a', 'links target the section ids');
+  assert.ok(document.getElementById('sf-tocbtn'), 'the collapse chevron is built');
+});
+
+test("a spec's own left TOC is replaced by the floating one (curated links reused)", async (t) => {
+  const { window } = await bootReviewLayer(t, { body: TOC_BODY, innerWidth: 1500 });
+  const { document } = window;
+  assert.ok(document.getElementById('sf-toc'), '#sf-toc built');
+  const labels = [].map.call(document.querySelectorAll('#sf-toc a'), (a) => a.textContent);
+  assert.deepEqual(labels, ['Intro', 'Design', 'Plan'], 'reuses the native TOC labels');
+  // the native TOC stays in the DOM (review.css hides it), so nothing else breaks
+  assert.ok(document.querySelector('nav.toc'), 'native nav.toc left in place (hidden by CSS)');
+});
+
+test('the chevron collapses/expands the TOC and persists the choice', async (t) => {
+  const { window, puts } = await bootReviewLayer(t, { body: SECTIONS_BODY, innerWidth: 1500 });
   const { document } = window;
   const btn = document.getElementById('sf-tocbtn');
-  assert.ok(btn, 'chevron button built');
-  assert.equal(btn.textContent, '‹', 'shows a collapse chevron while the TOC is visible');
+  assert.equal(document.documentElement.getAttribute('data-sf-toc'), null, 'shown by default on a wide window');
+  assert.equal(btn.textContent, '‹', 'collapse chevron while shown');
   btn.click();
-  assert.equal(document.documentElement.getAttribute('data-sf-toc'), 'hidden', 'TOC flagged hidden on <html>');
+  assert.equal(document.documentElement.getAttribute('data-sf-toc'), 'hidden', 'collapsed');
   assert.equal(btn.textContent, '›', 'chevron flips to expand');
-  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.toc === 'hidden'), 'PUT persists toc:hidden');
+  assert.ok(puts.some((p) => /\/api\/spec\/test-spec\/prefs$/.test(p.url) && p.body.toc === 'hidden'), 'persists toc:hidden per-spec');
   btn.click();
-  assert.equal(document.documentElement.getAttribute('data-sf-toc'), null, 'TOC restored');
-  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.toc === 'shown'), 'PUT persists toc:shown');
+  assert.equal(document.documentElement.getAttribute('data-sf-toc'), null, 'restored');
+  assert.ok(puts.some((p) => p.body.toc === 'shown'), 'persists toc:shown');
 });
 
-test('a saved toc:hidden pref collapses the TOC on boot', async (t) => {
-  const { window } = await bootReviewLayer(t, { body: TOC_BODY, prefs: { toc: 'hidden' } });
+test('a saved toc:hidden pref collapses the TOC on boot (even on a wide window)', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: SECTIONS_BODY, innerWidth: 1500, prefs: { toc: 'hidden' } });
   const { document } = window;
-  assert.equal(document.documentElement.getAttribute('data-sf-toc'), 'hidden', 'hidden on boot');
-  assert.equal(document.getElementById('sf-tocbtn').textContent, '›', 'chevron starts in expand state');
+  assert.equal(document.documentElement.getAttribute('data-sf-toc'), 'hidden', 'explicit hidden wins');
+  assert.equal(document.getElementById('sf-tocbtn').textContent, '›');
 });
 
-test('no chevron on a spec without its own TOC', async (t) => {
-  const { window } = await bootReviewLayer(t);
-  assert.equal(window.document.getElementById('sf-tocbtn'), null, 'chevron only when nav.toc exists');
+test('with no explicit pref, a narrow window auto-collapses the TOC', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: SECTIONS_BODY, innerWidth: 1100 });
+  assert.equal(window.document.documentElement.getAttribute('data-sf-toc'), 'hidden',
+    'auto-collapsed because the TOC would crowd the centered content');
 });
 
-test('a stale toc:hidden pref is ignored on a spec without its own TOC', async (t) => {
-  // The hidden state also collapses .layout to one column — a spec that no
-  // longer has a TOC (or never did) must not inherit that reflow from an old pref.
-  const { window } = await bootReviewLayer(t, { prefs: { toc: 'hidden' } });
-  assert.equal(window.document.documentElement.getAttribute('data-sf-toc'), null,
-    'no data-sf-toc without a spec-owned TOC');
+test('no TOC / no docs mode on a spec with too few sections', async (t) => {
+  const { window } = await bootReviewLayer(t); // default fixture: 1 heading
+  const { document } = window;
+  assert.equal(document.getElementById('sf-toc'), null, 'no floating TOC');
+  assert.equal(document.getElementById('sf-tocbtn'), null, 'no chevron');
+  assert.equal(document.documentElement.getAttribute('data-sf-docs'), null, 'no docs mode');
 });
 
 // ---------- reading font (Google-Fonts dropdown) ----------

@@ -564,14 +564,50 @@ a.sf-doc-link:hover { color: var(--sf-accent); }
 .sf-fit.on { color: var(--sf-accent); border-color: var(--sf-accent);
   background: color-mix(in srgb, var(--sf-accent) 12%, transparent); }
 .sf-fit:focus-visible { outline: none; box-shadow: var(--sf-ring); }
-/* Collapsed left TOC: drop the nav AND its grid column so the content reflows
-   (review.css loads after the spec's <style>, so these win the tie). */
-html[data-sf-toc="hidden"] nav.toc, html[data-sf-toc="hidden"] .side-toc { display: none; }
-html[data-sf-toc="hidden"] .layout { grid-template-columns: minmax(0, 1fr); }
-/* The chevron tab — a fixed glass lip on the left edge, mid-height. Built only
-   when the spec has its own left TOC. */
+/* Docs layout (review-layer owned): the injected floating "Contents" TOC on the
+   left + the spec content CENTERED in the page. The #sf-toc injector sets
+   html[data-sf-docs] when it builds the TOC; the chevron collapses it by setting
+   html[data-sf-toc="hidden"]. Applies to every served spec (existing + new). */
+:root { --sf-toc-w: 240px; }
+
+/* Hide the spec's own in-flow TOC — the floating #sf-toc replaces it — and
+   collapse the house `.layout` grid to one centered column so the content gets
+   the full reading width (the TOC no longer eats a grid column). review.css
+   loads after the spec's <style> so these win the tie; the width slider's inline
+   max-width still wins over the default reading width. */
+html[data-sf-docs] nav.toc, html[data-sf-docs] .side-toc { display: none !important; }
+html[data-sf-docs] .layout { display: block !important; max-width: var(--maxw, 820px); margin: 0 auto; }
+html[data-sf-docs] main, html[data-sf-docs] article { margin-left: auto; margin-right: auto; }
+
+/* the floating "Contents" TOC — a light rail pinned to the left, shown by default
+   so on wide screens it sits in the whitespace beside the centered content. On
+   narrow windows JS collapses it (html[data-sf-toc="hidden"]); collapsed, it
+   slides off-screen and the chevron rides to the left edge. */
+#sf-toc {
+  position: fixed; top: 0; left: 0; height: 100vh; width: var(--sf-toc-w); z-index: 44;
+  background: var(--sf-panel); border-right: 1px solid var(--sf-hairline); color: var(--sf-ink);
+  box-shadow: 6px 0 24px -14px rgba(0, 0, 0, .22);
+  display: flex; flex-direction: column; transform: translateX(0);
+  transition: transform var(--sf-dur-pop) var(--sf-ease-out);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+html[data-sf-toc="hidden"] #sf-toc { transform: translateX(-100%); box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { #sf-toc { transition: none; } }
+#sf-toc .sf-toc-head { padding: 24px 18px 10px; font: 650 11px/1 system-ui, sans-serif;
+  text-transform: uppercase; letter-spacing: .09em; color: var(--sf-muted); }
+#sf-toc .sf-toc-list { overflow-y: auto; padding: 8px 10px 80px; flex: 1; }
+#sf-toc a { display: block; color: var(--sf-muted); text-decoration: none; padding: 6px 10px;
+  border-left: 2px solid transparent; border-radius: 0 var(--sf-r-xs) var(--sf-r-xs) 0;
+  transition: color var(--sf-dur-fast) var(--sf-ease), background var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
+#sf-toc a:hover { color: var(--sf-ink); background: var(--sf-panel2); }
+#sf-toc a.active { color: var(--sf-ink); border-left-color: var(--sf-accent); background: var(--sf-panel2); font-weight: 600; }
+
+/* the chevron tab — a glass lip that rides the TOC's right edge (mid-height);
+   collapsing the TOC slides it to the left edge. It moves via `transform`
+   (compositor-only, no per-frame layout reflow); left stays 0. */
 #sf-tocbtn {
-  position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 46;
+  position: fixed; left: 0; top: 50%; z-index: 46;
+  transform: translate(var(--sf-toc-w), -50%);
   width: 22px; height: 56px; padding: 0;
   display: flex; align-items: center; justify-content: center;
   background: var(--sf-glass);
@@ -581,35 +617,14 @@ html[data-sf-toc="hidden"] .layout { grid-template-columns: minmax(0, 1fr); }
   border-radius: 0 var(--sf-r-sm) var(--sf-r-sm) 0;
   color: var(--sf-muted); cursor: pointer; box-shadow: var(--sf-shadow-1);
   font: 400 15px/1 system-ui, sans-serif;
-  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease);
+  transition: transform var(--sf-dur-pop) var(--sf-ease-out), color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease);
 }
+html[data-sf-toc="hidden"] #sf-tocbtn { transform: translate(0, -50%); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   #sf-tocbtn { background: var(--sf-panel); }
 }
 #sf-tocbtn:hover { color: var(--sf-accent); border-color: var(--sf-accent); }
 #sf-tocbtn:focus-visible { outline: none; box-shadow: var(--sf-ring); }
-
-/* injected floating TOC drawer (only when the spec has no TOC of its own) —
-   solid like the sidebar, single-edge shadow on the left. */
-#sf-toc {
-  position: fixed; top: 0; left: 0; height: 100vh; width: 280px; z-index: 44;
-  background: var(--sf-panel); border-right: 1px solid var(--sf-hairline); color: var(--sf-ink);
-  box-shadow: 12px 0 32px rgba(0, 0, 0, .18);
-  display: flex; flex-direction: column; transform: translateX(-100%);
-  transition: transform var(--sf-dur-pop) var(--sf-ease-out);
-  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-#sf-toc.open { transform: translateX(0); }
-@media (prefers-reduced-motion: reduce) { #sf-toc { transition: none; } }
-#sf-toc .sf-toc-head { padding: 20px 16px 12px; border-bottom: 1px solid var(--sf-line); }
-#sf-toc .sf-toc-head b { font-weight: 800; }
-#sf-toc .sf-toc-head b span { color: var(--sf-accent); }
-#sf-toc .sf-toc-list { overflow-y: auto; padding: 8px 10px 80px; flex: 1; }
-#sf-toc a { display: block; color: var(--sf-muted); text-decoration: none; padding: 6px 10px;
-  border-left: 2px solid transparent; border-radius: 0 var(--sf-r-xs) var(--sf-r-xs) 0;
-  transition: color var(--sf-dur-fast) var(--sf-ease), background var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
-#sf-toc a:hover { color: var(--sf-ink); background: var(--sf-panel2); }
-#sf-toc a.active { color: var(--sf-ink); border-left-color: var(--sf-accent); background: var(--sf-panel2); font-weight: 600; }
 
 /* narrow screens: the sidebar takes the full width; close it with × (the floating
    launcher would sit under it, so hide it while open). */
