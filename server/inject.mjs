@@ -35,17 +35,32 @@ function reviewSnippet(specId, prefs) {
   const prefsJson = JSON.stringify(prefs || {});
   return `<!-- specforge:review-layer -->
 <div id="sf-live" class="sf-live">● live</div>
+<div id="sf-disconnected" class="sf-disconnected" role="alert" hidden>
+  <span class="sf-dc-dot"></span>
+  <span class="sf-dc-msg">Live connection lost. This spec may be stale, and new comments will not save until it reconnects.</span>
+  <button type="button" class="sf-dc-reload" onclick="location.reload()">Reload</button>
+</div>
 <script>window.SPECFORGE = { specId: ${id}, prefs: ${prefsJson} };</script>
 <script>
 (function(){
   var pill=document.getElementById('sf-live');
+  var banner=document.getElementById('sf-disconnected');
+  var timer=null, GRACE=4000;
   function set(t,c){ if(pill){pill.textContent=t; pill.style.color=c;} }
+  function showBanner(){ if(banner){ banner.hidden=false; } }
+  function hideBanner(){ if(banner){ banner.hidden=true; } }
+  // Debounce: only surface the banner if the connection stays down past GRACE,
+  // so a normal live-reload or a momentary blip never flashes it.
+  function armBanner(){ if(timer==null){ timer=setTimeout(function(){ timer=null; showBanner(); }, GRACE); } }
+  function disarmBanner(){ if(timer!=null){ clearTimeout(timer); timer=null; } }
+  function connected(){ disarmBanner(); hideBanner(); set('● live','#3fb950'); }
+  function disconnected(){ set('● reconnecting','#d29922'); armBanner(); }
   try {
     var es=new EventSource('/events?spec='+encodeURIComponent(${id}));
     es.addEventListener('reload', function(){ location.reload(); });
-    es.onopen=function(){ set('● live','#3fb950'); };
-    es.onerror=function(){ set('● reconnecting','#d29922'); };
-  } catch (e) { set('○ offline','#9aa3b2'); }
+    es.onopen=connected;
+    es.onerror=disconnected;
+  } catch (e) { set('○ offline','#9aa3b2'); showBanner(); }
 })();
 </script>
 <script src="/public/review.js" defer></script>`;
