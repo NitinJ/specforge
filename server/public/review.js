@@ -135,10 +135,11 @@
     // injector (the second IIFE below), which builds after this chrome.
     applyFont(initFont()); // reading font — persisted choice (or sans) on load
     buildChrome();
+    buildSectionEditors(); // hover "Edit" affordance on each id-bearing section
     load();
     // Poll so Claude's replies appear without a manual refresh; pause while the
-    // composer is open so we don't disrupt the user mid-comment.
-    setInterval(function () { if (!els.compose) load(); }, 6000);
+    // composer or a section editor is open so we don't disrupt the user mid-edit.
+    setInterval(function () { if (!els.compose && !els.secEdit) load(); }, 6000);
   }
 
   // ---------- theme (review-layer owned) ----------
@@ -943,6 +944,87 @@
     }).catch(function () { flash('Could not submit batch.'); });
   }
 
+  // ---------- section editor ----------
+  // A hover "Edit" button on each top-level, id-bearing section swaps its body
+  // for a source textarea. Save PUTs the new inner HTML to the store (which
+  // triggers the live reload); Cancel restores the original nodes untouched.
+  // Only top-level sections carry the button — a nested section is edited as part
+  // of its parent, avoiding overlapping affordances.
+  function buildSectionEditors() {
+    Array.prototype.forEach.call(document.querySelectorAll('section[id]'), function (sec) {
+      if (inUI(sec)) return;
+      if (sec.parentElement && sec.parentElement.closest('section')) return; // top-level only
+      addEditBtn(sec);
+    });
+  }
+  function addEditBtn(sec) {
+    sec.setAttribute('data-sf-editable', '');
+    if (sec.querySelector('.sf-sec-edit')) return; // already has one
+    var btn = create('button', { class: 'sf-sec-edit', type: 'button', title: 'Edit section', 'aria-label': 'Edit section' }, 'Edit');
+    btn.onclick = function (e) { e.stopPropagation(); enterSectionEdit(sec); };
+    sec.appendChild(btn);
+  }
+  // Load the CLEAN section source from disk (never the chrome-polluted live DOM),
+  // then open the editor. One editor at a time — opening another cancels the first.
+  function enterSectionEdit(sec) {
+    if (els.secEdit) els.secEdit.cancel();
+    fetch(SPEC_API + '/section/' + encodeURIComponent(sec.id))
+      .then(function (r) { return r.json(); })
+      .then(function (data) { openSectionEditor(sec, (data && data.html) || ''); })
+      .catch(function () { flash('Could not load the section source.'); });
+  }
+  function openSectionEditor(sec, src) {
+    clearHover();
+    // Detach + stash the section's current children so Cancel restores them exactly.
+    var stash = [];
+    while (sec.firstChild) { stash.push(sec.firstChild); sec.removeChild(sec.firstChild); }
+    var editor = create('div', { class: 'sf-sec-editor' });
+    var ta = create('textarea', { class: 'sf-sec-src', spellcheck: 'false', 'aria-label': 'Section source' });
+    ta.value = src;
+    var foot = create('div', { class: 'sf-sec-foot' });
+    var save = create('button', { class: 'sf-primary', type: 'button' }, 'Save');
+    var cancel = create('button', { class: 'sf-ghost', type: 'button' }, 'Cancel');
+    foot.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to save'));
+    foot.appendChild(cancel); foot.appendChild(save);
+    editor.appendChild(ta); editor.appendChild(foot);
+    sec.appendChild(editor);
+
+    function restore() {
+      if (editor.parentNode === sec) sec.removeChild(editor);
+      stash.forEach(function (n) { sec.appendChild(n); });
+      els.secEdit = null;
+      renderHighlights();
+    }
+    var saving = false;
+    function doSave() {
+      // Serialize saves: a second submit while a PUT is in flight could otherwise
+      // land out of order and overwrite the newer edit with an older payload.
+      if (saving) return;
+      saving = true;
+      save.disabled = true;
+      fetch(SPEC_API + '/section/' + encodeURIComponent(sec.id), {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: ta.value }),
+      }).then(function (r) {
+        if (!r.ok) { saving = false; save.disabled = false; flash('Could not save the section.'); return; }
+        // Optimistic paint of the saved source. The store write also fires an SSE
+        // reload that repaints authoritatively when connected; this keeps the edit
+        // visible immediately (and even if the live connection is down).
+        if (editor.parentNode === sec) sec.removeChild(editor);
+        els.secEdit = null;
+        sec.innerHTML = ta.value;
+        addEditBtn(sec);
+        renderHighlights();
+      }).catch(function () { saving = false; save.disabled = false; flash('Could not save the section.'); });
+    }
+    els.secEdit = { sec: sec, cancel: restore };
+    cancel.onclick = function (e) { e.stopPropagation(); restore(); };
+    save.onclick = function (e) { e.stopPropagation(); doSave(); };
+    ta.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doSave(); }
+    });
+    ta.focus();
+  }
+
   // ---------- activate ----------
   function activate(id, scroll) {
     state.active = id;
@@ -959,6 +1041,9 @@
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
           t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-top' ||
           t.id === 'sf-tocbtn') return true;
+      // The inline section editor + its hover trigger are chrome, not commentable
+      // content (the section wrapper itself stays a normal comment/hover target).
+      if (t.classList && (t.classList.contains('sf-sec-editor') || t.classList.contains('sf-sec-edit'))) return true;
       t = t.parentElement;
     }
     return false;

@@ -393,6 +393,34 @@
   transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
 .sf-ghost:hover { color: var(--sf-ink); border-color: var(--sf-muted); }
 
+/* inline section editor — a hover "Edit" affordance on each id-bearing section
+   that swaps the section body for a source textarea (Save / Cancel). The button
+   is absolutely placed, so the section becomes its positioning context. */
+section[data-sf-editable] { position: relative; }
+.sf-sec-edit {
+  position: absolute; top: 8px; right: 8px; z-index: 6;
+  background: var(--sf-glass); color: var(--sf-muted);
+  border: 1px solid var(--sf-hairline); border-radius: var(--sf-r-xs);
+  font: 600 11px/1 system-ui, sans-serif; padding: 5px 9px; cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--sf-dur-fast) var(--sf-ease), color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease);
+}
+section[data-sf-editable]:hover > .sf-sec-edit, .sf-sec-edit:focus-visible { opacity: 1; }
+.sf-sec-edit:hover { color: var(--sf-ink); border-color: var(--sf-muted); }
+
+.sf-sec-editor { margin: 6px 0; }
+.sf-sec-src {
+  width: 100%; box-sizing: border-box; display: block;
+  background: var(--sf-panel2); color: var(--sf-ink);
+  border: 1px solid var(--sf-line); border-radius: var(--sf-r-sm); padding: 12px;
+  font: 13px/1.55 ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  tab-size: 2; resize: vertical; min-height: 220px;
+  transition: border-color var(--sf-dur-fast) var(--sf-ease), box-shadow var(--sf-dur-fast) var(--sf-ease);
+}
+.sf-sec-src:focus { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
+.sf-sec-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.sf-sec-foot .sf-hint { margin-right: auto; font-size: 11px; color: var(--sf-muted); }
+
 /* lifecycle action button state colors — the CTA lives only in the sidebar command
    bar (.sf-act); its base style is the `.sf-act` rule under the sidebar footer. */
 .sf-act[data-state="needs"] { background: var(--sf-amber); color: var(--sf-on-accent); border-color: transparent; }
@@ -683,6 +711,7 @@ html[data-sf-toc="hidden"] #sf-tocbtn { transform: translate(0, -50%); }
    (and the print dialog's "Background graphics" toggle) drive the look. */
 @media print {
   #sf-sidebar, #sf-launcher, #sf-menu, #sf-compose, #sf-toc, #sf-live, #sf-top, #sf-tocbtn, #sf-disconnected { display: none !important; }
+  .sf-sec-edit, .sf-sec-editor { display: none !important; }
   .sf-hover, .sf-block-mark { outline: none !important; background: none !important; }
   h1, h2, h3, h4, h5, h6 { break-after: avoid-page; }
   figure, table, pre, blockquote, .panel, .card, .callout, .stat { break-inside: avoid; }
