@@ -995,11 +995,17 @@
       els.secEdit = null;
       renderHighlights();
     }
+    var saving = false;
     function doSave() {
+      // Serialize saves: a second submit while a PUT is in flight could otherwise
+      // land out of order and overwrite the newer edit with an older payload.
+      if (saving) return;
+      saving = true;
+      save.disabled = true;
       fetch(SPEC_API + '/section/' + encodeURIComponent(sec.id), {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: ta.value }),
       }).then(function (r) {
-        if (!r.ok) { flash('Could not save the section.'); return; }
+        if (!r.ok) { saving = false; save.disabled = false; flash('Could not save the section.'); return; }
         // Optimistic paint of the saved source. The store write also fires an SSE
         // reload that repaints authoritatively when connected; this keeps the edit
         // visible immediately (and even if the live connection is down).
@@ -1008,7 +1014,7 @@
         sec.innerHTML = ta.value;
         addEditBtn(sec);
         renderHighlights();
-      }).catch(function () { flash('Could not save the section.'); });
+      }).catch(function () { saving = false; save.disabled = false; flash('Could not save the section.'); });
     }
     els.secEdit = { sec: sec, cancel: restore };
     cancel.onclick = function (e) { e.stopPropagation(); restore(); };

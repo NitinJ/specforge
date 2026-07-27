@@ -90,6 +90,18 @@ test('PUT /section/:sid 404s for an unknown spec', async () => {
   assert.equal((await send('PUT', '/api/spec/deadbeef00/section/a', { html: '<p>x</p>' })).status, 404);
 });
 
+test('a section id with characters outside [\\w-] (e.g. a dot) is routable when encoded', async () => {
+  const html = '<html><head><title>D</title></head><body><section id="s.1"><p>dotted</p></section></body></html>';
+  const dotId = createSpec({ title: 'D', html });
+  const seg = encodeURIComponent('s.1');
+  const g = await send('GET', `/api/spec/${dotId}/section/${seg}`);
+  assert.equal(g.status, 200);
+  assert.equal((await g.json()).html, '<p>dotted</p>');
+  const p = await send('PUT', `/api/spec/${dotId}/section/${seg}`, { html: '<p>edited dotted</p>' });
+  assert.equal(p.status, 200);
+  assert.match(readSpecHtml(dotId), /<section id="s\.1"><p>edited dotted<\/p><\/section>/);
+});
+
 test('section content is editable on a protected template spec (that IS the template-editing flow)', async () => {
   const { ensureTemplates, templateId } = await import('../lib/store-templates.mjs');
   ensureTemplates();

@@ -1038,6 +1038,23 @@ test('only top-level sections get an Edit button (a nested section is edited via
   assert.equal(document.getElementById('inner').getAttribute('data-sf-editable'), null, 'the nested section is not independently editable');
 });
 
+test('concurrent Save clicks make a single PUT (no stale overwrite)', async (t) => {
+  const { window, puts } = await bootReviewLayer(t, { body: SECTION_BODY, innerWidth: 1500, sectionSrc: '<p>x</p>' });
+  const { document } = window;
+  document.querySelector('#s1 .sf-sec-edit').click();
+  await tick(window);
+  const ta = document.querySelector('#s1 .sf-sec-src');
+  const save = document.querySelector('#s1 .sf-sec-editor .sf-primary');
+  ta.value = 'first';
+  save.click();               // starts the PUT, disables + guards
+  ta.value = 'second';
+  save.click();               // in-flight → ignored
+  await tick(window);
+  const forS1 = puts.filter((x) => /\/section\/s1$/.test(x.url));
+  assert.equal(forS1.length, 1, 'exactly one PUT despite the double submit');
+  assert.equal(forS1[0].body.html, 'first', 'the in-flight save is not superseded by a racing later one');
+});
+
 test('clicking inside the section editor never opens a comment composer', async (t) => {
   const { window } = await bootReviewLayer(t, { body: SECTION_BODY, innerWidth: 1500, sectionSrc: '<p>x</p>' });
   const { document } = window;

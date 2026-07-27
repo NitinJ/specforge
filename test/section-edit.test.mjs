@@ -43,6 +43,33 @@ test('getSectionInner returns null when the section is absent', () => {
   assert.equal(getSectionInner('<body><section id="a"><p>x</p></section></body>', 'missing'), null);
 });
 
+test('a > inside a quoted attribute before the id does not truncate the open tag', () => {
+  const html = '<body><section data-tip="a > b" id="a"><p>x</p></section></body>';
+  assert.equal(getSectionInner(html, 'a'), '<p>x</p>');
+});
+
+test('a literal </section> inside a <pre> code sample is not treated as the close', () => {
+  const html = '<body><section id="a"><pre>&lt;section&gt;example&lt;/section&gt;</pre>' +
+    '<pre><code></section></code></pre><p>real body</p></section><section id="b"><p>b</p></section></body>';
+  assert.equal(getSectionInner(html, 'a'),
+    '<pre>&lt;section&gt;example&lt;/section&gt;</pre><pre><code></section></code></pre><p>real body</p>',
+    'the code sample tokens are ignored; the real matching close is used');
+  assert.equal(getSectionInner(html, 'b'), '<p>b</p>', 'sibling after the tricky section still resolves');
+});
+
+test('a literal <section> inside an HTML comment is ignored', () => {
+  const html = '<body><section id="a"><!-- <section id="ghost"> --><p>x</p></section></body>';
+  assert.equal(getSectionInner(html, 'a'), '<!-- <section id="ghost"> --><p>x</p>');
+  assert.equal(getSectionInner(html, 'ghost'), null, 'a commented-out section is not addressable');
+});
+
+test('replaceSectionInner splices at the correct close despite </section> in a code sample', () => {
+  const html = '<body><section id="a"><pre></section></pre><p>old</p></section><section id="b"><p>b</p></section></body>';
+  const out = replaceSectionInner(html, 'a', '<p>new</p>');
+  assert.equal(out, '<body><section id="a"><p>new</p></section><section id="b"><p>b</p></section></body>');
+  assert.equal(getSectionInner(out, 'b'), '<p>b</p>', 'the following section is preserved');
+});
+
 test('replaceSectionInner swaps the body and keeps the wrapper + siblings intact', () => {
   const html = '<body><h1>T</h1><section id="a" class="lead"><p>old</p></section><footer>f</footer></body>';
   const out = replaceSectionInner(html, 'a', '<p>new</p><p>more</p>');

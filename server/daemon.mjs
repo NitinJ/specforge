@@ -204,12 +204,17 @@ export function createDaemon() {
         .then((b) => handleOrganize(organize[1], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
-    const section = path.match(/^\/api\/spec\/([\w-]+)\/section\/([\w-]+)$/);
+    // Section id is any non-slash segment (HTML ids can carry '.', ':', … which
+    // the client percent-encodes) — wider than the generated-id `[\w-]+` grammar,
+    // so the client never offers an Edit the route then 404s. Decoded before use.
+    const section = path.match(/^\/api\/spec\/([\w-]+)\/section\/([^/]+)$/);
     if (section) {
-      if (method === 'GET') return handleSectionGet(section[1], section[2], res);
+      let sid;
+      try { sid = decodeURIComponent(section[2]); } catch { sid = section[2]; }
+      if (method === 'GET') return handleSectionGet(section[1], sid, res);
       if (method === 'PUT') {
         return readJsonBody(req)
-          .then((b) => handleSectionPut(section[1], section[2], b, res))
+          .then((b) => handleSectionPut(section[1], sid, b, res))
           .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });
