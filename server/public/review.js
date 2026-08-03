@@ -1085,6 +1085,7 @@
   var TOC_W = 240; // keep in sync with --sf-toc-w in review.css
   var auto = (PREFS.toc !== 'shown' && PREFS.toc !== 'hidden'); // no explicit choice yet
   var done = false;
+  var reResolve = null; // set by spy() to its geometry-based active-link recompute
   document.addEventListener('DOMContentLoaded', init);
   if (document.readyState !== 'loading') init();
   function init() { if (done) return; done = true; ensureToc(); }
@@ -1147,6 +1148,11 @@
     var group = mk('div', 'sf-toc-group');
     if (startCollapsed) group.classList.add('sf-collapsed');
     var row = mk('div', 'sf-toc-row');
+    var sub = mk('div', 'sf-toc-sub');
+    var subIn = mk('div', 'sf-toc-sub-in');
+    kids.forEach(function (k) { subIn.appendChild(topLink(k, 'sf-toc-child')); });
+    sub.appendChild(subIn);
+    sub.inert = !!startCollapsed; // out of the tab order + a11y tree while collapsed
     var tw = mk('button', 'sf-toc-tw');
     tw.type = 'button';
     tw.setAttribute('aria-expanded', startCollapsed ? 'false' : 'true');
@@ -1156,14 +1162,12 @@
       var nowCollapsed = !group.classList.contains('sf-collapsed');
       group.classList.toggle('sf-collapsed', nowCollapsed);
       tw.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+      sub.inert = nowCollapsed; // immediate — never deferred through the animation
       saveCollapsed(it.id, nowCollapsed);
+      if (reResolve) reResolve(); // re-derive the active link so it never sits on a hidden child
     });
     row.appendChild(topLink(it, 'sf-toc-top'));
     row.appendChild(tw); // absolutely placed in the shared left gutter (review.css)
-    var sub = mk('div', 'sf-toc-sub');
-    var subIn = mk('div', 'sf-toc-sub-in');
-    kids.forEach(function (k) { subIn.appendChild(topLink(k, 'sf-toc-child')); });
-    sub.appendChild(subIn);
     group.appendChild(row); group.appendChild(sub);
     return group;
   }
@@ -1313,6 +1317,7 @@
     }
     var obs = new IntersectionObserver(update, { rootMargin: '-12% 0px -80% 0px', threshold: 0 });
     targets.forEach(function (t) { obs.observe(t.el); });
+    reResolve = update; // let the disclosure toggles re-derive the active link
   }
   function txt(h) { return String(h.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80); }
   function slug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }

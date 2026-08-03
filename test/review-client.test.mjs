@@ -907,6 +907,27 @@ test('a persisted collapsed section starts collapsed on boot', async (t) => {
   assert.ok(!plan.classList.contains('sf-collapsed'), 'a section not in storage stays expanded');
 });
 
+test('collapsing marks the subsection list inert (out of tab order + a11y tree); expanding clears it', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: SUBSECTIONS_BODY, innerWidth: 1500 });
+  const group = groupByHref(window.document, '#s-plan');
+  const sub = group.querySelector('.sf-toc-sub');
+  const tw = group.querySelector('.sf-toc-tw');
+  assert.equal(sub.inert, false, 'an expanded subsection is not inert');
+  tw.click();
+  assert.equal(sub.inert, true, 'collapsing makes the subsection inert immediately');
+  tw.click();
+  assert.equal(sub.inert, false, 'expanding clears inert');
+});
+
+test('a boot-collapsed section starts with its subsection list inert', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    body: SUBSECTIONS_BODY, innerWidth: 1500,
+    seedStorage: { [COLLAPSE_KEY]: JSON.stringify(['s-design']) },
+  });
+  const sub = groupByHref(window.document, '#s-design').querySelector('.sf-toc-sub');
+  assert.equal(sub.inert, true, 'a restored-collapsed group is inert on boot');
+});
+
 test('native-TOC specs keep curated top labels but still nest h3 subsections', async (t) => {
   const body = `
     <div class="layout">
