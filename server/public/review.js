@@ -1070,8 +1070,11 @@
 /* Serve-time enhancement on EVERY served spec: the floating "Contents" TOC
  * (#sf-toc) pinned to the left, with the spec content centered (docs layout, via
  * html[data-sf-docs]). Built from the spec's own TOC links when it has one (else
- * its sections/headings); any native in-flow TOC is hidden and replaced. A chevron
- * (#sf-tocbtn) collapses/expands it — persisted per spec (toc: shown|hidden) — and
+ * its sections/headings); any native in-flow TOC is hidden and replaced. Each
+ * top-level section nests the headings one level below its title (h2 -> h3) as a
+ * collapsible subsection list, its open/closed state persisted per spec in
+ * localStorage. A chevron (#sf-tocbtn) collapses/expands the whole rail —
+ * persisted per spec (toc: shown|hidden) — and
  * it auto-collapses on windows too narrow to fit it beside the centered content,
  * until the reader makes an explicit choice. The on-disk file is untouched. */
 (function () {
@@ -1093,11 +1096,17 @@
     // Enter docs mode: hide any native TOC + center the content (review.css).
     docEl.setAttribute('data-sf-docs', '');
 
+    var collapsed = loadCollapsed();
     var panel = document.createElement('nav');
     panel.id = 'sf-toc'; panel.setAttribute('aria-label', 'Contents');
-    var html = '<div class="sf-toc-head">Contents</div><div class="sf-toc-list">';
-    items.forEach(function (it) { html += '<a href="#' + it.id + '">' + esc(it.text) + '</a>'; });
-    panel.innerHTML = html + '</div>';
+    panel.appendChild(mk('div', 'sf-toc-head', 'Contents'));
+    var list = mk('div', 'sf-toc-list');
+    items.forEach(function (it) {
+      var kids = childrenOf(it.id); // the section's one-level-down headings
+      if (!kids.length) { list.appendChild(topLink(it, 'sf-toc-top')); return; }
+      list.appendChild(buildGroup(it, kids, collapsed[it.id] === true));
+    });
+    panel.appendChild(list);
     document.body.appendChild(panel);
 
     var btn = document.createElement('button');
@@ -1118,7 +1127,86 @@
     Array.prototype.forEach.call(panel.querySelectorAll('a'), function (a) {
       a.addEventListener('click', function () { if (auto && tooNarrow()) apply('hidden'); });
     });
-    spy(items, panel);
+    spy(panel);
+  }
+  // ---------- collapsible section subsections ----------
+  // Each top-level section can carry the headings one level below its title
+  // (h2 title -> h3 subsections) as a nested, collapsible list. The per-spec
+  // collapse choice lives in localStorage so it survives the SSE live-reload
+  // without a server round-trip. Sections with no such headings stay flat links.
+  function mk(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function topLink(it, cls) {
+    var a = mk('a', cls, it.text); a.setAttribute('href', '#' + it.id); return a;
+  }
+  function buildGroup(it, kids, startCollapsed) {
+    var group = mk('div', 'sf-toc-group');
+    if (startCollapsed) group.classList.add('sf-collapsed');
+    var row = mk('div', 'sf-toc-row');
+    var tw = mk('button', 'sf-toc-tw');
+    tw.type = 'button';
+    tw.setAttribute('aria-expanded', startCollapsed ? 'false' : 'true');
+    tw.setAttribute('aria-label', 'Toggle ' + it.text);
+    tw.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var nowCollapsed = !group.classList.contains('sf-collapsed');
+      group.classList.toggle('sf-collapsed', nowCollapsed);
+      tw.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+      saveCollapsed(it.id, nowCollapsed);
+    });
+    row.appendChild(topLink(it, 'sf-toc-top'));
+    row.appendChild(tw); // absolutely placed in the shared left gutter (review.css)
+    var sub = mk('div', 'sf-toc-sub');
+    var subIn = mk('div', 'sf-toc-sub-in');
+    kids.forEach(function (k) { subIn.appendChild(topLink(k, 'sf-toc-child')); });
+    sub.appendChild(subIn);
+    group.appendChild(row); group.appendChild(sub);
+    return group;
+  }
+  // A section's subsections = the headings one level below its title, skipping
+  // any that live inside a NESTED section (those belong to that section).
+  function childrenOf(sectionId) {
+    var el = document.getElementById(sectionId);
+    if (!el || el.tagName !== 'SECTION') return [];
+    var title = el.querySelector('h1,h2,h3,h4,h5,h6');
+    if (!title) return [];
+    var want = hlevel(title) + 1;
+    if (want > 6) return [];
+    var out = [], seen = {};
+    Array.prototype.forEach.call(el.querySelectorAll('h' + want), function (h) {
+      if (h.closest('section') !== el) return; // owned by a nested section
+      var id = h.id;
+      if (!id) { id = uniqueId(slug(txt(h)) || 'sub', seen); h.id = id; }
+      seen[id] = 1; out.push({ id: id, text: txt(h) });
+    });
+    return out;
+  }
+  function hlevel(h) { return parseInt(String(h.tagName).charAt(1), 10) || 6; }
+  function uniqueId(base, seen) {
+    var id = base, i = 2;
+    while (seen[id] || document.getElementById(id)) { id = base + '-' + i++; }
+    return id;
+  }
+  function ckey() { return 'sf:toc-collapsed:' + (SF.specId || 'anon'); }
+  function loadCollapsed() {
+    try {
+      var raw = window.localStorage.getItem(ckey());
+      var arr = raw ? JSON.parse(raw) : [];
+      var m = {};
+      if (Array.isArray(arr)) arr.forEach(function (id) { m[id] = true; });
+      return m;
+    } catch (e) { return {}; }
+  }
+  function saveCollapsed(id, collapsed) {
+    try {
+      var m = loadCollapsed();
+      if (collapsed) m[id] = true; else delete m[id];
+      window.localStorage.setItem(ckey(), JSON.stringify(Object.keys(m)));
+    } catch (e) {}
   }
   // The centered content column's width, from --maxw (the width slider's value)
   // or the 820px reading default in review.css — NOT a getBoundingClientRect
@@ -1184,20 +1272,22 @@
     });
     return byId;
   }
-  function spy(items, panel) {
+  // Scroll-spy over every anchor's target (top-level sections AND nested
+  // subsection headings), so the active link tracks sub-topic scrolling too.
+  function spy(panel) {
     if (!('IntersectionObserver' in window)) return;
+    var anchors = panel.querySelectorAll('a');
     var links = {};
-    Array.prototype.forEach.call(panel.querySelectorAll('a'), function (a) { links[a.getAttribute('href').slice(1)] = a; });
+    Array.prototype.forEach.call(anchors, function (a) { links[a.getAttribute('href').slice(1)] = a; });
     var obs = new IntersectionObserver(function (es) {
       es.forEach(function (e) {
         if (!e.isIntersecting) return;
-        Array.prototype.forEach.call(panel.querySelectorAll('a'), function (l) { l.classList.remove('active'); });
+        Array.prototype.forEach.call(anchors, function (l) { l.classList.remove('active'); });
         var a = links[e.target.id]; if (a) a.classList.add('active');
       });
     }, { rootMargin: '-12% 0px -80% 0px', threshold: 0 });
-    items.forEach(function (it) { var el = document.getElementById(it.id); if (el) obs.observe(el); });
+    Object.keys(links).forEach(function (id) { var el = document.getElementById(id); if (el) obs.observe(el); });
   }
   function txt(h) { return String(h.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80); }
   function slug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 })();

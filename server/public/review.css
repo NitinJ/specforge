@@ -674,6 +674,32 @@ html[data-sf-toc="hidden"] #sf-toc { transform: translateX(-100%); box-shadow: n
 #sf-toc a:hover { color: var(--sf-ink); background: var(--sf-panel2); }
 #sf-toc a.active { color: var(--sf-ink); border-left-color: var(--sf-accent); background: var(--sf-panel2); font-weight: 600; }
 
+/* collapsible sections: a disclosure twisty in a shared left gutter toggles a
+   section's nested subsections (h3s). Every top-level label carries the same
+   left inset (whether or not it nests), so labels + the active accent rail stay
+   aligned; the twisty is absolutely placed inside that inset. The subsection
+   list animates open/closed via a 0fr<->1fr grid row (no JS height math). */
+#sf-toc a.sf-toc-top { padding-left: 32px; }
+#sf-toc .sf-toc-row { position: relative; }
+#sf-toc .sf-toc-tw { position: absolute; left: 4px; top: 0; bottom: 0; width: 22px;
+  margin: 0; padding: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 0; cursor: pointer; color: var(--sf-muted);
+  border-radius: var(--sf-r-xs); transition: color var(--sf-dur-fast) var(--sf-ease); }
+#sf-toc .sf-toc-tw:hover { color: var(--sf-ink); }
+#sf-toc .sf-toc-tw:focus-visible { outline: none; box-shadow: var(--sf-ring); }
+#sf-toc .sf-toc-tw::before { content: '\25B8'; font: 400 10px/1 system-ui, sans-serif;
+  display: inline-block; transform: rotate(90deg);
+  transition: transform var(--sf-dur-fast) var(--sf-ease); }
+#sf-toc .sf-toc-group.sf-collapsed .sf-toc-tw::before { transform: rotate(0deg); }
+#sf-toc .sf-toc-sub { display: grid; grid-template-rows: 1fr;
+  transition: grid-template-rows var(--sf-dur-pop) var(--sf-ease-out); }
+#sf-toc .sf-toc-group.sf-collapsed .sf-toc-sub { grid-template-rows: 0fr; }
+#sf-toc .sf-toc-sub-in { overflow: hidden; min-height: 0; }
+#sf-toc a.sf-toc-child { padding-left: 42px; font-size: 12px; color: var(--sf-muted); }
+@media (prefers-reduced-motion: reduce) { #sf-toc .sf-toc-sub { transition: none; }
+  #sf-toc .sf-toc-tw::before { transition: none; } }
+
 /* the chevron tab — a glass lip that rides the TOC's right edge (mid-height);
    collapsing the TOC slides it to the left edge. It moves via `transform`
    (compositor-only, no per-frame layout reflow); left stays 0. */
