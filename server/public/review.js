@@ -1273,20 +1273,46 @@
     return byId;
   }
   // Scroll-spy over every anchor's target (top-level sections AND nested
-  // subsection headings), so the active link tracks sub-topic scrolling too.
+  // subsection headings). The observer only signals "something crossed the
+  // band"; the active link is (re)derived from geometry, so it is independent
+  // of intersection-callback delivery order (which does not encode heading
+  // depth). The winner is the last heading scrolled above a line ~20% down the
+  // viewport. A collapsed subsection's link is clipped/removed from the a11y
+  // tree, so its active state is promoted to the visible parent section link.
   function spy(panel) {
     if (!('IntersectionObserver' in window)) return;
     var anchors = panel.querySelectorAll('a');
-    var links = {};
-    Array.prototype.forEach.call(anchors, function (a) { links[a.getAttribute('href').slice(1)] = a; });
-    var obs = new IntersectionObserver(function (es) {
-      es.forEach(function (e) {
-        if (!e.isIntersecting) return;
-        Array.prototype.forEach.call(anchors, function (l) { l.classList.remove('active'); });
-        var a = links[e.target.id]; if (a) a.classList.add('active');
+    var links = {}, targets = [];
+    Array.prototype.forEach.call(anchors, function (a) {
+      var id = a.getAttribute('href').slice(1);
+      links[id] = a;
+      var el = document.getElementById(id);
+      if (el) targets.push({ id: id, el: el });
+    });
+    function activeAnchor(id) {
+      var a = links[id];
+      if (!a) return null;
+      if (a.classList.contains('sf-toc-child')) {
+        var g = a.closest('.sf-toc-group');
+        if (g && g.classList.contains('sf-collapsed')) return g.querySelector('.sf-toc-top') || a;
+      }
+      return a;
+    }
+    function update() {
+      var line = window.innerHeight * 0.2; // matches the -80% bottom rootMargin
+      var best = null, first = null;
+      targets.forEach(function (t) {
+        var top = t.el.getBoundingClientRect().top;
+        if (!first || top < first.top) first = { id: t.id, top: top };
+        if (top <= line + 1 && (!best || top > best.top)) best = { id: t.id, top: top };
       });
-    }, { rootMargin: '-12% 0px -80% 0px', threshold: 0 });
-    Object.keys(links).forEach(function (id) { var el = document.getElementById(id); if (el) obs.observe(el); });
+      var pick = best || first; // nothing passed yet -> highlight the first
+      var want = pick ? activeAnchor(pick.id) : null;
+      Array.prototype.forEach.call(anchors, function (l) { l.classList.remove('active'); });
+      if (want) want.classList.add('active');
+    }
+    var obs = new IntersectionObserver(update, { rootMargin: '-12% 0px -80% 0px', threshold: 0 });
+    targets.forEach(function (t) { obs.observe(t.el); });
   }
   function txt(h) { return String(h.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80); }
   function slug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
