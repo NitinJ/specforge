@@ -45,6 +45,11 @@ async function bootReviewLayer(t, opts = {}) {
   // review.js installs a setInterval poll; close the window after the test so
   // the timer is cleared and the test runner can exit.
   t.after(() => window.close());
+  // Seed localStorage BEFORE the client boots (the TOC reads its per-spec
+  // collapse state from it at build time).
+  if (opts.seedStorage) {
+    try { Object.keys(opts.seedStorage).forEach((k) => window.localStorage.setItem(k, opts.seedStorage[k])); } catch (e) {}
+  }
   window.SPECFORGE = { specId: 'test-spec', prefs: opts.prefs || {} };
   // jsdom defaults innerWidth to 1024 (below the TOC auto-collapse threshold);
   // let tests widen it so the floating TOC shows in auto mode.
@@ -821,6 +826,127 @@ test('no TOC / no docs mode on a spec with too few sections', async (t) => {
   assert.equal(document.getElementById('sf-toc'), null, 'no floating TOC');
   assert.equal(document.getElementById('sf-tocbtn'), null, 'no chevron');
   assert.equal(document.documentElement.getAttribute('data-sf-docs'), null, 'no docs mode');
+});
+
+// ---------- collapsible TOC subsections ----------
+// House specs title sections with <h2> and use <h3> for subsections (stage
+// names, sub-topics). The floating TOC nests those h3s under their section and
+// lets each section collapse/expand; the choice persists per spec in
+// localStorage (survives SSE reloads without a server round-trip).
+const SUBSECTIONS_BODY = `
+  <main>
+    <section id="s-intro"><h2>Intro</h2><p>x</p></section>
+    <section id="s-design"><h2>Design</h2><h3>Data model</h3><p>x</p><h3>API</h3><p>x</p></section>
+    <section id="s-plan"><h2>Plan</h2><h3>Stage 1</h3><h3>Stage 2</h3></section>
+  </main>
+  <div id="sf-live">● live</div>
+`;
+const COLLAPSE_KEY = 'sf:toc-collapsed:test-spec';
+const groupByHref = (document, href) =>
+  Array.prototype.find.call(document.querySelectorAll('#sf-toc .sf-toc-group'),
+    (g) => g.querySelector('.sf-toc-top').getAttribute('href') === href);
+
+test('sections with h3s nest them as collapsible subsections in the TOC', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: SUBSECTIONS_BODY, innerWidth: 1500 });
+  const { document } = window;
+  const groups = document.querySelectorAll('#sf-toc .sf-toc-group');
+  assert.equal(groups.length, 2, 'the two sections with h3s become collapsible groups');
+  const design = groupByHref(document, '#s-design');
+  const kids = design.querySelectorAll('.sf-toc-child');
+  assert.equal(kids.length, 2, 'both h3s appear as children');
+  assert.deepEqual([].map.call(kids, (a) => a.textContent), ['Data model', 'API'], 'child labels are the h3 text');
+  // the h3s were given ids and the child links target them
+  kids.forEach((a) => {
+    const id = a.getAttribute('href').slice(1);
+    assert.ok(id && document.getElementById(id), 'child link targets a real heading id: ' + id);
+  });
+});
+
+test('a section without subsections stays a plain link (no twisty)', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: SUBSECTIONS_BODY, innerWidth: 1500 });
+  const { document } = window;
+  const intro = Array.prototype.find.call(document.querySelectorAll('#sf-toc .sf-toc-top'),
+    (a) => a.getAttribute('href') === '#s-intro');
+  assert.ok(intro, 'Intro is present as a top-level link');
+  assert.equal(intro.closest('.sf-toc-group'), null, 'a childless section is NOT wrapped in a collapsible group');
+});
+
+test('regression: sections with no h3s produce no twisties and one link each', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: SECTIONS_BODY, innerWidth: 1500 });
+  const { document } = window;
+  assert.equal(document.querySelectorAll('#sf-toc .sf-toc-tw').length, 0, 'no collapse twisties when nothing nests');
+  assert.equal(document.querySelectorAll('#sf-toc a').length, 3, 'still one link per section');
+});
+
+test('clicking a twisty collapses/expands the group and persists to localStorage', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: SUBSECTIONS_BODY, innerWidth: 1500 });
+  const { document } = window;
+  const group = groupByHref(document, '#s-plan');
+  const tw = group.querySelector('.sf-toc-tw');
+  assert.equal(tw.getAttribute('aria-expanded'), 'true', 'starts expanded');
+  assert.ok(!group.classList.contains('sf-collapsed'), 'not collapsed initially');
+  tw.click();
+  assert.ok(group.classList.contains('sf-collapsed'), 'collapsed after click');
+  assert.equal(tw.getAttribute('aria-expanded'), 'false', 'aria reflects collapsed');
+  assert.deepEqual(JSON.parse(window.localStorage.getItem(COLLAPSE_KEY)), ['s-plan'], 'collapsed id persisted');
+  tw.click();
+  assert.ok(!group.classList.contains('sf-collapsed'), 'expanded again');
+  assert.deepEqual(JSON.parse(window.localStorage.getItem(COLLAPSE_KEY)), [], 'expanding clears it from storage');
+});
+
+test('a persisted collapsed section starts collapsed on boot', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    body: SUBSECTIONS_BODY, innerWidth: 1500,
+    seedStorage: { [COLLAPSE_KEY]: JSON.stringify(['s-design']) },
+  });
+  const { document } = window;
+  const design = groupByHref(document, '#s-design');
+  assert.ok(design.classList.contains('sf-collapsed'), 'restored as collapsed from localStorage');
+  assert.equal(design.querySelector('.sf-toc-tw').getAttribute('aria-expanded'), 'false');
+  const plan = groupByHref(document, '#s-plan');
+  assert.ok(!plan.classList.contains('sf-collapsed'), 'a section not in storage stays expanded');
+});
+
+test('collapsing marks the subsection list inert (out of tab order + a11y tree); expanding clears it', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: SUBSECTIONS_BODY, innerWidth: 1500 });
+  const group = groupByHref(window.document, '#s-plan');
+  const sub = group.querySelector('.sf-toc-sub');
+  const tw = group.querySelector('.sf-toc-tw');
+  assert.equal(sub.inert, false, 'an expanded subsection is not inert');
+  tw.click();
+  assert.equal(sub.inert, true, 'collapsing makes the subsection inert immediately');
+  tw.click();
+  assert.equal(sub.inert, false, 'expanding clears inert');
+});
+
+test('a boot-collapsed section starts with its subsection list inert', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    body: SUBSECTIONS_BODY, innerWidth: 1500,
+    seedStorage: { [COLLAPSE_KEY]: JSON.stringify(['s-design']) },
+  });
+  const sub = groupByHref(window.document, '#s-design').querySelector('.sf-toc-sub');
+  assert.equal(sub.inert, true, 'a restored-collapsed group is inert on boot');
+});
+
+test('native-TOC specs keep curated top labels but still nest h3 subsections', async (t) => {
+  const body = `
+    <div class="layout">
+      <nav class="toc"><a href="#s-intro">1 · Intro</a><a href="#s-design">2 · Design</a><a href="#s-plan">3 · Plan</a></nav>
+      <main>
+        <section id="s-intro"><h2>Intro</h2><p>x</p></section>
+        <section id="s-design"><h2>Design</h2><h3>Data model</h3><h3>API</h3></section>
+        <section id="s-plan"><h2>Plan</h2><p>x</p></section>
+      </main>
+    </div>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const { document } = window;
+  const tops = [].map.call(document.querySelectorAll('#sf-toc .sf-toc-top'), (a) => a.textContent);
+  assert.deepEqual(tops, ['1 · Intro', '2 · Design', '3 · Plan'], 'curated native labels reused for the top level');
+  const design = groupByHref(document, '#s-design');
+  assert.ok(design, 'the section with h3s is collapsible even under a native TOC');
+  assert.equal(design.querySelectorAll('.sf-toc-child').length, 2, 'its h3s are nested');
 });
 
 // ---------- reading font (Google-Fonts dropdown) ----------
