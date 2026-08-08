@@ -18,7 +18,6 @@
 //   GET/PUT  /api/prefs                         → store-wide UI prefs (index theme)
 //   POST /api/spec/<id>/rename                  → set title (meta + spec <h1>/<title>)
 //   PATCH /api/spec/<id>/organize               → set tags / collection
-//   GET/PUT /api/spec/<id>/section/<sid>        → read / replace a section's inner html
 //
 // ensureServer() (below) is the singleton entrypoint every v2 command calls:
 // reuse a healthy daemon if one is advertised, else acquire the lock, bind a
@@ -40,7 +39,6 @@ import {
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
   handleRename, handleOrganize, handleExport, handleDelete,
-  handleSectionGet, handleSectionPut,
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
@@ -203,21 +201,6 @@ export function createDaemon() {
       return readJsonBody(req)
         .then((b) => handleOrganize(organize[1], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
-    }
-    // Section id is any non-slash segment (HTML ids can carry '.', ':', … which
-    // the client percent-encodes) — wider than the generated-id `[\w-]+` grammar,
-    // so the client never offers an Edit the route then 404s. Decoded before use.
-    const section = path.match(/^\/api\/spec\/([\w-]+)\/section\/([^/]+)$/);
-    if (section) {
-      let sid;
-      try { sid = decodeURIComponent(section[2]); } catch { sid = section[2]; }
-      if (method === 'GET') return handleSectionGet(section[1], sid, res);
-      if (method === 'PUT') {
-        return readJsonBody(req)
-          .then((b) => handleSectionPut(section[1], sid, b, res))
-          .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
-      }
-      return sendJson(res, 405, { error: 'method not allowed' });
     }
     const det = path.match(/^\/api\/spec\/([\w-]+)\/detach$/);
     if (det) {
