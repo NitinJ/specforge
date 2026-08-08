@@ -66,10 +66,6 @@ async function bootReviewLayer(t, opts = {}) {
     if (String(url).indexOf('/meta') !== -1) {
       return Promise.resolve({ json: () => Promise.resolve(meta) });
     }
-    // GET a section's clean source for the inline editor (PUTs are bucketed above).
-    if (String(url).indexOf('/section/') !== -1) {
-      return Promise.resolve({ json: () => Promise.resolve({ html: opts.sectionSrc != null ? opts.sectionSrc : '' }) });
-    }
     return Promise.resolve({ text: () => Promise.resolve(threadsJson) });
   };
   // Optionally stub the body's computed background so the theme-detection logic
@@ -1091,101 +1087,4 @@ test('the footer shows "Not attached" with no Detach when free', async (t) => {
   const foot = document.querySelector('#sf-menu .sf-menu-foot');
   assert.match(foot.querySelector('.sf-foot-session').textContent, /Not attached/, 'shows Not attached');
   assert.equal(foot.querySelector('.sf-detach'), null, 'no Detach button when free');
-});
-
-// ---------- inline section editor ----------
-const SECTION_BODY = `
-  <main>
-    <section id="s1"><h2>One</h2><p>original body</p></section>
-    <section id="s2"><h2>Two</h2><p>two</p></section>
-  </main>
-  <div id="sf-live">● live</div>
-`;
-
-test('each id-bearing section gets a hover Edit button and is marked editable', async (t) => {
-  const { window } = await bootReviewLayer(t, { body: SECTION_BODY, innerWidth: 1500 });
-  const { document } = window;
-  const s1 = document.getElementById('s1');
-  assert.equal(s1.getAttribute('data-sf-editable'), '', 'section flagged editable');
-  assert.ok(s1.querySelector('.sf-sec-edit'), 'section carries an Edit button');
-  assert.ok(document.getElementById('s2').querySelector('.sf-sec-edit'), 'every section gets one');
-});
-
-test('clicking Edit loads the clean source into a textarea with Save/Cancel', async (t) => {
-  const src = '<h2>One</h2><p>clean source from disk</p>';
-  const { window } = await bootReviewLayer(t, { body: SECTION_BODY, innerWidth: 1500, sectionSrc: src });
-  const { document } = window;
-  document.querySelector('#s1 .sf-sec-edit').click();
-  await tick(window);
-  const ed = document.querySelector('#s1 .sf-sec-editor');
-  assert.ok(ed, 'editor opens in the section');
-  const ta = ed.querySelector('textarea.sf-sec-src');
-  assert.equal(ta.value, src, 'textarea is prefilled with the clean disk source, not the live DOM');
-  assert.ok(ed.querySelector('.sf-primary'), 'Save button present');
-  assert.ok(ed.querySelector('.sf-ghost'), 'Cancel button present');
-});
-
-test('Save PUTs the edited html to the section endpoint and paints it optimistically', async (t) => {
-  const { window, puts } = await bootReviewLayer(t, { body: SECTION_BODY, innerWidth: 1500, sectionSrc: '<h2>One</h2><p>x</p>' });
-  const { document } = window;
-  document.querySelector('#s1 .sf-sec-edit').click();
-  await tick(window);
-  const ta = document.querySelector('#s1 .sf-sec-src');
-  ta.value = '<h2>One</h2><p>edited body</p>';
-  document.querySelector('#s1 .sf-sec-editor .sf-primary').click();
-  await tick(window);
-  const p = puts.find((x) => /\/section\/s1$/.test(x.url));
-  assert.ok(p, 'Save PUTs to the section endpoint');
-  assert.equal(p.body.html, '<h2>One</h2><p>edited body</p>', 'with the edited inner html');
-  const s1 = document.getElementById('s1');
-  assert.equal(s1.querySelector('.sf-sec-editor'), null, 'editor closes after save');
-  assert.match(s1.innerHTML, /edited body/, 'the saved content is painted immediately');
-  assert.ok(s1.querySelector('.sf-sec-edit'), 'the Edit button is re-attached after save');
-});
-
-test('Cancel restores the original section content untouched (no PUT)', async (t) => {
-  const { window, puts } = await bootReviewLayer(t, { body: SECTION_BODY, innerWidth: 1500, sectionSrc: '<h2>One</h2><p>x</p>' });
-  const { document } = window;
-  document.querySelector('#s1 .sf-sec-edit').click();
-  await tick(window);
-  document.querySelector('#s1 .sf-sec-src').value = 'throwaway edit';
-  document.querySelector('#s1 .sf-sec-editor .sf-ghost').click();
-  const s1 = document.getElementById('s1');
-  assert.equal(s1.querySelector('.sf-sec-editor'), null, 'editor removed on cancel');
-  assert.match(s1.textContent, /original body/, 'the original nodes are restored verbatim');
-  assert.ok(!puts.some((x) => /\/section\//.test(x.url)), 'Cancel makes no PUT');
-});
-
-test('only top-level sections get an Edit button (a nested section is edited via its parent)', async (t) => {
-  const body = `<main><section id="outer"><h2>O</h2><section id="inner"><p>i</p></section></section></main><div id="sf-live">● live</div>`;
-  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
-  const { document } = window;
-  assert.ok(document.querySelector('#outer > .sf-sec-edit'), 'the top-level section has an Edit button');
-  assert.equal(document.getElementById('inner').getAttribute('data-sf-editable'), null, 'the nested section is not independently editable');
-});
-
-test('concurrent Save clicks make a single PUT (no stale overwrite)', async (t) => {
-  const { window, puts } = await bootReviewLayer(t, { body: SECTION_BODY, innerWidth: 1500, sectionSrc: '<p>x</p>' });
-  const { document } = window;
-  document.querySelector('#s1 .sf-sec-edit').click();
-  await tick(window);
-  const ta = document.querySelector('#s1 .sf-sec-src');
-  const save = document.querySelector('#s1 .sf-sec-editor .sf-primary');
-  ta.value = 'first';
-  save.click();               // starts the PUT, disables + guards
-  ta.value = 'second';
-  save.click();               // in-flight → ignored
-  await tick(window);
-  const forS1 = puts.filter((x) => /\/section\/s1$/.test(x.url));
-  assert.equal(forS1.length, 1, 'exactly one PUT despite the double submit');
-  assert.equal(forS1[0].body.html, 'first', 'the in-flight save is not superseded by a racing later one');
-});
-
-test('clicking inside the section editor never opens a comment composer', async (t) => {
-  const { window } = await bootReviewLayer(t, { body: SECTION_BODY, innerWidth: 1500, sectionSrc: '<p>x</p>' });
-  const { document } = window;
-  document.querySelector('#s1 .sf-sec-edit').click();
-  await tick(window);
-  mouse(window, document.querySelector('#s1 .sf-sec-editor'), 'click');
-  assert.equal(document.getElementById('sf-compose'), null, 'the editor is chrome, not a comment target');
 });
