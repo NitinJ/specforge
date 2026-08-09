@@ -58,7 +58,7 @@
   // own font untouched — no override, no fetch.
   var FONTS = [
     { id: 'inter', name: 'Inter', cat: 'sans', google: 'Inter:wght@400;600', stack: '"Inter", system-ui, sans-serif' },
-    { id: 'ibm-plex-sans', name: 'IBM Plex Sans', cat: 'sans', google: 'IBM+Plex+Sans:wght@400;600', stack: '"IBM Plex Sans", system-ui, sans-serif' },
+    { id: 'google-sans', name: 'Google Sans', cat: 'sans', google: 'Google+Sans:wght@400;600', stack: '"Google Sans", system-ui, sans-serif' },
     { id: 'work-sans', name: 'Work Sans', cat: 'sans', google: 'Work+Sans:wght@400;600', stack: '"Work Sans", system-ui, sans-serif' },
     { id: 'newsreader', name: 'Newsreader', cat: 'serif', google: 'Newsreader:wght@400;600', stack: '"Newsreader", Georgia, serif' },
     { id: 'merriweather', name: 'Merriweather', cat: 'serif', google: 'Merriweather:wght@400;700', stack: '"Merriweather", Georgia, serif' },
