@@ -1174,7 +1174,7 @@
         var id = a.getAttribute('href').slice(1);
         if (id && document.getElementById(id)) out.push({ id: id, text: txt(a) });
       });
-      if (out.length >= 2) return out;
+      if (out.length >= 2) return dropNested(out);
     }
     var byId = [], seen = {};
     var secs = document.querySelectorAll('section[id]');
@@ -1190,6 +1190,23 @@
       seen[id] = 1; byId.push({ id: id, text: txt(h) });
     });
     return byId;
+  }
+  // A spec's own TOC often lists a section's subsections as flat siblings of the
+  // section itself. The rail nests those subsections under their parent group
+  // (childrenOf), so keeping the flat link too renders them twice. Drop a link
+  // only when its target is exactly the heading the parent group will nest —
+  // anything deeper (an h4 under an h2) has no group to live in, so it stays.
+  function dropNested(items) {
+    var listed = {};
+    items.forEach(function (it) { listed[it.id] = 1; });
+    return items.filter(function (it) {
+      var el = document.getElementById(it.id);
+      if (!el || el.tagName === 'SECTION' || !/^H[1-6]$/.test(el.tagName)) return true;
+      var owner = el.closest('section[id]');
+      if (!owner || owner.id === it.id || !listed[owner.id]) return true;
+      var ownerTitle = owner.querySelector('h1,h2,h3,h4,h5,h6');
+      return !ownerTitle || hlevel(el) !== hlevel(ownerTitle) + 1;
+    });
   }
   // Scroll-spy over every anchor's target (top-level sections AND nested
   // subsection headings). The observer only signals "something crossed the
