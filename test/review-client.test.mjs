@@ -996,6 +996,36 @@ test('a native TOC link deeper than one level below its section is kept', async 
   assert.ok(hrefs.includes('#d-deep'), 'an h4 has no h3 group to nest into, so its curated link survives');
 });
 
+test('a native TOC link for an h3 inside an id-less nested section is kept (never dropped nor nested)', async (t) => {
+  // The h3's immediate section has no id, so childrenOf will not nest it under the
+  // outer section — dropNested must therefore leave its curated link in place, or
+  // the heading disappears from the rail entirely.
+  const body = `
+    <div class="layout">
+      <nav class="toc">
+        <a href="#s-intro">1 · Intro</a>
+        <a href="#s-design">2 · Design</a>
+        <a href="#d-data" class="sub">2.1 Data model</a>
+        <a href="#s-plan">3 · Plan</a>
+      </nav>
+      <main>
+        <section id="s-intro"><h2>Intro</h2><p>x</p></section>
+        <section id="s-design"><h2>Design</h2>
+          <section><h3 id="d-data">Data model</h3><p>x</p></section>
+        </section>
+        <section id="s-plan"><h2>Plan</h2><p>x</p></section>
+      </main>
+    </div>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const { document } = window;
+  const hrefs = [].map.call(document.querySelectorAll('#sf-toc a'), (a) => a.getAttribute('href'));
+  assert.ok(hrefs.includes('#d-data'), 'the curated link survives (its id-less section has no group to nest it)');
+  const design = groupByHref(document, '#s-design');
+  assert.equal(design, undefined, 'Design nests nothing, so it is a plain link, not a group');
+});
+
 // ---------- reading font (Google-Fonts dropdown) ----------
 test('a saved font is applied on boot — category + family + on-demand Google load', async (t) => {
   const { window } = await bootReviewLayer(t, { prefs: { font: 'merriweather' } });

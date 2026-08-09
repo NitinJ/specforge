@@ -1202,8 +1202,12 @@
     return items.filter(function (it) {
       var el = document.getElementById(it.id);
       if (!el || el.tagName === 'SECTION' || !/^H[1-6]$/.test(el.tagName)) return true;
-      var owner = el.closest('section[id]');
-      if (!owner || owner.id === it.id || !listed[owner.id]) return true;
+      // Owner = the IMMEDIATE enclosing section (id or not), matching childrenOf's
+      // nesting rule exactly. A heading inside an id-less nested section has no
+      // group to be recreated in, so its curated link must survive — don't drop it
+      // against the outer listed section (which childrenOf would never nest it under).
+      var owner = el.closest('section');
+      if (!owner || !owner.id || owner.id === it.id || !listed[owner.id]) return true;
       var ownerTitle = owner.querySelector('h1,h2,h3,h4,h5,h6');
       return !ownerTitle || hlevel(el) !== hlevel(ownerTitle) + 1;
     });
