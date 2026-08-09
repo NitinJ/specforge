@@ -41,7 +41,7 @@ test('sanitize accepts every named theme variant (store-wide)', () => {
 });
 
 test('sanitize accepts a named font and drops invalid ones', () => {
-  assert.equal(sanitizeGlobalPrefs({ font: 'playfair-display' }).font, 'playfair-display');
+  assert.equal(sanitizeGlobalPrefs({ font: 'fraunces' }).font, 'fraunces');
   assert.equal(sanitizeGlobalPrefs({ font: 'default' }).font, 'default');
   assert.equal('font' in sanitizeGlobalPrefs({ font: 'comic-sans' }), false, 'unknown font dropped');
 });
