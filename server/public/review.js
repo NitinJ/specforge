@@ -60,7 +60,7 @@
     { id: 'inter', name: 'Inter', cat: 'sans', google: 'Inter:wght@400;600', stack: '"Inter", system-ui, sans-serif' },
     { id: 'google-sans', name: 'Google Sans', cat: 'sans', google: 'Google+Sans:wght@400;600', stack: '"Google Sans", system-ui, sans-serif' },
     { id: 'work-sans', name: 'Work Sans', cat: 'sans', google: 'Work+Sans:wght@400;600', stack: '"Work Sans", system-ui, sans-serif' },
-    { id: 'newsreader', name: 'Newsreader', cat: 'serif', google: 'Newsreader:wght@400;600', stack: '"Newsreader", Georgia, serif' },
+    { id: 'eb-garamond', name: 'EB Garamond', cat: 'serif', google: 'EB+Garamond:wght@400;600', stack: '"EB Garamond", Georgia, serif' },
     { id: 'merriweather', name: 'Merriweather', cat: 'serif', google: 'Merriweather:wght@400;700', stack: '"Merriweather", Georgia, serif' },
     { id: 'lora', name: 'Lora', cat: 'serif', google: 'Lora:wght@400;600', stack: '"Lora", Georgia, serif' },
     { id: 'jetbrains-mono', name: 'JetBrains Mono', cat: 'mono', google: 'JetBrains+Mono:wght@400;600', stack: '"JetBrains Mono", ui-monospace, monospace' },
