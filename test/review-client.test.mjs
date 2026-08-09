@@ -1074,15 +1074,15 @@ test('the Presentation group offers display fonts that keep code monospace', asy
   assert.equal(pres.children.length, 3, 'Presentation has 3 fonts');
   assert.ok(pres.querySelector('option[value="poppins"]'), 'Poppins is offered');
 
-  sel.value = 'playfair-display';
+  sel.value = 'fraunces';
   sel.dispatchEvent(new window.Event('change'));
   const c = document.querySelector('main');
   assert.equal(c.getAttribute('data-sf-font'), 'presentation',
     'a presentation pick sets the presentation category (not mono, so code stays monospace)');
-  assert.match(c.style.getPropertyValue('--sf-reading-font'), /Playfair Display/, 'family applied');
-  assert.ok(document.querySelector('head link[href*="Playfair"]'), 'Playfair Display loaded from Google on pick');
+  assert.match(c.style.getPropertyValue('--sf-reading-font'), /Fraunces/, 'family applied');
+  assert.ok(document.querySelector('head link[href*="Fraunces"]'), 'Fraunces loaded from Google on pick');
   const p = puts.find((x) => /\/prefs$/.test(x.url));
-  assert.ok(p && p.body.font === 'playfair-display', 'PUT /prefs persists the presentation font id');
+  assert.ok(p && p.body.font === 'fraunces', 'PUT /prefs persists the presentation font id');
 });
 
 test('the Font dropdown reflects the persisted font', async (t) => {

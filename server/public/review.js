@@ -58,9 +58,9 @@
   // own font untouched — no override, no fetch.
   var FONTS = [
     { id: 'inter', name: 'Inter', cat: 'sans', google: 'Inter:wght@400;600', stack: '"Inter", system-ui, sans-serif' },
-    { id: 'source-sans', name: 'Source Sans 3', cat: 'sans', google: 'Source+Sans+3:wght@400;600', stack: '"Source Sans 3", system-ui, sans-serif' },
+    { id: 'ibm-plex-sans', name: 'IBM Plex Sans', cat: 'sans', google: 'IBM+Plex+Sans:wght@400;600', stack: '"IBM Plex Sans", system-ui, sans-serif' },
     { id: 'work-sans', name: 'Work Sans', cat: 'sans', google: 'Work+Sans:wght@400;600', stack: '"Work Sans", system-ui, sans-serif' },
-    { id: 'source-serif', name: 'Source Serif 4', cat: 'serif', google: 'Source+Serif+4:wght@400;600', stack: '"Source Serif 4", Georgia, serif' },
+    { id: 'newsreader', name: 'Newsreader', cat: 'serif', google: 'Newsreader:wght@400;600', stack: '"Newsreader", Georgia, serif' },
     { id: 'merriweather', name: 'Merriweather', cat: 'serif', google: 'Merriweather:wght@400;700', stack: '"Merriweather", Georgia, serif' },
     { id: 'lora', name: 'Lora', cat: 'serif', google: 'Lora:wght@400;600', stack: '"Lora", Georgia, serif' },
     { id: 'jetbrains-mono', name: 'JetBrains Mono', cat: 'mono', google: 'JetBrains+Mono:wght@400;600', stack: '"JetBrains Mono", ui-monospace, monospace' },
@@ -70,8 +70,8 @@
     // A 700 weight is loaded so headings render crisp bold, not synthetic. They behave
     // like sans/serif for the code-block exemption (any cat but 'mono' keeps code mono).
     { id: 'poppins', name: 'Poppins', cat: 'presentation', google: 'Poppins:wght@400;600;700', stack: '"Poppins", system-ui, sans-serif' },
-    { id: 'montserrat', name: 'Montserrat', cat: 'presentation', google: 'Montserrat:wght@400;600;700', stack: '"Montserrat", system-ui, sans-serif' },
-    { id: 'playfair-display', name: 'Playfair Display', cat: 'presentation', google: 'Playfair+Display:wght@400;600;700', stack: '"Playfair Display", Georgia, serif' },
+    { id: 'space-grotesk', name: 'Space Grotesk', cat: 'presentation', google: 'Space+Grotesk:wght@400;600;700', stack: '"Space Grotesk", system-ui, sans-serif' },
+    { id: 'fraunces', name: 'Fraunces', cat: 'presentation', google: 'Fraunces:wght@400;600;700', stack: '"Fraunces", Georgia, serif' },
   ];
   var FONT_CATS = ['sans', 'serif', 'mono', 'presentation'];
   function fontById(id) { return FONTS.filter(function (f) { return f.id === id; })[0] || null; }
