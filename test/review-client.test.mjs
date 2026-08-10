@@ -836,6 +836,20 @@ test('expanding a thread closes an open composer — only one focused card', asy
     'exactly one focused card — two would break the single-focus layout');
 });
 
+test('activating a thread from the drawer also closes an open composer', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  stubGeometry(window, { 'p.a': 200, 'p.b': 600 }, 40);
+  mouse(window, document.querySelector('p.b'), 'click');        // composer on B
+  await new Promise((r) => window.setTimeout(r, 20));
+  assert.ok(document.querySelector('.sf-bub-compose'), 'composer is open');
+  document.querySelector('.sf-thread[data-tid="t2"]').click();  // activate from the DRAWER
+  await new Promise((r) => window.setTimeout(r, 20));
+  assert.ok(!document.querySelector('.sf-bub-compose'), 'the composer is dismissed');
+  assert.equal(document.querySelectorAll('#sf-rail [data-focus="1"]').length, 1,
+    'still exactly one focused card, whichever path activated the thread');
+});
+
 test('the off-screen chip can navigate to an off-screen composer', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;

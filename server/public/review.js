@@ -1304,6 +1304,9 @@
   // ---------- activate ----------
   function activate(id, scroll) {
     state.active = id;
+    state.composeEl = null; // same single-focus invariant as expandThread(): the
+                            // drawer can activate a thread too, and a composer
+                            // left open would be a second focused rail card
     renderSidebar();
     renderHighlights();
     renderRail();
