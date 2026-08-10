@@ -77,6 +77,9 @@ async function bootReviewLayer(t, opts = {}) {
       (el === window.document.body ? { backgroundColor: opts.computedBg(window) } : origGCS(el, ps));
   }
   await new Promise((r) => window.setTimeout(r, 0));
+  // Last hook before the client boots — for stubbing browser APIs jsdom lacks
+  // (e.g. ResizeObserver) that the client feature-detects at build time.
+  if (opts.preBoot) opts.preBoot(window);
   window.eval(REVIEW_JS); // deferred-script execution → boot() via the readyState check
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
   await new Promise((r) => window.setTimeout(r, 0)); // flush load()/render microtasks
@@ -551,6 +554,39 @@ test('a bubble shows the author initial and reply count', async (t) => {
   assert.equal(bub.querySelector('.sf-bub-who').textContent, 'H', 'initial of the thread starter');
   assert.match(bub.querySelector('.sf-bub-snip').textContent, /the question/, 'snippet of the first comment');
   assert.equal(bub.querySelector('.sf-bub-n').textContent, '1', 'one reply');
+});
+
+test('clicking a bubble activates its thread and opens the conversation', async (t) => {
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'a' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  const block = document.querySelector('.sf-block-mark');
+  block.scrollIntoView = () => {};
+  document.querySelector('#sf-rail .sf-bub').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(document.getElementById('sf-sidebar').classList.contains('open'), 'the conversation opens');
+  assert.ok(document.querySelector('.sf-block-mark').classList.contains('sf-active'),
+    'its block reads as active — the bubble is bound to the block it annotates');
+});
+
+test('the rail re-positions on reflows that fire no scroll or resize event', async (t) => {
+  // Width changes, fit-to-width, a collapsing TOC and late web fonts all move
+  // anchors without a scroll/resize — the rail observes the content box instead.
+  const observed = [];
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'a' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  await bootReviewLayer(t, {
+    threads,
+    preBoot(w) {
+      w.ResizeObserver = class {
+        constructor(cb) { this.cb = cb; }
+        observe(el) { observed.push(el); }
+        disconnect() {}
+      };
+    },
+  });
+  assert.ok(observed.length >= 1, 'the rail observes the content box for reflow');
 });
 
 test('the rail is a native-button surface the review layer treats as its own UI', async (t) => {

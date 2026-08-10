@@ -955,6 +955,18 @@
     document.body.appendChild(els.rail);
     window.addEventListener('scroll', queueRail, { passive: true });
     window.addEventListener('resize', queueRail, { passive: true });
+    // Scroll/resize alone miss reflows that move anchors without either event:
+    // the width slider, fit-to-width, the TOC collapsing, or a web font arriving
+    // late and re-wrapping every paragraph. Observe the content box itself so any
+    // of those re-pin the bubbles.
+    if (window.ResizeObserver) {
+      var ro = new window.ResizeObserver(queueRail);
+      try { ro.observe(widthContainer()); } catch (e) {}
+      try { ro.observe(document.documentElement); } catch (e) {}
+    }
+    if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+      document.fonts.ready.then(queueRail).catch(function () {});
+    }
   }
   // Scroll fires far faster than we can usefully re-measure — coalesce to one
   // reposition per frame.
@@ -1003,6 +1015,14 @@
     b.innerHTML = '<span class="sf-bub-who' + (claude ? ' claude' : '') + '">' + (claude ? 'C' : 'H') + '</span>' +
       '<span class="sf-bub-snip">' + esc(norm(first.body || '')) + '</span>' +
       (t.comments.length > 1 ? '<span class="sf-bub-n">' + (t.comments.length - 1) + '</span>' : '');
+    // Activating from the rail: mark the thread active (accent-binding its block)
+    // and bring the conversation up to read/reply. Expanding the thread inside the
+    // bubble itself replaces this in the next stage.
+    b.onclick = function (e) {
+      e.stopPropagation();
+      setSidebar(true);
+      activate(t.id, true);
+    };
     return b;
   }
 
@@ -1101,6 +1121,7 @@
     state.active = id;
     renderSidebar();
     renderHighlights();
+    renderRail();
     if (!scroll) return;
     // Resolve the block from the thread's own anchor rather than matching
     // data-sf-thread: a block may carry several threads and that attribute only
