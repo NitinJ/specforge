@@ -504,7 +504,7 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
    so the spec underneath stays fully hoverable/clickable. Own font so the
    reading-font override can't bleed in. */
 #sf-rail {
-  position: fixed; top: 0; right: 16px; width: 250px; height: 100vh; z-index: 43;
+  position: fixed; top: 0; right: 8px; width: 272px; height: 100vh; z-index: 43;
   pointer-events: none;
   font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
