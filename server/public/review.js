@@ -1042,12 +1042,23 @@
   // and lets the layout pass skip work while the rail is off.
   function railShouldShow() {
     if (els.sidebar && els.sidebar.classList.contains('open')) return false;
+    // An open composer overrides the width rule: the composer lives in the rail,
+    // so hiding the rail on a narrow window would leave you unable to comment at
+    // all — invisible input, no keyboard path, and no way to create a thread
+    // from the drawer. It overlays more of a narrow page; that beats a dead end.
+    if (state.composeEl) return true;
     return (window.innerWidth || 0) >= RAIL_MIN_W;
   }
   function syncRailVisibility() {
     if (!els.rail) return;
-    if (railShouldShow()) els.rail.removeAttribute('hidden');
+    var show = railShouldShow();
+    var was = !els.rail.hasAttribute('hidden');
+    if (show) els.rail.removeAttribute('hidden');
     else els.rail.setAttribute('hidden', '');
+    // Positions go stale while hidden (the layout pass skips it), so re-measure
+    // on the way back — otherwise closing the drawer reveals bubbles and chips
+    // sitting where the page used to be.
+    if (show && !was) queueRail();
   }
 
   function renderRail() {
@@ -1108,6 +1119,7 @@
   }
   function openRailCompose(el) {
     state.active = null;      // a composer and an expanded thread are exclusive
+    setSidebar(false);        // composing claims the gutter; the drawer would hide the rail
     state.composeEl = el;
     ensureAnchorVisible(el);
     render();

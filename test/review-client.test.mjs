@@ -932,6 +932,53 @@ test('the rail hides on a window too narrow to hold it beside the content', asyn
     'below the threshold the drawer is the fallback');
 });
 
+test('you can still comment on a narrow window — the composer forces the rail up', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { innerWidth: 700 });
+  const { document } = window;
+  assert.ok(document.getElementById('sf-rail').hasAttribute('hidden'), 'rail starts hidden when narrow');
+  mouse(window, document.querySelector('p.a'), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(!document.getElementById('sf-rail').hasAttribute('hidden'),
+    'the rail comes up so the composer is visible at all');
+  const card = document.querySelector('#sf-rail .sf-bub-compose');
+  assert.ok(card, 'the composer is present and reachable');
+  card.querySelector('textarea').value = 'commented on a narrow window';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(posts.find((x) => /\/comments$/.test(x.url)), 'and the thread is actually created');
+});
+
+test('composing closes the drawer, which would otherwise hide the composer', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: oneThread(), innerWidth: 1600 });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  rowByLabel(document, 'Comments').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(document.getElementById('sf-sidebar').classList.contains('open'), 'drawer open');
+  mouse(window, document.querySelector('p.b'), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(!document.getElementById('sf-sidebar').classList.contains('open'), 'the drawer steps aside');
+  assert.ok(document.querySelector('#sf-rail .sf-bub-compose'), 'the composer is visible');
+});
+
+test('closing the drawer re-measures the rail instead of revealing stale positions', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: oneThread(), innerWidth: 1600 });
+  const { document } = window;
+  stubGeometry(window, { 'p.a': 300 }, 40);
+  await settleRail(window);
+  assert.equal(parseFloat(document.querySelector('#sf-rail .sf-bub').style.top), 300);
+
+  document.getElementById('sf-launcher').click();
+  rowByLabel(document, 'Comments').click();            // drawer open → rail hidden
+  await new Promise((r) => window.setTimeout(r, 0));
+  // The page scrolls/reflows while the rail is hidden: its layout pass skipped it.
+  document.querySelector('p.a').getBoundingClientRect = () => ({ top: 90, bottom: 110, left: 0, right: 100, width: 100, height: 20 });
+  document.querySelector('.sf-side-close').click();    // back to the rail
+  await new Promise((r) => window.setTimeout(r, 30));
+  assert.equal(parseFloat(document.querySelector('#sf-rail .sf-bub').style.top), 90,
+    're-measured on the way back, not showing where the page used to be');
+});
+
 test('the rail reappears when a narrow window is widened', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: oneThread(), innerWidth: 700 });
   const rail = window.document.getElementById('sf-rail');
