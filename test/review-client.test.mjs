@@ -452,7 +452,11 @@ test('an unmatched backtick renders literally, not as an empty code span', async
   assert.match(html, /`count var is off/, 'the stray backtick and its text survive');
 });
 
-test('clicking an already-commented block opens a focused reply on that thread', async (t) => {
+// ---------- multiple threads per block ----------
+// A block is no longer limited to one thread: clicking an already-commented
+// block starts a NEW thread rather than replying to the existing one. Existing
+// threads are read and replied to from the rail (and the drawer).
+test('clicking an already-commented block opens a NEW-thread composer', async (t) => {
   const threads = [{
     id: 't1', state: 'open',
     comments: [{ id: 'c1', author: 'human', body: 'first', batchId: 'b1' }],
@@ -465,18 +469,43 @@ test('clicking an already-commented block opens a focused reply on that thread',
 
   mouse(window, block, 'click');
   await new Promise((r) => window.setTimeout(r, 0));
-  assert.ok(document.getElementById('sf-sidebar').classList.contains('open'), 'the sidebar opens');
-  const card = document.querySelector('.sf-thread[data-tid="t1"]');
-  assert.ok(card, 'the thread card is present');
-  const ta = card.querySelector('.sf-reply textarea');
-  assert.ok(ta, 'a reply box opens on the thread so you can add another comment');
+  const box = document.getElementById('sf-compose');
+  assert.ok(box, 'a composer opens (not a reply box on the existing thread)');
 
-  ta.value = 'a second comment';
-  card.querySelector('.sf-reply .sf-primary').click();
+  const ta = box.querySelector('textarea');
+  ta.value = 'a second, separate thread';
+  box.querySelector('.sf-primary').click();
   await new Promise((r) => window.setTimeout(r, 0));
-  const p = posts.find((x) => /\/comments\/t1\/reply$/.test(x.url));
-  assert.ok(p, 'sending posts to the thread reply endpoint');
-  assert.equal(p.body.body, 'a second comment', 'the new comment lands on the same thread');
+  const p = posts.find((x) => /\/comments$/.test(x.url));
+  assert.ok(p, 'posts to the create-thread endpoint');
+  assert.equal(p.body.body, 'a second, separate thread');
+  assert.equal(p.body.anchor.block.text, 'The quick brown fox.', 'anchored to the same block');
+});
+
+test('a block carrying two threads records both ids', async (t) => {
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'one' }], anchor: EDIT_ANCHOR },
+    { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'two' }], anchor: EDIT_ANCHOR },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  const block = window.document.querySelector('.sf-block-mark');
+  assert.ok(block, 'the shared block is marked once');
+  assert.equal(block.getAttribute('data-sf-threads'), 't1,t2', 'both threads recorded on the block');
+  assert.equal(block.getAttribute('data-sf-thread'), 't1', 'the first stays addressable for scroll-to');
+  assert.equal(window.document.querySelectorAll('.sf-block-mark').length, 1, 'no duplicate marks');
+});
+
+test('the active state follows whichever thread on a shared block is active', async (t) => {
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'one' }], anchor: EDIT_ANCHOR },
+    { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'two' }], anchor: EDIT_ANCHOR },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  document.querySelector('.sf-thread[data-tid="t2"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(document.querySelector('.sf-block-mark').classList.contains('sf-active'),
+    'the shared block reads as active when its second thread is active');
 });
 
 // ---------- lifecycle action button ----------
