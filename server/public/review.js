@@ -986,8 +986,14 @@
     state.active = id;
     renderSidebar();
     renderHighlights();
-    var el = document.querySelector('[data-sf-thread="' + id + '"]');
-    if (scroll && el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!scroll) return;
+    // Resolve the block from the thread's own anchor rather than matching
+    // data-sf-thread: a block may carry several threads and that attribute only
+    // names the first, so an attribute lookup would silently skip the scroll for
+    // every later thread on a shared block.
+    var t = state.threads.filter(function (x) { return x.id === id; })[0];
+    var el = t ? findBlock(t.anchor) : null;
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   // ---------- utils ----------

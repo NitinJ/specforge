@@ -495,6 +495,20 @@ test('a block carrying two threads records both ids', async (t) => {
   assert.equal(window.document.querySelectorAll('.sf-block-mark').length, 1, 'no duplicate marks');
 });
 
+test('activating a LATER thread on a shared block still scrolls its block into view', async (t) => {
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'one' }], anchor: EDIT_ANCHOR },
+    { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'two' }], anchor: EDIT_ANCHOR },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  const block = window.document.querySelector('.sf-block-mark');
+  let scrolled = 0;
+  block.scrollIntoView = () => { scrolled++; };
+  window.document.querySelector('.sf-thread[data-tid="t2"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(scrolled, 1, 'the second thread on the block scrolls its anchor into view');
+});
+
 test('the active state follows whichever thread on a shared block is active', async (t) => {
   const threads = [
     { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'one' }], anchor: EDIT_ANCHOR },
