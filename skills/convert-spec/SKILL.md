@@ -39,7 +39,10 @@ because it isn't house-style, fall back to 2B (author into the same `htmlPath`).
 
 ## 2B. Re-author a design doc into a house-style spec
 
-- Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
+- Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`, and the
+  language contract it points to: `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`.
+  Re-authoring is where an original's essay voice leaks through: convert the
+  content, not the register.
 - Scaffold a fresh store spec from the template:
 
   ```

@@ -85,11 +85,33 @@ Use the structured markup so the tracker and enforcement hooks can read it:
 `data-sf-status ∈ { todo, in_progress, done, blocked, deferred, dropped }`.
 One stage = one PR. Write tests first.
 
+## Language (contract)
+
+Full contract: `references/spec-language.md`. Read it before writing prose. The
+short form:
+
+- Every sentence carries a **decision** (with its criterion), a **measurement**
+  (value, unit, method, date), a **source** (retrieval date, confidence), an
+  **assumption** (with what falsifies it), or a **specification** (type,
+  threshold, constraint, behaviour). A sentence carrying none gets cut.
+- **No aphorisms.** If a line works as a standalone tweet, cut it.
+- **No em dashes**, attention-curating phrases ("worth noting", "importantly"),
+  hedged decisions ("probably"), precision theatre ("typically 1 to 3"), metaphor
+  about the system, or meta-narration about the document.
+- **Write unknowns down.** An omitted threshold reads as "no threshold"; a
+  described enum reads as "the list is open".
+- Assume the reader has agreed to the direction. Spend words on resolution, not
+  persuasion.
+
+`lint-spec.mjs` reports the mechanical subset as the advisory `spec-language`
+check. A clean report is a floor: it cannot see aphorism or an unlabelled
+sentence.
+
 ## Presentation
 
 Reuse the house components from the template: `.panel`, `.card`, `.tag`
 (`.accent/.good/.warn/.bad/.todo/.done`), `.callout`, tables, the sticky TOC.
-Keep prose tight; prefer tables and short callouts over long paragraphs.
+Prefer tables and short callouts over long paragraphs.
 
 ## Naming
 

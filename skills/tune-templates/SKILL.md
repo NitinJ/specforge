@@ -65,7 +65,11 @@ Only on the user's go-ahead, and only for the changes they approved:
    `<section id="…">` and its id, the theme CSS, the palette tokens, and the floating
    TOC (update TOC entries + section numbers together). Follow the house rules the
    themes encode: lead with the number, prefer tables/cards/diagrams over prose,
-   crisp headings with no flair, **no em dashes**, present the number then explain.
+   crisp headings with no flair, present the number then explain.
+   Template prose sets the register for every spec written from it, so it is held
+   to the language contract twice over:
+   `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`. A placeholder that models
+   an aphorism, an em dash or a hedge teaches every future spec to copy it.
 2. Lint each edited template — must pass:
    ```
    node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" "~/.specforge/specs/template-<type>/spec.html"
