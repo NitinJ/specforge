@@ -363,6 +363,43 @@ test('a claude (agent) comment has no Edit control', async (t) => {
   assert.ok(!c2.querySelector('.sf-edit-c'), 'claude comments are not editable');
 });
 
+// ---------- floating spec title (appears on scroll) ----------
+test('a floating title bar mirrors the spec h1 and is hidden at the top', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const bar = window.document.getElementById('sf-titlebar');
+  assert.ok(bar, 'the floating title bar is built');
+  assert.equal(bar.tagName, 'BUTTON', 'it is a native button (focusable, keyboard-activatable)');
+  assert.equal(bar.querySelector('.sf-tb-title').textContent, 'Test Spec', 'it shows the spec h1');
+  assert.ok(!bar.classList.contains('show'), 'hidden while the real title is still in view');
+});
+
+test('the floating title appears after scrolling past the title and hides back at the top', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const bar = window.document.getElementById('sf-titlebar');
+  Object.defineProperty(window, 'scrollY', { configurable: true, get: () => 500 });
+  window.dispatchEvent(new window.Event('scroll'));
+  assert.ok(bar.classList.contains('show'), 'shows once scrolled down past the title');
+  Object.defineProperty(window, 'scrollY', { configurable: true, get: () => 0 });
+  window.dispatchEvent(new window.Event('scroll'));
+  assert.ok(!bar.classList.contains('show'), 'hides again at the top');
+});
+
+test('clicking the floating title scrolls back to the top', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  let scrolledTo = null;
+  window.scrollTo = (o) => { scrolledTo = o; };
+  window.document.getElementById('sf-titlebar').click();
+  assert.ok(scrolledTo && scrolledTo.top === 0, 'clicking scrolls to top');
+});
+
+test('the floating title falls back to the stored spec title when there is no h1', async (t) => {
+  const body = `<main><p>No heading here.</p></main><div id="sf-live">● live</div>`;
+  const meta = { id: 'test-spec', title: 'Stored Title', status: 'draft', attachedSession: null };
+  const { window } = await bootReviewLayer(t, { body, meta });
+  const bar = window.document.getElementById('sf-titlebar');
+  assert.equal(bar.querySelector('.sf-tb-title').textContent, 'Stored Title', 'uses meta.title when no h1');
+});
+
 // ---------- comment body formatting (safe markdown subset) ----------
 // A comment renders its body through fmtBody: paragraphs, - / * / 1. lists,
 // **bold**, *italic*, `code` — everything HTML-escaped first so no markup in a

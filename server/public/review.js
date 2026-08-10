@@ -323,6 +323,7 @@
 
     buildLauncher();
     buildTop();
+    buildTitleBar();
 
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
@@ -339,6 +340,47 @@
     function onScroll() { els.top.classList.toggle('show', (window.scrollY || window.pageYOffset || 0) > 400); }
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
+  }
+
+  // Floating spec title (top-center glass pill) — mirrors the spec's own <h1>
+  // (falling back to the stored title, then the document title) and appears once
+  // that title has scrolled out of view, so the reader always keeps the spec's
+  // name in reach. Doubles as a second back-to-top affordance. The label refreshes
+  // from render() (so the fallback fills in once meta loads); visibility is driven
+  // by scroll. Its own font so the reading-font override can't bleed in.
+  function buildTitleBar() {
+    els.titlebar = create('button', { id: 'sf-titlebar', type: 'button', title: 'Back to top' });
+    els.titlebarLabel = create('span', { class: 'sf-tb-title' });
+    els.titlebar.appendChild(els.titlebarLabel);
+    els.titlebar.onclick = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    document.body.appendChild(els.titlebar);
+    window.addEventListener('scroll', syncTitle, { passive: true });
+    syncTitle();
+  }
+  function currentTitle() {
+    var h1 = document.querySelector('h1');
+    var fromH1 = h1 && h1.textContent.trim();
+    var fromMeta = state.meta && state.meta.title && String(state.meta.title).trim();
+    return fromH1 || fromMeta || (document.title || '').trim();
+  }
+  // Show once the reader has scrolled past the spec's own title. The anchor is the
+  // h1's document position (viewport-relative bottom + scroll) which is invariant
+  // as you scroll, so the bar appears exactly when the real title clears the top;
+  // with no h1 (or no layout, e.g. jsdom) it falls back to a fixed threshold.
+  function titleShowY() {
+    var h1 = document.querySelector('h1');
+    if (h1) {
+      var abs = h1.getBoundingClientRect().bottom + (window.scrollY || window.pageYOffset || 0);
+      if (abs > 0) return abs - 12;
+    }
+    return 160;
+  }
+  function syncTitle() {
+    if (!els.titlebar) return;
+    var title = currentTitle();
+    if (els.titlebarLabel.textContent !== title) els.titlebarLabel.textContent = title;
+    var y = window.scrollY || window.pageYOffset || 0;
+    els.titlebar.classList.toggle('show', !!title && y > titleShowY());
   }
 
   // Sidebar open/close — also flags the body so the floating launcher can
@@ -725,7 +767,7 @@
   }
 
   // ---------- render ----------
-  function render() { renderSidebar(); renderHighlights(); renderLauncher(); renderAction(); }
+  function render() { renderSidebar(); renderHighlights(); renderLauncher(); renderAction(); syncTitle(); }
 
   function visible() {
     return state.threads.filter(function (t) {

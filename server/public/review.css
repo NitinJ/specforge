@@ -454,6 +454,50 @@
 /* clear the sidebar while it's open, like the launcher */
 body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
 
+/* Floating spec title — a top-center glass pill that fades in once the spec's own
+   <h1> has scrolled out of view, so its name stays in reach; click = back to top.
+   Centered over the content column, so it sits clear of the left TOC rail and the
+   top-right ↑ Top pill (and tucks under Top on a z tie). Own font so the reading
+   font can't bleed in. Slides down from above; visibility flips at the tail so
+   it's unreachable while hidden. */
+#sf-titlebar {
+  position: fixed; top: 14px; left: 50%; transform: translate(-50%, -8px); z-index: 46;
+  max-width: min(60vw, 620px); box-sizing: border-box;
+  display: flex; align-items: center;
+  background: var(--sf-glass);
+  -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  border: 1px solid var(--sf-hairline); color: var(--sf-ink);
+  border-radius: 999px; padding: 7px 16px; cursor: pointer;
+  box-shadow: var(--sf-shadow-1);
+  font: 600 12.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity var(--sf-dur-base) var(--sf-ease-out),
+              transform var(--sf-dur-base) var(--sf-ease-out),
+              border-color var(--sf-dur-fast) var(--sf-ease),
+              color var(--sf-dur-fast) var(--sf-ease),
+              visibility 0s linear var(--sf-dur-base);
+}
+#sf-titlebar.show {
+  opacity: 1; transform: translate(-50%, 0); visibility: visible; pointer-events: auto;
+  transition: opacity var(--sf-dur-base) var(--sf-ease-out),
+              transform var(--sf-dur-base) var(--sf-ease-out),
+              border-color var(--sf-dur-fast) var(--sf-ease),
+              color var(--sf-dur-fast) var(--sf-ease),
+              visibility 0s linear 0s;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #sf-titlebar { background: var(--sf-panel); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #sf-titlebar { transition: opacity var(--sf-dur-fast) linear, visibility 0s linear; }
+  #sf-titlebar, #sf-titlebar.show { transform: translate(-50%, 0); }
+}
+#sf-titlebar:hover { border-color: var(--sf-accent); color: var(--sf-accent); }
+#sf-titlebar:focus-visible { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
+/* min-width:0 lets the flex child shrink so ellipsis engages on long titles */
+.sf-tb-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* SpecForge launcher — the single floating control. A glass squircle (reads as a
    modern tool trigger, not a generic FAB); the SF mark cross-fades to a × while
    the menu is open (generated content — no DOM change). */
@@ -717,14 +761,14 @@ html[data-sf-toc="hidden"] #sf-tocbtn { transform: translate(0, -50%); }
 @media (max-width: 480px) {
   :root { --sf-side-w: 100vw; }
   #sf-compose { right: 8px; left: 8px; width: auto; }
-  body.sf-side-open #sf-launcher, body.sf-side-open #sf-menu, body.sf-side-open #sf-top { display: none; }
+  body.sf-side-open #sf-launcher, body.sf-side-open #sf-menu, body.sf-side-open #sf-top, body.sf-side-open #sf-titlebar { display: none; }
 }
 
 /* print / "Export PDF": drop all injected review chrome so the PDF is just the
    spec, and keep atomic blocks from splitting across pages. The spec's own CSS
    (and the print dialog's "Background graphics" toggle) drive the look. */
 @media print {
-  #sf-sidebar, #sf-launcher, #sf-menu, #sf-compose, #sf-toc, #sf-live, #sf-top, #sf-tocbtn, #sf-disconnected { display: none !important; }
+  #sf-sidebar, #sf-launcher, #sf-menu, #sf-compose, #sf-toc, #sf-live, #sf-top, #sf-titlebar, #sf-tocbtn, #sf-disconnected { display: none !important; }
   .sf-hover, .sf-block-mark { outline: none !important; background: none !important; }
   h1, h2, h3, h4, h5, h6 { break-after: avoid-page; }
   figure, table, pre, blockquote, .panel, .card, .callout, .stat { break-inside: avoid; }
