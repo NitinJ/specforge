@@ -868,13 +868,40 @@
    * exact lookup from then on — so the corpus heals as specs are opened, with no
    * migration step to run.
    */
+  /**
+   * Resolve a legacy anchor by content, and say whether the answer was
+   * UNAMBIGUOUS. Adopting an id is permanent, so a guess must never be frozen:
+   * if several blocks share this text and the remembered index no longer picks
+   * one of them, we genuinely do not know which was meant.
+   * @returns {{el:Element, sure:boolean}|null}
+   */
+  function legacyMatch(anchor) {
+    var b = anchor && anchor.block;
+    if (!b) return null;
+    var blocks = commentableBlocks();
+    var hits = [];
+    for (var i = 0; i < blocks.length; i++) {
+      if (norm(blocks[i].textContent).slice(0, 400) === b.text) hits.push(blocks[i]);
+    }
+    if (!hits.length) return null;
+    if (hits.length === 1) return { el: hits[0], sure: true };
+    var atIndex = blocks[b.index];
+    // Several blocks match, but the remembered position still lands on one of
+    // them — that is the one.
+    if (atIndex && hits.indexOf(atIndex) !== -1) return { el: atIndex, sure: true };
+    return { el: hits[0], sure: false };
+  }
+
   function adoptBids() {
     if (!bidByEl) return;
     state.threads.forEach(function (t) {
       var b = t.anchor && t.anchor.block;
       if (!b || b.bid) return;
-      var el = findBlock(t.anchor);
-      var bid = el && bidOf(el);
+      var m = legacyMatch(t.anchor);
+      // Ambiguous: leave it alone. It still resolves the way it always did,
+      // re-decided each render — no worse than before, and not cemented.
+      if (!m || !m.sure) return;
+      var bid = bidOf(m.el);
       if (!bid) return;
       b.bid = bid; // optimistic locally, so this render already uses it
       fetch(API + '/' + t.id + '/anchor', {

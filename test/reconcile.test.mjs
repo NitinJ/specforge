@@ -165,6 +165,20 @@ test('a deletion is remembered on EVERY later reconcile, not just the one that s
   assert.equal(second.changed, false, 'and that costs no extra write');
 });
 
+test('retired ids are never evicted — an orphan must not silently un-orphan', () => {
+  // Capping the list drops the OLDEST first, so the longest-standing orphaned
+  // comment is the first to quietly re-attach to unrelated text.
+  let reg = seed(Array.from({ length: 1400 }, (_, i) => p('line ' + i)));
+  const firstBid = reg.blocks[0].bid;
+  // Delete them all, a chunk at a time, so plenty of ids retire.
+  for (let keep = 1200; keep >= 0; keep -= 200) {
+    reg = build(Array.from({ length: keep }, (_, i) => p('line ' + i)), reg).registry;
+  }
+  assert.equal(reg.blocks.length, 0);
+  assert.equal(reg.retired.length, 1400, 'every deleted id is still known');
+  assert.ok(reg.retired.includes(firstBid), 'including the very first, which a cap would have evicted');
+});
+
 test('re-adding the same text later is a NEW block, and the old id stays retired', () => {
   // Deliberately no resurrection: once a block is deleted its id is retired for
   // good, and identical text appearing later is a new block. Reviving ids would

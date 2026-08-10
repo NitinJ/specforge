@@ -1056,6 +1056,33 @@ test('a comment written before ids adopts one, and says so to the server', async
   assert.ok(patch.body.bid, 'and it is a real id');
 });
 
+test('an ambiguous legacy anchor is NOT given an id — a guess must not be frozen', async (t) => {
+  // Two blocks with identical text and an index that no longer picks either:
+  // we genuinely don't know which was meant, and adopting an id is permanent.
+  const body = `<main>
+    <h1>Test Spec</h1>
+    <p class="a">Duplicated line.</p>
+    <p class="b">Something else.</p>
+    <p class="c">Duplicated line.</p>
+  </main><div id="sf-live">● live</div>`;
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: { block: { index: 99, tag: 'P', text: 'Duplicated line.', sectionPath: [] } } }];
+  const { window, patches } = await bootReviewLayer(t, { body, threads });
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.equal(patches.filter((x) => /\/anchor$/.test(x.url)).length, 0,
+    'no id adopted while the match is ambiguous');
+  assert.ok(window.document.querySelector('.sf-block-mark'), 'but it still resolves, as it always did');
+});
+
+test('an unambiguous legacy anchor with a stale index still adopts an id', async (t) => {
+  // Only one block has this text, so the stale index does not make it ambiguous.
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: { block: { index: 99, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window, patches } = await bootReviewLayer(t, { threads });
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.equal(patches.filter((x) => /\/anchor$/.test(x.url)).length, 1, 'adopted — there is only one candidate');
+});
+
 test('a thread whose block was deleted stays on the page, marked', async (t) => {
   // Build the registry the way production does — reconcile the real fixture —
   // then append one extra block that is NOT on the page. Every real block stays
