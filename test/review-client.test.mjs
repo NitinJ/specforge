@@ -452,6 +452,119 @@ test('an unmatched backtick renders literally, not as an empty code span', async
   assert.match(html, /`count var is off/, 'the stray backtick and its text survive');
 });
 
+// ---------- comments rail (floating bubbles) ----------
+// jsdom has no layout engine: every rect is zero and offsetHeight is always 0.
+// These tests therefore stub the geometry the rail measures — a top per block
+// selector, and one uniform bubble height — then assert the positions the
+// layout pass computes from it.
+function stubGeometry(window, tops, bubbleH = 40) {
+  const { document } = window;
+  Object.keys(tops).forEach((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) throw new Error(`stubGeometry: no element for ${sel}`);
+    el.getBoundingClientRect = () => ({
+      top: tops[sel], bottom: tops[sel] + 20, left: 0, right: 100, width: 100, height: 20,
+    });
+  });
+  Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', {
+    configurable: true, get() { return bubbleH; },
+  });
+}
+const railTops = (window) =>
+  [...window.document.querySelectorAll('#sf-rail .sf-bub')].map((b) => parseFloat(b.style.top));
+// The rail repositions on a rAF tick; jsdom's rAF is async, so nudge and flush.
+async function settleRail(window) {
+  window.dispatchEvent(new window.Event('resize'));
+  await new Promise((r) => window.setTimeout(r, 20));
+}
+
+test('the rail renders one collapsed bubble per open thread, ordered by anchor position', async (t) => {
+  const threads = [
+    { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'second' }],
+      anchor: { block: { index: 1, tag: 'P', text: 'Second paragraph for hover.', sectionPath: [] } } },
+    { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'first' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  stubGeometry(window, { 'p.a': 100, 'p.b': 300 });
+  await settleRail(window);
+  const bubs = window.document.querySelectorAll('#sf-rail .sf-bub');
+  assert.equal(bubs.length, 2, 'one bubble per open thread');
+  assert.equal(bubs[0].getAttribute('data-tid'), 't1', 'ordered by anchor position, not array order');
+  assert.equal(bubs[1].getAttribute('data-tid'), 't2');
+});
+
+test('a bubble sits at its anchor when there is room', async (t) => {
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'a' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window } = await bootReviewLayer(t, { threads });
+  stubGeometry(window, { 'p.a': 250 });
+  await settleRail(window);
+  assert.deepEqual(railTops(window), [250], 'pinned to its anchor top');
+});
+
+test('colliding bubbles are pushed down and never overlap', async (t) => {
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'a' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } },
+    { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'b' }],
+      anchor: { block: { index: 1, tag: 'P', text: 'Second paragraph for hover.', sectionPath: [] } } },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  stubGeometry(window, { 'p.a': 100, 'p.b': 110 }, 40); // anchors 10px apart, bubbles 40px tall
+  await settleRail(window);
+  const tops = railTops(window);
+  assert.equal(tops[0], 100, 'the first keeps its anchor');
+  assert.ok(tops[1] >= tops[0] + 40, `second pushed clear of the first (got ${tops[1]})`);
+});
+
+test('two threads on the SAME block both get bubbles, stacked', async (t) => {
+  const anchor = { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } };
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'one' }], anchor },
+    { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'two' }], anchor },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  stubGeometry(window, { 'p.a': 200 }, 40);
+  await settleRail(window);
+  const tops = railTops(window);
+  assert.equal(tops.length, 2, 'both threads on one block get their own bubble');
+  assert.equal(tops[0], 200, 'the first takes the anchor line');
+  assert.ok(tops[1] >= 240, 'the second stacks below it');
+});
+
+test('a resolved thread gets no bubble', async (t) => {
+  const threads = [{ id: 't1', state: 'resolved', comments: [{ id: 'c1', author: 'human', body: 'x', batchId: 'b1' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window } = await bootReviewLayer(t, { threads });
+  assert.equal(window.document.querySelectorAll('#sf-rail .sf-bub').length, 0);
+});
+
+test('a bubble shows the author initial and reply count', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'human', body: 'the question' }, { id: 'c2', author: 'claude', body: 'the answer' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const bub = window.document.querySelector('#sf-rail .sf-bub');
+  assert.equal(bub.querySelector('.sf-bub-who').textContent, 'H', 'initial of the thread starter');
+  assert.match(bub.querySelector('.sf-bub-snip').textContent, /the question/, 'snippet of the first comment');
+  assert.equal(bub.querySelector('.sf-bub-n').textContent, '1', 'one reply');
+});
+
+test('the rail is a native-button surface the review layer treats as its own UI', async (t) => {
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'a' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const bub = window.document.querySelector('#sf-rail .sf-bub');
+  assert.equal(bub.tagName, 'BUTTON', 'bubbles are focusable buttons');
+  // Clicking rail chrome must not be mistaken for clicking a spec block.
+  mouse(window, bub, 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(!window.document.getElementById('sf-compose'), 'no composer opens from a rail click');
+});
+
 // ---------- multiple threads per block ----------
 // A block is no longer limited to one thread: clicking an already-commented
 // block starts a NEW thread rather than replying to the existing one. Existing
