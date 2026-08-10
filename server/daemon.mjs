@@ -35,9 +35,10 @@ import {
 } from '../lib/daemon-state.mjs';
 import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
-  handleCommentReply, handleCommentResolve, handleCommentEdit, handleSubmit,
+  handleCommentReply, handleCommentResolve, handleCommentEdit, handleAnchorPatch, handleSubmit,
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
+  handleBlocksGet, handleBlocksPut,
   handleRename, handleOrganize, handleExport, handleDelete,
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
@@ -156,6 +157,13 @@ export function createDaemon() {
         .then((b) => handleCommentEdit(editC[1], editC[2], editC[3], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
+    const anchorP = path.match(/^\/api\/spec\/([\w-]+)\/comments\/([\w-]+)\/anchor$/);
+    if (anchorP) {
+      if (method !== 'PATCH') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((b) => handleAnchorPatch(anchorP[1], anchorP[2], b, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
     const resolveAll = path.match(/^\/api\/spec\/([\w-]+)\/comments\/resolve-all$/);
     if (resolveAll) {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
@@ -184,6 +192,16 @@ export function createDaemon() {
       if (method === 'PUT') {
         return readJsonBody(req)
           .then((b) => handlePrefsPut(prefs[1], b, res))
+          .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
+    }
+    const blocks = path.match(/^\/api\/spec\/([\w-]+)\/blocks$/);
+    if (blocks) {
+      if (method === 'GET') return handleBlocksGet(blocks[1], res);
+      if (method === 'PUT') {
+        return readJsonBody(req)
+          .then((b) => handleBlocksPut(blocks[1], b, res))
           .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });

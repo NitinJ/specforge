@@ -18,6 +18,9 @@ import { JSDOM } from 'jsdom';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REVIEW_JS = readFileSync(join(ROOT, 'server', 'public', 'review.js'), 'utf8');
+// reconcile.js is injected before review.js and defines window.SFReconcile —
+// the block registry the client resolves anchors against.
+const RECONCILE_JS = readFileSync(join(ROOT, 'server', 'public', 'reconcile.js'), 'utf8');
 
 const SPEC_BODY = `
   <main>
@@ -66,6 +69,12 @@ async function bootReviewLayer(t, opts = {}) {
       const ok = !(opts.failPost && opts.failPost.test(String(url)));
       return Promise.resolve({ ok, json: () => Promise.resolve({ ok }), text: () => Promise.resolve('{}') });
     }
+    if (String(url).indexOf('/blocks') !== -1) {
+      // opts.blocksFail simulates a missing/unreachable registry — comments must
+      // keep working without it.
+      if (opts.blocksFail) return Promise.reject(new Error('no registry'));
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ registry: opts.registry || null }) });
+    }
     if (String(url).indexOf('/meta') !== -1) {
       return Promise.resolve({ json: () => Promise.resolve(meta) });
     }
@@ -83,6 +92,7 @@ async function bootReviewLayer(t, opts = {}) {
   // Last hook before the client boots — for stubbing browser APIs jsdom lacks
   // (e.g. ResizeObserver) that the client feature-detects at build time.
   if (opts.preBoot) opts.preBoot(window);
+  if (!opts.noReconcile) window.eval(RECONCILE_JS); // injected ahead of review.js in production
   window.eval(REVIEW_JS); // deferred-script execution → boot() via the readyState check
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
   await new Promise((r) => window.setTimeout(r, 0)); // flush load()/render microtasks
@@ -1000,6 +1010,148 @@ test('the off-screen chips disappear when every thread is in view', async (t) =>
   await settleRail(window);
   assert.ok(!window.document.querySelector('#sf-rail .sf-rail-above'), 'no above chip');
   assert.ok(!window.document.querySelector('#sf-rail .sf-rail-below'), 'no below chip');
+});
+
+// ---------- block registry: identity that survives edits ----------
+const BID_ANCHOR = (bid) => ({
+  block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [], bid },
+});
+
+test('the registry is built and stored the first time a spec is opened', async (t) => {
+  const { window, puts } = await bootReviewLayer(t);
+  await new Promise((r) => window.setTimeout(r, 10));
+  const put = puts.find((x) => /\/blocks$/.test(x.url));
+  assert.ok(put, 'the reconciled registry is persisted');
+  assert.equal(put.body.schema, 1);
+  assert.ok(put.body.blocks.length >= 3, 'every commentable block is registered');
+  assert.ok(put.body.blocks.every((b) => b.bid && b.tag && b.hash), 'each entry is {bid, tag, hash}');
+  assert.equal(new Set(put.body.blocks.map((b) => b.bid)).size, put.body.blocks.length, 'ids are distinct');
+});
+
+test('a new comment records the block id alongside the legacy anchor fields', async (t) => {
+  const { window, posts } = await bootReviewLayer(t);
+  await new Promise((r) => window.setTimeout(r, 10));
+  mouse(window, window.document.querySelector('p.a'), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  const card = window.document.querySelector('#sf-rail .sf-bub-compose');
+  card.querySelector('textarea').value = 'anchored by id';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments$/.test(x.url));
+  const b = p.body.anchor.block;
+  assert.ok(b.bid, 'carries an id');
+  // The rollback guarantee: an older client reads these, so they must still be here.
+  assert.equal(b.text, 'The quick brown fox.', 'still carries the text');
+  assert.equal(typeof b.index, 'number', 'still carries the index');
+  assert.ok(Array.isArray(b.sectionPath), 'still carries the section path');
+});
+
+test('a comment written before ids adopts one, and says so to the server', async (t) => {
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'legacy' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window, patches } = await bootReviewLayer(t, { threads });
+  await new Promise((r) => window.setTimeout(r, 10));
+  const patch = patches.find((x) => /\/comments\/t1\/anchor$/.test(x.url));
+  assert.ok(patch, 'the adopted id is persisted');
+  assert.ok(patch.body.bid, 'and it is a real id');
+});
+
+test('an ambiguous legacy anchor is NOT given an id — a guess must not be frozen', async (t) => {
+  // Two blocks with identical text and an index that no longer picks either:
+  // we genuinely don't know which was meant, and adopting an id is permanent.
+  const body = `<main>
+    <h1>Test Spec</h1>
+    <p class="a">Duplicated line.</p>
+    <p class="b">Something else.</p>
+    <p class="c">Duplicated line.</p>
+  </main><div id="sf-live">● live</div>`;
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: { block: { index: 99, tag: 'P', text: 'Duplicated line.', sectionPath: [] } } }];
+  const { window, patches } = await bootReviewLayer(t, { body, threads });
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.equal(patches.filter((x) => /\/anchor$/.test(x.url)).length, 0,
+    'no id adopted while the match is ambiguous');
+  assert.ok(window.document.querySelector('.sf-block-mark'), 'but it still resolves, as it always did');
+});
+
+test('duplicated text never adopts an id, even when the stored index still matches', async (t) => {
+  // The index landing on a matching block proves nothing here: content shifting
+  // above changes which duplicate occupies it, so this could be the other one.
+  const body = `<main>
+    <h1>Test Spec</h1>
+    <p class="a">Duplicated line.</p>
+    <p class="b">Duplicated line.</p>
+  </main><div id="sf-live">● live</div>`;
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: { block: { index: 1, tag: 'P', text: 'Duplicated line.', sectionPath: [] } } }];
+  const { window, patches } = await bootReviewLayer(t, { body, threads });
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.equal(patches.filter((x) => /\/anchor$/.test(x.url)).length, 0,
+    'still a guess, so still not frozen');
+});
+
+test('an unambiguous legacy anchor with a stale index still adopts an id', async (t) => {
+  // Only one block has this text, so the stale index does not make it ambiguous.
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: { block: { index: 99, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window, patches } = await bootReviewLayer(t, { threads });
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.equal(patches.filter((x) => /\/anchor$/.test(x.url)).length, 1, 'adopted — there is only one candidate');
+});
+
+test('a thread whose block was deleted stays on the page, marked', async (t) => {
+  // Build the registry the way production does — reconcile the real fixture —
+  // then append one extra block that is NOT on the page. Every real block stays
+  // pinned, so the extra one is unambiguously a deletion rather than an edit.
+  const seedRun = await bootReviewLayer(t);
+  await new Promise((r) => seedRun.window.setTimeout(r, 10));
+  const real = seedRun.puts.find((x) => /\/blocks$/.test(x.url)).body;
+  const registry = {
+    schema: 1, version: real.version, seq: real.seq + 1,
+    blocks: real.blocks.concat([{ bid: 'bGONE', tag: 'P', hash: 'deadbeef' }]),
+  };
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'about the deleted bit' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'a paragraph that was deleted', sectionPath: [], bid: 'bGONE' } } }];
+  const { window } = await bootReviewLayer(t, { threads, registry });
+  await new Promise((r) => window.setTimeout(r, 10));
+  const bub = window.document.querySelector('#sf-rail .sf-bub-orphan');
+  assert.ok(bub, 'the thread is still shown, not silently dropped');
+  bub.click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const open = window.document.querySelector('.sf-bub-open.sf-bub-orphan');
+  assert.match(open.querySelector('.sf-orphan-note').textContent, /removed/i, 'it says what happened');
+  assert.match(open.querySelector('.sf-orphan-quote').textContent, /deleted/, 'and keeps the original quote');
+});
+
+// ---------- backwards compatibility, tested rather than assumed ----------
+test('comments resolve normally when the registry cannot be read', async (t) => {
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window } = await bootReviewLayer(t, { threads, blocksFail: true });
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.ok(window.document.querySelector('.sf-block-mark'), 'the block is still marked');
+  assert.equal(window.document.querySelectorAll('#sf-rail .sf-bub').length, 1, 'the bubble is still there');
+});
+
+test('a comment carrying an id still resolves through the legacy path', async (t) => {
+  // The rollback case: the id means nothing without a registry, so the anchor's
+  // text has to carry it — which is why the fields are additive.
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: BID_ANCHOR('b-from-a-newer-client') }];
+  const { window } = await bootReviewLayer(t, { threads, blocksFail: true });
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.ok(window.document.querySelector('.sf-block-mark'), 'resolved by text, exactly as an old client would');
+  assert.equal(window.document.querySelectorAll('#sf-rail .sf-bub-orphan').length, 0,
+    'and is NOT mistaken for a deleted block');
+});
+
+test('everything still works with the reconcile script absent entirely', async (t) => {
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window } = await bootReviewLayer(t, { threads, noReconcile: true });
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.ok(window.document.querySelector('.sf-block-mark'), 'comments resolve');
+  assert.equal(window.document.querySelectorAll('#sf-rail .sf-bub').length, 1, 'and render');
 });
 
 // ---------- rail horizontal placement (hugs the content, capped at the edge) ----------

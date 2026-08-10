@@ -63,5 +63,6 @@ function reviewSnippet(specId, prefs) {
   } catch (e) { set('○ offline','#9aa3b2'); showBanner(); }
 })();
 </script>
+<script src="/public/reconcile.js" defer></script>
 <script src="/public/review.js" defer></script>`;
 }
