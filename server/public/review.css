@@ -463,6 +463,7 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
 #sf-titlebar {
   position: fixed; top: 14px; left: 50%; transform: translate(-50%, -8px); z-index: 46;
   max-width: min(60vw, 620px); box-sizing: border-box;
+  display: flex; align-items: center;
   background: var(--sf-glass);
   -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
   backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
@@ -493,7 +494,9 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
   #sf-titlebar, #sf-titlebar.show { transform: translate(-50%, 0); }
 }
 #sf-titlebar:hover { border-color: var(--sf-accent); color: var(--sf-accent); }
-.sf-tb-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sf-titlebar:focus-visible { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
+/* min-width:0 lets the flex child shrink so ellipsis engages on long titles */
+.sf-tb-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* SpecForge launcher — the single floating control. A glass squircle (reads as a
    modern tool trigger, not a generic FAB); the SF mark cross-fades to a × while
@@ -758,7 +761,7 @@ html[data-sf-toc="hidden"] #sf-tocbtn { transform: translate(0, -50%); }
 @media (max-width: 480px) {
   :root { --sf-side-w: 100vw; }
   #sf-compose { right: 8px; left: 8px; width: auto; }
-  body.sf-side-open #sf-launcher, body.sf-side-open #sf-menu, body.sf-side-open #sf-top { display: none; }
+  body.sf-side-open #sf-launcher, body.sf-side-open #sf-menu, body.sf-side-open #sf-top, body.sf-side-open #sf-titlebar { display: none; }
 }
 
 /* print / "Export PDF": drop all injected review chrome so the PDF is just the

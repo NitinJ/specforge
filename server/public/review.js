@@ -349,7 +349,7 @@
   // from render() (so the fallback fills in once meta loads); visibility is driven
   // by scroll. Its own font so the reading-font override can't bleed in.
   function buildTitleBar() {
-    els.titlebar = create('div', { id: 'sf-titlebar', title: 'Back to top' });
+    els.titlebar = create('button', { id: 'sf-titlebar', type: 'button', title: 'Back to top' });
     els.titlebarLabel = create('span', { class: 'sf-tb-title' });
     els.titlebar.appendChild(els.titlebarLabel);
     els.titlebar.onclick = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };

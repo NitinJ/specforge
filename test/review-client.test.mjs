@@ -368,6 +368,7 @@ test('a floating title bar mirrors the spec h1 and is hidden at the top', async 
   const { window } = await bootReviewLayer(t);
   const bar = window.document.getElementById('sf-titlebar');
   assert.ok(bar, 'the floating title bar is built');
+  assert.equal(bar.tagName, 'BUTTON', 'it is a native button (focusable, keyboard-activatable)');
   assert.equal(bar.querySelector('.sf-tb-title').textContent, 'Test Spec', 'it shows the spec h1');
   assert.ok(!bar.classList.contains('show'), 'hidden while the real title is still in view');
 });
