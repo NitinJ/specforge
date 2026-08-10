@@ -41,6 +41,20 @@ test('bounded "at most" is not precision theatre', () => {
   assert.ok(names(doc('<p>It drops most of the payload.</p>')).includes('precision theatre'));
 });
 
+// In real specs a phrase is routinely split by a line break or an inline tag.
+// If the checker only sees the single-space form it misses the majority of real
+// occurrences, and the "at most" exclusion collapses back into a false positive.
+test('phrases are matched across line breaks and inline markup', () => {
+  const none = (html) => assert.deepEqual(checkLanguage(html), [], html);
+  none(doc('<p>A tab holds at <em>most</em> one session.</p>'));
+  none(doc('<p>A tab holds at\n      most one session.</p>'));
+  none(doc('<p>A tab holds at&nbsp;most one session.</p>'));
+  none(doc('<p>A tab holds at  most one session.</p>'));
+  // The same normalization is what makes multi-word bans matchable at all.
+  assert.ok(names(doc('<p>Worth\n  noting: the cache is cold.</p>')).includes('attention-curating phrase'));
+  assert.ok(names(doc('<p>It keeps a <b>handful</b> of entries.</p>')).includes('precision theatre'));
+});
+
 test('unfalsifiable superlatives are reported', () => {
   assert.ok(names(doc('<p>This is the cheapest path.</p>')).includes('unfalsifiable superlative'));
   assert.ok(names(doc('<p>Blocks are the most leveraged unit.</p>')).includes('unfalsifiable superlative'));
