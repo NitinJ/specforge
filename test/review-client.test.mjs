@@ -908,6 +908,45 @@ test('the off-screen chips disappear when every thread is in view', async (t) =>
   assert.ok(!window.document.querySelector('#sf-rail .sf-rail-below'), 'no below chip');
 });
 
+// ---------- rail horizontal placement (hugs the content, capped at the edge) ----------
+// Give the content container a measurable right edge so the rail can sit beside it.
+function stubContainer(window, right) {
+  const el = window.document.querySelector('main');
+  el.getBoundingClientRect = () => ({ top: 0, bottom: 800, left: 0, right, width: right, height: 800 });
+  return el;
+}
+const railLeft = (window) => parseFloat(window.document.getElementById('sf-rail').style.left);
+
+test('the rail sits just outside the content container, not at the viewport edge', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: oneThread(), innerWidth: 1600 });
+  stubContainer(window, 900);
+  stubGeometry(window, { 'p.a': 200 }, 40);
+  await settleRail(window);
+  assert.equal(railLeft(window), 916, 'placed one margin to the right of the content edge');
+  assert.equal(window.document.getElementById('sf-rail').style.right, 'auto',
+    'driven by left, so the viewport-edge default no longer applies');
+});
+
+test('a wide container caps the rail at the viewport edge instead of pushing it off-screen', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: oneThread(), innerWidth: 1600 });
+  stubContainer(window, 1500);   // content nearly fills the window
+  stubGeometry(window, { 'p.a': 200 }, 40);
+  await settleRail(window);
+  // 1600 - 250 (rail) - 16 (margin) = 1334; without the cap it would be 1516.
+  assert.equal(railLeft(window), 1334, 'clamped so the rail stays fully on screen');
+});
+
+test('the rail follows the content edge when the reading width changes', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: oneThread(), innerWidth: 1600 });
+  stubContainer(window, 700);
+  stubGeometry(window, { 'p.a': 200 }, 40);
+  await settleRail(window);
+  assert.equal(railLeft(window), 716, 'hugs the narrow column');
+  stubContainer(window, 1100);   // e.g. the width slider widens the content
+  await settleRail(window);
+  assert.equal(railLeft(window), 1116, 'moves out with it');
+});
+
 // ---------- rail visibility: drawer + narrow-window fallback ----------
 const oneThread = () => [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'a' }],
   anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];

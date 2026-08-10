@@ -1236,10 +1236,32 @@
     if (r.top < 8 || r.top > h - 80) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  // Horizontal placement: the rail hugs the RIGHT EDGE OF THE CONTENT, not the
+  // viewport. Pinned to the window it drifts far from the text it annotates
+  // whenever the reading column is narrow, breaking the bubble/anchor bond.
+  // When the content is wide enough that the gutter can't hold the rail, its
+  // left is clamped so the rail stays fully on screen (overlapping the content
+  // edge) rather than sliding off it. The rail's own CSS width stays the single
+  // source of truth for how wide it is.
+  var RAIL_MARGIN = 16;
+  function positionRailX() {
+    var right = 0;
+    try { right = widthContainer().getBoundingClientRect().right || 0; } catch (e) {}
+    var railW = els.rail.offsetWidth || 250;
+    var vw = window.innerWidth || 0;
+    var left = right + RAIL_MARGIN;
+    var maxLeft = vw - railW - RAIL_MARGIN;
+    if (vw && left > maxLeft) left = maxLeft;
+    if (left < RAIL_MARGIN) left = RAIL_MARGIN;
+    els.rail.style.left = left + 'px';
+    els.rail.style.right = 'auto';
+  }
+
   function positionRail() {
     if (!els.rail) return;
     syncRailVisibility();
     if (els.rail.hasAttribute('hidden')) return; // nothing to measure while off
+    positionRailX();
     var bubs = Array.prototype.filter.call(els.rail.children, function (b) {
       return b.classList.contains('sf-bub');
     });
