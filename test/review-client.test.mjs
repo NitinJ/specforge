@@ -922,7 +922,7 @@ test('the rail sits just outside the content container, not at the viewport edge
   stubContainer(window, 900);
   stubGeometry(window, { 'p.a': 200 }, 40);
   await settleRail(window);
-  assert.equal(railLeft(window), 916, 'placed one margin to the right of the content edge');
+  assert.equal(railLeft(window), 908, 'placed one margin (8px) to the right of the content edge');
   assert.equal(window.document.getElementById('sf-rail').style.right, 'auto',
     'driven by left, so the viewport-edge default no longer applies');
 });
@@ -932,8 +932,8 @@ test('a wide container caps the rail at the viewport edge instead of pushing it 
   stubContainer(window, 1500);   // content nearly fills the window
   stubGeometry(window, { 'p.a': 200 }, 40);
   await settleRail(window);
-  // 1600 - 250 (rail) - 16 (margin) = 1334; without the cap it would be 1516.
-  assert.equal(railLeft(window), 1334, 'clamped so the rail stays fully on screen');
+  // 1600 - 272 (rail) - 8 (margin) = 1320; without the cap it would be 1508.
+  assert.equal(railLeft(window), 1320, 'clamped so the rail stays fully on screen');
 });
 
 test('the rail follows the content edge when the reading width changes', async (t) => {
@@ -941,10 +941,10 @@ test('the rail follows the content edge when the reading width changes', async (
   stubContainer(window, 700);
   stubGeometry(window, { 'p.a': 200 }, 40);
   await settleRail(window);
-  assert.equal(railLeft(window), 716, 'hugs the narrow column');
+  assert.equal(railLeft(window), 708, 'hugs the narrow column');
   stubContainer(window, 1100);   // e.g. the width slider widens the content
   await settleRail(window);
-  assert.equal(railLeft(window), 1116, 'moves out with it');
+  assert.equal(railLeft(window), 1108, 'moves out with it');
 });
 
 // ---------- rail visibility: drawer + narrow-window fallback ----------

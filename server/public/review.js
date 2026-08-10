@@ -1243,11 +1243,14 @@
   // left is clamped so the rail stays fully on screen (overlapping the content
   // edge) rather than sliding off it. The rail's own CSS width stays the single
   // source of truth for how wide it is.
-  var RAIL_MARGIN = 16;
+  var RAIL_MARGIN = 8;
   function positionRailX() {
     var right = 0;
     try { right = widthContainer().getBoundingClientRect().right || 0; } catch (e) {}
-    var railW = els.rail.offsetWidth || 250;
+    // offsetWidth keeps the CSS as the source of truth for the rail's width; the
+    // fallback is only for environments without layout (jsdom) and must match
+    // the width in review.css.
+    var railW = els.rail.offsetWidth || 272;
     var vw = window.innerWidth || 0;
     var left = right + RAIL_MARGIN;
     var maxLeft = vw - railW - RAIL_MARGIN;
