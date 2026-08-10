@@ -241,7 +241,7 @@ test('clicking a block (no <section> needed) opens the composer and posts a bloc
   const { document } = window;
   const li = document.querySelector('li.c');
   mouse(window, li, 'click');
-  const compose = document.getElementById('sf-compose');
+  const compose = document.querySelector('#sf-rail .sf-bub-compose');
   assert.ok(compose, 'composer opens for a list-item block');
   const ta = compose.querySelector('textarea');
   ta.value = 'a block comment';
@@ -257,7 +257,7 @@ test('clicking the review UI does not open a composer', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  assert.equal(document.getElementById('sf-compose'), null, 'no composer from a UI click');
+  assert.equal(document.querySelector('#sf-rail .sf-bub-compose'), null, 'no composer from a UI click');
 });
 
 test('the review command bar lives in the sidebar footer, not the launcher menu', async (t) => {
@@ -755,6 +755,82 @@ test('hovering a block focuses every bubble anchored to it, and vice-versa', asy
   assert.ok(block.classList.contains('sf-hover'), 'hovering a bubble lights up its block');
 });
 
+// ---------- composing a new thread in the rail ----------
+test('clicking a block opens a compose card in the rail, pinned to that block', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  mouse(window, document.querySelector('p.a'), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  const card = document.querySelector('#sf-rail .sf-bub-compose');
+  assert.ok(card, 'the composer opens in the rail, not as a detached popover');
+  assert.ok(card.querySelector('textarea'), 'with an input ready');
+  assert.ok(!document.getElementById('sf-compose'), 'the old floating popover is gone');
+  assert.ok(document.querySelector('p.a').classList.contains('sf-active'),
+    'the target block is accent-bound while composing');
+});
+
+test('submitting the rail composer creates a new thread on that block', async (t) => {
+  const { window, posts } = await bootReviewLayer(t);
+  const { document } = window;
+  mouse(window, document.querySelector('p.a'), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  const card = document.querySelector('#sf-rail .sf-bub-compose');
+  card.querySelector('textarea').value = 'a brand new thread';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments$/.test(x.url));
+  assert.ok(p, 'posts to the create-thread endpoint');
+  assert.equal(p.body.body, 'a brand new thread');
+  assert.equal(p.body.anchor.block.text, 'The quick brown fox.', 'anchored to the clicked block');
+});
+
+test('a block that already has threads still composes a NEW one, stacked with them', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  stubGeometry(window, { 'p.a': 200 }, 40);
+  mouse(window, document.querySelector('p.a'), 'click');
+  await new Promise((r) => window.setTimeout(r, 20));
+  assert.ok(document.querySelector('#sf-rail .sf-bub-compose'), 'a composer opens even though the block has threads');
+  assert.equal(document.querySelectorAll('#sf-rail .sf-bub').length, 3,
+    'the composer joins the two existing bubbles in the rail');
+  const compose = document.querySelector('.sf-bub-compose');
+  assert.equal(parseFloat(compose.style.top), 200, 'the composer takes the anchor line — it is the focused card');
+});
+
+test('cancelling the composer creates nothing and clears it', async (t) => {
+  const { window, posts } = await bootReviewLayer(t);
+  const { document } = window;
+  mouse(window, document.querySelector('p.a'), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  document.querySelector('.sf-bub-compose .sf-bub-x').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(!document.querySelector('.sf-bub-compose'), 'the composer is gone');
+  assert.equal(posts.filter((x) => /\/comments$/.test(x.url)).length, 0, 'nothing was created');
+});
+
+test('Escape dismisses the composer without creating a thread', async (t) => {
+  const { window, posts } = await bootReviewLayer(t);
+  const { document } = window;
+  mouse(window, document.querySelector('p.a'), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(!document.querySelector('.sf-bub-compose'), 'dismissed');
+  assert.equal(posts.filter((x) => /\/comments$/.test(x.url)).length, 0, 'nothing was created');
+});
+
+test('clicking a second block moves the composer there', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  mouse(window, document.querySelector('p.a'), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  mouse(window, document.querySelector('p.b'), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  const cards = document.querySelectorAll('.sf-bub-compose');
+  assert.equal(cards.length, 1, 'only ever one composer');
+  assert.equal(cards[0]._anchor, document.querySelector('p.b'), 'it moved to the newly clicked block');
+});
+
 // ---------- off-screen comment indicator ----------
 test('a chip counts open threads anchored above and below the viewport', async (t) => {
   const threads = [
@@ -801,7 +877,7 @@ test('clicking an already-commented block opens a NEW-thread composer', async (t
 
   mouse(window, block, 'click');
   await new Promise((r) => window.setTimeout(r, 0));
-  const box = document.getElementById('sf-compose');
+  const box = document.querySelector('#sf-rail .sf-bub-compose');
   assert.ok(box, 'a composer opens (not a reply box on the existing thread)');
 
   const ta = box.querySelector('textarea');

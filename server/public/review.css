@@ -564,6 +564,14 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
 .sf-bub-resolve:hover { color: var(--sf-ink); border-color: var(--sf-accent); }
 .sf-bub-resolve:focus-visible { outline: none; box-shadow: var(--sf-ring); }
 
+/* New-thread composer in the rail — the quoted block it will anchor to, in the
+   same amber-ruled style the old popover used. */
+.sf-bub-compose .q {
+  font-size: 11.5px; line-height: 1.45; color: var(--sf-muted);
+  border-left: 2px solid var(--sf-amber); padding: 1px 0 1px 8px; margin: 2px 0 6px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
 /* Off-screen indicator — without it a comment on scrolled-past content is
    invisible. Pinned to the rail's top/bottom edge; click jumps to the nearest. */
 .sf-rail-chip {

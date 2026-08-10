@@ -47,7 +47,8 @@
   var INTERACTIVE = 'a,button,input,textarea,select,summary,label';
 
   var INIT_FILTER = (PREFS.filter === 'resolved' || PREFS.filter === 'all') ? PREFS.filter : 'open';
-  var state = { threads: [], filter: INIT_FILTER, active: null, meta: null };
+  // composeEl: the block a new-thread composer is currently open on (rail), or null.
+  var state = { threads: [], filter: INIT_FILTER, active: null, meta: null, composeEl: null };
   var els = {};
 
   // Reading-font catalog (review-layer owned) — the famous reader/blog fonts, 3 per
@@ -138,7 +139,9 @@
     load();
     // Poll so Claude's replies appear without a manual refresh; pause while the
     // composer is open so we don't disrupt the user mid-comment.
-    setInterval(function () { if (!els.compose) load(); }, 6000);
+    // Pause the poll while a composer is open so a reload can't wipe what the
+    // reader is typing.
+    setInterval(function () { if (!state.composeEl) load(); }, 6000);
   }
 
   // ---------- theme (review-layer owned) ----------
@@ -329,7 +332,7 @@
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { clearHover(); hideCompose(); closeMenu(); collapseThread(); }
+      if (e.key === 'Escape') { clearHover(); closeMenu(); collapseThread(); cancelCompose(); }
     });
   }
 
@@ -745,7 +748,7 @@
     // handlers own the reciprocal highlight there. Clearing it on every
     // mousemove inside a hovered bubble would make its block flicker.
     if (e.target.closest && e.target.closest('#sf-rail')) return;
-    if (els.compose || inUI(e.target)) { clearHover(); return; }
+    if (state.composeEl || inUI(e.target)) { clearHover(); return; }
     var el = blockAt(e.target);
     if (el === hoverEl) return;
     clearHover();
@@ -766,8 +769,9 @@
     // miss the chrome it came from and collapse the thread the user just opened.
     // Clicking anywhere that isn't a thread card or review chrome collapses the
     // open thread: the same outcome as its × button.
-    if (state.active && !(e.target.closest && e.target.closest('.sf-bub')) && !inUI(e.target)) {
+    if (!(e.target.closest && e.target.closest('.sf-bub')) && !inUI(e.target)) {
       collapseThread();
+      cancelCompose();
     }
     if (inUI(e.target) || (e.target.closest && e.target.closest(INTERACTIVE))) return;
     var sel = window.getSelection && window.getSelection();
@@ -778,7 +782,7 @@
     // already carries one, which is what allows several threads per block.
     // Existing threads are read and replied to from their cards, not from here.
     e.preventDefault();
-    openCompose(el);
+    openRailCompose(el);
   }
 
   // ---------- render ----------
@@ -925,6 +929,9 @@
       g.el.setAttribute('data-sf-threads', g.ids.join(','));
       if (g.ids.indexOf(state.active) !== -1) g.el.classList.add('sf-active');
     });
+    // The block being commented on reads as the active pair too, even before its
+    // first thread exists.
+    if (state.composeEl) state.composeEl.classList.add('sf-block-mark', 'sf-active');
   }
 
   // ---------- comments rail ----------
@@ -1027,10 +1034,68 @@
   function renderRail() {
     if (!els.rail) return;
     els.rail.innerHTML = '';
-    railThreads().forEach(function (r) {
+    var entries = railThreads();
+    // The composer is a focused entry in the rail, ordered with the threads so
+    // it takes its block's anchor line and pushes that block's threads down.
+    if (state.composeEl) {
+      var at = 0;
+      for (; at < entries.length; at++) {
+        if (entries[at].el === state.composeEl) break;
+        var rel = entries[at].el.compareDocumentPosition(state.composeEl);
+        if (rel & 2) break; // the composer's block precedes this entry's block
+      }
+      entries.splice(at, 0, { compose: true, el: state.composeEl });
+    }
+    entries.forEach(function (r) {
+      if (r.compose) return els.rail.appendChild(composeBubble(r.el));
       els.rail.appendChild(r.t.id === state.active ? openBubble(r.t, r.el) : bubble(r.t, r.el));
     });
     positionRail();
+  }
+
+  // New-thread composer, in the rail, pinned to the block you clicked. Always a
+  // NEW thread — that is what allows several per block.
+  function composeBubble(el) {
+    var b = create('div', { class: 'sf-bub sf-bub-open sf-bub-compose', 'data-focus': '1' });
+    b._anchor = el;
+    var anchor = { block: blockAnchor(el) };
+    b.innerHTML = '<div class="sf-bub-head"><span class="sf-bub-who">H</span>' +
+      '<span class="sf-bub-n">new thread</span>' +
+      '<button class="sf-bub-x" type="button" aria-label="Cancel">×</button></div>' +
+      '<div class="q">' + esc(anchor.block.text.slice(0, 160)) + '</div>';
+    b.onclick = function (e) { e.stopPropagation(); };
+    b.querySelector('.sf-bub-x').onclick = function (e) { e.stopPropagation(); cancelCompose(); };
+
+    var ta = create('textarea', { class: 'sf-input', placeholder: 'Add a comment…', rows: '2' });
+    var row = create('div', { class: 'sf-compose-foot' });
+    var save = create('button', { class: 'sf-primary', type: 'button' }, 'Comment');
+    function submit() {
+      if (!ta.value.trim()) return;
+      postJSON(API, { anchor: anchor, body: ta.value.trim(), author: 'human' })
+        .then(function (r) {
+          if (!r.ok) return flash('Could not add the comment.');
+          state.composeEl = null;
+          load();
+        }).catch(function () { flash('Could not add the comment.'); });
+    }
+    save.onclick = function (e) { e.stopPropagation(); submit(); };
+    row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to comment'));
+    row.appendChild(save);
+    b.appendChild(ta); b.appendChild(row);
+    wireInput(ta, submit);
+    setTimeout(function () { try { ta.focus(); } catch (e) {} }, 0);
+    return b;
+  }
+  function openRailCompose(el) {
+    state.active = null;      // a composer and an expanded thread are exclusive
+    state.composeEl = el;
+    ensureAnchorVisible(el);
+    render();
+  }
+  function cancelCompose() {
+    if (!state.composeEl) return;
+    state.composeEl = null;
+    render();
   }
 
   // Collapsed bubble: who started the thread, a one-line snippet, and the reply
@@ -1223,38 +1288,6 @@
     });
   }
 
-  function openCompose(block) {
-    hideCompose();
-    var anchor = { block: blockAnchor(block) };
-    var rect = block.getBoundingClientRect();
-    var box = create('div', { id: 'sf-compose' });
-    box.style.top = Math.max(8, Math.min(rect.top, window.innerHeight - 220)) + 'px';
-    box.innerHTML = '<div class="q">' + esc(anchor.block.text.slice(0, 160)) + '</div>';
-    var ta = create('textarea', { class: 'sf-input', placeholder: 'Add a comment…', rows: '2' });
-    var row = create('div', { class: 'sf-compose-foot' });
-    var save = create('button', { class: 'sf-primary' }, 'Comment');
-    var cancel = create('button', { class: 'sf-ghost' }, 'Cancel');
-    function submit() {
-      if (!ta.value.trim()) return;
-      postJSON(API, { anchor: anchor, body: ta.value.trim(), author: 'human' })
-        .then(function () { hideCompose(); setSidebar(true); load(); });
-    }
-    save.onclick = submit;
-    cancel.onclick = hideCompose;
-    row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to comment'));
-    row.appendChild(cancel); row.appendChild(save);
-    box.appendChild(ta); box.appendChild(row);
-    document.body.appendChild(box);
-    els.compose = box;
-    clearHover();
-    block.classList.add('sf-block-mark', 'sf-active');
-    wireInput(ta, submit);
-    ta.focus();
-  }
-  function hideCompose() {
-    if (els.compose) { els.compose.remove(); els.compose = null; }
-    renderHighlights();
-  }
 
   function submitBatch() {
     postJSON(API + '/submit', {}).then(function (r) {
