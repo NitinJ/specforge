@@ -908,6 +908,40 @@ test('the off-screen chips disappear when every thread is in view', async (t) =>
   assert.ok(!window.document.querySelector('#sf-rail .sf-rail-below'), 'no below chip');
 });
 
+// ---------- rail visibility: drawer + narrow-window fallback ----------
+const oneThread = () => [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'a' }],
+  anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+
+test('the rail hides while the drawer is open and returns when it closes', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: oneThread(), innerWidth: 1600 });
+  const { document } = window;
+  const rail = document.getElementById('sf-rail');
+  assert.ok(!rail.hasAttribute('hidden'), 'rail shows by default on a wide window');
+  document.getElementById('sf-launcher').click();
+  rowByLabel(document, 'Comments').click();          // open the drawer
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(rail.hasAttribute('hidden'), 'rail yields the right gutter to the drawer');
+  document.querySelector('.sf-side-close').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(!rail.hasAttribute('hidden'), 'rail returns when the drawer closes');
+});
+
+test('the rail hides on a window too narrow to hold it beside the content', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: oneThread(), innerWidth: 700 });
+  assert.ok(window.document.getElementById('sf-rail').hasAttribute('hidden'),
+    'below the threshold the drawer is the fallback');
+});
+
+test('the rail reappears when a narrow window is widened', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: oneThread(), innerWidth: 700 });
+  const rail = window.document.getElementById('sf-rail');
+  assert.ok(rail.hasAttribute('hidden'), 'hidden while narrow');
+  Object.defineProperty(window, 'innerWidth', { value: 1600, configurable: true });
+  window.dispatchEvent(new window.Event('resize'));
+  await new Promise((r) => window.setTimeout(r, 20));
+  assert.ok(!rail.hasAttribute('hidden'), 'shows again once there is room');
+});
+
 // ---------- multiple threads per block ----------
 // A block is no longer limited to one thread: clicking an already-commented
 // block starts a NEW thread rather than replying to the existing one. Existing

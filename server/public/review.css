@@ -508,6 +508,10 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
   pointer-events: none;
   font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
+/* Explicit, so the rule above can never outrank the UA's [hidden] rule: the rail
+   yields to the drawer (shared right gutter) and to narrow windows, where
+   SF → Comments is the way to read threads. */
+#sf-rail[hidden] { display: none; }
 .sf-bub {
   position: absolute; left: 0; right: 0; pointer-events: auto;
   display: flex; align-items: center; gap: 8px; text-align: left;

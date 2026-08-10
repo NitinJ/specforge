@@ -394,6 +394,7 @@
   function setSidebar(open) {
     els.sidebar.classList.toggle('open', open);
     document.body.classList.toggle('sf-side-open', open);
+    syncRailVisibility(); // the drawer and the rail share the right gutter
   }
   function toggleSidebar() { setSidebar(!els.sidebar.classList.contains('open')); }
 
@@ -940,6 +941,10 @@
   // MEASURED every pass from live layout and never stored, so the rail stays
   // correct as the page scrolls, resizes or reflows.
   var RAIL_GAP = 8;
+  // Below this the rail can't sit beside the centred content without crowding
+  // it, so the drawer (SF → Comments) becomes the way to read threads — the same
+  // idea as the floating TOC auto-collapsing on narrow windows.
+  var RAIL_MIN_W = 1100;
 
   /**
    * PURE layout pass — the whole positioning rule, isolated from the DOM so it
@@ -1031,8 +1036,23 @@
     });
   }
 
+  // The rail and the drawer share the right gutter, so only one shows at a time;
+  // and on a narrow window there is no gutter to spare, so the drawer is the
+  // fallback. `hidden` (rather than a CSS-only rule) keeps the state inspectable
+  // and lets the layout pass skip work while the rail is off.
+  function railShouldShow() {
+    if (els.sidebar && els.sidebar.classList.contains('open')) return false;
+    return (window.innerWidth || 0) >= RAIL_MIN_W;
+  }
+  function syncRailVisibility() {
+    if (!els.rail) return;
+    if (railShouldShow()) els.rail.removeAttribute('hidden');
+    else els.rail.setAttribute('hidden', '');
+  }
+
   function renderRail() {
     if (!els.rail) return;
+    syncRailVisibility();
     els.rail.innerHTML = '';
     var entries = railThreads();
     // The composer is a focused entry in the rail, ordered with the threads so
@@ -1206,6 +1226,8 @@
 
   function positionRail() {
     if (!els.rail) return;
+    syncRailVisibility();
+    if (els.rail.hasAttribute('hidden')) return; // nothing to measure while off
     var bubs = Array.prototype.filter.call(els.rail.children, function (b) {
       return b.classList.contains('sf-bub');
     });
