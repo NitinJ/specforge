@@ -484,19 +484,30 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
   -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
   backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
   border: none; border-bottom: 1px solid var(--sf-hairline); color: var(--sf-ink);
-  padding: 0 18px; cursor: pointer; width: 100%;
+  padding: 0 14px 0 18px; gap: 12px; width: 100%;
   box-shadow: var(--sf-shadow-1);
   font: 650 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  transition: color var(--sf-dur-fast) var(--sf-ease);
 }
 #sf-titlebar.show { display: flex; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   #sf-titlebar { background: var(--sf-panel); }
 }
-#sf-titlebar:hover { color: var(--sf-accent); }
-#sf-titlebar:focus-visible { outline: none; box-shadow: var(--sf-ring), var(--sf-shadow-1); }
-/* min-width:0 lets the flex child shrink so ellipsis engages on long titles */
+/* The title doubles as back-to-top. min-width:0 lets it shrink so the ellipsis
+   engages on a long title instead of squeezing the CTA off the end. */
+.sf-tb-home {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; text-align: left;
+  background: none; border: none; padding: 0; cursor: pointer; color: inherit; font: inherit;
+  transition: color var(--sf-dur-fast) var(--sf-ease);
+}
+.sf-tb-home:hover { color: var(--sf-accent); }
+.sf-tb-home:focus-visible { outline: none; box-shadow: var(--sf-ring); border-radius: var(--sf-r-xs); }
 .sf-tb-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The lifecycle CTA, compact for the header. Its state colors come from the
+   shared .sf-act[data-state] rules, so it tracks the drawer's button for free. */
+.sf-tb-act {
+  flex: 0 0 auto; width: auto; display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; font-size: 12px; white-space: nowrap;
+}
 
 /* Everything that shared the top edge moves below the header. The attribute is
    set by review.js only when there is a title to show, so the offset and the

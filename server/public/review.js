@@ -355,10 +355,22 @@
   // top. The label refreshes from render() so the fallback fills in once meta
   // loads. Its own font so the reading-font override can't bleed in.
   function buildTitleBar() {
-    els.titlebar = create('button', { id: 'sf-titlebar', type: 'button', title: 'Back to top' });
+    // A container, not a button: it also carries the lifecycle CTA, and nesting
+    // a button inside a button is invalid. The title itself is the button.
+    els.titlebar = create('div', { id: 'sf-titlebar' });
+    var home = create('button', { class: 'sf-tb-home', type: 'button', title: 'Back to top' });
     els.titlebarLabel = create('span', { class: 'sf-tb-title' });
-    els.titlebar.appendChild(els.titlebarLabel);
-    els.titlebar.onclick = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    home.appendChild(els.titlebarLabel);
+    home.onclick = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    els.titlebar.appendChild(home);
+    // The review CTA, mirroring the drawer's command bar — where the loop has
+    // got to (Submit comments / Working on comments / Review replies / LGTM /
+    // Implement) is the one thing you shouldn't have to open a drawer to see.
+    // It shares actionState()/applyAction() with the footer, so the two
+    // surfaces cannot drift.
+    els.headAction = create('button', { class: 'sf-act sf-tb-act', type: 'button' });
+    els.headAction.onclick = onAction;
+    els.titlebar.appendChild(els.headAction);
     document.body.appendChild(els.titlebar);
     syncTitle();
   }
@@ -428,6 +440,7 @@
   function renderAction() {
     var s = actionState();
     applyAction(els.footAction, s);
+    applyAction(els.headAction, s);
     if (els.footCaption) {
       var p = pendingCount();
       els.footCaption.textContent = (s.state === 'needs' && p > 0)
