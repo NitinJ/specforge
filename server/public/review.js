@@ -1263,33 +1263,41 @@
       return b.classList.contains('sf-bub');
     });
     if (!bubs.length) { renderOffscreenChips(0, 0); return; }
-    // Anchor rects are viewport-relative but bubbles are positioned inside the
-    // rail, which starts below the fixed header — so measure in the rail's own
-    // coordinate space or every bubble would sit one header lower than its
-    // anchor. (No layout, e.g. jsdom, reads 0 and this is a no-op.)
-    var railTop = els.rail.getBoundingClientRect().top || 0;
+    var vp = railViewport();
     var items = bubs.map(function (b) {
       return {
-        top: (b._anchor ? b._anchor.getBoundingClientRect().top : 0) - railTop,
+        top: (b._anchor ? b._anchor.getBoundingClientRect().top : 0) - vp.top,
         h: b.offsetHeight,
       };
     });
     var focusIdx = -1;
     bubs.forEach(function (b, i) { if (b.getAttribute('data-focus') === '1') focusIdx = i; });
     var tops = railLayout(items, focusIdx, RAIL_GAP);
-    // The rail's own visible height — item tops are rail-relative, so comparing
-    // them against the full viewport height would under-count what's below.
-    var h = (window.innerHeight || 0) - railTop;
     var above = 0, below = 0;
     tops.forEach(function (top, i) {
       bubs[i].style.top = top + 'px';
       // Count what the reader can't see, measured on the ANCHOR (the bubble is
       // clamped, the anchor is the truth about where the comment lives).
-      var a = items[i].top;
-      if (a < 0) above++;
-      else if (h && a > h) below++;
+      if (offscreenDir(items[i].top, vp) === 'above') above++;
+      else if (offscreenDir(items[i].top, vp) === 'below') below++;
     });
     renderOffscreenChips(above, below);
+  }
+
+  // Bubbles live INSIDE the rail, which starts below the fixed header, so every
+  // vertical question about them is asked in the rail's coordinate space — not
+  // the viewport's. Counting and navigation both read this, so they cannot
+  // drift apart and produce a chip that counts a thread it can't reach.
+  // (Without layout, e.g. jsdom, top reads 0 and this is the viewport.)
+  function railViewport() {
+    var top = els.rail ? (els.rail.getBoundingClientRect().top || 0) : 0;
+    return { top: top, height: (window.innerHeight || 0) - top };
+  }
+  /** @returns {'above'|'below'|null} where a rail-relative top sits, if off-screen */
+  function offscreenDir(railTop, vp) {
+    if (railTop < 0) return 'above';
+    if (vp.height && railTop > vp.height) return 'below';
+    return null;
   }
 
   // "N above / N below" — without these, a comment on scrolled-past content is
@@ -1304,15 +1312,16 @@
     var c = create('button', { class: 'sf-rail-chip sf-rail-' + dir, type: 'button' }, label);
     c.onclick = function (e) {
       e.stopPropagation();
-      // Navigate over exactly what the chips COUNT — the rail's own cards — so
-      // an off-screen composer is reachable too. Counting from one set and
-      // navigating over another would strand whatever only the counter knows.
+      // Navigate over exactly what the chips COUNT — the rail's own cards, in
+      // the rail's coordinate space. Counting from one set (or one coordinate
+      // space) and navigating in another strands whatever only the counter
+      // knows about, e.g. an anchor hidden behind the fixed header.
+      var vp = railViewport();
       var best = null, bestTop = 0;
       Array.prototype.forEach.call(els.rail.children, function (b) {
         if (!b._anchor) return; // the chips themselves
-        var top = b._anchor.getBoundingClientRect().top;
-        var out = dir === 'above' ? top < 0 : top > (window.innerHeight || 0);
-        if (!out) return;
+        var top = b._anchor.getBoundingClientRect().top - vp.top;
+        if (offscreenDir(top, vp) !== dir) return;
         if (!best || Math.abs(top) < Math.abs(bestTop)) { best = b._anchor; bestTop = top; }
       });
       if (best && best.scrollIntoView) best.scrollIntoView({ behavior: 'smooth', block: 'center' });

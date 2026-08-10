@@ -910,6 +910,29 @@ test('a chip counts open threads anchored above and below the viewport', async (
   assert.ok(below && /1/.test(below.textContent), 'counts the one below the fold');
 });
 
+test('an anchor hidden behind the fixed header is both counted and reachable', async (t) => {
+  // The rail starts below the header, so its coordinate space is offset. An
+  // anchor at viewport-top 20 is *visible* by viewport maths but sits behind a
+  // 46px header — counting and navigation must agree that it is "above".
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'under the header' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  stubGeometry(window, { 'p.a': 20 }, 40);
+  document.getElementById('sf-rail').getBoundingClientRect = () => ({
+    top: 46, bottom: 800, left: 0, right: 272, width: 272, height: 754,
+  });
+  await settleRail(window);
+
+  const chip = document.querySelector('#sf-rail .sf-rail-above');
+  assert.ok(chip, 'counted as above — it is behind the header, not visible');
+  let scrolled = 0;
+  document.querySelector('p.a').scrollIntoView = () => { scrolled++; };
+  chip.click();
+  assert.equal(scrolled, 1, 'and the chip actually reaches it — same coordinate space both ways');
+});
+
 test('the off-screen chips disappear when every thread is in view', async (t) => {
   const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
     anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
