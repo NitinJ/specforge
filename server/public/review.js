@@ -328,7 +328,9 @@
 
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { clearHover(); hideCompose(); closeMenu(); } });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { clearHover(); hideCompose(); closeMenu(); collapseThread(); }
+    });
   }
 
   // Floating "↑ Top" button (top-right) — smooth-scrolls to the top of the spec.
@@ -743,11 +745,26 @@
     var el = blockAt(e.target);
     if (el === hoverEl) return;
     clearHover();
-    if (el) { el.classList.add('sf-hover'); hoverEl = el; }
+    // Hovering a block lights up every bubble anchored to it — the other half of
+    // the reciprocal bond wired in wireBubbleHover().
+    if (el) { el.classList.add('sf-hover'); hoverEl = el; markBubbleFocus(el, true); }
   }
-  function clearHover() { if (hoverEl) { hoverEl.classList.remove('sf-hover'); hoverEl = null; } }
+  function clearHover() {
+    if (!hoverEl) return;
+    hoverEl.classList.remove('sf-hover');
+    markBubbleFocus(hoverEl, false);
+    hoverEl = null;
+  }
 
   function onClick(e) {
+    // Dismissal is decided HERE, in the capture phase, before any handler can
+    // re-render and detach e.target — an ancestor test on a detached node would
+    // miss the chrome it came from and collapse the thread the user just opened.
+    // Clicking anywhere that isn't a thread card or review chrome collapses the
+    // open thread: the same outcome as its × button.
+    if (state.active && !(e.target.closest && e.target.closest('.sf-bub')) && !inUI(e.target)) {
+      collapseThread();
+    }
     if (inUI(e.target) || (e.target.closest && e.target.closest(INTERACTIVE))) return;
     var sel = window.getSelection && window.getSelection();
     if (sel && !sel.isCollapsed) return; // a real text selection — leave it alone
@@ -990,7 +1007,12 @@
       if (el) out.push({ t: t, el: el, seq: state.threads.indexOf(t) });
     });
     return out.sort(function (a, b) {
-      if (a.el === b.el) return a.seq - b.seq;
+      // Within one block the EXPANDED thread sorts first, so its siblings are
+      // the ones pushed down and it keeps the anchor line for itself.
+      if (a.el === b.el) {
+        var af = a.t.id === state.active ? 0 : 1, bf = b.t.id === state.active ? 0 : 1;
+        return (af - bf) || (a.seq - b.seq);
+      }
       var rel = a.el.compareDocumentPosition(b.el);
       if (rel & 4) return -1;  // DOCUMENT_POSITION_FOLLOWING — b comes after a
       if (rel & 2) return 1;   // DOCUMENT_POSITION_PRECEDING
@@ -1001,7 +1023,9 @@
   function renderRail() {
     if (!els.rail) return;
     els.rail.innerHTML = '';
-    railThreads().forEach(function (r) { els.rail.appendChild(bubble(r.t, r.el)); });
+    railThreads().forEach(function (r) {
+      els.rail.appendChild(r.t.id === state.active ? openBubble(r.t, r.el) : bubble(r.t, r.el));
+    });
     positionRail();
   }
 
@@ -1015,29 +1039,137 @@
     b.innerHTML = '<span class="sf-bub-who' + (claude ? ' claude' : '') + '">' + (claude ? 'C' : 'H') + '</span>' +
       '<span class="sf-bub-snip">' + esc(norm(first.body || '')) + '</span>' +
       (t.comments.length > 1 ? '<span class="sf-bub-n">' + (t.comments.length - 1) + '</span>' : '');
-    // Activating from the rail: mark the thread active (accent-binding its block)
-    // and bring the conversation up to read/reply. Expanding the thread inside the
-    // bubble itself replaces this in the next stage.
-    b.onclick = function (e) {
-      e.stopPropagation();
-      setSidebar(true);
-      activate(t.id, true);
-    };
+    b.onclick = function (e) { e.stopPropagation(); expandThread(t.id, el); };
+    wireBubbleHover(b, el);
     return b;
+  }
+
+  // The expanded thread — the whole conversation, in place in the rail. Not a
+  // <button> (it holds a textarea and its own buttons); the header carries the
+  // close control so it stays keyboard-reachable.
+  function openBubble(t, el) {
+    var b = create('div', { class: 'sf-bub sf-bub-open', 'data-tid': t.id, 'data-focus': '1' });
+    b._anchor = el;
+    b.innerHTML = '<div class="sf-bub-head"><span class="sf-bub-who' +
+      (t.comments[0] && t.comments[0].author === 'claude' ? ' claude' : '') + '">' +
+      (t.comments[0] && t.comments[0].author === 'claude' ? 'C' : 'H') + '</span>' +
+      '<span class="sf-badge ' + esc(t.state) + '">' + esc(t.state) + '</span>' +
+      '<button class="sf-bub-x" type="button" aria-label="Collapse thread">×</button></div>' +
+      t.comments.map(function (c) {
+        return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
+          (c.author === 'claude' ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
+          '<div class="body">' + fmtBody(c.body) + '</div></div>';
+      }).join('');
+    b.onclick = function (e) { e.stopPropagation(); }; // using the card must not dismiss it
+    b.querySelector('.sf-bub-x').onclick = function (e) { e.stopPropagation(); collapseThread(); };
+
+    var ta = create('textarea', { class: 'sf-input', placeholder: 'Reply…', rows: '2' });
+    var row = create('div', { class: 'sf-compose-foot' });
+    var send = create('button', { class: 'sf-primary', type: 'button' }, 'Reply');
+    function submit() {
+      if (!ta.value.trim()) return;
+      postJSON(API + '/' + t.id + '/reply', { body: ta.value.trim(), author: 'human' }).then(load);
+    }
+    send.onclick = function (e) { e.stopPropagation(); submit(); };
+    var res = create('button', { class: 'sf-bub-resolve', type: 'button' }, 'Resolve');
+    res.onclick = function (e) {
+      e.stopPropagation();
+      postJSON(API + '/' + t.id + '/resolve').then(function () { state.active = null; load(); });
+    };
+    row.appendChild(res); row.appendChild(send);
+    b.appendChild(ta); b.appendChild(row);
+    wireInput(ta, submit);
+    wireBubbleHover(b, el);
+    return b;
+  }
+
+  // Reciprocal focus: a bubble lights up the block it annotates, and hovering a
+  // block lights up every bubble anchored to it (see onHover).
+  function wireBubbleHover(b, el) {
+    b.onmouseenter = function () {
+      if (el) el.classList.add('sf-hover');
+      markBubbleFocus(el, true);
+    };
+    b.onmouseleave = function () {
+      if (el) el.classList.remove('sf-hover');
+      markBubbleFocus(el, false);
+    };
+  }
+  function markBubbleFocus(el, on) {
+    if (!els.rail || !el) return;
+    Array.prototype.forEach.call(els.rail.children, function (b) {
+      if (b._anchor === el) b.classList.toggle('sf-bub-focus', !!on);
+    });
+  }
+
+  function expandThread(id, el) {
+    state.active = id;
+    if (el) ensureAnchorVisible(el);
+    render();
+  }
+  function collapseThread() {
+    if (!state.active) return;
+    state.active = null;
+    render();
+  }
+  // A focused thread is pinned to EXACTLY its anchor, so if that anchor has
+  // scrolled out of view the card would land off-screen. Bring the anchor back
+  // into view first — the automatic-scrolling half of the anchor/card bond.
+  function ensureAnchorVisible(el) {
+    var r = el.getBoundingClientRect();
+    var h = window.innerHeight || 0;
+    if (!h || !el.scrollIntoView) return;
+    if (r.top < 8 || r.top > h - 80) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function positionRail() {
     if (!els.rail) return;
-    var bubs = Array.prototype.slice.call(els.rail.children);
-    if (!bubs.length) return;
+    var bubs = Array.prototype.filter.call(els.rail.children, function (b) {
+      return b.classList.contains('sf-bub');
+    });
+    if (!bubs.length) { renderOffscreenChips(0, 0); return; }
     var items = bubs.map(function (b) {
       return { top: b._anchor ? b._anchor.getBoundingClientRect().top : 0, h: b.offsetHeight };
     });
     var focusIdx = -1;
     bubs.forEach(function (b, i) { if (b.getAttribute('data-focus') === '1') focusIdx = i; });
-    railLayout(items, focusIdx, RAIL_GAP).forEach(function (top, i) {
+    var tops = railLayout(items, focusIdx, RAIL_GAP);
+    var h = window.innerHeight || 0;
+    var above = 0, below = 0;
+    tops.forEach(function (top, i) {
       bubs[i].style.top = top + 'px';
+      // Count what the reader can't see, measured on the ANCHOR (the bubble is
+      // clamped, the anchor is the truth about where the comment lives).
+      var a = items[i].top;
+      if (a < 0) above++;
+      else if (h && a > h) below++;
     });
+    renderOffscreenChips(above, below);
+  }
+
+  // "N above / N below" — without these, a comment on scrolled-past content is
+  // simply invisible. Clicking jumps to the nearest one in that direction.
+  function renderOffscreenChips(above, below) {
+    if (!els.rail) return;
+    Array.prototype.forEach.call(els.rail.querySelectorAll('.sf-rail-chip'), function (c) { c.remove(); });
+    if (above) els.rail.appendChild(chip('above', '↑ ' + above + ' above'));
+    if (below) els.rail.appendChild(chip('below', '↓ ' + below + ' below'));
+  }
+  function chip(dir, label) {
+    var c = create('button', { class: 'sf-rail-chip sf-rail-' + dir, type: 'button' }, label);
+    c.onclick = function (e) {
+      e.stopPropagation();
+      var best = null;
+      railThreads().forEach(function (r) {
+        var top = r.el.getBoundingClientRect().top;
+        var out = dir === 'above' ? top < 0 : top > (window.innerHeight || 0);
+        if (!out) return;
+        // nearest in that direction
+        if (!best || Math.abs(top) < Math.abs(best.getBoundingClientRect().top)) best = r.el;
+      });
+      if (best && best.scrollIntoView) best.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    return c;
   }
 
   function pendingCount() {
@@ -1129,7 +1261,7 @@
     // every later thread on a shared block.
     var t = state.threads.filter(function (x) { return x.id === id; })[0];
     var el = t ? findBlock(t.anchor) : null;
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   // ---------- utils ----------
