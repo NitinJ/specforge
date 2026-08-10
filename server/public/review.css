@@ -237,8 +237,15 @@
 .sf-disconnected .sf-dc-reload:hover { filter: brightness(1.06); }
 
 /* block-level highlights in the document */
-.sf-hover { outline: 2px solid color-mix(in srgb, var(--sf-accent) 50%, transparent); outline-offset: 3px; border-radius: 3px; cursor: pointer; }
 .sf-block-mark { outline: 2px solid color-mix(in srgb, var(--sf-amber) 60%, transparent); outline-offset: 3px; border-radius: 3px; cursor: pointer; background: color-mix(in srgb, var(--sf-amber) 9%, transparent); }
+/* Hover binds a block to its bubbles in BOTH directions, and has to read as a
+   real highlight — not just an outline. `.sf-block-mark.sf-hover` is spelled out
+   because a commented block already carries .sf-block-mark: at equal specificity
+   the later rule wins, so hovering a commented block used to show no change. */
+.sf-hover, .sf-block-mark.sf-hover {
+  outline: 2px solid var(--sf-accent); outline-offset: 3px; border-radius: 3px; cursor: pointer;
+  background: color-mix(in srgb, var(--sf-accent) 14%, transparent);
+}
 .sf-block-mark.sf-active { outline-color: var(--sf-accent); background: color-mix(in srgb, var(--sf-accent) 12%, transparent); }
 .sf-loc { color: var(--sf-muted); font-size: 11px; }
 .sf-quote { font-size: 12px; color: var(--sf-muted); border-left: 2px solid var(--sf-amber); padding-left: 8px; margin: 4px 0 8px; max-height: 54px; overflow: auto; }
@@ -534,9 +541,12 @@ html[data-sf-header] #sf-tocbtn { top: calc(50% + var(--sf-header-h) / 2); }
   .sf-bub { background: var(--sf-panel); }
 }
 @media (prefers-reduced-motion: reduce) { .sf-bub { transition: none; } }
+/* The bubble half of the same pair: hovering either the bubble or its block
+   lights both. An inset accent rail makes it obvious at a glance which bubble
+   belongs to the block under the pointer. */
 .sf-bub:hover, .sf-bub.sf-bub-focus {
-  border-color: color-mix(in srgb, var(--sf-accent) 55%, var(--sf-hairline));
-  box-shadow: var(--sf-shadow-2);
+  border-color: var(--sf-accent);
+  box-shadow: inset 3px 0 0 var(--sf-accent), var(--sf-shadow-2);
 }
 .sf-bub:focus-visible { outline: none; box-shadow: var(--sf-ring), var(--sf-shadow-1); }
 .sf-bub-who {
@@ -556,6 +566,10 @@ html[data-sf-header] #sf-tocbtn { top: calc(50% + var(--sf-header-h) / 2); }
 .sf-bub-open {
   display: block; cursor: default; padding: 10px 12px;
   border-color: var(--sf-accent); box-shadow: var(--sf-shadow-3), var(--sf-inner-hi); z-index: 2;
+  /* The layout pass lifts a card that would overflow the bottom, but a thread
+     longer than the whole page can't be lifted into view — cap it here and let
+     it scroll inside itself, so "the thread fits on screen" always holds. */
+  max-height: calc(100% - 16px); overflow-y: auto; overscroll-behavior: contain;
 }
 .sf-bub-open:hover { box-shadow: var(--sf-shadow-3), var(--sf-inner-hi); }
 .sf-bub-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }

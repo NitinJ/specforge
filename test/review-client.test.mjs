@@ -654,6 +654,42 @@ test('the expanded thread pins to its anchor exactly and pushes its sibling down
     'its same-block sibling is pushed below it, not the other way round');
 });
 
+test('an expanded thread that would overflow the bottom is lifted so it fits', async (t) => {
+  // Anchor near the bottom with a tall card: pinning it to the anchor would run
+  // the thread off the page and force a scroll to read it.
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  stubGeometry(window, { 'p.a': 700 }, 300);       // 700 + 300 = 1000, past the fold
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 20));
+  // 800 (viewport) - 300 (card) - 8 (edge) = 492
+  assert.equal(parseFloat(document.querySelector('.sf-bub-open').style.top), 492,
+    'lifted just enough to sit fully on screen');
+});
+
+test('a thread taller than the page stops at the top edge rather than above it', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  stubGeometry(window, { 'p.a': 700 }, 900);       // taller than the viewport itself
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 20));
+  assert.equal(parseFloat(document.querySelector('.sf-bub-open').style.top), 8,
+    'clamped to the top margin — never lifted off the top of the page');
+});
+
+test('an expanded thread that already fits is left pinned to its anchor', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  stubGeometry(window, { 'p.a': 200 }, 120);       // 200 + 120 = 320, comfortably inside
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 20));
+  assert.equal(parseFloat(document.querySelector('.sf-bub-open').style.top), 200,
+    'no lift when there is room — the exact anchor pin still wins');
+});
+
 test('the expanded thread accent-binds its block', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
   const { document } = window;
@@ -736,6 +772,25 @@ test('moving the pointer inside a hovered bubble keeps its block highlighted', a
   mouse(window, bub, 'mousemove');
   await new Promise((r) => window.setTimeout(r, 0));
   assert.ok(block.classList.contains('sf-hover'), 'still highlighted — no flicker while the bubble is hovered');
+});
+
+test('the hover pairing survives a rail rebuild', async (t) => {
+  // Rebuilding the rail throws away the focused bubbles, but hoverEl still
+  // points at the same block — so onHover's "same element" short-circuit would
+  // never restore the pairing. Commenting on the block you are hovering is the
+  // everyday way to hit this.
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  const block = document.querySelector('p.a');
+  mouse(window, block, 'mousemove');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(document.querySelectorAll('#sf-rail .sf-bub.sf-bub-focus').length, 2, 'paired on hover');
+
+  mouse(window, block, 'click');            // opens a composer → rebuilds the rail
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(block.classList.contains('sf-hover'), 'still the hovered block');
+  assert.equal(document.querySelectorAll('#sf-rail .sf-bub.sf-bub-focus').length, 3,
+    'its bubbles (and the new composer) are still paired with it after the rebuild');
 });
 
 test('entering a bubble clears the highlight left on a different block', async (t) => {
