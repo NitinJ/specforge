@@ -369,28 +369,41 @@ test('a claude (agent) comment has no Edit control', async (t) => {
   assert.ok(!c2.querySelector('.sf-edit-c'), 'claude comments are not editable');
 });
 
-// ---------- floating spec title (appears on scroll) ----------
-test('a floating title bar mirrors the spec h1 and is hidden at the top', async (t) => {
+// ---------- spec header (full-width, always on top) ----------
+test('the spec title renders as a header that is visible without scrolling', async (t) => {
   const { window } = await bootReviewLayer(t);
-  const bar = window.document.getElementById('sf-titlebar');
-  assert.ok(bar, 'the floating title bar is built');
+  const { document } = window;
+  const bar = document.getElementById('sf-titlebar');
+  assert.ok(bar, 'the header is built');
   assert.equal(bar.tagName, 'BUTTON', 'it is a native button (focusable, keyboard-activatable)');
   assert.equal(bar.querySelector('.sf-tb-title').textContent, 'Test Spec', 'it shows the spec h1');
-  assert.ok(!bar.classList.contains('show'), 'hidden while the real title is still in view');
+  assert.ok(bar.classList.contains('show'), 'visible immediately — it no longer waits for a scroll');
+  assert.ok(document.documentElement.hasAttribute('data-sf-header'),
+    'the document is flagged so the page offsets beneath the fixed header');
 });
 
-test('the floating title appears after scrolling past the title and hides back at the top', async (t) => {
+test('the header stays put while scrolling', async (t) => {
   const { window } = await bootReviewLayer(t);
   const bar = window.document.getElementById('sf-titlebar');
-  Object.defineProperty(window, 'scrollY', { configurable: true, get: () => 500 });
+  Object.defineProperty(window, 'scrollY', { configurable: true, get: () => 900 });
   window.dispatchEvent(new window.Event('scroll'));
-  assert.ok(bar.classList.contains('show'), 'shows once scrolled down past the title');
+  assert.ok(bar.classList.contains('show'), 'still there deep in the document');
   Object.defineProperty(window, 'scrollY', { configurable: true, get: () => 0 });
   window.dispatchEvent(new window.Event('scroll'));
-  assert.ok(!bar.classList.contains('show'), 'hides again at the top');
+  assert.ok(bar.classList.contains('show'), 'and back at the top — always on top, never fading out');
 });
 
-test('clicking the floating title scrolls back to the top', async (t) => {
+test('a spec with no title at all gets no header and no offset', async (t) => {
+  const body = `<main><p>No heading here.</p></main><div id="sf-live">● live</div>`;
+  const meta = { id: 'test-spec', title: '', status: 'draft', attachedSession: null };
+  const { window } = await bootReviewLayer(t, { body, meta });
+  const { document } = window;
+  assert.ok(!document.getElementById('sf-titlebar').classList.contains('show'), 'no header shown');
+  assert.ok(!document.documentElement.hasAttribute('data-sf-header'),
+    'and the page is not offset for a header that is not there');
+});
+
+test('clicking the header scrolls back to the top', async (t) => {
   const { window } = await bootReviewLayer(t);
   let scrolledTo = null;
   window.scrollTo = (o) => { scrolledTo = o; };
@@ -398,7 +411,7 @@ test('clicking the floating title scrolls back to the top', async (t) => {
   assert.ok(scrolledTo && scrolledTo.top === 0, 'clicking scrolls to top');
 });
 
-test('the floating title falls back to the stored spec title when there is no h1', async (t) => {
+test('the header falls back to the stored spec title when there is no h1', async (t) => {
   const body = `<main><p>No heading here.</p></main><div id="sf-live">● live</div>`;
   const meta = { id: 'test-spec', title: 'Stored Title', status: 'draft', attachedSession: null };
   const { window } = await bootReviewLayer(t, { body, meta });
