@@ -526,6 +526,10 @@ html[data-sf-header] #sf-tocbtn { top: calc(50% + var(--sf-header-h) / 2); }
 #sf-rail[hidden] { display: none; }
 .sf-bub {
   position: absolute; left: 0; right: 0; pointer-events: auto;
+  /* border-box so the expanded card's max-height caps its RENDERED height —
+     against the content box, its padding and border would add ~22px outside the
+     cap and hang past the bottom of the page. */
+  box-sizing: border-box;
   display: flex; align-items: center; gap: 8px; text-align: left;
   background: var(--sf-glass);
   -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
