@@ -375,7 +375,10 @@ test('the spec title renders as a header that is visible without scrolling', asy
   const { document } = window;
   const bar = document.getElementById('sf-titlebar');
   assert.ok(bar, 'the header is built');
-  assert.equal(bar.tagName, 'BUTTON', 'it is a native button (focusable, keyboard-activatable)');
+  // It holds the CTA as well now, so it is a container — the title itself is
+  // the native button (nesting a button inside a button would be invalid).
+  assert.equal(bar.querySelector('button.sf-tb-home').tagName, 'BUTTON',
+    'the title is a native button (focusable, keyboard-activatable)');
   assert.equal(bar.querySelector('.sf-tb-title').textContent, 'Test Spec', 'it shows the spec h1');
   assert.ok(bar.classList.contains('show'), 'visible immediately — it no longer waits for a scroll');
   assert.ok(document.documentElement.hasAttribute('data-sf-header'),
@@ -407,8 +410,8 @@ test('clicking the header scrolls back to the top', async (t) => {
   const { window } = await bootReviewLayer(t);
   let scrolledTo = null;
   window.scrollTo = (o) => { scrolledTo = o; };
-  window.document.getElementById('sf-titlebar').click();
-  assert.ok(scrolledTo && scrolledTo.top === 0, 'clicking scrolls to top');
+  window.document.querySelector('#sf-titlebar .sf-tb-home').click();
+  assert.ok(scrolledTo && scrolledTo.top === 0, 'clicking the title scrolls to top');
 });
 
 test('the header falls back to the stored spec title when there is no h1', async (t) => {
@@ -1255,6 +1258,36 @@ test('action button: an unsubmitted comment overrides approved status → "Submi
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'needs', 'open comment takes priority over approved');
   assert.match(btn.textContent, /Submit comments/);
+});
+
+// ---------- the same CTA, mirrored in the header ----------
+test('the header carries the review CTA, in step with the drawer', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  const { document } = window;
+  const head = document.querySelector('#sf-titlebar .sf-act');
+  const foot = document.querySelector('#sf-sidebar .sf-act');
+  assert.ok(head, 'the header shows the lifecycle action');
+  assert.equal(head.getAttribute('data-state'), foot.getAttribute('data-state'),
+    'same state as the drawer — one state machine, two surfaces');
+  assert.equal(head.textContent, foot.textContent, 'and the same label');
+  assert.match(head.textContent, /Submit comments/);
+});
+
+test('clicking the header CTA submits the batch', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  window.document.querySelector('#sf-titlebar .sf-act').click();
+  await tick(window);
+  assert.ok(posts.some((p) => /\/comments\/submit$/.test(p.url)), 'the header button is live, not decorative');
+});
+
+test('the header CTA reports the agent working, disabled and spinning', async (t) => {
+  const meta = { status: 'in_review', attachedSession: null, reviewProgress: 'working' };
+  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
+  const head = window.document.querySelector('#sf-titlebar .sf-act');
+  assert.equal(head.getAttribute('data-state'), 'reviewing');
+  assert.match(head.textContent, /Working on comments/);
+  assert.ok(head.disabled, 'nothing to do while the agent has it');
+  assert.ok(head.querySelector('.sf-spin'), 'and it shows the work is in flight');
 });
 
 test('action button: submitted but unresolved → "Awaiting response" (disabled, nothing to submit)', async (t) => {
