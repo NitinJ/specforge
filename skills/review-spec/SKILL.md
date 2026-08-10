@@ -75,14 +75,23 @@ Then, for each thread in the batch:
    node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>"
    ```
 
-   **Keep replies skimmable.** Lead with the outcome — what you changed and where
-   (name the section), not a narration of your process. **Most replies are 1–2
-   lines.** When one genuinely needs more (a tradeoff, a rejected alternative,
-   several distinct edits), break it into short paragraphs — **2–3 paragraphs
-   maximum**, never a wall of prose.
+   **Answer first, then justify.** If the comment asked a question, the first
+   sentence is the answer — not preamble, not a restatement of the question, not
+   what you were about to do. Reasoning follows only if it is actually needed.
 
-   Comment bodies render a **small markdown subset**, so format only when it earns
-   its keep — a wall of asterisks on a one-liner is worse than plain prose:
+   **Two paragraphs maximum.** Most replies are one or two lines: what you
+   changed and where (name the section). Verbosity in a comment is a defect, not
+   thoroughness. No flair, no throat-clearing, no summarising what the human just
+   said back at them.
+
+   **If it genuinely needs a longer explanation, it does not belong in a
+   comment.** Add a **Q&A** section to the spec (or append to the existing one)
+   carrying the human's question and your answer, then reply with the short
+   answer plus a pointer to that section. The spec is where long-form reasoning
+   lives and stays discoverable; comments are for resolving a thread.
+
+   Comment bodies render a **small markdown subset**. Use it to make the point
+   land faster, never to decorate:
    - `**bold**` for the one term that matters, `*italic*`, `` `code`/`§ids` `` inline.
    - `- ` / `1. ` lists (each on its own line) when you made **several** distinct
      edits — one bullet per edit beats a comma-spliced sentence.

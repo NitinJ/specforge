@@ -932,6 +932,7 @@
   // MEASURED every pass from live layout and never stored, so the rail stays
   // correct as the page scrolls, resizes or reflows.
   var RAIL_GAP = 8;
+  var RAIL_EDGE = 8;   // breathing room kept at the rail's top/bottom when lifting
   // Below this the rail can't sit beside the centred content without crowding
   // it, so the drawer (SF → Comments) becomes the way to read threads — the same
   // idea as the floating TOC auto-collapsing on narrow windows.
@@ -945,11 +946,16 @@
    * @returns {number[]} the top for each item, in the same order
    *
    * The focused item is pinned to EXACTLY its anchor — it must never be shoved
-   * off the block it is about. Items after it flow down from its bottom; items
-   * before it are pulled up only if they would collide. With no focus this is a
-   * plain downward clamp: never above your anchor, never overlapping the one above.
+   * off the block it is about — EXCEPT when the card would then run off the
+   * bottom of the page, which would force a scroll to read the thread you just
+   * opened. Then it is lifted just enough to fit, and never past the top edge.
+   * Items after it flow down from its bottom; items before it are pulled up only
+   * if they would collide. With no focus this is a plain downward clamp: never
+   * above your anchor, never overlapping the one above.
+   * @param {number} [viewportH] the rail's visible height; omit to skip the lift
+   * @param {number} [edge] margin kept at the top and bottom when lifting
    */
-  function railLayout(items, focusIdx, gap) {
+  function railLayout(items, focusIdx, gap, viewportH, edge) {
     var tops = new Array(items.length), y, i;
     if (!items.length) return tops;
     if (focusIdx == null || focusIdx < 0) {
@@ -960,7 +966,14 @@
       }
       return tops;
     }
-    tops[focusIdx] = items[focusIdx].top;
+    var focusTop = items[focusIdx].top;
+    if (viewportH) {
+      var m = edge || 0;
+      var maxTop = viewportH - items[focusIdx].h - m;
+      if (focusTop > maxTop) focusTop = maxTop;   // lift so the whole thread is readable
+      if (focusTop < m) focusTop = m;             // but never above the top of the page
+    }
+    tops[focusIdx] = focusTop;
     y = tops[focusIdx] + items[focusIdx].h + gap;
     for (i = focusIdx + 1; i < items.length; i++) {
       tops[i] = Math.max(items[i].top, y);
@@ -1072,6 +1085,12 @@
       if (r.compose) return els.rail.appendChild(composeBubble(r.el));
       els.rail.appendChild(r.t.id === state.active ? openBubble(r.t, r.el) : bubble(r.t, r.el));
     });
+    // The rail is rebuilt from scratch, so any hover pairing was just thrown
+    // away with the old nodes — while hoverEl still points at the same block, so
+    // onHover's "same element, nothing to do" short-circuit would never restore
+    // it. Re-apply it here, or commenting on the block you are hovering silently
+    // drops the pairing until you move the pointer away and back.
+    if (hoverEl) markBubbleFocus(hoverEl, true);
     positionRail();
   }
 
@@ -1272,7 +1291,7 @@
     });
     var focusIdx = -1;
     bubs.forEach(function (b, i) { if (b.getAttribute('data-focus') === '1') focusIdx = i; });
-    var tops = railLayout(items, focusIdx, RAIL_GAP);
+    var tops = railLayout(items, focusIdx, RAIL_GAP, vp.height, RAIL_EDGE);
     var above = 0, below = 0;
     tops.forEach(function (top, i) {
       bubs[i].style.top = top + 'px';
