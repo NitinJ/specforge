@@ -31,6 +31,16 @@ test('precision theatre is reported', () => {
   assert.ok(names(doc('<p>It keeps a handful of entries.</p>')).includes('precision theatre'));
 });
 
+// "most" is banned as a vague quantifier, not as a word. A checker that flags
+// the bounded form pushes authors to rewrite prose the contract asks for.
+test('bounded "at most" is not precision theatre', () => {
+  assert.deepEqual(checkLanguage(doc('<p>A tab holds at most one session.</p>')), []);
+  assert.deepEqual(checkLanguage(doc('<p>The queue retries at most 3 times.</p>')), []);
+  // ...but the vague quantifier still fires.
+  assert.ok(names(doc('<p>Most requests hit the cache.</p>')).includes('precision theatre'));
+  assert.ok(names(doc('<p>It drops most of the payload.</p>')).includes('precision theatre'));
+});
+
 test('unfalsifiable superlatives are reported', () => {
   assert.ok(names(doc('<p>This is the cheapest path.</p>')).includes('unfalsifiable superlative'));
   assert.ok(names(doc('<p>Blocks are the most leveraged unit.</p>')).includes('unfalsifiable superlative'));
