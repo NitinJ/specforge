@@ -14,6 +14,7 @@
   --sf-amber: var(--amber, #d29922);
   --sf-red: var(--red, #f85149);
   --sf-side-w: 340px;
+  --sf-header-h: 46px;   /* the fixed spec header; everything else offsets by it */
 
   /* --- structural layer (theme-independent) --- */
   /* on-accent / on-state text (used wherever a state color becomes a fill) */
@@ -460,43 +461,47 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
    top-right ↑ Top pill (and tucks under Top on a z tie). Own font so the reading
    font can't bleed in. Slides down from above; visibility flips at the tail so
    it's unreachable while hidden. */
+/* Spec header — a full-width bar pinned to the top of the viewport, always
+   present rather than fading in on scroll, so the spec's name is never out of
+   reach. Spans edge to edge above every other piece of chrome; the page and the
+   side rails are offset beneath it (html[data-sf-header] below) so nothing is
+   ever hidden under it. Clicking returns to the top. */
 #sf-titlebar {
-  position: fixed; top: 14px; left: 50%; transform: translate(-50%, -8px); z-index: 46;
-  max-width: min(60vw, 620px); box-sizing: border-box;
-  display: flex; align-items: center;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 46; height: var(--sf-header-h);
+  box-sizing: border-box; display: none; align-items: center; text-align: left;
   background: var(--sf-glass);
   -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
   backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
-  border: 1px solid var(--sf-hairline); color: var(--sf-ink);
-  border-radius: 999px; padding: 7px 16px; cursor: pointer;
+  border: none; border-bottom: 1px solid var(--sf-hairline); color: var(--sf-ink);
+  padding: 0 18px; cursor: pointer; width: 100%;
   box-shadow: var(--sf-shadow-1);
-  font: 600 12.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  opacity: 0; visibility: hidden; pointer-events: none;
-  transition: opacity var(--sf-dur-base) var(--sf-ease-out),
-              transform var(--sf-dur-base) var(--sf-ease-out),
-              border-color var(--sf-dur-fast) var(--sf-ease),
-              color var(--sf-dur-fast) var(--sf-ease),
-              visibility 0s linear var(--sf-dur-base);
+  font: 650 14px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  transition: color var(--sf-dur-fast) var(--sf-ease);
 }
-#sf-titlebar.show {
-  opacity: 1; transform: translate(-50%, 0); visibility: visible; pointer-events: auto;
-  transition: opacity var(--sf-dur-base) var(--sf-ease-out),
-              transform var(--sf-dur-base) var(--sf-ease-out),
-              border-color var(--sf-dur-fast) var(--sf-ease),
-              color var(--sf-dur-fast) var(--sf-ease),
-              visibility 0s linear 0s;
-}
+#sf-titlebar.show { display: flex; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   #sf-titlebar { background: var(--sf-panel); }
 }
-@media (prefers-reduced-motion: reduce) {
-  #sf-titlebar { transition: opacity var(--sf-dur-fast) linear, visibility 0s linear; }
-  #sf-titlebar, #sf-titlebar.show { transform: translate(-50%, 0); }
-}
-#sf-titlebar:hover { border-color: var(--sf-accent); color: var(--sf-accent); }
-#sf-titlebar:focus-visible { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
+#sf-titlebar:hover { color: var(--sf-accent); }
+#sf-titlebar:focus-visible { outline: none; box-shadow: var(--sf-ring), var(--sf-shadow-1); }
 /* min-width:0 lets the flex child shrink so ellipsis engages on long titles */
 .sf-tb-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Everything that shared the top edge moves below the header. The attribute is
+   set by review.js only when there is a title to show, so the offset and the
+   header can never disagree. scroll-padding-top keeps in-page anchor jumps
+   (the TOC links) from landing underneath it. */
+html[data-sf-header] { scroll-padding-top: calc(var(--sf-header-h) + 8px); }
+html[data-sf-header] body { padding-top: var(--sf-header-h); }
+html[data-sf-header] #sf-toc { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
+html[data-sf-header] #sf-rail { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
+html[data-sf-header] #sf-sidebar { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
+html[data-sf-header] #sf-top { top: calc(var(--sf-header-h) + 12px); }
+/* The TOC chevron is CENTRED (top:50% with a -50% translate), so it must not be
+   given a fixed top like the others — that would drop it to the top edge and
+   keep the half-height pull-up. Re-centre it within the band below the header
+   instead, leaving its transform to do the centring. */
+html[data-sf-header] #sf-tocbtn { top: calc(50% + var(--sf-header-h) / 2); }
 
 /* Comments rail — open threads as floating bubbles in the right margin, each
    pinned to the block it comments on by the layout pass in review.js. The rail
