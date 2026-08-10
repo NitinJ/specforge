@@ -889,6 +889,13 @@
     // above changes which duplicate sits at that index, so "the index matches"
     // can quietly mean "a different one of them". Prefer it for resolution — it
     // mirrors findBlock — but never call it sure, because sure means permanent.
+    //
+    // Known and accepted: if the text WAS duplicated when the comment was made
+    // and the twin has since been deleted, this reads as unique and adopts the
+    // survivor. That is where the legacy matcher already sends the thread, so
+    // adoption freezes an answer we were giving anyway rather than inventing a
+    // wrong one; catching it would mean keeping every deleted block's content
+    // forever just to notice the coincidence.
     var atIndex = blocks[b.index];
     var pick = (atIndex && hits.indexOf(atIndex) !== -1) ? atIndex : hits[0];
     return { el: pick, sure: hits.length === 1 };
