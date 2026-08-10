@@ -237,13 +237,17 @@
 .sf-disconnected .sf-dc-reload:hover { filter: brightness(1.06); }
 
 /* block-level highlights in the document */
+/* Hovering an uncommented block just says "you can comment here" — a light
+   outline, no fill. */
+.sf-hover { outline: 2px solid color-mix(in srgb, var(--sf-accent) 50%, transparent); outline-offset: 3px; border-radius: 3px; cursor: pointer; }
 .sf-block-mark { outline: 2px solid color-mix(in srgb, var(--sf-amber) 60%, transparent); outline-offset: 3px; border-radius: 3px; cursor: pointer; background: color-mix(in srgb, var(--sf-amber) 9%, transparent); }
-/* Hover binds a block to its bubbles in BOTH directions, and has to read as a
-   real highlight — not just an outline. `.sf-block-mark.sf-hover` is spelled out
-   because a commented block already carries .sf-block-mark: at equal specificity
-   the later rule wins, so hovering a commented block used to show no change. */
-.sf-hover, .sf-block-mark.sf-hover {
-  outline: 2px solid var(--sf-accent); outline-offset: 3px; border-radius: 3px; cursor: pointer;
+/* A block that HAS comments earns the deeper treatment on hover — full accent
+   outline plus a tint — because there the highlight is doing real work: it names
+   which block the bubbles under the pointer belong to. Spelled out as two
+   classes so it outranks .sf-block-mark, which would otherwise win the tie
+   against .sf-hover and leave a hovered commented block looking unchanged. */
+.sf-block-mark.sf-hover {
+  outline: 2px solid var(--sf-accent);
   background: color-mix(in srgb, var(--sf-accent) 14%, transparent);
 }
 .sf-block-mark.sf-active { outline-color: var(--sf-accent); background: color-mix(in srgb, var(--sf-accent) 12%, transparent); }
