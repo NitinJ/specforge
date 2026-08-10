@@ -884,12 +884,14 @@
       if (norm(blocks[i].textContent).slice(0, 400) === b.text) hits.push(blocks[i]);
     }
     if (!hits.length) return null;
-    if (hits.length === 1) return { el: hits[0], sure: true };
+    // ONE candidate is the only certainty. A stored index that still lands on a
+    // matching block proves nothing when the text is duplicated: content shifting
+    // above changes which duplicate sits at that index, so "the index matches"
+    // can quietly mean "a different one of them". Prefer it for resolution — it
+    // mirrors findBlock — but never call it sure, because sure means permanent.
     var atIndex = blocks[b.index];
-    // Several blocks match, but the remembered position still lands on one of
-    // them — that is the one.
-    if (atIndex && hits.indexOf(atIndex) !== -1) return { el: atIndex, sure: true };
-    return { el: hits[0], sure: false };
+    var pick = (atIndex && hits.indexOf(atIndex) !== -1) ? atIndex : hits[0];
+    return { el: pick, sure: hits.length === 1 };
   }
 
   function adoptBids() {

@@ -1074,6 +1074,22 @@ test('an ambiguous legacy anchor is NOT given an id — a guess must not be froz
   assert.ok(window.document.querySelector('.sf-block-mark'), 'but it still resolves, as it always did');
 });
 
+test('duplicated text never adopts an id, even when the stored index still matches', async (t) => {
+  // The index landing on a matching block proves nothing here: content shifting
+  // above changes which duplicate occupies it, so this could be the other one.
+  const body = `<main>
+    <h1>Test Spec</h1>
+    <p class="a">Duplicated line.</p>
+    <p class="b">Duplicated line.</p>
+  </main><div id="sf-live">● live</div>`;
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: { block: { index: 1, tag: 'P', text: 'Duplicated line.', sectionPath: [] } } }];
+  const { window, patches } = await bootReviewLayer(t, { body, threads });
+  await new Promise((r) => window.setTimeout(r, 10));
+  assert.equal(patches.filter((x) => /\/anchor$/.test(x.url)).length, 0,
+    'still a guess, so still not frozen');
+});
+
 test('an unambiguous legacy anchor with a stale index still adopts an id', async (t) => {
   // Only one block has this text, so the stale index does not make it ambiguous.
   const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
