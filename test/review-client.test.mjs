@@ -61,7 +61,10 @@ async function bootReviewLayer(t, opts = {}) {
     if (init && (init.method === 'POST' || init.method === 'PUT' || init.method === 'PATCH')) {
       const bucket = init.method === 'PUT' ? puts : init.method === 'PATCH' ? patches : posts;
       bucket.push({ url, body: init.body ? JSON.parse(init.body) : {} });
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }), text: () => Promise.resolve('{"ok":true}') });
+      // opts.failPost lets a test make one endpoint reject, to prove the client
+      // checks Response.ok rather than assuming a fulfilled fetch succeeded.
+      const ok = !(opts.failPost && opts.failPost.test(String(url)));
+      return Promise.resolve({ ok, json: () => Promise.resolve({ ok }), text: () => Promise.resolve('{}') });
     }
     if (String(url).indexOf('/meta') !== -1) {
       return Promise.resolve({ json: () => Promise.resolve(meta) });
@@ -556,16 +559,14 @@ test('a bubble shows the author initial and reply count', async (t) => {
   assert.equal(bub.querySelector('.sf-bub-n').textContent, '1', 'one reply');
 });
 
-test('clicking a bubble activates its thread and opens the conversation', async (t) => {
+test('clicking a bubble activates its thread and shows the conversation in place', async (t) => {
   const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'a' }],
     anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
   const { window } = await bootReviewLayer(t, { threads });
   const { document } = window;
-  const block = document.querySelector('.sf-block-mark');
-  block.scrollIntoView = () => {};
   document.querySelector('#sf-rail .sf-bub').click();
   await new Promise((r) => window.setTimeout(r, 0));
-  assert.ok(document.getElementById('sf-sidebar').classList.contains('open'), 'the conversation opens');
+  assert.ok(document.querySelector('#sf-rail .sf-bub-open'), 'the thread expands in the rail');
   assert.ok(document.querySelector('.sf-block-mark').classList.contains('sf-active'),
     'its block reads as active — the bubble is bound to the block it annotates');
 });
@@ -599,6 +600,188 @@ test('the rail is a native-button surface the review layer treats as its own UI'
   mouse(window, bub, 'click');
   await new Promise((r) => window.setTimeout(r, 0));
   assert.ok(!window.document.getElementById('sf-compose'), 'no composer opens from a rail click');
+});
+
+// ---------- expanding a thread in the rail ----------
+const RAIL_ANCHOR = { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } };
+const twoOnOneBlock = () => [
+  { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'one' }], anchor: RAIL_ANCHOR },
+  { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'two' }], anchor: RAIL_ANCHOR },
+];
+
+test('clicking a bubble expands that thread in place, and only that one', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const open = document.querySelectorAll('#sf-rail .sf-bub-open');
+  assert.equal(open.length, 1, 'exactly one thread is expanded');
+  assert.equal(open[0].getAttribute('data-tid'), 't1');
+  assert.ok(open[0].querySelector('textarea'), 'the expanded card carries a reply box');
+  document.querySelector('.sf-bub[data-tid="t2"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const open2 = document.querySelectorAll('#sf-rail .sf-bub-open');
+  assert.equal(open2.length, 1, 'opening another collapses the first');
+  assert.equal(open2[0].getAttribute('data-tid'), 't2');
+});
+
+test('the expanded thread pins to its anchor exactly and pushes its sibling down', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  stubGeometry(window, { 'p.a': 220 }, 40);
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t2"]').click();      // focus the SECOND
+  await new Promise((r) => window.setTimeout(r, 20));
+  const open = document.querySelector('.sf-bub[data-tid="t2"]');
+  const sib = document.querySelector('.sf-bub[data-tid="t1"]');
+  assert.equal(parseFloat(open.style.top), 220, 'focused thread sits exactly on its anchor');
+  assert.ok(parseFloat(sib.style.top) > parseFloat(open.style.top),
+    'its same-block sibling is pushed below it, not the other way round');
+});
+
+test('the expanded thread accent-binds its block', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(document.querySelector('.sf-block-mark').classList.contains('sf-active'),
+    'the anchored block reads as the active pair');
+});
+
+test('clicking outside collapses the expanded thread, and so does Escape', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(document.querySelectorAll('.sf-bub-open').length, 1);
+  document.body.click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(document.querySelectorAll('.sf-bub-open').length, 0, 'a click outside collapses it');
+
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(document.querySelectorAll('.sf-bub-open').length, 0, 'Escape collapses it too');
+});
+
+test('clicking inside the expanded card does not collapse it', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  document.querySelector('.sf-bub-open textarea').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(document.querySelectorAll('.sf-bub-open').length, 1, 'still open while you use it');
+});
+
+test('replying from the expanded card posts to the thread', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const card = document.querySelector('.sf-bub-open');
+  card.querySelector('textarea').value = 'a reply from the rail';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments\/t1\/reply$/.test(x.url));
+  assert.ok(p, 'posts to the reply endpoint');
+  assert.equal(p.body.body, 'a reply from the rail');
+});
+
+test('resolving from the expanded card posts resolve', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  document.querySelector('.sf-bub-open .sf-bub-resolve').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(posts.find((x) => /\/comments\/t1\/resolve$/.test(x.url)), 'posts to the resolve endpoint');
+});
+
+test('a failed resolve leaves the thread expanded instead of pretending it worked', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock(), failPost: /\/resolve$/ });
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  document.querySelector('.sf-bub-open .sf-bub-resolve').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(document.querySelectorAll('.sf-bub-open').length, 1,
+    'the card stays open — fetch fulfills on 4xx, so an unchecked .then() would have collapsed it');
+});
+
+test('moving the pointer inside a hovered bubble keeps its block highlighted', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  const block = document.querySelector('p.a');
+  const bub = document.querySelector('.sf-bub[data-tid="t1"]');
+  bub.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }));
+  assert.ok(block.classList.contains('sf-hover'), 'hovering the bubble highlights its block');
+  // A mousemove landing on the bubble must not clear what the bubble just set.
+  mouse(window, bub, 'mousemove');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(block.classList.contains('sf-hover'), 'still highlighted — no flicker while the bubble is hovered');
+});
+
+test('entering a bubble clears the highlight left on a different block', async (t) => {
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'one' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } },
+    { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'two' }],
+      anchor: { block: { index: 1, tag: 'P', text: 'Second paragraph for hover.', sectionPath: [] } } },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  const a = document.querySelector('p.a'), b = document.querySelector('p.b');
+  mouse(window, a, 'mousemove');                       // hover block A
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(a.classList.contains('sf-hover'), 'block A highlighted');
+  // Pointer goes straight from block A into the bubble for block B.
+  document.querySelector('.sf-bub[data-tid="t2"]').dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }));
+  assert.ok(b.classList.contains('sf-hover'), 'block B highlighted');
+  assert.ok(!a.classList.contains('sf-hover'), 'block A released — only one block is ever the hovered pair');
+});
+
+test('hovering a block focuses every bubble anchored to it, and vice-versa', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  const block = document.querySelector('p.a');
+  mouse(window, block, 'mousemove');
+  await new Promise((r) => window.setTimeout(r, 0));
+  const focused = document.querySelectorAll('#sf-rail .sf-bub.sf-bub-focus');
+  assert.equal(focused.length, 2, 'both threads on the hovered block light up');
+
+  const bub = document.querySelector('.sf-bub[data-tid="t1"]');
+  bub.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }));
+  assert.ok(block.classList.contains('sf-hover'), 'hovering a bubble lights up its block');
+});
+
+// ---------- off-screen comment indicator ----------
+test('a chip counts open threads anchored above and below the viewport', async (t) => {
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'above' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } },
+    { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'below' }],
+      anchor: { block: { index: 1, tag: 'P', text: 'Second paragraph for hover.', sectionPath: [] } } },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  stubGeometry(window, { 'p.a': -500, 'p.b': 4000 }, 40); // one above, one below
+  await settleRail(window);
+  const above = window.document.querySelector('#sf-rail .sf-rail-above');
+  const below = window.document.querySelector('#sf-rail .sf-rail-below');
+  assert.ok(above && /1/.test(above.textContent), 'counts the one scrolled off the top');
+  assert.ok(below && /1/.test(below.textContent), 'counts the one below the fold');
+});
+
+test('the off-screen chips disappear when every thread is in view', async (t) => {
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'x' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } }];
+  const { window } = await bootReviewLayer(t, { threads });
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  stubGeometry(window, { 'p.a': 300 }, 40);
+  await settleRail(window);
+  assert.ok(!window.document.querySelector('#sf-rail .sf-rail-above'), 'no above chip');
+  assert.ok(!window.document.querySelector('#sf-rail .sf-rail-below'), 'no below chip');
 });
 
 // ---------- multiple threads per block ----------

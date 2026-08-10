@@ -542,6 +542,49 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
   white-space: nowrap; color: var(--sf-muted); }
 .sf-bub-n { flex: 0 0 auto; color: var(--sf-muted); font-size: 11px; }
 
+/* The expanded thread — the conversation, in place in the rail. Elevated and
+   accent-bordered so it reads as one pair with its accent-highlighted block. */
+.sf-bub-open {
+  display: block; cursor: default; padding: 10px 12px;
+  border-color: var(--sf-accent); box-shadow: var(--sf-shadow-3), var(--sf-inner-hi); z-index: 2;
+}
+.sf-bub-open:hover { box-shadow: var(--sf-shadow-3), var(--sf-inner-hi); }
+.sf-bub-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.sf-bub-x { margin-left: auto; background: none; border: none; color: var(--sf-muted);
+  cursor: pointer; font: 300 18px/1 system-ui, sans-serif; padding: 0 2px; border-radius: 4px; }
+.sf-bub-x:hover { color: var(--sf-ink); }
+.sf-bub-x:focus-visible { outline: none; box-shadow: var(--sf-ring); }
+.sf-bub-open .sf-comment { border-top: 1px dashed var(--sf-line); padding: 6px 0; }
+.sf-bub-open .sf-comment:first-of-type { border-top: none; }
+.sf-bub-open .sf-input { margin-top: 6px; }
+.sf-bub-open .sf-compose-foot { justify-content: flex-end; }
+.sf-bub-resolve { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
+  border-radius: var(--sf-r-xs); font-size: 11px; padding: 4px 9px; cursor: pointer;
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }
+.sf-bub-resolve:hover { color: var(--sf-ink); border-color: var(--sf-accent); }
+.sf-bub-resolve:focus-visible { outline: none; box-shadow: var(--sf-ring); }
+
+/* Off-screen indicator — without it a comment on scrolled-past content is
+   invisible. Pinned to the rail's top/bottom edge; click jumps to the nearest. */
+.sf-rail-chip {
+  position: absolute; left: 50%; transform: translateX(-50%); pointer-events: auto; z-index: 3;
+  background: var(--sf-glass);
+  -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
+  border: 1px solid var(--sf-hairline); color: var(--sf-muted);
+  border-radius: 999px; padding: 4px 11px; cursor: pointer; white-space: nowrap;
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: var(--sf-shadow-1);
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sf-rail-chip { background: var(--sf-panel); }
+}
+.sf-rail-chip:hover { color: var(--sf-accent); border-color: var(--sf-accent); }
+.sf-rail-chip:focus-visible { outline: none; box-shadow: var(--sf-ring), var(--sf-shadow-1); }
+.sf-rail-above { top: 10px; }
+.sf-rail-below { bottom: 10px; }
+
 /* SpecForge launcher — the single floating control. A glass squircle (reads as a
    modern tool trigger, not a generic FAB); the SF mark cross-fades to a × while
    the menu is open (generated content — no DOM change). */
