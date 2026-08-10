@@ -752,16 +752,9 @@
     if (sel && !sel.isCollapsed) return; // a real text selection — leave it alone
     var el = blockAt(e.target);
     if (!el) return;
-    var tid = el.getAttribute('data-sf-thread');
-    if (tid) {
-      // Block already has a thread → open it and drop straight into a reply, so
-      // adding another comment to the same thread is one click (no hunting for
-      // the Reply button). Every comment on a block lives in that one thread.
-      setSidebar(true);
-      activate(tid, false);
-      focusReply(tid);
-      return;
-    }
+    // A click on a block ALWAYS starts a new thread — including on a block that
+    // already carries one, which is what allows several threads per block.
+    // Existing threads are read and replied to from their cards, not from here.
     e.preventDefault();
     openCompose(el);
   }
@@ -846,15 +839,6 @@
     ta.focus();
   }
 
-  // Open (and focus) the reply box on a thread's sidebar card — used when a click
-  // on an already-commented block should let you add another comment to it.
-  function focusReply(tid) {
-    var t = state.threads.filter(function (x) { return x.id === tid; })[0];
-    if (!t) return;
-    var card = els.threads.querySelector('[data-tid="' + tid + '"]');
-    if (card) openReply(card, t);
-  }
-
   // Inline edit of an own, not-yet-submitted comment — swaps the body for a
   // prefilled textarea. Save PATCHes the comment; Cancel restores the body.
   function openCommentEdit(commentEl, t, c) {
@@ -894,18 +878,30 @@
     ta.focus();
   }
 
+  // Mark every block that carries live threads. A block may carry SEVERAL, so
+  // the threads are grouped by element first: `data-sf-threads` lists them all
+  // (the rail keys off it), while `data-sf-thread` keeps naming the first one so
+  // activate()'s scroll-into-view lookup stays a simple attribute match.
   function renderHighlights() {
     Array.prototype.forEach.call(document.querySelectorAll('.sf-block-mark'), function (el) {
       el.classList.remove('sf-block-mark', 'sf-active');
       el.removeAttribute('data-sf-thread');
+      el.removeAttribute('data-sf-threads');
     });
+    var groups = [];
     visible().forEach(function (t) {
       if (t.state === 'resolved') return;
       var el = findBlock(t.anchor);
       if (!el) return;
-      el.classList.add('sf-block-mark');
-      el.setAttribute('data-sf-thread', t.id);
-      if (state.active === t.id) el.classList.add('sf-active');
+      var g = groups.filter(function (x) { return x.el === el; })[0];
+      if (!g) { g = { el: el, ids: [] }; groups.push(g); }
+      g.ids.push(t.id);
+    });
+    groups.forEach(function (g) {
+      g.el.classList.add('sf-block-mark');
+      g.el.setAttribute('data-sf-thread', g.ids[0]);
+      g.el.setAttribute('data-sf-threads', g.ids.join(','));
+      if (g.ids.indexOf(state.active) !== -1) g.el.classList.add('sf-active');
     });
   }
 
@@ -990,8 +986,14 @@
     state.active = id;
     renderSidebar();
     renderHighlights();
-    var el = document.querySelector('[data-sf-thread="' + id + '"]');
-    if (scroll && el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!scroll) return;
+    // Resolve the block from the thread's own anchor rather than matching
+    // data-sf-thread: a block may carry several threads and that attribute only
+    // names the first, so an attribute lookup would silently skip the scroll for
+    // every later thread on a shared block.
+    var t = state.threads.filter(function (x) { return x.id === id; })[0];
+    var el = t ? findBlock(t.anchor) : null;
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   // ---------- utils ----------
