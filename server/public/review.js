@@ -394,6 +394,7 @@
   function setSidebar(open) {
     els.sidebar.classList.toggle('open', open);
     document.body.classList.toggle('sf-side-open', open);
+    syncRailVisibility(); // the drawer and the rail share the right gutter
   }
   function toggleSidebar() { setSidebar(!els.sidebar.classList.contains('open')); }
 
@@ -940,6 +941,10 @@
   // MEASURED every pass from live layout and never stored, so the rail stays
   // correct as the page scrolls, resizes or reflows.
   var RAIL_GAP = 8;
+  // Below this the rail can't sit beside the centred content without crowding
+  // it, so the drawer (SF → Comments) becomes the way to read threads — the same
+  // idea as the floating TOC auto-collapsing on narrow windows.
+  var RAIL_MIN_W = 1100;
 
   /**
    * PURE layout pass — the whole positioning rule, isolated from the DOM so it
@@ -1031,8 +1036,34 @@
     });
   }
 
+  // The rail and the drawer share the right gutter, so only one shows at a time;
+  // and on a narrow window there is no gutter to spare, so the drawer is the
+  // fallback. `hidden` (rather than a CSS-only rule) keeps the state inspectable
+  // and lets the layout pass skip work while the rail is off.
+  function railShouldShow() {
+    if (els.sidebar && els.sidebar.classList.contains('open')) return false;
+    // An open composer overrides the width rule: the composer lives in the rail,
+    // so hiding the rail on a narrow window would leave you unable to comment at
+    // all — invisible input, no keyboard path, and no way to create a thread
+    // from the drawer. It overlays more of a narrow page; that beats a dead end.
+    if (state.composeEl) return true;
+    return (window.innerWidth || 0) >= RAIL_MIN_W;
+  }
+  function syncRailVisibility() {
+    if (!els.rail) return;
+    var show = railShouldShow();
+    var was = !els.rail.hasAttribute('hidden');
+    if (show) els.rail.removeAttribute('hidden');
+    else els.rail.setAttribute('hidden', '');
+    // Positions go stale while hidden (the layout pass skips it), so re-measure
+    // on the way back — otherwise closing the drawer reveals bubbles and chips
+    // sitting where the page used to be.
+    if (show && !was) queueRail();
+  }
+
   function renderRail() {
     if (!els.rail) return;
+    syncRailVisibility();
     els.rail.innerHTML = '';
     var entries = railThreads();
     // The composer is a focused entry in the rail, ordered with the threads so
@@ -1088,6 +1119,7 @@
   }
   function openRailCompose(el) {
     state.active = null;      // a composer and an expanded thread are exclusive
+    setSidebar(false);        // composing claims the gutter; the drawer would hide the rail
     state.composeEl = el;
     ensureAnchorVisible(el);
     render();
@@ -1206,6 +1238,8 @@
 
   function positionRail() {
     if (!els.rail) return;
+    syncRailVisibility();
+    if (els.rail.hasAttribute('hidden')) return; // nothing to measure while off
     var bubs = Array.prototype.filter.call(els.rail.children, function (b) {
       return b.classList.contains('sf-bub');
     });
