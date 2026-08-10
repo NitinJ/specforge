@@ -1184,6 +1184,8 @@
 
   function expandThread(id, el) {
     state.active = id;
+    state.composeEl = null; // exactly one focused card in the rail at a time —
+                            // two would break the single-focus layout pass
     if (el) ensureAnchorVisible(el);
     render();
   }
@@ -1239,13 +1241,16 @@
     var c = create('button', { class: 'sf-rail-chip sf-rail-' + dir, type: 'button' }, label);
     c.onclick = function (e) {
       e.stopPropagation();
-      var best = null;
-      railThreads().forEach(function (r) {
-        var top = r.el.getBoundingClientRect().top;
+      // Navigate over exactly what the chips COUNT — the rail's own cards — so
+      // an off-screen composer is reachable too. Counting from one set and
+      // navigating over another would strand whatever only the counter knows.
+      var best = null, bestTop = 0;
+      Array.prototype.forEach.call(els.rail.children, function (b) {
+        if (!b._anchor) return; // the chips themselves
+        var top = b._anchor.getBoundingClientRect().top;
         var out = dir === 'above' ? top < 0 : top > (window.innerHeight || 0);
         if (!out) return;
-        // nearest in that direction
-        if (!best || Math.abs(top) < Math.abs(best.getBoundingClientRect().top)) best = r.el;
+        if (!best || Math.abs(top) < Math.abs(bestTop)) { best = b._anchor; bestTop = top; }
       });
       if (best && best.scrollIntoView) best.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };

@@ -465,6 +465,9 @@ test('an unmatched backtick renders literally, not as an empty code span', async
 // layout pass computes from it.
 function stubGeometry(window, tops, bubbleH = 40) {
   const { document } = window;
+  // Rail geometry only exists on a window wide enough to show the rail at all
+  // (jsdom defaults to 1024).
+  Object.defineProperty(window, 'innerWidth', { value: 1600, configurable: true });
   Object.keys(tops).forEach((sel) => {
     const el = document.querySelector(sel);
     if (!el) throw new Error(`stubGeometry: no element for ${sel}`);
@@ -817,6 +820,37 @@ test('Escape dismisses the composer without creating a thread', async (t) => {
   await new Promise((r) => window.setTimeout(r, 0));
   assert.ok(!document.querySelector('.sf-bub-compose'), 'dismissed');
   assert.equal(posts.filter((x) => /\/comments$/.test(x.url)).length, 0, 'nothing was created');
+});
+
+test('expanding a thread closes an open composer — only one focused card', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  stubGeometry(window, { 'p.a': 200, 'p.b': 600 }, 40);
+  mouse(window, document.querySelector('p.b'), 'click');       // composer on B
+  await new Promise((r) => window.setTimeout(r, 20));
+  assert.ok(document.querySelector('.sf-bub-compose'), 'composer is open');
+  document.querySelector('.sf-bub[data-tid="t1"]').click();    // expand a thread
+  await new Promise((r) => window.setTimeout(r, 20));
+  assert.ok(!document.querySelector('.sf-bub-compose'), 'the composer is dismissed');
+  assert.equal(document.querySelectorAll('#sf-rail [data-focus="1"]').length, 1,
+    'exactly one focused card — two would break the single-focus layout');
+});
+
+test('the off-screen chip can navigate to an off-screen composer', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  const b = document.querySelector('p.b');
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  mouse(window, b, 'click');                       // composer anchored to p.b
+  await new Promise((r) => window.setTimeout(r, 0));
+  stubGeometry(window, { 'p.b': -400 }, 40);       // its anchor scrolls off the top
+  await settleRail(window);
+  const chip = document.querySelector('#sf-rail .sf-rail-above');
+  assert.ok(chip, 'the composer counts toward the off-screen indicator');
+  let scrolled = 0;
+  b.scrollIntoView = () => { scrolled++; };
+  chip.click();
+  assert.equal(scrolled, 1, 'and the chip can actually take you back to it');
 });
 
 test('clicking a second block moves the composer there', async (t) => {
