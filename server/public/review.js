@@ -324,6 +324,7 @@
     buildLauncher();
     buildTop();
     buildTitleBar();
+    buildRail();
 
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
@@ -760,7 +761,7 @@
   }
 
   // ---------- render ----------
-  function render() { renderSidebar(); renderHighlights(); renderLauncher(); renderAction(); syncTitle(); }
+  function render() { renderSidebar(); renderHighlights(); renderRail(); renderLauncher(); renderAction(); syncTitle(); }
 
   function visible() {
     return state.threads.filter(function (t) {
@@ -905,6 +906,140 @@
     });
   }
 
+  // ---------- comments rail ----------
+  // Open threads also render as floating bubbles in a right-margin rail, each
+  // pinned to the block it comments on (Google-Docs style). Positions are
+  // MEASURED every pass from live layout and never stored, so the rail stays
+  // correct as the page scrolls, resizes or reflows.
+  var RAIL_GAP = 8;
+
+  /**
+   * PURE layout pass — the whole positioning rule, isolated from the DOM so it
+   * can be tested with measurements alone.
+   * @param {{top:number,h:number}[]} items measured, sorted by anchor top
+   * @param {number} focusIdx index of the expanded thread, or -1 for none
+   * @returns {number[]} the top for each item, in the same order
+   *
+   * The focused item is pinned to EXACTLY its anchor — it must never be shoved
+   * off the block it is about. Items after it flow down from its bottom; items
+   * before it are pulled up only if they would collide. With no focus this is a
+   * plain downward clamp: never above your anchor, never overlapping the one above.
+   */
+  function railLayout(items, focusIdx, gap) {
+    var tops = new Array(items.length), y, i;
+    if (!items.length) return tops;
+    if (focusIdx == null || focusIdx < 0) {
+      y = -Infinity;
+      for (i = 0; i < items.length; i++) {
+        tops[i] = Math.max(items[i].top, y);
+        y = tops[i] + items[i].h + gap;
+      }
+      return tops;
+    }
+    tops[focusIdx] = items[focusIdx].top;
+    y = tops[focusIdx] + items[focusIdx].h + gap;
+    for (i = focusIdx + 1; i < items.length; i++) {
+      tops[i] = Math.max(items[i].top, y);
+      y = tops[i] + items[i].h + gap;
+    }
+    y = tops[focusIdx] - gap;
+    for (i = focusIdx - 1; i >= 0; i--) {
+      tops[i] = Math.min(items[i].top, y - items[i].h);
+      y = tops[i] - gap;
+    }
+    return tops;
+  }
+
+  function buildRail() {
+    els.rail = create('div', { id: 'sf-rail' });
+    document.body.appendChild(els.rail);
+    window.addEventListener('scroll', queueRail, { passive: true });
+    window.addEventListener('resize', queueRail, { passive: true });
+    // Scroll/resize alone miss reflows that move anchors without either event:
+    // the width slider, fit-to-width, the TOC collapsing, or a web font arriving
+    // late and re-wrapping every paragraph. Observe the content box itself so any
+    // of those re-pin the bubbles.
+    if (window.ResizeObserver) {
+      var ro = new window.ResizeObserver(queueRail);
+      try { ro.observe(widthContainer()); } catch (e) {}
+      try { ro.observe(document.documentElement); } catch (e) {}
+    }
+    if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+      document.fonts.ready.then(queueRail).catch(function () {});
+    }
+  }
+  // Scroll fires far faster than we can usefully re-measure — coalesce to one
+  // reposition per frame.
+  var railTick = false;
+  function queueRail() {
+    if (railTick) return;
+    railTick = true;
+    window.requestAnimationFrame(function () { railTick = false; positionRail(); });
+  }
+
+  // Live threads whose anchor still resolves, paired with their block, in
+  // DOCUMENT order (ties — several threads on one block — keep store order).
+  // Ordering deliberately uses document position rather than measured tops: the
+  // two agree for laid-out content, but document position is also correct before
+  // the first layout and during transient reflow, where every rect reads 0.
+  function railThreads() {
+    var out = [];
+    visible().forEach(function (t) {
+      if (t.state === 'resolved') return;
+      var el = findBlock(t.anchor);
+      if (el) out.push({ t: t, el: el, seq: state.threads.indexOf(t) });
+    });
+    return out.sort(function (a, b) {
+      if (a.el === b.el) return a.seq - b.seq;
+      var rel = a.el.compareDocumentPosition(b.el);
+      if (rel & 4) return -1;  // DOCUMENT_POSITION_FOLLOWING — b comes after a
+      if (rel & 2) return 1;   // DOCUMENT_POSITION_PRECEDING
+      return a.seq - b.seq;
+    });
+  }
+
+  function renderRail() {
+    if (!els.rail) return;
+    els.rail.innerHTML = '';
+    railThreads().forEach(function (r) { els.rail.appendChild(bubble(r.t, r.el)); });
+    positionRail();
+  }
+
+  // Collapsed bubble: who started the thread, a one-line snippet, and the reply
+  // count. Initials (H/C) rather than icons — the product UI carries no emoji.
+  function bubble(t, el) {
+    var b = create('button', { class: 'sf-bub', type: 'button', 'data-tid': t.id });
+    b._anchor = el; // the measured element, re-read every pass
+    var first = t.comments[0] || {};
+    var claude = first.author === 'claude';
+    b.innerHTML = '<span class="sf-bub-who' + (claude ? ' claude' : '') + '">' + (claude ? 'C' : 'H') + '</span>' +
+      '<span class="sf-bub-snip">' + esc(norm(first.body || '')) + '</span>' +
+      (t.comments.length > 1 ? '<span class="sf-bub-n">' + (t.comments.length - 1) + '</span>' : '');
+    // Activating from the rail: mark the thread active (accent-binding its block)
+    // and bring the conversation up to read/reply. Expanding the thread inside the
+    // bubble itself replaces this in the next stage.
+    b.onclick = function (e) {
+      e.stopPropagation();
+      setSidebar(true);
+      activate(t.id, true);
+    };
+    return b;
+  }
+
+  function positionRail() {
+    if (!els.rail) return;
+    var bubs = Array.prototype.slice.call(els.rail.children);
+    if (!bubs.length) return;
+    var items = bubs.map(function (b) {
+      return { top: b._anchor ? b._anchor.getBoundingClientRect().top : 0, h: b.offsetHeight };
+    });
+    var focusIdx = -1;
+    bubs.forEach(function (b, i) { if (b.getAttribute('data-focus') === '1') focusIdx = i; });
+    railLayout(items, focusIdx, RAIL_GAP).forEach(function (top, i) {
+      bubs[i].style.top = top + 'px';
+    });
+  }
+
   function pendingCount() {
     // A thread needs submitting if it's live (not resolved) and carries any
     // un-submitted human comment — `some`, not `every`, so a reopened thread whose
@@ -986,6 +1121,7 @@
     state.active = id;
     renderSidebar();
     renderHighlights();
+    renderRail();
     if (!scroll) return;
     // Resolve the block from the thread's own anchor rather than matching
     // data-sf-thread: a block may carry several threads and that attribute only
@@ -1002,7 +1138,7 @@
     while (t) {
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
           t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-top' ||
-          t.id === 'sf-tocbtn') return true;
+          t.id === 'sf-titlebar' || t.id === 'sf-rail' || t.id === 'sf-tocbtn') return true;
       t = t.parentElement;
     }
     return false;
