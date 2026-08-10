@@ -31,6 +31,36 @@ test('precision theatre is reported', () => {
   assert.ok(names(doc('<p>It keeps a handful of entries.</p>')).includes('precision theatre'));
 });
 
+test('unfalsifiable superlatives are reported', () => {
+  assert.ok(names(doc('<p>This is the cheapest path.</p>')).includes('unfalsifiable superlative'));
+  assert.ok(names(doc('<p>Blocks are the most leveraged unit.</p>')).includes('unfalsifiable superlative'));
+});
+
+// The contract quotes its own bad forms. A checker that misses the very phrases
+// the contract names is worse than none: it certifies a violating spec as clean.
+// Each entry is [prose, rule that must fire], quoted from references/spec-language.md.
+test("the contract's own quoted bad forms are all caught", () => {
+  const CANONICAL = [
+    ['the finding that matters', 'attention-curating phrase'],   // §7
+    ['worth noting', 'attention-curating phrase'],               // §7
+    ['known risk', 'attention-curating phrase'],                 // §7
+    ['typically 1 to 3', 'precision theatre'],                   // §8
+    ['10 to 20', 'precision theatre'],                           // §8
+    ['most requests', 'precision theatre'],                      // §8
+    ['a bounded number of days', 'precision theatre'],           // §8
+    ['the cheapest', 'unfalsifiable superlative'],               // §3
+    ['the most leveraged', 'unfalsifiable superlative'],         // §3
+    ['the hardest', 'unfalsifiable superlative'],                // §3
+    ['probably the same feature', 'hedged decision'],            // §11
+  ];
+  for (const [phrase, rule] of CANONICAL) {
+    assert.ok(
+      names(doc(`<p>The queue drains ${phrase} on boot.</p>`)).includes(rule),
+      `"${phrase}" must be reported as ${rule}`,
+    );
+  }
+});
+
 test('hedged decisions are reported', () => {
   assert.ok(names(doc('<p>This is probably the same feature.</p>')).includes('hedged decision'));
   assert.ok(names(doc('<p>Arguably the queue should drain first.</p>')).includes('hedged decision'));
