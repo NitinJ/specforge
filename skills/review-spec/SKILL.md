@@ -68,6 +68,13 @@ Then, for each thread in the batch:
    theme + width). After changing a term/number, re-run `grep "<old term>"` and
    expect **zero hits**. Re-run the lint if you changed structure:
    `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" "<htmlPath>" --project "${CLAUDE_PLUGIN_ROOT}"`.
+
+   Prose you add is held to the same language contract as the original:
+   `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`. Answering a comment is
+   where explanatory, persuading register creeps in — the spec is still a
+   specification, not a reply. No aphorisms, no em dashes, no hedged decisions;
+   every sentence carries a decision, measurement, source, assumption or
+   specification. Watch the advisory `spec-language` line in the lint.
 4. **Reply inline** (append-only, attributed to claude) via the CLI — never edit
    `comments.json` by hand, and never use the HTTP API (it is human-only):
 

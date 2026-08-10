@@ -91,15 +91,38 @@ link to the design if it lives elsewhere) · a brief `design` (prerequisites /
 context). Focus on `impl-plan` (Stages → Tasks) + the `task-tracker` snapshot, and
 keep the Runtime stubs. Trim `goals` / `decisions` if they add nothing.
 
+## 3.5 Language (read before writing prose)
+
+Specs follow a language contract — **read it**, it is short:
+`${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`.
+
+The rules that catch most drafts:
+
+- **Every sentence carries a decision, measurement, source, assumption, or
+  specification.** One that carries none gets cut.
+- **No aphorisms.** If a line works as a standalone tweet, cut it. "A limit
+  discovered through an upload failure is a support ticket" is not a spec; "Limits
+  (25 MB, 8000 px, 3 files) render as chips on the dropzone" is.
+- **No em dashes**, no attention-curating ("worth noting", "importantly"), no
+  hedged decisions ("probably"), no precision theatre ("typically 1 to 3").
+- **Write unknowns down.** An omitted threshold reads as "no threshold".
+- Assume the reader has agreed to the direction: spend words on resolution, not
+  persuasion.
+
 ## 4. Lint (must pass)
 
 ```
 node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>
 ```
 
-Checks the universal basics — a title, a lifecycle status, unique section ids, and
+Checks the universal basics: a title, a lifecycle status, unique section ids, and
 the light/dark theme contract (per-type sections are recommended, not enforced).
 Fix and re-run until `PASS`. **Don't finish on a failing lint.**
+
+The `spec-language` line is advisory and never fails the lint, but it is the
+contract talking: it counts em dashes, attention-curating phrases, precision
+theatre and hedged decisions. Clear it before handing over. It cannot see
+aphorism or an unlabelled sentence, so a clean report is a floor, not a pass.
 
 ## 5. Hand off + arm the review watcher
 
