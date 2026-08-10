@@ -606,6 +606,20 @@ html[data-sf-header] #sf-tocbtn { top: calc(50% + var(--sf-header-h) / 2); }
 .sf-bub-resolve:hover { color: var(--sf-ink); border-color: var(--sf-accent); }
 .sf-bub-resolve:focus-visible { outline: none; box-shadow: var(--sf-ring); }
 
+/* An orphaned thread — the block it was about has been deleted. Amber rather
+   than accent: this needs attention, but a deletion is often exactly what the
+   comment asked for, so it is not an error state. */
+.sf-bub-orphan { border-color: color-mix(in srgb, var(--sf-amber) 60%, var(--sf-hairline)); }
+.sf-bub-orphan.sf-bub-open { border-color: var(--sf-amber); }
+.sf-bub-orphan .sf-bub-who { color: var(--sf-amber); border-color: color-mix(in srgb, var(--sf-amber) 45%, var(--sf-line)); }
+.sf-orphan-note { color: var(--sf-amber); font-size: 11.5px; font-weight: 600; margin-bottom: 4px; }
+.sf-orphan-quote {
+  font-size: 11.5px; line-height: 1.45; color: var(--sf-muted);
+  border-left: 2px solid color-mix(in srgb, var(--sf-amber) 55%, transparent);
+  padding: 1px 0 1px 8px; margin: 0 0 8px; text-decoration: line-through;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+
 /* New-thread composer in the rail — the quoted block it will anchor to, in the
    same amber-ruled style the old popover used. */
 .sf-bub-compose .q {

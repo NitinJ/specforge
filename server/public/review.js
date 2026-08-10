@@ -136,7 +136,9 @@
     // injector (the second IIFE below), which builds after this chrome.
     applyFont(initFont()); // reading font — persisted choice (or sans) on load
     buildChrome();
-    load();
+    // Establish block identity before the first render, so comments resolve by
+    // id rather than by guessing at content. Non-blocking on failure.
+    syncBlocks(load);
     // Poll so Claude's replies appear without a manual refresh; pause while the
     // composer is open so we don't disrupt the user mid-comment.
     // Pause the poll while a composer is open so a reload can't wipe what the
@@ -269,7 +271,7 @@
       if (raw !== lastRaw) { lastRaw = raw; state.threads = (JSON.parse(raw) || {}).threads || []; changed = true; }
       var metaStr = meta && JSON.stringify(meta);
       if (metaStr && metaStr !== lastMeta) { lastMeta = metaStr; state.meta = meta; changed = true; }
-      if (changed) render();
+      if (changed) { adoptBids(); render(); }
     }).catch(function () {});
   }
   function postJSON(url, body) {
@@ -719,17 +721,131 @@
     }
     return path;
   }
+  // ---------- block registry ----------
+  // SpecForge remembers this spec's block sequence (blocks.json) so a comment
+  // keeps its place when the spec is edited: on load we diff what we remember
+  // against what is on the page, and every block comes back with the id it had
+  // last time. See server/public/reconcile.js for the algorithm.
+  //
+  // Strictly an optimisation: if the registry is missing, unreadable, or the
+  // request fails, `bidOf` simply returns nothing and every anchor falls back to
+  // the content matching that has always been there.
+  var bidByEl = null;   // Map-ish: set once per reconcile
+  var goneBids = {};    // bids whose block no longer exists on this page
+  function bidOf(el) {
+    if (!bidByEl || !el) return null;
+    for (var i = 0; i < bidByEl.length; i++) if (bidByEl[i].el === el) return bidByEl[i].bid;
+    return null;
+  }
+  function elForBid(bid) {
+    if (!bidByEl || !bid) return null;
+    for (var i = 0; i < bidByEl.length; i++) if (bidByEl[i].bid === bid) return bidByEl[i].el;
+    return null;
+  }
+  /** True when this thread's block is known-deleted (not merely unresolvable). */
+  function isOrphan(t) {
+    var b = t.anchor && t.anchor.block;
+    return !!(b && b.bid && goneBids[b.bid] && !elForBid(b.bid));
+  }
+  /**
+   * Where to park an orphaned thread: the nearest block that still exists ABOVE
+   * where its block used to be, so it stays next to its old neighbourhood
+   * instead of jumping to the top of the page. Falls back to the first block.
+   */
+  function orphanHome(t) {
+    var b = t.anchor && t.anchor.block;
+    var blocks = commentableBlocks();
+    if (!blocks.length) return null;
+    var path = (b && b.sectionPath) || [];
+    for (var k = 0; k < path.length; k++) {
+      var sec = document.getElementById(path[k]);
+      if (sec && sec.tagName === 'SECTION') return sec;
+    }
+    var i = Math.min(Math.max((b && b.index) || 0, 0), blocks.length - 1);
+    return blocks[i] || blocks[0];
+  }
+
+  function reconcileBlocks(registry) {
+    var R = window.SFReconcile;
+    if (!R) return null;
+    var els = commentableBlocks();
+    var page = els.map(function (el) { return { tag: el.tagName, text: norm(el.textContent) }; });
+    var out = R.reconcile(page, registry);
+    bidByEl = els.map(function (el, i) { return { el: el, bid: out.bids[i] }; });
+    // Read from `retired`, not `gone`: gone is only what vanished since the last
+    // reconcile, and the load that notices a deletion rewrites the registry — so
+    // every later load would see an empty `gone` and forget the block was ever
+    // removed. `retired` is the durable record.
+    goneBids = {};
+    (out.registry.retired || []).forEach(function (b) { goneBids[b] = true; });
+    return out;
+  }
+  // Fetch the registry, reconcile, persist if it moved, then render. Any failure
+  // here is non-fatal — we still render, just without ids.
+  function syncBlocks(done) {
+    if (!window.SFReconcile) return done();
+    fetch(SPEC_API + '/blocks')
+      .then(function (r) { return r.json(); })
+      .catch(function () { return null; })
+      .then(function (body) {
+        var registry = body && body.registry;
+        var out = reconcileBlocks(registry);
+        if (!out || !out.changed) return done();
+        var payload = out.registry;
+        payload.baseVersion = registry && typeof registry.version === 'number' ? registry.version : 0;
+        return fetch(SPEC_API + '/blocks', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        }).then(function (r) {
+          // 409: another tab reconciled first. Re-read and redo once — both tabs
+          // compute the same answer from the same page, so this converges.
+          if (r && r.status === 409) return syncBlocksRetry(done);
+          done();
+        }).catch(function () { done(); });
+      })
+      .catch(function () { done(); });
+  }
+  var retried = false;
+  function syncBlocksRetry(done) {
+    if (retried) return done();
+    retried = true;
+    syncBlocks(done);
+  }
+
+  // The anchor is ADDITIVE: it gains a bid, and keeps index/text/sectionPath.
+  // Those are what the sidebar quotes, what a comment written by an older
+  // client carries, and what an older client would read if this one were rolled
+  // back — so they are never dropped in favour of the id.
   function blockAnchor(el) {
-    return {
+    var a = {
       index: commentableBlocks().indexOf(el),
       tag: el.tagName,
       text: norm(el.textContent).slice(0, 400),
       sectionPath: sectionPathOf(el),
     };
+    var bid = bidOf(el);
+    if (bid) a.bid = bid;
+    return a;
   }
+  /**
+   * Where a thread's block is now.
+   *
+   * The id is the answer whenever we have one: it is tracked across edits by the
+   * reconcile, so a reworded paragraph is still that paragraph. Everything below
+   * it is the path for anchors written before ids existed (and for the case
+   * where the registry is unavailable) — resolve by content once, then adopt the
+   * id, and this never runs for that thread again.
+   */
   function findBlock(anchor) {
     var b = anchor && anchor.block;
     if (!b) return null;
+    if (b.bid) {
+      var byBid = elForBid(b.bid);
+      if (byBid) return byBid;
+      // Known-gone is a FACT, not a failed search: the block was deleted. Say so
+      // rather than quietly landing the thread on something else.
+      if (goneBids[b.bid]) return null;
+      // Otherwise the registry just isn't loaded — fall through and match content.
+    }
     var blocks = commentableBlocks();
     var byIndex = blocks[b.index];
     if (byIndex && norm(byIndex.textContent).slice(0, 400) === b.text) return byIndex;
@@ -744,6 +860,27 @@
       if (sec && sec.tagName === 'SECTION') return sec;
     }
     return null;
+  }
+
+  /**
+   * Give threads that predate the registry an id, once. Each is resolved by the
+   * legacy content path, adopts the id of whatever block it landed on, and is an
+   * exact lookup from then on — so the corpus heals as specs are opened, with no
+   * migration step to run.
+   */
+  function adoptBids() {
+    if (!bidByEl) return;
+    state.threads.forEach(function (t) {
+      var b = t.anchor && t.anchor.block;
+      if (!b || b.bid) return;
+      var el = findBlock(t.anchor);
+      var bid = el && bidOf(el);
+      if (!bid) return;
+      b.bid = bid; // optimistic locally, so this render already uses it
+      fetch(API + '/' + t.id + '/anchor', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bid: bid }),
+      }).catch(function () {});
+    });
   }
 
   // ---------- hover + click ----------
@@ -1037,6 +1174,10 @@
     visible().forEach(function (t) {
       if (t.state === 'resolved') return;
       var el = findBlock(t.anchor);
+      // Its block was deleted. Keep the thread on the page, pinned where the
+      // block used to be, rather than letting it disappear — a comment matters
+      // most when the thing it was about has just been removed.
+      if (!el && isOrphan(t)) el = orphanHome(t);
       if (el) out.push({ t: t, el: el, seq: state.threads.indexOf(t) });
     });
     return out.sort(function (a, b) {
@@ -1156,7 +1297,8 @@
   // Collapsed bubble: who started the thread, a one-line snippet, and the reply
   // count. Initials (H/C) rather than icons — the product UI carries no emoji.
   function bubble(t, el) {
-    var b = create('button', { class: 'sf-bub', type: 'button', 'data-tid': t.id });
+    var orphan = isOrphan(t);
+    var b = create('button', { class: 'sf-bub' + (orphan ? ' sf-bub-orphan' : ''), type: 'button', 'data-tid': t.id });
     b._anchor = el; // the measured element, re-read every pass
     var first = t.comments[0] || {};
     var claude = first.author === 'claude';
@@ -1172,7 +1314,8 @@
   // <button> (it holds a textarea and its own buttons); the header carries the
   // close control so it stays keyboard-reachable.
   function openBubble(t, el) {
-    var b = create('div', { class: 'sf-bub sf-bub-open', 'data-tid': t.id, 'data-focus': '1' });
+    var orphan = isOrphan(t);
+    var b = create('div', { class: 'sf-bub sf-bub-open' + (orphan ? ' sf-bub-orphan' : ''), 'data-tid': t.id, 'data-focus': '1' });
     b._anchor = el;
     b.innerHTML = '<div class="sf-bub-head"><span class="sf-bub-who' +
       (t.comments[0] && t.comments[0].author === 'claude' ? ' claude' : '') + '">' +
@@ -1186,6 +1329,14 @@
       }).join('');
     b.onclick = function (e) { e.stopPropagation(); }; // using the card must not dismiss it
     b.querySelector('.sf-bub-x').onclick = function (e) { e.stopPropagation(); collapseThread(); };
+    // Say plainly that the content is gone, above the thread, and keep the
+    // original quote so the reader can see what it was about before deciding.
+    if (orphan) {
+      var quote = (t.anchor && t.anchor.block && t.anchor.block.text) || '';
+      if (quote) b.insertBefore(create('div', { class: 'sf-orphan-quote' }, quote.slice(0, 160)), b.firstChild);
+      b.insertBefore(create('div', { class: 'sf-orphan-note' },
+        'The content this comment referred to was removed.'), b.firstChild);
+    }
 
     var ta = create('textarea', { class: 'sf-input', placeholder: 'Reply…', rows: '2' });
     var row = create('div', { class: 'sf-compose-foot' });
