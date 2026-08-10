@@ -722,6 +722,25 @@ test('moving the pointer inside a hovered bubble keeps its block highlighted', a
   assert.ok(block.classList.contains('sf-hover'), 'still highlighted — no flicker while the bubble is hovered');
 });
 
+test('entering a bubble clears the highlight left on a different block', async (t) => {
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body: 'one' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } },
+    { id: 't2', state: 'open', comments: [{ id: 'c2', author: 'human', body: 'two' }],
+      anchor: { block: { index: 1, tag: 'P', text: 'Second paragraph for hover.', sectionPath: [] } } },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  const a = document.querySelector('p.a'), b = document.querySelector('p.b');
+  mouse(window, a, 'mousemove');                       // hover block A
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(a.classList.contains('sf-hover'), 'block A highlighted');
+  // Pointer goes straight from block A into the bubble for block B.
+  document.querySelector('.sf-bub[data-tid="t2"]').dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }));
+  assert.ok(b.classList.contains('sf-hover'), 'block B highlighted');
+  assert.ok(!a.classList.contains('sf-hover'), 'block A released — only one block is ever the hovered pair');
+});
+
 test('hovering a block focuses every bubble anchored to it, and vice-versa', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
   const { document } = window;

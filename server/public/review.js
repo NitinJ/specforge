@@ -1098,6 +1098,10 @@
   // block lights up every bubble anchored to it (see onHover).
   function wireBubbleHover(b, el) {
     b.onmouseenter = function () {
+      // Drop any highlight still held by a DIFFERENT block: moving the pointer
+      // straight from block A into a bubble anchored to block B would otherwise
+      // leave both lit, since the rail guard in onHover stops the usual clear.
+      clearHover();
       if (el) el.classList.add('sf-hover');
       markBubbleFocus(el, true);
     };
