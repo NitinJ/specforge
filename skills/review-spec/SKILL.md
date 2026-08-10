@@ -75,6 +75,21 @@ Then, for each thread in the batch:
    node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>"
    ```
 
+   **Keep replies short and skimmable.** One or two sentences is the norm: state
+   what you changed and where (name the section), not a narration of your process.
+   Lead with the outcome. Only expand when the comment genuinely needs it (a
+   tradeoff, a rejected alternative, several distinct edits).
+
+   Comment bodies render a **small markdown subset**, so format only when it earns
+   its keep — a wall of asterisks on a one-liner is worse than plain prose:
+   - `**bold**` for the one term that matters, `*italic*`, `` `code`/`§ids` `` inline.
+   - `- ` / `1. ` lists (each on its own line) when you made **several** distinct
+     edits — one bullet per edit beats a comma-spliced sentence.
+   - A blank line between paragraphs; keep it to two at most.
+
+   Unsupported (headings, tables, links, blockquotes) render as literal text —
+   don't use them. When in doubt, a single plain sentence is the right answer.
+
 Do **not** resolve threads — only the human resolves (which closes them).
 
 ## 4. Mark the batch done

@@ -758,7 +758,7 @@
           var editable = c.author === 'human' && !c.batchId && c.id;
           return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
             (c.author === 'claude' ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
-            '<div class="body">' + esc(c.body) + '</div>' +
+            '<div class="body">' + fmtBody(c.body) + '</div>' +
             (editable ? '<button class="sf-edit-c" type="button" aria-label="Edit comment">Edit</button>' : '') +
             '</div>';
         }).join('');
@@ -973,6 +973,45 @@
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
+  }
+  // Render a comment body as a small, safe markdown subset. The text is
+  // HTML-escaped FIRST, then emphasis/code/lists are layered onto the escaped
+  // string — so no markup inside a body can ever reach the DOM (the escaped
+  // entities carry none of the *_` markers this looks for). Intentionally tiny
+  // (no links/headings/tables): review comments are short prose, not documents.
+  // The raw source is what's stored + edited; this only affects display.
+  function fmtInline(s) {
+    // Split on inline-code spans so emphasis never rewrites inside `code`.
+    return esc(s).split(/(`[^`]+`)/).map(function (part) {
+      if (/^`[^`]+`$/.test(part)) return '<code>' + part.slice(1, -1) + '</code>';
+      return part
+        .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')       // **bold**
+        .replace(/\*(\S(?:[^*\n]*\S)?)\*/g, '<em>$1</em>');        // *italic* (no inner-edge spaces)
+    }).join('');
+  }
+  function fmtBody(raw) {
+    var text = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n').replace(/\s+$/, '');
+    if (!text.trim()) return '';
+    var out = [], para = [], list = null; // list = { tag:'ul'|'ol', items:[] }
+    function flushPara() { if (para.length) { out.push('<p>' + para.map(fmtInline).join('<br>') + '</p>'); para = []; } }
+    function flushList() { if (list) { out.push('<' + list.tag + '>' + list.items.join('') + '</' + list.tag + '>'); list = null; } }
+    text.split('\n').forEach(function (line) {
+      var ul = /^\s*[-*]\s+(.*)$/.exec(line);
+      var ol = /^\s*\d+\.\s+(.*)$/.exec(line);
+      if (ul || ol) {
+        flushPara();
+        var tag = ul ? 'ul' : 'ol';
+        if (!list || list.tag !== tag) { flushList(); list = { tag: tag, items: [] }; }
+        list.items.push('<li>' + fmtInline((ul || ol)[1]) + '</li>');
+      } else if (!line.trim()) {
+        flushPara(); flushList(); // a blank line ends the current block
+      } else {
+        flushList();
+        para.push(line);
+      }
+    });
+    flushPara(); flushList();
+    return out.join('');
   }
   function flash(msg) {
     var n = create('div', {}, msg);

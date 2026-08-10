@@ -281,7 +281,19 @@
 .sf-comment:first-of-type { border-top: none; }
 .sf-comment .who { font-weight: 700; font-size: 11px; }
 .sf-comment .who.claude { color: var(--sf-accent); }
-.sf-comment .body { white-space: pre-wrap; }
+/* Comment body renders a safe markdown subset (fmtBody in review.js): tight
+   paragraphs + lists, quiet inline code, no runaway spacing in the narrow rail. */
+.sf-comment .body { font-size: 12.5px; line-height: 1.5; word-break: break-word; }
+.sf-comment .body > :first-child { margin-top: 0; }
+.sf-comment .body > :last-child { margin-bottom: 0; }
+.sf-comment .body p { margin: 0 0 6px; }
+.sf-comment .body ul, .sf-comment .body ol { margin: 0 0 6px; padding-left: 20px; }
+.sf-comment .body li { margin: 1px 0; }
+.sf-comment .body li::marker { color: var(--sf-muted); }
+.sf-comment .body strong { font-weight: 700; }
+.sf-comment .body em { font-style: italic; }
+.sf-comment .body code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em;
+  background: color-mix(in srgb, var(--sf-ink) 9%, transparent); border-radius: 4px; padding: .5px 4px; }
 /* Edit affordance for an own, not-yet-submitted comment — a quiet text button
    that warms to the accent on hover. The inline editor reuses the reply spacing. */
 .sf-edit-c { background: none; border: none; color: var(--sf-muted); cursor: pointer;

@@ -363,6 +363,58 @@ test('a claude (agent) comment has no Edit control', async (t) => {
   assert.ok(!c2.querySelector('.sf-edit-c'), 'claude comments are not editable');
 });
 
+// ---------- comment body formatting (safe markdown subset) ----------
+// A comment renders its body through fmtBody: paragraphs, - / * / 1. lists,
+// **bold**, *italic*, `code` — everything HTML-escaped first so no markup in a
+// body can reach the DOM. The raw source is kept for editing (see the edit test).
+const FMT_ANCHOR = { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } };
+const bodyHtmlOf = async (t, body) => {
+  const threads = [{ id: 't1', state: 'open', comments: [{ id: 'c1', author: 'human', body }], anchor: FMT_ANCHOR }];
+  const { window } = await bootReviewLayer(t, { threads });
+  return window.document.querySelector('.sf-comment[data-cid="c1"] .body').innerHTML;
+};
+
+test('a comment body renders bold, italic and inline code', async (t) => {
+  const html = await bodyHtmlOf(t, 'Use **bold**, some *italic* and `code()` here.');
+  assert.match(html, /<strong>bold<\/strong>/, 'bold');
+  assert.match(html, /<em>italic<\/em>/, 'italic');
+  assert.match(html, /<code>code\(\)<\/code>/, 'inline code');
+});
+
+test('a comment body renders a bullet list', async (t) => {
+  const html = await bodyHtmlOf(t, '- first\n- second\n- third');
+  assert.match(html, /<ul><li>first<\/li><li>second<\/li><li>third<\/li><\/ul>/, 'bullets become a <ul>');
+});
+
+test('a comment body renders a numbered list', async (t) => {
+  const html = await bodyHtmlOf(t, '1. one\n2. two');
+  assert.match(html, /<ol><li>one<\/li><li>two<\/li><\/ol>/, 'numbers become an <ol>');
+});
+
+test('a comment body splits paragraphs on blank lines and keeps a list after prose', async (t) => {
+  const html = await bodyHtmlOf(t, 'Intro line.\n\nThen a point:\n- a\n- b');
+  assert.match(html, /<p>Intro line\.<\/p>/, 'first paragraph');
+  assert.match(html, /<p>Then a point:<\/p><ul><li>a<\/li><li>b<\/li><\/ul>/, 'prose flushes before the list');
+});
+
+test('a comment body escapes HTML before formatting (no injection)', async (t) => {
+  const html = await bodyHtmlOf(t, 'watch **<img src=x onerror=alert(1)>** out');
+  assert.doesNotMatch(html, /<img/, 'the tag is escaped, not injected');
+  assert.match(html, /&lt;img/, 'shown as escaped text');
+  assert.match(html, /<strong>&lt;img[^<]*&gt;<\/strong>/, 'emphasis still wraps the escaped text');
+});
+
+test('a plain one-line comment renders as a single paragraph', async (t) => {
+  const html = await bodyHtmlOf(t, 'Just fix the typo.');
+  assert.equal(html, '<p>Just fix the typo.</p>');
+});
+
+test('an unmatched backtick renders literally, not as an empty code span', async (t) => {
+  const html = await bodyHtmlOf(t, 'the `count var is off');
+  assert.doesNotMatch(html, /<code>/, 'no code span without a closing backtick');
+  assert.match(html, /`count var is off/, 'the stray backtick and its text survive');
+});
+
 test('clicking an already-commented block opens a focused reply on that thread', async (t) => {
   const threads = [{
     id: 't1', state: 'open',
