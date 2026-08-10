@@ -741,6 +741,10 @@
   // ---------- hover + click ----------
   var hoverEl = null;
   function onHover(e) {
+    // Over the rail, leave the highlight alone: the bubble's own enter/leave
+    // handlers own the reciprocal highlight there. Clearing it on every
+    // mousemove inside a hovered bubble would make its block flicker.
+    if (e.target.closest && e.target.closest('#sf-rail')) return;
     if (els.compose || inUI(e.target)) { clearHover(); return; }
     var el = blockAt(e.target);
     if (el === hoverEl) return;
@@ -1072,9 +1076,16 @@
     }
     send.onclick = function (e) { e.stopPropagation(); submit(); };
     var res = create('button', { class: 'sf-bub-resolve', type: 'button' }, 'Resolve');
+    // Only drop the expanded thread if the server actually resolved it — fetch
+    // fulfills on 4xx/5xx too, so an unchecked .then() would collapse the card
+    // as though it had worked and swallow the failure.
     res.onclick = function (e) {
       e.stopPropagation();
-      postJSON(API + '/' + t.id + '/resolve').then(function () { state.active = null; load(); });
+      postJSON(API + '/' + t.id + '/resolve').then(function (r) {
+        if (!r.ok) return flash('Could not resolve the thread.');
+        state.active = null;
+        load();
+      }).catch(function () { flash('Could not resolve the thread.'); });
     };
     row.appendChild(res); row.appendChild(send);
     b.appendChild(ta); b.appendChild(row);

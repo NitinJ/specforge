@@ -61,7 +61,10 @@ async function bootReviewLayer(t, opts = {}) {
     if (init && (init.method === 'POST' || init.method === 'PUT' || init.method === 'PATCH')) {
       const bucket = init.method === 'PUT' ? puts : init.method === 'PATCH' ? patches : posts;
       bucket.push({ url, body: init.body ? JSON.parse(init.body) : {} });
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }), text: () => Promise.resolve('{"ok":true}') });
+      // opts.failPost lets a test make one endpoint reject, to prove the client
+      // checks Response.ok rather than assuming a fulfilled fetch succeeded.
+      const ok = !(opts.failPost && opts.failPost.test(String(url)));
+      return Promise.resolve({ ok, json: () => Promise.resolve({ ok }), text: () => Promise.resolve('{}') });
     }
     if (String(url).indexOf('/meta') !== -1) {
       return Promise.resolve({ json: () => Promise.resolve(meta) });
@@ -693,6 +696,30 @@ test('resolving from the expanded card posts resolve', async (t) => {
   document.querySelector('.sf-bub-open .sf-bub-resolve').click();
   await new Promise((r) => window.setTimeout(r, 0));
   assert.ok(posts.find((x) => /\/comments\/t1\/resolve$/.test(x.url)), 'posts to the resolve endpoint');
+});
+
+test('a failed resolve leaves the thread expanded instead of pretending it worked', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock(), failPost: /\/resolve$/ });
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  document.querySelector('.sf-bub-open .sf-bub-resolve').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(document.querySelectorAll('.sf-bub-open').length, 1,
+    'the card stays open — fetch fulfills on 4xx, so an unchecked .then() would have collapsed it');
+});
+
+test('moving the pointer inside a hovered bubble keeps its block highlighted', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  const block = document.querySelector('p.a');
+  const bub = document.querySelector('.sf-bub[data-tid="t1"]');
+  bub.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }));
+  assert.ok(block.classList.contains('sf-hover'), 'hovering the bubble highlights its block');
+  // A mousemove landing on the bubble must not clear what the bubble just set.
+  mouse(window, bub, 'mousemove');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(block.classList.contains('sf-hover'), 'still highlighted — no flicker while the bubble is hovered');
 });
 
 test('hovering a block focuses every bubble anchored to it, and vice-versa', async (t) => {
