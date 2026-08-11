@@ -195,11 +195,13 @@ try {
     `author=${mine.comments[0].author}`);
   check(mine.comments[0].kind === 'human', 'and recorded as a human comment');
 
-  const pendingAfterDiscussion = listPendingForSpec(specId).length;
   await page.click('.sf-tb-act').catch(() => {});
   await page.waitForTimeout(1200);
-  check(listPendingForSpec(specId).length === pendingAfterDiscussion,
-    'discussion alone queues no work for the agent');
+  // Asked about our own thread rather than the total count, which someone
+  // else's concurrent submit would move.
+  const queuedOurDiscussion = listPendingForSpec(specId)
+    .some((b) => b.threadIds.some((tid) => createdThreads.has(tid)));
+  check(!queuedOurDiscussion, 'discussion alone queues no work for the agent');
 
   // Comment 2: addressed to the agent. This one must queue.
   threadCountBefore = loadComments(specId).threads.length;
@@ -207,12 +209,15 @@ try {
   const caption = (await page.textContent('.sf-foot-caption').catch(() => '')) || '';
   console.log(`     footer reads: ${JSON.stringify(caption.trim())}`);
 
-  // Identified by what is new, not by position: the spec may already have a
-  // pending batch, and replying to someone else's would be worse than failing.
+  // Identified by carrying one of this run's own threads, not by position and
+  // not merely by being new. Another reviewer submitting at the same moment
+  // also produces a new batch, and replying to and closing theirs would be
+  // worse than failing outright.
   const batchesBefore = new Set(listPendingForSpec(specId).map((b) => b.batchId));
   await page.click('.sf-tb-act');
   await page.waitForTimeout(2000);
-  const pending = listPendingForSpec(specId).filter((b) => !batchesBefore.has(b.batchId));
+  const pending = listPendingForSpec(specId).filter((b) =>
+    !batchesBefore.has(b.batchId) && b.threadIds.some((tid) => createdThreads.has(tid)));
   check(pending.length > 0, 'submitting queues a batch the owner\'s session will pick up');
 
   if (pending.length) {
