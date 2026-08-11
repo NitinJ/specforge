@@ -47,9 +47,17 @@ let ourBatchId = null;
  * only ever be a superset guess, which is how a reviewer's thread would get
  * deleted. Reading the tag back off the store is both.
  */
+const RUN_START = new Date().toISOString();
+
 function isOurs(t) {
   const first = (t.comments || [])[0];
-  return !!first && first.author === REVIEWER && String(first.body || '').startsWith(RUN_TAG);
+  if (!first || first.author !== REVIEWER) return false;
+  if (!String(first.body || '').startsWith(RUN_TAG)) return false;
+  // Written since this run began. The tag and the name are both visible on the
+  // published page, so another holder of the link could copy them; bounding to
+  // this run's own window means they would have to do it while the run is in
+  // flight, and the only thread they could get deleted is their own.
+  return String(first.createdAt || '') >= RUN_START;
 }
 
 /** The ids of every thread in the store that this run wrote. */
@@ -318,7 +326,6 @@ try {
   const ourBatches = pendingNow.filter((b) =>
     (b.batchId === ourBatchId || b.threadIds.some((tid) => mine.has(tid)))
     && b.threadIds.every((tid) => mine.has(tid)));
-  for (const b of ourBatches) markBatchDone(specId, b.batchId);
 
   // A batch holding someone else's thread as well is left alone, and so are the
   // threads inside it: closing it would consume their unanswered work, and
@@ -330,15 +337,18 @@ try {
     console.log(`left ${mixed.length} mixed batch(es) pending: they also carry someone else's work`);
   }
 
-  // Then the threads, swept the same way, so one written by a step that then
-  // threw is still found. Only this run's tag and reviewer name match, so
-  // nothing else can be caught by it.
+  // Threads first, then batches. Interrupted between the two, this leaves a
+  // pending batch naming threads that are gone: visible, and the owner's
+  // session finds nothing to do. The other order leaves synthetic comments
+  // stamped with a batchId whose inbox file no longer exists, which is
+  // invisible and permanent.
   let removed = 0;
   mutateComments(specId, (store) => {
     const before = store.threads.length;
     store.threads = store.threads.filter((t) => !isOurs(t) || stranded.has(t.id));
     removed = before - store.threads.length;
   });
+  for (const b of ourBatches) markBatchDone(specId, b.batchId);
   console.log(`\nunpublished; removed ${removed} thread(s) and ${ourBatches.length} batch(es) this run created.`);
 }
 
