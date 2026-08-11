@@ -512,13 +512,29 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
 /* A live publication has no expiry, so it has to be visible without running a
    command. Sits next to the CTA, quiet but permanent while the share is up. */
 .sf-tb-shared {
-  flex: 0 0 auto; font-size: 11.5px; font-weight: 600; letter-spacing: .2px;
-  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: .2px;
+  padding: 3px 5px 3px 9px; border-radius: 999px; white-space: nowrap;
   color: var(--sf-amber, #b45309);
   border: 1px solid color-mix(in srgb, var(--sf-amber, #b45309) 40%, transparent);
   background: color-mix(in srgb, var(--sf-amber, #b45309) 12%, transparent);
 }
 .sf-tb-shared[hidden] { display: none; }
+/* A record whose listener is gone: the link answers 502, so this reads as a
+   fault rather than a state, and its action is the only one worth offering. */
+.sf-tb-shared-down {
+  color: var(--sf-red, #b91c1c);
+  border-color: color-mix(in srgb, var(--sf-red, #b91c1c) 45%, transparent);
+  background: color-mix(in srgb, var(--sf-red, #b91c1c) 12%, transparent);
+}
+.sf-tb-shared-busy { color: var(--sf-muted, #5f6873); }
+.sf-shared-act {
+  font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+  padding: 1px 7px; border-radius: 999px; color: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.sf-shared-act:hover { background: color-mix(in srgb, currentColor 20%, transparent); }
 
 /* Addressing, made visible. @agent is what decides whether a thread becomes
    work, so it reads differently from a mention of a person. */
@@ -850,6 +866,16 @@ div.sf-menu-row.sf-menu-ctl:first-of-type::before {
    not the amber detach signals). The link is a real <a> styled as a row. */
 a.sf-doc-link { text-decoration: none; color: var(--sf-ink); cursor: pointer; }
 a.sf-doc-link:hover { color: var(--sf-accent); }
+
+/* The share row carries a link plus two buttons, so the hostname takes whatever
+   space is left rather than pushing them out of the menu. */
+.sf-share-on { gap: 6px; }
+.sf-share-url {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--sf-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11.5px;
+}
+.sf-share-off { color: var(--sf-amber, #b45309); }
 .sf-reexport:hover { color: var(--sf-accent); border-color: var(--sf-accent); }
 /* Footer — one bottom row: live pill (left) · session id (center, truncates) ·
    Detach (right). */

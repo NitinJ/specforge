@@ -9,7 +9,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createThread, addComment, kindOf, isAgent, isForAgent } from '../lib/comments.mjs';
+import { createThread, addComment, kindOf, isAgent, isForAgent, wasSentToAgent } from '../lib/comments.mjs';
 
 const anchor = { block: { index: 1, tag: 'P', text: 'a block' } };
 const fresh = () => ({ specId: 's', threads: [] });
@@ -95,4 +95,60 @@ test('a legacy thread with no mention is discussion, not agent work', () => {
     comments: [{ id: 'c_1', author: 'human', body: 'tighten this' }],
   };
   assert.equal(isForAgent(legacy), false);
+});
+
+// Two different questions, deliberately not one predicate.
+//
+// "Was this sent" keeps specs written before mentions existed in the loop: every
+// comment on them was agent work by construction and carries no @agent, so the
+// lifecycle CTA would otherwise stop reporting them as awaiting a reply.
+// "Should this be sent" stays about the mention, so a later remark in an
+// answered thread does not silently re-engage the agent.
+test('a thread that was submitted is in the loop but not resubmittable', () => {
+  const sent = {
+    id: 'th_1', state: 'open', anchor,
+    comments: [{ id: 'c_1', author: 'human', body: 'tighten this', batchId: 'b1' }],
+  };
+  assert.equal(wasSentToAgent(sent), true, 'it is in the agent loop');
+  assert.equal(isForAgent(sent), false, 'but nothing in it asks the agent for anything new');
+});
+
+test('a human remark in an answered thread does not re-engage the agent', () => {
+  const answered = {
+    id: 'th_1', state: 'replied', anchor,
+    comments: [
+      { id: 'c_1', author: 'human', body: 'tighten this', batchId: 'b1' },
+      { id: 'c_2', author: 'claude', kind: 'agent', body: 'done' },
+      { id: 'c_3', author: 'lavee', body: 'thanks, that works' },
+    ],
+  };
+  assert.equal(wasSentToAgent(answered), true);
+  assert.equal(isForAgent(answered), false, 'a thank-you is not a request');
+});
+
+// One @agent early in a thread must not make every later remark in it agent
+// work. The mention that was already delivered is history.
+test('a delivered mention does not make later remarks submittable', () => {
+  const answered = {
+    id: 'th_1', state: 'replied', anchor,
+    comments: [
+      { id: 'c_1', author: 'nitin', body: '@agent widen this', batchId: 'b1' },
+      { id: 'c_2', author: 'claude', kind: 'agent', body: 'done' },
+      { id: 'c_3', author: 'lavee', body: 'looks good now' },
+    ],
+  };
+  assert.equal(isForAgent(answered), false, 'the mention was already sent');
+  assert.equal(wasSentToAgent(answered), true, 'though the thread is still in the loop');
+});
+
+test('adding a mention to an answered thread does re-engage it', () => {
+  const reopened = {
+    id: 'th_1', state: 'replied', anchor,
+    comments: [
+      { id: 'c_1', author: 'human', body: 'tighten this', batchId: 'b1' },
+      { id: 'c_2', author: 'claude', kind: 'agent', body: 'done' },
+      { id: 'c_3', author: 'lavee', body: '@agent one more pass please' },
+    ],
+  };
+  assert.equal(isForAgent(reopened), true);
 });
