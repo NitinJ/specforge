@@ -91,18 +91,33 @@ function discoverChromium() {
     process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'ms-playwright') : null, // windows
   ].filter(Boolean);
 
-  // Every executable layout Playwright ships, across platforms and both the
-  // full build and the headless shell.
-  const layouts = [
-    ['chrome-linux64', 'chrome'],
-    ['chrome-linux', 'chrome'],
-    ['chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'],
-    ['chrome-mac-arm64', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'],
-    ['chrome-win', 'chrome.exe'],
-    ['chrome-headless-shell-linux64', 'chrome-headless-shell'],
-    ['chrome-headless-shell-mac', 'chrome-headless-shell'],
-    ['chrome-headless-shell-win', 'chrome-headless-shell.exe'],
-  ];
+  // Look for the executable by name rather than by path. Playwright's directory
+  // layout differs per platform and has changed between versions, so a list of
+  // hard-coded paths is a list of guesses that silently excludes a browser that
+  // is right there.
+  const EXE = new Set([
+    'chrome', 'chrome.exe',
+    'Chromium', 'Google Chrome for Testing',
+    'chrome-headless-shell', 'chrome-headless-shell.exe',
+  ]);
+
+  /** Executables under `dir`, to a bounded depth (the deepest layout is macOS's .app). */
+  function findExe(dir, depth) {
+    if (depth < 0) return [];
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    const found = [];
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) found.push(...findExe(p, depth - 1));
+      else if (EXE.has(e.name)) found.push(p);
+    }
+    return found;
+  }
 
   const rev = (d) => Number((/-(\d+)$/.exec(d) || [, 0])[1]);
   const out = [];
@@ -113,11 +128,11 @@ function discoverChromium() {
     } catch {
       continue; // this platform's cache is not here
     }
+    // Newest revision first, and the full build ahead of the headless shell.
     for (const d of dirs.sort((a, b) => rev(b) - rev(a))) {
-      for (const parts of layouts) {
-        const p = join(root, d, ...parts);
-        if (existsSync(p)) out.push(p);
-      }
+      const hits = findExe(join(root, d), 5);
+      hits.sort((a, b) => Number(/headless/.test(a)) - Number(/headless/.test(b)));
+      out.push(...hits);
     }
   }
   return out;
