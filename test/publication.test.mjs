@@ -142,6 +142,40 @@ test('submit works from a publication', async () => {
   assert.equal((await r.json()).ok, true);
 });
 
+// Everything downstream of a comment used to key off the literal author
+// "human". A named reviewer must keep every action that name replaced.
+test('a named author can edit their own unsubmitted comment', async () => {
+  const { thread } = await (await post('/api/comments', { anchor, body: 'first pass', author: 'lavee' })).json();
+  const cid = thread.comments[0].id;
+  const r = await fetch(`${base}/api/comments/${thread.id}/comment/${cid}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body: 'second pass', author: 'lavee' }),
+  });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).comment.body, 'second pass');
+});
+
+test('a named author cannot edit someone else\'s comment', async () => {
+  const { thread } = await (await post('/api/comments', { anchor, body: 'mine', author: 'lavee' })).json();
+  const cid = thread.comments[0].id;
+  const r = await fetch(`${base}/api/comments/${thread.id}/comment/${cid}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body: 'not yours', author: 'nitin' }),
+  });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /your own/);
+});
+
+test('a named author\'s comment enables the submit it addressed', async () => {
+  const { thread } = await (await post('/api/comments', { anchor, body: '@agent from lavee', author: 'lavee' })).json();
+  const r = await post('/api/comments/submit');
+  assert.equal(r.status, 201);
+  const { batch } = await r.json();
+  assert.ok(batch.threadIds.includes(thread.id), 'a named reviewer can queue agent work');
+});
+
 test('the block registry is readable and writable', async () => {
   assert.equal((await get('/api/blocks')).status, 200);
   const put = await fetch(base + '/api/blocks', {
