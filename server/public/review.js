@@ -52,20 +52,30 @@
   }
 
   /**
-   * True when an agent should act on this thread: a human in it addressed the
-   * agent, or it has already been submitted.
+   * True when some human in this thread addressed the agent.
    *
-   * The batchId half keeps specs written before mentions existed working. Every
-   * comment on them was agent work by construction and carries no @agent, so a
-   * thread already sent would otherwise stop being the agent's the moment this
-   * shipped, and a spec mid-review would lose its place in the loop. Kept in
-   * step with isForAgent in lib/comments.mjs.
+   * This decides what a submit would send, so it is about the mention and
+   * nothing else. Kept in step with isForAgent in lib/comments.mjs: if the two
+   * disagree the page offers a submit that submits nothing.
    */
   function isForAgentThread(t) {
     return !!(t && t.comments || []).length
-      && t.comments.some(function (c) {
-        return (!isAgentComment(c) && mentionsAgentBody(c.body)) || c.batchId;
-      });
+      && t.comments.some(function (c) { return !isAgentComment(c) && mentionsAgentBody(c.body); });
+  }
+
+  /**
+   * True when this thread is in the agent's loop: addressed to it, or already
+   * sent at some point.
+   *
+   * A different question from isForAgentThread, and the one the lifecycle CTA
+   * asks. The already-sent half keeps specs written before mentions existed
+   * working, since every comment on them was agent work by construction and
+   * carries no @agent. It deliberately does not make a later human-only remark
+   * in that thread submittable.
+   */
+  function inAgentLoop(t) {
+    return isForAgentThread(t)
+      || !!(t && t.comments || []).length && t.comments.some(function (c) { return !!c.batchId; });
   }
 
   // How you read a spec is yours, not the spec's.
@@ -670,12 +680,12 @@
   // anything, and counting it made a comment nobody sent report the agent as busy.
   function unresolvedAgentCount() {
     return state.threads.filter(function (t) {
-      return t.state !== 'resolved' && isForAgentThread(t);
+      return t.state !== 'resolved' && inAgentLoop(t);
     }).length;
   }
   function repliedAgentCount() {
     return state.threads.filter(function (t) {
-      return t.state === 'replied' && isForAgentThread(t);
+      return t.state === 'replied' && inAgentLoop(t);
     }).length;
   }
 
@@ -1757,7 +1767,7 @@
   /** Live threads nobody addressed to the agent: conversation, not a queue. */
   function discussionCount() {
     return state.threads.filter(function (t) {
-      return t.state !== 'resolved' && !isForAgentThread(t);
+      return t.state !== 'resolved' && !inAgentLoop(t);
     }).length;
   }
 
