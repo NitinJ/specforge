@@ -509,6 +509,58 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
   padding: 7px 13px; font-size: 12px; white-space: nowrap;
 }
 
+/* A live publication has no expiry, so it has to be visible without running a
+   command. Sits next to the CTA, quiet but permanent while the share is up. */
+.sf-tb-shared {
+  flex: 0 0 auto; font-size: 11.5px; font-weight: 600; letter-spacing: .2px;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  color: var(--sf-amber, #b45309);
+  border: 1px solid color-mix(in srgb, var(--sf-amber, #b45309) 40%, transparent);
+  background: color-mix(in srgb, var(--sf-amber, #b45309) 12%, transparent);
+}
+.sf-tb-shared[hidden] { display: none; }
+
+/* Addressing, made visible. @agent is what decides whether a thread becomes
+   work, so it reads differently from a mention of a person. */
+.sf-at { font-weight: 600; color: var(--sf-accent, #2563eb); }
+.sf-at-agent {
+  color: var(--sf-green, #15803d);
+  background: color-mix(in srgb, var(--sf-green, #15803d) 12%, transparent);
+  border-radius: 4px; padding: 0 3px;
+}
+
+/* First open on a published spec: who you are, and how the two kinds of comment
+   differ. Once per browser. */
+#sf-welcome {
+  position: fixed; inset: 0; z-index: 2147483646;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .45);
+}
+.sf-welcome-card {
+  width: min(440px, calc(100vw - 32px));
+  background: var(--sf-panel, #fff); color: var(--sf-ink, #222);
+  border: 1px solid var(--sf-line, #e4e0d7); border-radius: 14px;
+  padding: 22px 24px; box-shadow: 0 18px 48px rgba(0, 0, 0, .28);
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.sf-welcome-card h2 { margin: 0 0 10px; font-size: 17px; }
+.sf-welcome-card p { margin: 0 0 10px; color: var(--sf-muted, #5f6873); }
+.sf-welcome-card code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
+  background: color-mix(in srgb, var(--sf-green, #15803d) 12%, transparent);
+  color: var(--sf-green, #15803d); border-radius: 4px; padding: 1px 5px;
+}
+.sf-welcome-card label { display: block; margin: 14px 0 5px; font-weight: 600; font-size: 12.5px; }
+.sf-welcome-hint { font-weight: 400; color: var(--sf-muted, #5f6873); }
+.sf-welcome-card input {
+  width: 100%; box-sizing: border-box; padding: 9px 11px; font-size: 14px;
+  border: 1px solid var(--sf-line, #e4e0d7); border-radius: 8px;
+  background: var(--sf-bg, #fff); color: inherit;
+}
+.sf-welcome-err { margin-top: 8px; font-size: 12.5px; color: var(--sf-red, #b91c1c); }
+.sf-welcome-err[hidden] { display: none; }
+.sf-welcome-go { margin-top: 14px; width: 100%; }
+
 /* Everything that shared the top edge moves below the header. The attribute is
    set by review.js only when there is a title to show, so the offset and the
    header can never disagree. scroll-padding-top keeps in-page anchor jumps

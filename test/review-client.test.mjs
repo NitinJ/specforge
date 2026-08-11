@@ -53,7 +53,14 @@ async function bootReviewLayer(t, opts = {}) {
   if (opts.seedStorage) {
     try { Object.keys(opts.seedStorage).forEach((k) => window.localStorage.setItem(k, opts.seedStorage[k])); } catch (e) {}
   }
-  window.SPECFORGE = { specId: 'test-spec', prefs: opts.prefs || {} };
+  window.SPECFORGE = {
+    specId: 'test-spec',
+    prefs: opts.prefs || {},
+    // 'poll' is what a published copy is served with; the welcome dialog and the
+    // api base both key off it.
+    transport: opts.transport || 'sse',
+    api: opts.api,
+  };
   // jsdom defaults innerWidth to 1024 (below the TOC auto-collapse threshold);
   // let tests widen it so the floating TOC shows in auto mode.
   if (opts.innerWidth) Object.defineProperty(window, 'innerWidth', { value: opts.innerWidth, configurable: true });
@@ -284,7 +291,7 @@ test('the review command bar lives in the sidebar footer, not the launcher menu'
   assert.ok(action, 'footer carries the lifecycle action button');
   // A pending comment → the action is "Needs review" and submits the batch.
   assert.equal(action.getAttribute('data-state'), 'needs');
-  assert.match(foot.querySelector('.sf-foot-caption').textContent, /to submit/);
+  assert.match(foot.querySelector('.sf-foot-caption').textContent, /1 for agent/);
   action.click();
   await new Promise((r) => window.setTimeout(r, 0));
   assert.ok(posts.some((p) => /\/comments\/submit$/.test(p.url)), 'footer action submits the batch');
@@ -1747,11 +1754,12 @@ test('the Width row has a Fit toggle that stretches the page and persists', asyn
   assert.equal(document.documentElement.getAttribute('data-sf-fit'), '', 'fit attr set on <html>');
   assert.equal(document.documentElement.style.getPropertyValue('--maxw'), '100%', '--maxw stretched');
   assert.equal(document.querySelector('main').style.maxWidth, 'none', 'container cap removed');
-  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.fit === true), 'PUT persists fit:true');
+  assert.equal(localPrefs(window, 'sf-prefs:test-spec').fit, true, 'fit:true persisted to this browser');
   fit.click(); // toggle off → back to the slider width
   assert.equal(document.documentElement.getAttribute('data-sf-fit'), null, 'fit attr removed');
   assert.equal(document.documentElement.style.getPropertyValue('--maxw'), '1400px', 'slider width restored');
-  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.fit === false), 'PUT persists fit:false');
+  assert.equal(localPrefs(window, 'sf-prefs:test-spec').fit, false, 'fit:false persisted');
+  assert.equal(puts.find((p) => /\/prefs$/.test(p.url)), undefined, 'nothing written to the store');
 });
 
 test('a saved fit pref is applied on boot; dragging the slider turns fit off', async (t) => {
@@ -1764,7 +1772,8 @@ test('a saved fit pref is applied on boot; dragging the slider turns fit off', a
   range.dispatchEvent(new window.Event('input'));
   assert.equal(document.documentElement.getAttribute('data-sf-fit'), null, 'slider use exits fit mode');
   range.dispatchEvent(new window.Event('change'));
-  assert.ok(puts.some((p) => /\/prefs$/.test(p.url) && p.body.fit === false), 'exit is persisted');
+  assert.equal(localPrefs(window, 'sf-prefs:test-spec').fit, false, 'exit is persisted');
+  assert.equal(puts.find((p) => /\/prefs$/.test(p.url)), undefined, 'nothing written to the store');
 });
 
 test('a bare slider change (no input event) still exits and persists out of fit mode', async (t) => {
@@ -1778,8 +1787,10 @@ test('a bare slider change (no input event) still exits and persists out of fit 
   range.dispatchEvent(new window.Event('change'));
   assert.equal(document.documentElement.getAttribute('data-sf-fit'), null, 'fit exited on change');
   assert.equal(document.documentElement.style.getPropertyValue('--maxw'), '1000px', 'px width applied');
-  const p = puts.find((x) => /\/prefs$/.test(x.url) && x.body.width === 1000);
-  assert.ok(p && p.body.fit === false, 'the release persists {width, fit:false}');
+  const stored = localPrefs(window, 'sf-prefs:test-spec');
+  assert.equal(stored.width, 1000, 'the release persists the width');
+  assert.equal(stored.fit, false, 'and that it is no longer fit mode');
+  assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'nothing written to the store');
 });
 
 // ---------- docs layout: floating "Contents" TOC + centered content ----------
@@ -1835,10 +1846,11 @@ test('the chevron collapses/expands the TOC and persists the choice', async (t) 
   btn.click();
   assert.equal(document.documentElement.getAttribute('data-sf-toc'), 'hidden', 'collapsed');
   assert.equal(btn.textContent, '›', 'chevron flips to expand');
-  assert.ok(puts.some((p) => /\/api\/spec\/test-spec\/prefs$/.test(p.url) && p.body.toc === 'hidden'), 'persists toc:hidden per-spec');
+  assert.equal(localPrefs(window, 'sf-prefs:test-spec').toc, 'hidden', 'persists toc:hidden per-spec');
   btn.click();
   assert.equal(document.documentElement.getAttribute('data-sf-toc'), null, 'restored');
-  assert.ok(puts.some((p) => p.body.toc === 'shown'), 'persists toc:shown');
+  assert.equal(localPrefs(window, 'sf-prefs:test-spec').toc, 'shown', 'persists toc:shown');
+  assert.equal(puts.find((p) => /\/prefs$/.test(p.url)), undefined, 'nothing written to the store');
 });
 
 test('a saved toc:hidden pref collapses the TOC on boot (even on a wide window)', async (t) => {
@@ -2098,8 +2110,8 @@ test('the Font dropdown groups 3 fonts per category and applies + persists a pic
   assert.equal(c.getAttribute('data-sf-font'), 'mono', 'a mono pick sets the mono category');
   assert.match(c.style.getPropertyValue('--sf-reading-font'), /JetBrains Mono/, 'family applied');
   assert.ok(document.querySelector('head link[href*="JetBrains"]'), 'JetBrains Mono loaded from Google on pick');
-  const p = puts.find((x) => /\/prefs$/.test(x.url));
-  assert.ok(p && p.body.font === 'jetbrains-mono', 'PUT /prefs persists the font id');
+  assert.equal(localPrefs(window, 'sf-prefs').font, 'jetbrains-mono', 'the font id is stored for every spec');
+  assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'nothing written to the store');
 });
 
 test('the Presentation group offers display fonts that keep code monospace', async (t) => {
@@ -2119,8 +2131,8 @@ test('the Presentation group offers display fonts that keep code monospace', asy
     'a presentation pick sets the presentation category (not mono, so code stays monospace)');
   assert.match(c.style.getPropertyValue('--sf-reading-font'), /Fraunces/, 'family applied');
   assert.ok(document.querySelector('head link[href*="Fraunces"]'), 'Fraunces loaded from Google on pick');
-  const p = puts.find((x) => /\/prefs$/.test(x.url));
-  assert.ok(p && p.body.font === 'fraunces', 'PUT /prefs persists the presentation font id');
+  assert.equal(localPrefs(window, 'sf-prefs').font, 'fraunces', 'the presentation font id is stored');
+  assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'nothing written to the store');
 });
 
 test('the Font dropdown reflects the persisted font', async (t) => {
@@ -2143,18 +2155,22 @@ test('picking Default clears the override', async (t) => {
   assert.equal(c.style.getPropertyValue('--sf-reading-font'), '', 'and the inline family');
 });
 
-test('picking a theme PUTs it to /prefs', async (t) => {
+// How you read a spec is yours. These used to be server state, so one reader
+// switching to dark changed it for everyone who opened the spec — and once a
+// spec can be published, "everyone" includes strangers.
+const localPrefs = (window, key) => JSON.parse(window.localStorage.getItem(key) || '{}');
+
+test('picking a theme stores it in this browser, not on the server', async (t) => {
   const { window, puts } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
   rowByLabel(document, 'Theme').querySelector('.sf-swatch[data-theme="nord"]').click();
-  const p = puts.find((x) => /\/prefs$/.test(x.url));
-  assert.ok(p, 'a PUT to /prefs fired');
-  assert.equal(p.body.theme, 'nord', 'persists the picked theme variant');
+  assert.equal(localPrefs(window, 'sf-prefs').theme, 'nord', 'persisted locally');
+  assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'nothing was written to the store');
 });
 
-test('theme + font persist store-wide (/api/prefs); width stays per-spec', async (t) => {
-  const { window, puts } = await bootReviewLayer(t);
+test('theme and font apply to every spec; width, fit and filter to this one', async (t) => {
+  const { window } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
   rowByLabel(document, 'Theme').querySelector('.sf-swatch[data-theme="nord"]').click();
@@ -2163,12 +2179,32 @@ test('theme + font persist store-wide (/api/prefs); width stays per-spec', async
   const range = rowByLabel(document, 'Width').querySelector('input[type=range]');
   range.value = '1300'; range.dispatchEvent(new window.Event('change'));
 
-  const theme = puts.find((p) => p.body.theme === 'nord');
-  assert.equal(theme.url, '/api/prefs', 'theme → the store-wide endpoint (applies to every spec)');
-  const font = puts.find((p) => p.body.font === 'lora');
-  assert.equal(font.url, '/api/prefs', 'font → the store-wide endpoint');
-  const width = puts.find((p) => p.body.width === 1300);
-  assert.match(width.url, /\/api\/spec\/test-spec\/prefs$/, 'width stays per-spec');
+  const global = localPrefs(window, 'sf-prefs');
+  assert.equal(global.theme, 'nord', 'theme is store-wide, so it is not keyed to a spec');
+  assert.equal(global.font, 'lora');
+  assert.equal(global.width, undefined, 'width is not store-wide');
+  assert.equal(localPrefs(window, 'sf-prefs:test-spec').width, 1300, 'width is per-spec');
+});
+
+// The guarantee D11 exists for: a reviewer's reading preferences reach nobody.
+test('a second reader with different settings does not disturb the first', async (t) => {
+  const a = await bootReviewLayer(t);
+  a.window.document.getElementById('sf-launcher').click();
+  rowByLabel(a.window.document, 'Theme').querySelector('.sf-swatch[data-theme="nord"]').click();
+  assert.equal(a.window.document.documentElement.getAttribute('data-theme'), 'nord');
+
+  // A different browser: its own storage, and the same server-seeded prefs.
+  const b = await bootReviewLayer(t);
+  assert.notEqual(b.window.document.documentElement.getAttribute('data-theme'), 'nord',
+    'the second reader did not inherit the first reader\'s theme');
+  assert.equal(b.puts.filter((x) => /\/prefs$/.test(x.url)).length, 0,
+    'and neither of them wrote a setting to the store');
+});
+
+test('the server values seed a browser that has none', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { theme: 'dracula', width: 1100 } });
+  assert.equal(window.document.documentElement.getAttribute('data-theme'), 'dracula',
+    'the stored spec prefs still decide what an unconfigured browser sees');
 });
 
 test('the picker reflects a persisted variant on boot', async (t) => {
@@ -2180,23 +2216,22 @@ test('the picker reflects a persisted variant on boot', async (t) => {
     'the active swatch matches the persisted theme');
 });
 
-test('releasing the width slider PUTs the width to /prefs', async (t) => {
+test('releasing the width slider persists the width to this browser', async (t) => {
   const { window, puts } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
   const range = rowByLabel(document, 'Width').querySelector('input[type=range]');
   range.value = '1300';
   range.dispatchEvent(new window.Event('change'));
-  const p = puts.find((x) => /\/prefs$/.test(x.url));
-  assert.ok(p && p.body.width === 1300, 'width persisted on change');
+  assert.equal(localPrefs(window, 'sf-prefs:test-spec').width, 1300, 'width persisted on change');
+  assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'and not to the store');
 });
 
-test('changing the comments filter PUTs it to /prefs', async (t) => {
+test('changing the comments filter persists it to this browser', async (t) => {
   const { window, puts } = await bootReviewLayer(t);
-  const { document } = window;
-  document.querySelector('.sf-filter button[data-f="resolved"]').click();
-  const p = puts.find((x) => /\/prefs$/.test(x.url));
-  assert.ok(p && p.body.filter === 'resolved', 'filter persisted on change');
+  window.document.querySelector('.sf-filter button[data-f="resolved"]').click();
+  assert.equal(localPrefs(window, 'sf-prefs:test-spec').filter, 'resolved', 'filter persisted on change');
+  assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'and not to the store');
 });
 
 test('the footer shows "Not attached" with no Detach when free', async (t) => {
@@ -2207,3 +2242,152 @@ test('the footer shows "Not attached" with no Detach when free', async (t) => {
   assert.match(foot.querySelector('.sf-foot-session').textContent, /Not attached/, 'shows Not attached');
   assert.equal(foot.querySelector('.sf-detach'), null, 'no Detach button when free');
 });
+
+
+test('a published copy asks a new reader for a name, once', async (t) => {
+  const { window } = await bootReviewLayer(t, { transport: 'poll' });
+  const dlg = window.document.getElementById('sf-welcome');
+  assert.ok(dlg, 'the dialog is shown on a published copy');
+  assert.match(dlg.textContent, /@agent/, 'it explains what makes a comment agent work');
+
+  dlg.querySelector('#sf-welcome-name').value = 'Lavee';
+  dlg.querySelector('.sf-welcome-go').click();
+  assert.equal(window.localStorage.getItem('sf-author'), 'Lavee', 'the name is kept for this browser');
+  assert.equal(window.document.getElementById('sf-welcome'), null, 'and the dialog closes');
+});
+
+test('the owner\'s own copy is never asked', async (t) => {
+  const { window } = await bootReviewLayer(t); // transport defaults to sse
+  assert.equal(window.document.getElementById('sf-welcome'), null);
+});
+
+// review.js is deferred, so readyState is never 'loading' and boot() runs at
+// the readyState check near the top of the file. Any `var` the boot path reads
+// must be assigned above that check: one declared further down is still
+// `undefined` there, and this lookup would silently miss and re-ask a reader who
+// already has a name on every single load.
+test('a reader who already named themselves is not asked again', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    transport: 'poll', seedStorage: { 'sf-author': 'Lavee' },
+  });
+  assert.equal(window.document.getElementById('sf-welcome'), null);
+});
+
+// Storage can be blocked (a private window, third-party-storage settings). The
+// name must still reach the comments: dropping it silently would attribute
+// everything the reviewer writes to nobody while the dialog looked like it
+// worked.
+test('a name survives blocked storage for the session', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, {
+    transport: 'poll',
+    preBoot: (w) => {
+      w.localStorage.setItem = () => { throw new Error('storage blocked'); };
+      w.localStorage.getItem = () => { throw new Error('storage blocked'); };
+    },
+  });
+  const { document } = window;
+  document.querySelector('#sf-welcome-name').value = 'Lavee';
+  document.querySelector('.sf-welcome-go').click();
+  assert.equal(document.getElementById('sf-welcome'), null, 'the dialog still closes');
+
+  document.querySelector('main p, p').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const ta = document.querySelector('#sf-rail textarea');
+  ta.value = 'a comment';
+  document.querySelector('#sf-rail .sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const created = posts.find((p) => !/\/(submit|resolve|reply)$/.test(p.url));
+  assert.equal(created.body.author, 'Lavee', 'the comment still carries the name they typed');
+});
+
+test('the dialog refuses an empty or reserved name', async (t) => {
+  const { window } = await bootReviewLayer(t, { transport: 'poll' });
+  const dlg = window.document.getElementById('sf-welcome');
+  const err = dlg.querySelector('.sf-welcome-err');
+
+  dlg.querySelector('.sf-welcome-go').click();
+  assert.equal(err.hasAttribute('hidden'), false, 'an empty name is refused');
+  assert.ok(window.document.getElementById('sf-welcome'), 'and the dialog stays');
+
+  dlg.querySelector('#sf-welcome-name').value = 'agent';
+  dlg.querySelector('.sf-welcome-go').click();
+  assert.match(err.textContent, /reserved/);
+  assert.equal(window.localStorage.getItem('sf-author'), null, 'nothing was stored');
+});
+
+test('the footer counts agent threads and discussion separately', async (t) => {
+  const threads = [
+    {
+      id: 't1', state: 'open', comments: [{ author: 'nitin', body: '@agent widen this' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+    },
+    {
+      id: 't2', state: 'open', comments: [{ author: 'lavee', body: 'why 40 bits?' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+    },
+  ];
+  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'draft' } });
+  const caption = window.document.querySelector('.sf-foot-caption').textContent;
+  assert.match(caption, /1 for agent/);
+  assert.match(caption, /1 discussion/);
+});
+
+test('a spec with only discussion offers no submit', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open', comments: [{ author: 'lavee', body: 'why 40 bits?' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+  }];
+  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'draft' } });
+  const btn = window.document.querySelector('.sf-act');
+  assert.notEqual(btn.getAttribute('data-state'), 'needs',
+    'discussion alone must not offer a submit that would submit nothing');
+  assert.match(window.document.querySelector('.sf-foot-caption').textContent, /1 discussion/);
+});
+
+test('@agent renders as addressing, and a person\'s mention differently', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'nitin', body: '@lavee should @agent take this?' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const body = window.document.querySelector('.sf-comment[data-cid="c1"] .body');
+  const ats = body.querySelectorAll('.sf-at');
+  assert.equal(ats.length, 2, 'both mentions are marked');
+  assert.equal(body.querySelectorAll('.sf-at-agent').length, 1, 'only the agent one is marked as the addressee');
+  assert.equal(body.querySelector('.sf-at-agent').textContent, '@agent');
+});
+
+test('a quoted mention is not rendered as addressing', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'nitin', body: 'the token is `@agent`' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const body = window.document.querySelector('.sf-comment[data-cid="c1"] .body');
+  assert.equal(body.querySelectorAll('.sf-at').length, 0, 'inside code it is quotation');
+  assert.ok(body.querySelector('code'), 'and still renders as code');
+});
+
+test('a bubble carries the author\'s own initial', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open', comments: [{ author: 'lavee', body: 'a point' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const who = window.document.querySelector('#sf-rail .sf-bub-who');
+  assert.equal(who.textContent, 'L', 'the initial comes from the name, not a fixed letter');
+  assert.equal(who.getAttribute('title'), 'lavee');
+});
+
+test('a published spec shows a Shared badge; an unpublished one does not', async (t) => {
+  const shared = await bootReviewLayer(t, { meta: { id: 'test-spec', title: 'T', status: 'draft', shared: true } });
+  const badge = shared.window.document.querySelector('.sf-tb-shared');
+  assert.ok(badge, 'the badge exists');
+  assert.equal(badge.hasAttribute('hidden'), false, 'and is shown while published');
+
+  const plain = await bootReviewLayer(t, { meta: { id: 'test-spec', title: 'T', status: 'draft' } });
+  assert.equal(plain.window.document.querySelector('.sf-tb-shared').hasAttribute('hidden'), true);
+});
+

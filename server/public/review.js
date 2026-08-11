@@ -57,25 +57,57 @@
       && t.comments.some(function (c) { return !isAgentComment(c) && mentionsAgentBody(c.body); });
   }
 
-  var PREFS = (window.SPECFORGE || {}).prefs || {};
+  // How you read a spec is yours, not the spec's.
+  //
+  // Theme, font, width, fit, TOC and comment filter used to be server state, so
+  // one reader switching to dark changed it for everyone who opened the spec,
+  // and theme and font changed it on every spec. Once a spec can be published
+  // that is a stranger reaching into the owner's settings, so these live in the
+  // browser instead.
+  //
+  // The server values are still read once, as the starting point for a browser
+  // that has none. Nothing writes them back.
   var GLOBAL_PREF_KEYS = { theme: 1, font: 1 };
-  function putJSON(url, body) {
+  var GLOBAL_STORE_KEY = 'sf-prefs';          // theme + font: every spec
+  var SPEC_STORE_KEY = 'sf-prefs:' + SPEC;    // width, fit, toc, filter: this spec
+
+  function readLocal(key) {
     try {
-      fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(function () {});
-    } catch (e) {}
+      var raw = window.localStorage.getItem(key);
+      var v = raw ? JSON.parse(raw) : null;
+      return v && typeof v === 'object' ? v : null;
+    } catch (e) {
+      return null; // storage blocked or corrupt: fall back to the server seed
+    }
   }
+  function writeLocal(key, obj) {
+    try { window.localStorage.setItem(key, JSON.stringify(obj)); } catch (e) { /* not fatal */ }
+  }
+
+  var LOCAL_GLOBAL = readLocal(GLOBAL_STORE_KEY) || {};
+  var LOCAL_SPEC = readLocal(SPEC_STORE_KEY) || {};
+  var PREFS = (function () {
+    var seed = (window.SPECFORGE || {}).prefs || {};
+    var out = {};
+    var k;
+    for (k in seed) if (Object.prototype.hasOwnProperty.call(seed, k)) out[k] = seed[k];
+    for (k in LOCAL_GLOBAL) if (Object.prototype.hasOwnProperty.call(LOCAL_GLOBAL, k)) out[k] = LOCAL_GLOBAL[k];
+    for (k in LOCAL_SPEC) if (Object.prototype.hasOwnProperty.call(LOCAL_SPEC, k)) out[k] = LOCAL_SPEC[k];
+    return out;
+  })();
+
   function putPref(patch) {
-    var global = null, spec = null;
+    var global = false, spec = false;
     for (var k in patch) {
       if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
       PREFS[k] = patch[k];
       // Strict === against the sentinel so an inherited key (constructor,
       // toString) can never be misread as a global pref.
-      if (GLOBAL_PREF_KEYS[k] === 1) { (global = global || {})[k] = patch[k]; }
-      else { (spec = spec || {})[k] = patch[k]; }
+      if (GLOBAL_PREF_KEYS[k] === 1) { LOCAL_GLOBAL[k] = patch[k]; global = true; }
+      else { LOCAL_SPEC[k] = patch[k]; spec = true; }
     }
-    if (global) putJSON('/api/prefs', global);
-    if (spec) putJSON(SPEC_API + '/prefs', spec);
+    if (global) writeLocal(GLOBAL_STORE_KEY, LOCAL_GLOBAL);
+    if (spec) writeLocal(SPEC_STORE_KEY, LOCAL_SPEC);
   }
 
   // Elements that can carry a comment. The innermost match under the pointer wins.
@@ -152,6 +184,23 @@
   // applyTheme() reads this; a mid-file init would leave it `undefined` on boot.
   var _themeSupported = null;
 
+  // The name this browser writes under. Null until it has one, which the server
+  // reads as the pre-authors default. Every write sends the same value, so the
+  // name on a comment is the name that can edit it: create, reply and edit must
+  // agree or a comment becomes uneditable by the browser that wrote it.
+  //
+  // Up here for the same reason as _themeSupported: review.js is deferred, so
+  // readyState is never 'loading' and boot() runs at the check below. A var
+  // assigned further down is still `undefined` at that point, and the lookup
+  // would silently miss and re-ask a reader who already has a name.
+  var AUTHOR_KEY = 'sf-author';
+  // The name is held here first and persisted second. Storage can be blocked
+  // (private windows, third-party-storage settings), and a name that only lived
+  // there would be silently dropped: the dialog would close, the reviewer would
+  // believe they were named, and every comment they wrote would be attributed to
+  // nobody. In memory it at least holds for the session.
+  var _me = null;
+
   var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState !== 'loading') boot();
@@ -180,6 +229,48 @@
     // Pause the poll while a composer is open so a reload can't wipe what the
     // reader is typing.
     setInterval(function () { if (!state.composeEl) load(); }, 6000);
+    // Only on a published copy. The owner's own browser is not a stranger who
+    // needs telling how comments work, and asking them to name themselves on a
+    // spec they wrote would be noise.
+    if ((window.SPECFORGE || {}).transport === 'poll' && !meAuthor()) openWelcome();
+  }
+
+  // Shown once per browser on a published spec: who you are, and how the two
+  // kinds of comment differ. The name is the label on everything you write, so
+  // it is asked for before the first comment rather than after it.
+  function openWelcome() {
+    var wrap = create('div', { id: 'sf-welcome', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Introduce yourself' });
+    wrap.innerHTML =
+      '<div class="sf-welcome-card">' +
+      '<h2>Reviewing this spec</h2>' +
+      '<p>Click any paragraph, table row or heading to comment on it. Your comments appear beside the text and the author sees them live.</p>' +
+      '<p>A comment is a <b>discussion</b> with the other people reading. To ask the AI agent to change the spec, write <code>@agent</code> in it, then press Submit.</p>' +
+      // Each published spec gets its own tunnel hostname, which is the same
+      // property that keeps one publication from reaching another: separate
+      // origins, so separate browser storage. Saying so costs a line and stops
+      // the second link looking like a bug.
+      '<label for="sf-welcome-name">Your name <span class="sf-welcome-hint">asked once for this link</span></label>' +
+      '<input id="sf-welcome-name" type="text" autocomplete="name" maxlength="40" placeholder="e.g. Lavee">' +
+      '<div class="sf-welcome-err" hidden></div>' +
+      '<button type="button" class="sf-primary sf-welcome-go">Start reviewing</button>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    var input = wrap.querySelector('#sf-welcome-name');
+    var err = wrap.querySelector('.sf-welcome-err');
+    var go = wrap.querySelector('.sf-welcome-go');
+    function fail(msg) { err.textContent = msg; err.removeAttribute('hidden'); }
+    function submit() {
+      var v = (input.value || '').trim();
+      if (!v) return fail('Please enter a name so your comments are attributed.');
+      // `agent` would make an @agent mention ambiguous; the server refuses it
+      // too, and finding that out after writing a comment would be worse.
+      if (/^(agent|claude)$/i.test(v)) return fail('That name is reserved. Please use your own.');
+      setMeAuthor(v);
+      wrap.remove();
+    }
+    go.onclick = submit;
+    input.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); submit(); } };
+    try { input.focus(); } catch (e) { /* jsdom */ }
   }
 
   // ---------- theme (review-layer owned) ----------
@@ -316,21 +407,19 @@
     });
   }
 
-  // The name this browser writes under. Null until it has one, which the server
-  // reads as the pre-authors default. Every write sends the same value, so the
-  // name on a comment is the name that can edit it: create, reply and edit must
-  // agree or a comment becomes uneditable by the browser that wrote it.
-  var AUTHOR_KEY = 'sf-author';
   function meAuthor() {
+    if (_me) return _me;
     try {
       var v = window.localStorage.getItem(AUTHOR_KEY);
-      return v && v.trim() ? v.trim() : null;
+      _me = v && v.trim() ? v.trim() : null;
     } catch (e) {
-      return null; // storage blocked; behave like a browser with no name
+      _me = null; // storage blocked; the session copy is all there is
     }
+    return _me;
   }
   function setMeAuthor(name) {
-    try { window.localStorage.setItem(AUTHOR_KEY, name); } catch (e) { /* not fatal */ }
+    _me = name; // authoritative for this page, whatever storage does
+    try { window.localStorage.setItem(AUTHOR_KEY, name); } catch (e) { /* asked again next load */ }
   }
   /** Add the writer's name to a request body, when this browser has one. */
   function withAuthor(body) {
@@ -432,11 +521,24 @@
     // Implement) is the one thing you shouldn't have to open a drawer to see.
     // It shares actionState()/applyAction() with the footer, so the two
     // surfaces cannot drift.
+    // A live publication has no expiry, so the only thing standing between a
+    // share and a forgotten public URL is being able to see it without running
+    // a command.
+    els.shared = create('span', { class: 'sf-tb-shared', hidden: 'hidden', title: 'This spec is published on a public URL' }, 'Shared');
+    els.titlebar.appendChild(els.shared);
     els.headAction = create('button', { class: 'sf-act sf-tb-act', type: 'button' });
     els.headAction.onclick = onAction;
     els.titlebar.appendChild(els.headAction);
     document.body.appendChild(els.titlebar);
     syncTitle();
+  }
+
+  /** Show the published badge when the store says this spec is public. */
+  function renderShared() {
+    if (!els.shared) return;
+    var on = !!(state.meta && state.meta.shared);
+    if (on) els.shared.removeAttribute('hidden');
+    else els.shared.setAttribute('hidden', 'hidden');
   }
   function currentTitle() {
     var h1 = document.querySelector('h1');
@@ -506,9 +608,16 @@
     applyAction(els.footAction, s);
     applyAction(els.headAction, s);
     if (els.footCaption) {
+      // Both counts, always. Whether a comment reaches an agent depends on a
+      // token inside its text, which is easy to forget; showing what is
+      // discussion next to what is queued makes a missing @agent visible before
+      // the submit rather than after it.
       var p = pendingCount();
-      els.footCaption.textContent = (s.state === 'needs' && p > 0)
-        ? p + (p === 1 ? ' thread to submit' : ' threads to submit') : '';
+      var d = discussionCount();
+      var parts = [];
+      if (p > 0) parts.push(p + ' for agent');
+      if (d > 0) parts.push(d + (d === 1 ? ' discussion' : ' discussions'));
+      els.footCaption.textContent = parts.join(' · ');
     }
     if (els.resolveAll) els.resolveAll.classList.toggle('show', !!unresolvedCount());
   }
@@ -1026,7 +1135,7 @@
   }
 
   // ---------- render ----------
-  function render() { renderSidebar(); renderHighlights(); renderRail(); renderLauncher(); renderAction(); syncTitle(); }
+  function render() { renderSidebar(); renderHighlights(); renderRail(); renderLauncher(); renderAction(); renderShared(); syncTitle(); }
 
   function visible() {
     return state.threads.filter(function (t) {
@@ -1614,6 +1723,13 @@
     return c;
   }
 
+  /** Live threads nobody addressed to the agent: conversation, not a queue. */
+  function discussionCount() {
+    return state.threads.filter(function (t) {
+      return t.state !== 'resolved' && !isForAgentThread(t);
+    }).length;
+  }
+
   function pendingCount() {
     // A thread needs submitting if it's live (not resolved), addressed to the
     // agent, and carries any un-submitted human comment — `some`, not `every`,
@@ -1714,7 +1830,15 @@
       if (/^`[^`]+`$/.test(part)) return '<code>' + part.slice(1, -1) + '</code>';
       return part
         .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')       // **bold**
-        .replace(/\*(\S(?:[^*\n]*\S)?)\*/g, '<em>$1</em>');        // *italic* (no inner-edge spaces)
+        .replace(/\*(\S(?:[^*\n]*\S)?)\*/g, '<em>$1</em>')         // *italic* (no inner-edge spaces)
+        // @name reads as addressing, so it should look like it. The agent's own
+        // mention is marked apart, since that one decides whether a thread is
+        // work. Applied after escaping, and never inside a code span, which is
+        // the same rule the routing uses.
+        .replace(/@([a-z0-9_-]+)/gi, function (m, name) {
+          var agent = name.toLowerCase() === 'agent';
+          return '<span class="sf-at' + (agent ? ' sf-at-agent' : '') + '">' + m + '</span>';
+        });
     }).join('');
   }
   function fmtBody(raw) {
@@ -1762,7 +1886,22 @@
 (function () {
   'use strict';
   var SF = window.SPECFORGE || {};
-  var PREFS = SF.prefs || {};
+  // Same rule as the review layer above: how you read a spec is yours. The
+  // server value seeds a browser that has none; the browser owns it after that.
+  var SPEC_STORE_KEY = 'sf-prefs:' + SF.specId;
+  var PREFS = (function () {
+    var out = {};
+    var seed = SF.prefs || {};
+    for (var k in seed) if (Object.prototype.hasOwnProperty.call(seed, k)) out[k] = seed[k];
+    try {
+      var raw = window.localStorage.getItem(SPEC_STORE_KEY);
+      var local = raw ? JSON.parse(raw) : null;
+      if (local && typeof local === 'object') {
+        for (var j in local) if (Object.prototype.hasOwnProperty.call(local, j)) out[j] = local[j];
+      }
+    } catch (e) { /* storage blocked or corrupt: the seed stands */ }
+    return out;
+  })();
   var docEl = document.documentElement;
   var TOC_W = 240; // keep in sync with --sf-toc-w in review.css
   var auto = (PREFS.toc !== 'shown' && PREFS.toc !== 'hidden'); // no explicit choice yet
@@ -1926,11 +2065,16 @@
   }
   function putToc(state) {
     if (!SF.specId) return;
+    // Written into the same per-spec bucket the review layer uses, so the two
+    // read each other rather than drifting apart.
     try {
-      fetch('/api/spec/' + encodeURIComponent(SF.specId) + '/prefs', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ toc: state }),
-      }).catch(function () {});
-    } catch (e) {}
+      var raw = window.localStorage.getItem(SPEC_STORE_KEY);
+      var obj = raw ? JSON.parse(raw) : null;
+      if (!obj || typeof obj !== 'object') obj = {};
+      obj.toc = state;
+      PREFS.toc = state;
+      window.localStorage.setItem(SPEC_STORE_KEY, JSON.stringify(obj));
+    } catch (e) { /* not fatal: the panel still works this session */ }
   }
   function collect() {
     // Prefer the spec's own TOC links (curated labels) when it has a TOC.
