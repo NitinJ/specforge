@@ -27,6 +27,15 @@ For a batch's spec id:
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" comments <id>
 ```
 
+**A batch is not every thread on the spec.** Only threads where a human wrote
+`@agent` are submitted; the rest are discussion between people and are not yours
+to answer. Work the `threadIds` on the pending batch, and leave the others alone
+even when you can see them and have an opinion.
+
+Threads can carry **several people**. Each comment has an `author` (a display
+name) and a `kind` of `human` or `agent`. Reply to the thread, not to one person,
+and never assume the person who opened it is the one who added the mention.
+
 It prints `{ specId, htmlPath, threads, pending }`. `htmlPath` is the spec file to
 edit; each thread has `anchor.block` (`{ index, tag, text }` — `text` is the
 commented block's normalized text) and the human comment(s).
@@ -50,7 +59,7 @@ from "Picked up comments" to "Working on comments":
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" batch-working <id> <batchId>
 ```
 
-Then, for each thread in the batch:
+Then, for each thread **listed in the batch** (not every thread on the spec):
 
 1. **Locate** the commented block: grep a distinctive phrase from
    `anchor.block.text`, then open just that section (it reports the exact line
