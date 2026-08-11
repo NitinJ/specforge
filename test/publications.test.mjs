@@ -101,6 +101,57 @@ test('a failed share does not poison the next attempt', async () => {
   await p.stopAll();
 });
 
+// A share that has not finished starting is in neither `live` nor the store, so
+// a revoke or a shutdown that only sweeps `live` misses it — and it publishes
+// itself moments later, having outlived the thing meant to stop it.
+test('revoking a share that is still starting still stops it', async () => {
+  seed('iota');
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const stopped = [];
+  const slow = async (port) => {
+    await held; // the tunnel is still coming up
+    return { url: `https://slow-${port}.example`, pid: 3, stop: async () => stopped.push(port) };
+  };
+  const p = createPublications({ publishImpl: slow });
+  const sharing = p.share('iota');
+  const revoking = p.unshare('iota');   // arrives before the tunnel is up
+  release();
+  const rec = await sharing;
+  await revoking;
+  assert.ok(stopped.includes(rec.port), 'the tunnel that landed late was stopped');
+  assert.equal(readShare('iota'), null, 'and left no record');
+  assert.equal(p.list().length, 0);
+});
+
+test('shutdown waits for a share that is still starting', async () => {
+  seed('kappa');
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const stopped = [];
+  const slow = async (port) => {
+    await held;
+    return { url: `https://slow-${port}.example`, pid: 4, stop: async () => stopped.push(port) };
+  };
+  const p = createPublications({ publishImpl: slow });
+  const sharing = p.share('kappa');
+  const stopping = p.stopAll();
+  release();
+  const rec = await sharing;
+  await stopping;
+  assert.ok(stopped.includes(rec.port), 'nothing escaped the sweep');
+  assert.equal(p.list().length, 0);
+  assert.equal(readShare('kappa'), null);
+});
+
+test('a share arriving after shutdown is refused rather than leaked', async () => {
+  seed('lambda');
+  const p = createPublications({ publishImpl: fakePublisher() });
+  await p.stopAll();
+  await assert.rejects(() => p.share('lambda'), /shutting down/);
+  assert.equal(readShare('lambda'), null);
+});
+
 // The record is the only route back to a tunnel whose daemon is gone, so it
 // must outlive the tunnel rather than the other way round.
 test('unshare drops the record only after the tunnel is confirmed stopped', async () => {
