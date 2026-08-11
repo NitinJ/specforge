@@ -551,6 +551,7 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
   color: var(--sf-green, #15803d); border-radius: 4px; padding: 1px 5px;
 }
 .sf-welcome-card label { display: block; margin: 14px 0 5px; font-weight: 600; font-size: 12.5px; }
+.sf-welcome-hint { font-weight: 400; color: var(--sf-muted, #5f6873); }
 .sf-welcome-card input {
   width: 100%; box-sizing: border-box; padding: 9px 11px; font-size: 14px;
   border: 1px solid var(--sf-line, #e4e0d7); border-radius: 8px;

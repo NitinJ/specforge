@@ -239,7 +239,11 @@
       '<h2>Reviewing this spec</h2>' +
       '<p>Click any paragraph, table row or heading to comment on it. Your comments appear beside the text and the author sees them live.</p>' +
       '<p>A comment is a <b>discussion</b> with the other people reading. To ask the AI agent to change the spec, write <code>@agent</code> in it, then press Submit.</p>' +
-      '<label for="sf-welcome-name">Your name</label>' +
+      // Each published spec gets its own tunnel hostname, which is the same
+      // property that keeps one publication from reaching another: separate
+      // origins, so separate browser storage. Saying so costs a line and stops
+      // the second link looking like a bug.
+      '<label for="sf-welcome-name">Your name <span class="sf-welcome-hint">asked once for this link</span></label>' +
       '<input id="sf-welcome-name" type="text" autocomplete="name" maxlength="40" placeholder="e.g. Lavee">' +
       '<div class="sf-welcome-err" hidden></div>' +
       '<button type="button" class="sf-primary sf-welcome-go">Start reviewing</button>' +
