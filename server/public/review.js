@@ -544,8 +544,10 @@
     // surfaces cannot drift.
     // A live publication has no expiry, so the only thing standing between a
     // share and a forgotten public URL is being able to see it without running
-    // a command.
-    els.shared = create('span', { class: 'sf-tb-shared', hidden: 'hidden', title: 'This spec is published on a public URL' }, 'Shared');
+    // a command. It carries the link's state as well as its existence: a record
+    // whose listener is gone still answers, with a 502, and a pill that said
+    // "Shared" over that would be worse than no pill.
+    els.shared = create('span', { class: 'sf-tb-shared', hidden: 'hidden' });
     els.titlebar.appendChild(els.shared);
     els.headAction = create('button', { class: 'sf-act sf-tb-act', type: 'button' });
     els.headAction.onclick = onAction;
@@ -554,12 +556,53 @@
     syncTitle();
   }
 
-  /** Show the published badge when the store says this spec is public. */
+  /**
+   * The share pill: what is public, whether the link works, and what to do.
+   *
+   * Hidden when nothing is shared, because a pill saying "not shared" is noise
+   * on every spec you own. When something is shared it reports the link's
+   * actual state, not merely the record's existence:
+   *
+   *   live  → "Shared" + Copy. The link works.
+   *   down  → "Link down" + Regenerate. The record outlived its listener, so
+   *           the URL answers 502; the only useful action is a new one.
+   */
   function renderShared() {
     if (!els.shared) return;
-    var on = !!(state.meta && state.meta.shared);
-    if (on) els.shared.removeAttribute('hidden');
-    else els.shared.setAttribute('hidden', 'hidden');
+    var share = state.meta && state.meta.share;
+    // Checked before the no-share case: publishing for the first time is
+    // exactly when there is no record yet, and it is the moment the feedback
+    // matters most, since a tunnel takes seconds.
+    if (state.sharing) {
+      els.shared.removeAttribute('hidden');
+      els.shared.className = 'sf-tb-shared sf-tb-shared-busy';
+      els.shared.textContent = 'Publishing…';
+      els.shared.title = '';
+      return;
+    }
+    if (!share) {
+      els.shared.setAttribute('hidden', 'hidden');
+      els.shared.innerHTML = '';
+      return;
+    }
+    els.shared.removeAttribute('hidden');
+    var live = !!share.live;
+    els.shared.className = 'sf-tb-shared' + (live ? '' : ' sf-tb-shared-down');
+    els.shared.innerHTML = '';
+    var label = create('span', { class: 'sf-shared-label' }, live ? 'Shared' : 'Link down');
+    els.shared.appendChild(label);
+    els.shared.title = live
+      ? share.url + ' — anyone with this link can read, comment and submit'
+      : 'The tunnel for this spec is gone, so the link no longer serves. Regenerate to get a new one.';
+    if (live) {
+      var copy = create('button', { class: 'sf-shared-act', type: 'button', title: 'Copy the link' }, 'Copy');
+      copy.onclick = function (e) { e.stopPropagation(); copyShare(share.url, copy); };
+      els.shared.appendChild(copy);
+    } else {
+      var again = create('button', { class: 'sf-shared-act', type: 'button', title: 'Publish again on a new URL' }, 'Regenerate');
+      again.onclick = function (e) { e.stopPropagation(); doShare(); };
+      els.shared.appendChild(again);
+    }
   }
   function currentTitle() {
     var h1 = document.querySelector('h1');
@@ -760,6 +803,11 @@
     // Drive MCP); the row reflects meta.export and updates live on the poll.
     els.menu.appendChild(exportRow());
 
+    // Share — publish this spec on a public URL. Only offered on the loopback
+    // copy: a published page has no share route behind it, and offering a
+    // reviewer a button to re-publish what they are already reading is noise.
+    if ((window.SPECFORGE || {}).transport !== 'poll') els.menu.appendChild(shareRow());
+
     // Footer — one bottom row: the live pill (left), the attached session id
     // (center), and Detach (right). els.live survives the innerHTML reset above
     // (#sf-live, the same node re-appended each rebuild).
@@ -903,6 +951,87 @@
     if (st === 'error' && ex.error) row.setAttribute('title', ex.error);
     return row;
   }
+  // Publish this spec on a public URL, from the menu.
+  //
+  // Three states, like the export row: idle → action · starting → spinner ·
+  // published → the link, a copy button and Unshare. The spinner is driven from
+  // local state rather than meta, because a tunnel takes several seconds to come
+  // up and nothing in the store changes until it has.
+  function shareRow() {
+    if (state.sharing) {
+      var busy = menuRow('', 'Publishing…', null);
+      busy.disabled = true;
+      busy.querySelector('.sf-row-ic').appendChild(create('span', { class: 'sf-spin', 'aria-hidden': 'true' }));
+      return busy;
+    }
+    var share = state.meta && state.meta.share;
+    if (share && share.url) {
+      var row = create('div', { class: 'sf-menu-row sf-menu-ctl sf-share-on' });
+      var link = create('a', {
+        class: 'sf-row-main sf-doc-link', href: share.url, target: '_blank', rel: 'noopener',
+        title: share.url,
+      });
+      link.innerHTML = '<span class="sf-row-ic">🔗</span><span class="sf-share-url"></span>';
+      // Hostname only: the full URL does not fit and its host is the whole
+      // secret anyway.
+      link.querySelector('.sf-share-url').textContent = prettyHost(share.url);
+      link.onclick = function () { closeMenu(); };
+      row.appendChild(link);
+      var copy = create('button', { class: 'sf-detach sf-share-copy', type: 'button', title: 'Copy the link' }, 'Copy');
+      copy.onclick = function (e) { e.stopPropagation(); copyShare(share.url, copy); };
+      row.appendChild(copy);
+      var off = create('button', { class: 'sf-detach sf-share-off', type: 'button', title: 'Stop sharing' }, 'Unshare');
+      off.onclick = function (e) { e.stopPropagation(); doUnshare(); };
+      row.appendChild(off);
+      return row;
+    }
+    return menuRow('🔗', 'Share this spec', function () { doShare(); });
+  }
+
+  /** The hostname of a share URL, which is the part worth showing. */
+  function prettyHost(url) {
+    try {
+      return new URL(url).hostname;
+    } catch (e) {
+      return String(url || '');
+    }
+  }
+
+  function copyShare(url, btn) {
+    var done = function () {
+      var was = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = was; }, 1200);
+    };
+    try {
+      navigator.clipboard.writeText(url).then(done, function () { flash(url); });
+    } catch (e) {
+      flash(url); // no clipboard access: show it so it can be copied by hand
+    }
+  }
+
+  // Publishing takes as long as the tunnel takes, so the row shows a spinner
+  // for the whole request rather than resolving on the next poll.
+  function doShare() {
+    state.sharing = true;
+    renderLauncher();
+    renderShared();
+    var finish = function () { state.sharing = false; load(); renderLauncher(); renderShared(); };
+    postJSON(SPEC_API + '/share').then(function (r) {
+      if (r.ok) return finish();
+      r.json().then(function (b) { finish(); flash((b && b.error) || 'Could not publish this spec.'); })
+        .catch(function () { finish(); flash('Could not publish this spec.'); });
+    }).catch(function () { finish(); flash('Could not publish this spec.'); });
+  }
+
+  function doUnshare() {
+    fetch(SPEC_API + '/share', { method: 'DELETE' }).then(function (r) {
+      if (!r.ok) return flash('Could not stop sharing.');
+      load();
+      renderLauncher();
+    }).catch(function () { flash('Could not stop sharing.'); });
+  }
+
   // Queue the export, then refresh — the row flips to "Exporting…" (menu stays open
   // so the user watches it resolve to the link). A 409 (no session / already running)
   // flashes the server's reason.

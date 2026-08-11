@@ -2382,7 +2382,9 @@ test('a bubble carries the author\'s own initial', async (t) => {
 });
 
 test('a published spec shows a Shared badge; an unpublished one does not', async (t) => {
-  const shared = await bootReviewLayer(t, { meta: { id: 'test-spec', title: 'T', status: 'draft', shared: true } });
+  const shared = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', title: 'T', status: 'draft', share: { url: 'https://calm-fox-1234.trycloudflare.com' } },
+  });
   const badge = shared.window.document.querySelector('.sf-tb-shared');
   assert.ok(badge, 'the badge exists');
   assert.equal(badge.hasAttribute('hidden'), false, 'and is shown while published');
@@ -2472,5 +2474,153 @@ test('the launcher pill still counts discussion', async (t) => {
     threads: [discussionThread('t1')], meta: { status: 'draft' },
   });
   assert.equal(window.document.querySelector('#sf-launcher .sf-l-n').textContent, '1');
+});
+
+
+
+const rowByText = (document, re) =>
+  Array.prototype.find.call(document.querySelectorAll('#sf-menu .sf-menu-row'),
+    (r) => re.test(r.textContent || ''));
+
+test('the menu offers to share an unpublished spec', async (t) => {
+  const { window } = await bootReviewLayer(t, { meta: { id: 'test-spec', status: 'draft' } });
+  window.document.getElementById('sf-launcher').click();
+  assert.ok(rowByText(window.document, /Share this spec/), 'a Share row is offered');
+});
+
+test('sharing posts to the share endpoint and shows progress', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { meta: { id: 'test-spec', status: 'draft' } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  rowByText(document, /Share this spec/).click();
+  assert.ok(posts.some((p) => /\/share$/.test(p.url)), 'it posts to /share');
+  assert.ok(rowByText(document, /Publishing…/), 'the row shows progress');
+});
+
+test('a published spec shows its link, Copy and Unshare', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', status: 'draft', share: { url: 'https://calm-fox-1234.trycloudflare.com' } },
+  });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const link = document.querySelector('#sf-menu .sf-share-on a.sf-doc-link');
+  assert.ok(link, 'the link is a real anchor, so it is keyboard-reachable');
+  assert.equal(link.getAttribute('href'), 'https://calm-fox-1234.trycloudflare.com');
+  assert.equal(link.getAttribute('target'), '_blank');
+  assert.equal(link.querySelector('.sf-share-url').textContent, 'calm-fox-1234.trycloudflare.com');
+  assert.ok(document.querySelector('#sf-menu .sf-share-copy'), 'a Copy button');
+  assert.ok(document.querySelector('#sf-menu .sf-share-off'), 'an Unshare button');
+  assert.equal(rowByText(document, /Share this spec/), undefined, 'and no second offer to share');
+});
+
+test('Unshare DELETEs the share', async (t) => {
+  const deletes = [];
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', status: 'draft', share: { url: 'https://calm-fox-1234.trycloudflare.com' } },
+    preBoot: (w) => {
+      const orig = w.fetch;
+      w.fetch = (url, init) => {
+        if (init && init.method === 'DELETE') { deletes.push(url); return Promise.resolve({ ok: true }); }
+        return orig(url, init);
+      };
+    },
+  });
+  window.document.getElementById('sf-launcher').click();
+  window.document.querySelector('#sf-menu .sf-share-off').click();
+  assert.ok(deletes.some((u) => /\/share$/.test(u)), 'it DELETEs the share');
+});
+
+test('Copy puts the link on the clipboard', async (t) => {
+  const copied = [];
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', status: 'draft', share: { url: 'https://calm-fox-1234.trycloudflare.com' } },
+    preBoot: (w) => {
+      Object.defineProperty(w.navigator, 'clipboard', {
+        value: { writeText: (s) => { copied.push(s); return Promise.resolve(); } },
+        configurable: true,
+      });
+    },
+  });
+  window.document.getElementById('sf-launcher').click();
+  window.document.querySelector('#sf-menu .sf-share-copy').click();
+  assert.deepEqual(copied, ['https://calm-fox-1234.trycloudflare.com'], 'the full URL, not the hostname');
+});
+
+test('a published copy is not offered the share row', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    transport: 'poll', seedStorage: { 'sf-author': 'Lavee' },
+    meta: { id: 'test-spec', status: 'draft' },
+  });
+  window.document.getElementById('sf-launcher').click();
+  assert.equal(rowByText(window.document, /Share this spec/), undefined);
+  assert.equal(window.document.querySelector('#sf-menu .sf-share-on'), null);
+});
+
+
+
+const LIVE_SHARE = { url: 'https://calm-fox-1234.trycloudflare.com', live: true };
+const DEAD_SHARE = { url: 'https://calm-fox-1234.trycloudflare.com', live: false };
+
+test('no pill when nothing is shared', async (t) => {
+  const { window } = await bootReviewLayer(t, { meta: { id: 'test-spec', title: 'T', status: 'draft' } });
+  assert.equal(window.document.querySelector('.sf-tb-shared').hasAttribute('hidden'), true,
+    'a pill saying "not shared" would be noise on every spec you own');
+});
+
+test('a working link reads as Shared and offers Copy', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', title: 'T', status: 'draft', share: LIVE_SHARE },
+  });
+  const pill = window.document.querySelector('.sf-tb-shared');
+  assert.equal(pill.hasAttribute('hidden'), false);
+  assert.match(pill.textContent, /Shared/);
+  assert.equal(pill.classList.contains('sf-tb-shared-down'), false);
+  assert.match(pill.getAttribute('title'), /calm-fox-1234/, 'the URL is on the pill for a glance');
+  assert.match(pill.querySelector('.sf-shared-act').textContent, /Copy/);
+});
+
+test('a dead link reads as a fault and offers Regenerate', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', title: 'T', status: 'draft', share: DEAD_SHARE },
+  });
+  const pill = window.document.querySelector('.sf-tb-shared');
+  assert.match(pill.textContent, /Link down/);
+  assert.equal(pill.classList.contains('sf-tb-shared-down'), true);
+  assert.match(pill.querySelector('.sf-shared-act').textContent, /Regenerate/);
+  assert.doesNotMatch(pill.textContent, /Copy/, 'copying a link that 502s helps nobody');
+});
+
+test('Copy on the pill copies the full URL', async (t) => {
+  const copied = [];
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', title: 'T', status: 'draft', share: LIVE_SHARE },
+    preBoot: (w) => {
+      Object.defineProperty(w.navigator, 'clipboard', {
+        value: { writeText: (s) => { copied.push(s); return Promise.resolve(); } },
+        configurable: true,
+      });
+    },
+  });
+  window.document.querySelector('.sf-tb-shared .sf-shared-act').click();
+  assert.deepEqual(copied, ['https://calm-fox-1234.trycloudflare.com']);
+});
+
+test('Regenerate publishes again', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', title: 'T', status: 'draft', share: DEAD_SHARE },
+  });
+  window.document.querySelector('.sf-tb-shared .sf-shared-act').click();
+  assert.ok(posts.some((p) => /\/share$/.test(p.url)), 'it posts a fresh share');
+});
+
+test('the pill reports work in flight while publishing', async (t) => {
+  const { window } = await bootReviewLayer(t, { meta: { id: 'test-spec', title: 'T', status: 'draft' } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  Array.prototype.find.call(document.querySelectorAll('#sf-menu .sf-menu-row'),
+    (r) => /Share this spec/.test(r.textContent)).click();
+  const pill = document.querySelector('.sf-tb-shared');
+  assert.equal(pill.hasAttribute('hidden'), false, 'shown even though nothing is published yet');
+  assert.match(pill.textContent, /Publishing…/);
 });
 

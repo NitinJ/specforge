@@ -182,7 +182,9 @@ export function createDaemon() {
     const meta = path.match(/^\/api\/spec\/([\w-]+)\/meta$/);
     if (meta) {
       if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
-      return handleMeta(meta[1], res);
+      // The registry, not the file, decides whether a publication actually
+      // serves: a record can outlive the listener it names.
+      return handleMeta(meta[1], res, (id) => publications.isLive(id));
     }
     const status = path.match(/^\/api\/spec\/([\w-]+)\/status$/);
     if (status) {

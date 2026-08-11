@@ -87,6 +87,82 @@ test('overlapping shares start one tunnel, not two', async () => {
   await p.stopAll();
 });
 
+// Registry membership is not proof the link works. cloudflared can die on its
+// own, and a badge that reads "Shared" over a dead tunnel is worse than none.
+test('a publication whose tunnel died is not reported as live', async () => {
+  seed('rho');
+  let up = true;
+  const publish = async (port) => ({
+    url: `https://r-${port}.example`, pid: 9, stop: async () => { up = false; }, alive: () => up,
+  });
+  const p = createPublications({ publishImpl: publish });
+  await p.share('rho');
+  assert.equal(p.isLive('rho'), true, 'live while the tunnel is up');
+  up = false; // cloudflared exits on its own
+  assert.equal(p.isLive('rho'), false, 'and not once it is gone');
+  assert.ok(readShare('rho'), 'the record is still there, which is why asking the tunnel matters');
+  await p.stopAll();
+});
+
+// The action offered when a link is down is "share again", so that call has to
+// replace a dead publication rather than hand its URL back.
+test('sharing again replaces a publication whose tunnel died', async () => {
+  seed('upsilon');
+  let n = 0;
+  const alive = [];
+  const publish = async (port) => {
+    const i = n++;
+    alive[i] = true;
+    return {
+      url: `https://gen${i}-${port}.example`, pid: 100 + i,
+      stop: async () => { alive[i] = false; }, alive: () => alive[i],
+    };
+  };
+  const p = createPublications({ publishImpl: publish });
+  const first = await p.share('upsilon');
+  alive[0] = false; // the tunnel dies on its own
+  assert.equal(p.isLive('upsilon'), false);
+
+  const second = await p.share('upsilon');
+  assert.notEqual(second.url, first.url, 'a new link, not the dead one');
+  assert.equal(p.isLive('upsilon'), true, 'and it works');
+  assert.equal(readShare('upsilon').url, second.url, 'the record names the new one');
+  await p.stopAll();
+});
+
+test('sharing a healthy publication still returns the same link', async () => {
+  seed('phi');
+  const publish = fakePublisher();
+  const p = createPublications({ publishImpl: publish });
+  const a = await p.share('phi');
+  const b = await p.share('phi');
+  assert.equal(a.url, b.url);
+  assert.equal(publish.calls.length, 1, 'and starts no second tunnel');
+  await p.stopAll();
+});
+
+test('an unpublished spec is not live', async () => {
+  seed('sigma');
+  const p = createPublications({ publishImpl: fakePublisher() });
+  assert.equal(p.isLive('sigma'), false);
+});
+
+// Regenerating a dead link is exactly when an orphan tunnel is still running.
+test('publishing over a stale record reaps the tunnel it named', async () => {
+  seed('tau');
+  const killed = [];
+  const p = createPublications({
+    publishImpl: fakePublisher(),
+    killImpl: (pid) => killed.push(pid),
+  });
+  writeFileSync(sharePath('tau'), JSON.stringify({
+    specId: 'tau', url: 'https://dead.example', port: 1, pid: 4321, createdAt: 'then',
+  }));
+  await p.share('tau');
+  assert.deepEqual(killed, [4321], 'the tunnel behind the dead link was stopped first');
+  await p.stopAll();
+});
+
 test('a failed share does not poison the next attempt', async () => {
   seed('eta');
   let attempt = 0;
