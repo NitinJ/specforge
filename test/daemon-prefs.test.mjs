@@ -43,6 +43,15 @@ const put = (path, body) => fetch(base + path, {
   body: JSON.stringify(body),
 });
 
+/**
+ * The config the review layer boots from, parsed out of the served HTML.
+ * It is one JSON object, so parse it rather than matching its punctuation.
+ */
+function injectedConfig(html) {
+  const m = html.match(/window\.SPECFORGE = (\{.*?\});/);
+  return m ? JSON.parse(m[1]) : null;
+}
+
 test('GET prefs returns {} before anything is stored', async () => {
   const r = await fetch(`${base}/api/spec/${specId}/prefs`);
   assert.equal(r.status, 200);
@@ -73,11 +82,10 @@ test('theme + font are store-wide via /api/prefs and reach every served spec', a
   // Both specs' served HTML embed the store-wide theme/font.
   for (const sid of [specId, other]) {
     const html = await (await fetch(`${base}/spec/${sid}`)).text();
-    const m = html.match(/window\.SPECFORGE = \{ specId: [^,]+, prefs: (\{.*?\}) \}/);
-    assert.ok(m, `prefs embedded for ${sid}`);
-    const prefs = JSON.parse(m[1]);
-    assert.equal(prefs.theme, 'dracula');
-    assert.equal(prefs.font, 'lora');
+    const cfg = injectedConfig(html);
+    assert.ok(cfg, `config embedded for ${sid}`);
+    assert.equal(cfg.prefs.theme, 'dracula');
+    assert.equal(cfg.prefs.font, 'lora');
   }
 });
 
@@ -85,7 +93,7 @@ test('the served spec merges store-wide theme/font with per-spec width', async (
   await put('/api/prefs', { theme: 'nord' });
   await put(`/api/spec/${specId}/prefs`, { width: 1300 });
   const html = await (await fetch(`${base}/spec/${specId}`)).text();
-  const prefs = JSON.parse(html.match(/prefs: (\{.*?\}) \}/)[1]);
+  const { prefs } = injectedConfig(html);
   assert.equal(prefs.theme, 'nord', 'store-wide theme');
   assert.equal(prefs.width, 1300, 'per-spec width');
 });

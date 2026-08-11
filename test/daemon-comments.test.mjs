@@ -211,6 +211,34 @@ test('an agent comment cannot be edited over HTTP', async () => {
   assert.match((await r.json()).error, /agent comment/);
 });
 
+// Deleting a spec removes its directory, and with it the record naming the
+// tunnel. Without revoking first, the URL keeps serving a spec that no longer
+// exists and nothing is left that could find the process behind it.
+test('deleting a spec revokes its publication and bars sharing throughout', async () => {
+  const { publications } = await import('../server/daemon.mjs');
+  const seen = [];
+  const real = publications.unshareThen;
+  publications.unshareThen = async (id, fn) => {
+    // Recorded at the moment the delete begins: the spec is still on disk here,
+    // which is exactly the window a share could otherwise commit in.
+    seen.push({ id, specStillThere: !!readMeta(id) });
+    return real.call(publications, id, async () => {
+      seen.push({ shareRefused: await publications.share(id).then(() => false, () => true) });
+      return fn();
+    });
+  };
+  try {
+    const r = await fetch(`${base}/api/spec/${specId}`, { method: 'DELETE' });
+    assert.equal(r.status, 200);
+  } finally {
+    publications.unshareThen = real;
+  }
+  assert.equal(seen[0].id, specId, 'the delete route revokes');
+  assert.equal(seen[0].specStillThere, true, 'before the spec is removed');
+  assert.equal(seen[1].shareRefused, true, 'and no share can commit while it runs');
+  assert.equal(readMeta(specId), null, 'the spec is then gone');
+});
+
 test('PATCH refuses a comment already frozen into a batch', async () => {
   const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' })).json();
   const cid = thread.comments[0].id;

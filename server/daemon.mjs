@@ -43,6 +43,11 @@ import {
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
+import { createPublications } from '../lib/publications.mjs';
+
+// Publications live for the daemon's lifetime, which is what lets a share
+// outlive the terminal that made it. One registry per process.
+export const publications = createPublications();
 
 const DEFAULT_PORT = 4180;
 const PORT_RETRY_LIMIT = 20; // up to 20 retries after the first attempt = 21 ports probed
@@ -230,12 +235,37 @@ export function createDaemon() {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleExport(exp[1], res);
     }
+    // --- Publications (loopback only; a publication never serves these) ---
+    if (path === '/api/shares') {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      return sendJson(res, 200, { shares: publications.list() });
+    }
+    const shareR = path.match(/^\/api\/spec\/([\w-]+)\/share$/);
+    if (shareR) {
+      if (method === 'POST') {
+        return publications.share(shareR[1])
+          .then((share) => sendJson(res, 201, { ok: true, share }))
+          .catch((e) => sendJson(res, 400, { error: e.message }));
+      }
+      if (method === 'DELETE') {
+        return publications.unshare(shareR[1])
+          .then((was) => sendJson(res, 200, { ok: true, wasPublished: was }))
+          .catch((e) => sendJson(res, 400, { error: e.message }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
+    }
+
     // Bare spec resource — DELETE removes it (the id is anchored, so this never
     // shadows the /meta, /prefs, /comments, … sub-routes above).
     const specRes = path.match(/^\/api\/spec\/([\w-]+)$/);
     if (specRes) {
       if (method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
-      return handleDelete(specRes[1], res);
+      // Revoke first, and keep new shares for this spec refused for the whole
+      // delete. The delete removes the directory holding the share record, so a
+      // share committing anywhere inside it would leave a public URL serving a
+      // spec that no longer exists, with nothing on disk left to find it by.
+      return publications.unshareThen(specRes[1], () => handleDelete(specRes[1], res))
+        .catch((e) => sendJson(res, 500, { error: e.message }));
     }
 
     if (method === 'GET') {
@@ -348,6 +378,15 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
   const url = `http://127.0.0.1:${boundPort}/`;
   writeServerState({ port: boundPort, pid: process.pid, url });
 
+  // Records from a previous daemon name a listener that died with it. Clear
+  // them and reap any tunnel still running, since a cloudflared child survives
+  // a parent that was killed without shutting down.
+  try {
+    publications.clearStale();
+  } catch {
+    /* a share record we cannot read must not stop the daemon starting */
+  }
+
   // Mirror the listener onto IPv6 loopback (best-effort). A Windows browser
   // resolves `localhost` to ::1 first — under WSL2 mirrored networking an
   // IPv4-only bind makes localhost links flake while 127.0.0.1 works. Same
@@ -402,9 +441,20 @@ if (isMain) {
     }
     // server.close() fires the 'close' handler registered in ensureServer(),
     // which clears server.json + releases the lock; draining in-flight requests.
+    // Tunnels are torn down before the process exits, and awaited. A cloudflared
+    // child outlives its parent, so exiting without waiting leaves a public
+    // endpoint up with nothing tracking it. stopAll() resolves only once each
+    // child has actually exited (SIGTERM, escalating to SIGKILL), so this is the
+    // one place that can guarantee it; startup reaping is the backstop for a
+    // daemon that was killed outright.
+    let shuttingDown = false;
     const shutdown = () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       if (drainer) drainer.stop();
-      server.close(() => process.exit(0));
+      publications.stopAll()
+        .catch(() => { /* reaped by clearStale on the next start */ })
+        .then(() => server.close(() => process.exit(0)));
     };
     for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, shutdown);
   }).catch((err) => {
