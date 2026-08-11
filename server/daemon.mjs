@@ -260,13 +260,12 @@ export function createDaemon() {
     const specRes = path.match(/^\/api\/spec\/([\w-]+)$/);
     if (specRes) {
       if (method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
-      // Revoke first. Deleting the spec removes its directory, and with it the
-      // share record that names the tunnel — which would leave a public URL
-      // serving a spec that no longer exists and no way left to find the
-      // process behind it.
-      return publications.unshare(specRes[1])
-        .catch(() => { /* an un-stoppable tunnel must not block the delete */ })
-        .then(() => handleDelete(specRes[1], res));
+      // Revoke first, and keep new shares for this spec refused for the whole
+      // delete. The delete removes the directory holding the share record, so a
+      // share committing anywhere inside it would leave a public URL serving a
+      // spec that no longer exists, with nothing on disk left to find it by.
+      return publications.unshareThen(specRes[1], () => handleDelete(specRes[1], res))
+        .catch((e) => sendJson(res, 500, { error: e.message }));
     }
 
     if (method === 'GET') {

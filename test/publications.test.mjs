@@ -168,6 +168,35 @@ test('a share whose spec is deleted mid-startup publishes nothing', async () => 
   assert.equal(p.list().length, 0);
 });
 
+// Checking that the spec exists, even at the commit point, still leaves the
+// window between the revoke and the directory being removed. The delete holds
+// the door for its whole duration instead.
+test('a share cannot commit anywhere inside a delete', async () => {
+  seed('nu');
+  const publish = fakePublisher();
+  const p = createPublications({ publishImpl: publish });
+  let refused = null;
+  await p.unshareThen('nu', async () => {
+    // Mid-delete: the spec still exists on disk, so an existence check would
+    // pass. The share must be refused anyway.
+    refused = await p.share('nu').then(() => null, (e) => e.message);
+    rmSync(specDir('nu'), { recursive: true, force: true });
+  });
+  assert.match(refused, /being deleted/);
+  assert.equal(publish.calls.length, 0, 'no tunnel was started');
+  assert.equal(p.list().length, 0);
+  assert.equal(existsSync(specDir('nu')), false, 'the delete stands');
+});
+
+test('sharing works again once a delete finishes', async () => {
+  seed('xi');
+  const p = createPublications({ publishImpl: fakePublisher() });
+  await p.unshareThen('xi', async () => {});
+  const rec = await p.share('xi');
+  assert.ok(rec.url, 'the door reopens');
+  await p.stopAll();
+});
+
 test('a share arriving after shutdown is refused rather than leaked', async () => {
   seed('lambda');
   const p = createPublications({ publishImpl: fakePublisher() });
