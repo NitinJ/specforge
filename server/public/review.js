@@ -314,6 +314,32 @@
     });
   }
 
+  // The name this browser writes under. Null until it has one, which the server
+  // reads as the pre-authors default. Every write sends the same value, so the
+  // name on a comment is the name that can edit it: create, reply and edit must
+  // agree or a comment becomes uneditable by the browser that wrote it.
+  var AUTHOR_KEY = 'sf-author';
+  function meAuthor() {
+    try {
+      var v = window.localStorage.getItem(AUTHOR_KEY);
+      return v && v.trim() ? v.trim() : null;
+    } catch (e) {
+      return null; // storage blocked; behave like a browser with no name
+    }
+  }
+  function setMeAuthor(name) {
+    try { window.localStorage.setItem(AUTHOR_KEY, name); } catch (e) { /* not fatal */ }
+  }
+  /** Add the writer's name to a request body, when this browser has one. */
+  function withAuthor(body) {
+    var me = meAuthor();
+    if (!me) return body;
+    var out = {};
+    for (var k in body) if (Object.prototype.hasOwnProperty.call(body, k)) out[k] = body[k];
+    out.author = me;
+    return out;
+  }
+
   // ---------- chrome ----------
   function buildChrome() {
     els.sidebar = create('div', { id: 'sf-sidebar' });
@@ -1066,7 +1092,7 @@
     var send = create('button', { class: 'sf-primary' }, 'Send');
     function submit() {
       if (!ta.value.trim()) return;
-      postJSON(API + '/' + t.id + '/reply', { body: ta.value.trim(), author: 'human' }).then(load);
+      postJSON(API + '/' + t.id + '/reply', withAuthor({ body: ta.value.trim() })).then(load);
     }
     send.onclick = submit;
     row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to send'));
@@ -1100,7 +1126,10 @@
       if (!v) return;
       if (v === c.body) return close(); // no change — just put the body back
       fetch(API + '/' + t.id + '/comment/' + c.id, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: v }),
+        // The name must go with the edit: the server checks it against the one
+        // on the comment, so a browser writing as `lavee` and editing as nobody
+        // cannot edit what it just wrote.
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withAuthor({ body: v })),
       }).then(function (r) { if (r.ok) load(); else flash('Could not save the edit.'); })
         .catch(function () { flash('Could not save the edit.'); });
     }
@@ -1336,7 +1365,7 @@
     var save = create('button', { class: 'sf-primary', type: 'button' }, 'Comment');
     function submit() {
       if (!ta.value.trim()) return;
-      postJSON(API, { anchor: anchor, body: ta.value.trim(), author: 'human' })
+      postJSON(API, withAuthor({ anchor: anchor, body: ta.value.trim() }))
         .then(function (r) {
           if (!r.ok) return flash('Could not add the comment.');
           state.composeEl = null;
@@ -1414,7 +1443,7 @@
     var send = create('button', { class: 'sf-primary', type: 'button' }, 'Reply');
     function submit() {
       if (!ta.value.trim()) return;
-      postJSON(API + '/' + t.id + '/reply', { body: ta.value.trim(), author: 'human' }).then(load);
+      postJSON(API + '/' + t.id + '/reply', withAuthor({ body: ta.value.trim() })).then(load);
     }
     send.onclick = function (e) { e.stopPropagation(); submit(); };
     var res = create('button', { class: 'sf-bub-resolve', type: 'button' }, 'Resolve');

@@ -355,6 +355,57 @@ test('an unsubmitted human comment shows an Edit control that PATCHes the new bo
   assert.equal(p.body.body, 'edited body', 'with the new body');
 });
 
+// The server checks the name on an edit against the name on the comment. A
+// browser that creates as `lavee` and edits as nobody cannot edit what it just
+// wrote, so every write has to carry the same name.
+test('a named browser sends its name on create, reply and edit', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'lavee', kind: 'human', body: 'original' }],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window, patches, posts } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  window.localStorage.setItem('sf-author', 'lavee');
+
+  const cEl = document.querySelector('.sf-comment[data-cid="c1"]');
+  cEl.querySelector('.sf-edit-c').click();
+  cEl.querySelector('.sf-edit textarea').value = 'edited body';
+  cEl.querySelector('.sf-edit .sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = patches.find((x) => /\/comments\/t1\/comment\/c1$/.test(x.url));
+  assert.equal(p.body.author, 'lavee', 'the edit carries the writer\'s name');
+
+  const ta = document.querySelector('#sf-sidebar .sf-reply textarea')
+    || document.querySelector('.sf-reply textarea');
+  if (ta) {
+    ta.value = 'a reply';
+    const btn = ta.parentElement.querySelector('button');
+    if (btn) {
+      btn.click();
+      await new Promise((r) => window.setTimeout(r, 0));
+      const rp = posts.find((x) => /\/reply$/.test(x.url));
+      if (rp) assert.equal(rp.body.author, 'lavee', 'the reply carries it too');
+    }
+  }
+});
+
+test('a browser with no name omits it, matching the pre-authors default', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'human', body: 'original' }],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window, patches } = await bootReviewLayer(t, { threads });
+  const cEl = window.document.querySelector('.sf-comment[data-cid="c1"]');
+  cEl.querySelector('.sf-edit-c').click();
+  cEl.querySelector('.sf-edit textarea').value = 'edited';
+  cEl.querySelector('.sf-edit .sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = patches.find((x) => /\/comments\/t1\/comment\/c1$/.test(x.url));
+  assert.equal(p.body.author, undefined, 'no name sent, so the server default applies');
+});
+
 test('a submitted (batched) comment has no Edit control', async (t) => {
   const threads = [{
     id: 't1', state: 'open',
