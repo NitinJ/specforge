@@ -12,7 +12,9 @@
   'use strict';
   var SPEC = (window.SPECFORGE || {}).specId;
   if (!SPEC) return;
-  var SPEC_API = '/api/spec/' + encodeURIComponent(SPEC);
+  // A publication serves one spec, so its API carries no id. The listener that
+  // answered tells us which shape to use rather than the client guessing.
+  var SPEC_API = (window.SPECFORGE || {}).api || '/api/spec/' + encodeURIComponent(SPEC);
   var API = SPEC_API + '/comments';
 
   // UI prefs, embedded at serve time by inject.mjs. Source of truth is the store

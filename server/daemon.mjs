@@ -43,6 +43,11 @@ import {
 } from '../lib/store-api.mjs';
 import { createDaemonDrain } from '../lib/store-watch.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
+import { createPublications } from '../lib/publications.mjs';
+
+// Publications live for the daemon's lifetime, which is what lets a share
+// outlive the terminal that made it. One registry per process.
+export const publications = createPublications();
 
 const DEFAULT_PORT = 4180;
 const PORT_RETRY_LIMIT = 20; // up to 20 retries after the first attempt = 21 ports probed
@@ -230,6 +235,26 @@ export function createDaemon() {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleExport(exp[1], res);
     }
+    // --- Publications (loopback only; a publication never serves these) ---
+    if (path === '/api/shares') {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      return sendJson(res, 200, { shares: publications.list() });
+    }
+    const shareR = path.match(/^\/api\/spec\/([\w-]+)\/share$/);
+    if (shareR) {
+      if (method === 'POST') {
+        return publications.share(shareR[1])
+          .then((share) => sendJson(res, 201, { ok: true, share }))
+          .catch((e) => sendJson(res, 400, { error: e.message }));
+      }
+      if (method === 'DELETE') {
+        return publications.unshare(shareR[1])
+          .then((was) => sendJson(res, 200, { ok: true, wasPublished: was }))
+          .catch((e) => sendJson(res, 400, { error: e.message }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
+    }
+
     // Bare spec resource — DELETE removes it (the id is anchored, so this never
     // shadows the /meta, /prefs, /comments, … sub-routes above).
     const specRes = path.match(/^\/api\/spec\/([\w-]+)$/);
@@ -348,6 +373,15 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
   const url = `http://127.0.0.1:${boundPort}/`;
   writeServerState({ port: boundPort, pid: process.pid, url });
 
+  // Records from a previous daemon name a listener that died with it. Clear
+  // them and reap any tunnel still running, since a cloudflared child survives
+  // a parent that was killed without shutting down.
+  try {
+    publications.clearStale();
+  } catch {
+    /* a share record we cannot read must not stop the daemon starting */
+  }
+
   // Mirror the listener onto IPv6 loopback (best-effort). A Windows browser
   // resolves `localhost` to ::1 first — under WSL2 mirrored networking an
   // IPv4-only bind makes localhost links flake while 127.0.0.1 works. Same
@@ -375,6 +409,10 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
+    // Publications first: a tunnel that outlives the daemon is a public
+    // endpoint with nothing tracking it. Best-effort, since `exit` handlers
+    // cannot await — clearStale on the next start is the backstop.
+    try { publications.stopAll(); } catch { /* reaped on next start */ }
     if (server6) server6.close();
     clearServerState();
     releaseLock();

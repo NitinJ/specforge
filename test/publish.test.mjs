@@ -192,6 +192,26 @@ test('a metrics request that never answers cannot outlive the budget', async () 
   );
 });
 
+// A real response body is unreadable once its request is aborted. A stub whose
+// json() ignores the signal hides that, and hid it here: every poll succeeded
+// in tests and every poll failed against cloudflared.
+test('the body is read before the request is released', async () => {
+  const realistic = async (_url, init) => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      if (init.signal.aborted) throw new Error('The operation was aborted');
+      return { hostname: 'h.trycloudflare.com' };
+    },
+  });
+  const got = await readQuickTunnelHostname('http://127.0.0.1:9', {
+    fetchImpl: realistic,
+    sleepImpl: noSleep,
+    requestTimeoutMs: 500,
+  });
+  assert.equal(got, 'h.trycloudflare.com');
+});
+
 test('a hung request is abandoned rather than accumulated', async () => {
   let live = 0;
   const hung = (_url, init) => new Promise((_, reject) => {

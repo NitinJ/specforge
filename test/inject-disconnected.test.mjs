@@ -34,5 +34,7 @@ test('inject wires the SSE connection to the banner with a grace debounce', () =
   assert.match(out, /es\.onerror\s*=\s*disconnected/, 'error arms the banner');
   assert.match(out, /GRACE\s*=\s*4000/, 'debounced by a grace period so blips do not flash it');
   // specId must be JSON-quoted, else the injected script throws and review.js bails.
-  assert.match(out, /window\.SPECFORGE = \{ specId: "abc123"/, 'specId injected quoted');
+  assert.match(out, /window\.SPECFORGE = \{"specId":"abc123"/, 'specId injected quoted');
+  // The loopback listener streams; only a publication polls.
+  assert.match(out, /"transport":"sse"/, 'loopback keeps the event stream');
 });

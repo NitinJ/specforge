@@ -8,10 +8,17 @@ import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 
 /**
  * @param {string} html raw spec HTML read from disk
- * @param {{specId:string}} opts
+ * @param {{specId:string, transport?:'sse'|'poll', api?:string}} opts
+ *   `transport` says how this page learns the spec changed. The daemon holds an
+ *   event stream; a publication cannot (measured: Cloudflare's edge returns the
+ *   response headers of an SSE response and then buffers every body byte), so
+ *   it polls. The listener that answers the request knows which it is, which
+ *   saves every published page from probing for a stream that never speaks.
+ *   `api` is the base path for the comments API, which carries no spec id on a
+ *   publication.
  * @returns {string} HTML with the live tracker + review layer injected
  */
-export function injectReviewLayer(html, { specId }) {
+export function injectReviewLayer(html, { specId, transport = 'sse', api } = {}) {
   let out = renderLiveTracker(html);
 
   const head = `<link rel="stylesheet" href="/public/review.css">`;
@@ -19,7 +26,7 @@ export function injectReviewLayer(html, { specId }) {
 
   // theme + font are store-wide (global-prefs); width/filter/fit/toc are per-spec.
   // Merge so the client boots with one flat prefs object as before.
-  const layer = reviewSnippet(specId, { ...readGlobalPrefs(), ...readPrefs(specId) });
+  const layer = reviewSnippet(specId, { ...readGlobalPrefs(), ...readPrefs(specId) }, transport, api);
   if (out.includes('</body>')) {
     out = out.replace('</body>', `${layer}\n</body>`);
   } else {
@@ -28,11 +35,51 @@ export function injectReviewLayer(html, { specId }) {
   return out;
 }
 
-function reviewSnippet(specId, prefs) {
+/** Live-reload over an event stream: the loopback case. */
+function sseWatcher(id) {
+  return `  try {
+    var es=new EventSource('/events?spec='+encodeURIComponent(${id}));
+    es.addEventListener('reload', function(){ location.reload(); });
+    es.onopen=connected;
+    es.onerror=disconnected;
+  } catch (e) { set('○ offline','#9aa3b2'); showBanner(); }`;
+}
+
+/**
+ * Live-reload by asking: the published case.
+ *
+ * Reloads when the spec file's mtime moves. The comments mtime is returned too
+ * and deliberately ignored here, because the rail refetches comments on its own
+ * and a full reload on every comment would throw away whatever the reader was
+ * typing.
+ */
+function pollWatcher(interval) {
+  return `  var last=null, misses=0;
+  function poll(){
+    fetch('/api/state', { cache: 'no-store' }).then(function(r){
+      if(!r.ok) throw new Error('state '+r.status);
+      return r.json();
+    }).then(function(s){
+      misses=0; connected();
+      if(last!==null && s.spec!==last){ location.reload(); return; }
+      last=s.spec;
+    }).catch(function(){ if(++misses>1) disconnected(); });
+  }
+  poll();
+  setInterval(poll, ${interval});`;
+}
+
+/** How often a published page asks whether the spec moved. */
+const POLL_INTERVAL_MS = 5000;
+
+function reviewSnippet(specId, prefs, transport, api) {
   const id = JSON.stringify(specId);
   // Embed the persisted prefs (store-wide theme/font + per-spec width/…) so
   // review.js applies them on boot with no flash and no extra round-trip.
-  const prefsJson = JSON.stringify(prefs || {});
+  const cfg = JSON.stringify({
+    specId, prefs: prefs || {}, transport, api: api || `/api/spec/${specId}`,
+  });
+  const watcher = transport === 'poll' ? pollWatcher(POLL_INTERVAL_MS) : sseWatcher(id);
   return `<!-- specforge:review-layer -->
 <div id="sf-live" class="sf-live">● live</div>
 <div id="sf-disconnected" class="sf-disconnected" role="alert" hidden>
@@ -40,7 +87,7 @@ function reviewSnippet(specId, prefs) {
   <span class="sf-dc-msg">Live connection lost. This spec may be stale, and new comments will not save until it reconnects.</span>
   <button type="button" class="sf-dc-reload" onclick="location.reload()">Reload</button>
 </div>
-<script>window.SPECFORGE = { specId: ${id}, prefs: ${prefsJson} };</script>
+<script>window.SPECFORGE = ${cfg};</script>
 <script>
 (function(){
   var pill=document.getElementById('sf-live');
@@ -55,12 +102,7 @@ function reviewSnippet(specId, prefs) {
   function disarmBanner(){ if(timer!=null){ clearTimeout(timer); timer=null; } }
   function connected(){ disarmBanner(); hideBanner(); set('● live','#3fb950'); }
   function disconnected(){ set('● reconnecting','#d29922'); armBanner(); }
-  try {
-    var es=new EventSource('/events?spec='+encodeURIComponent(${id}));
-    es.addEventListener('reload', function(){ location.reload(); });
-    es.onopen=connected;
-    es.onerror=disconnected;
-  } catch (e) { set('○ offline','#9aa3b2'); showBanner(); }
+${watcher}
 })();
 </script>
 <script src="/public/reconcile.js" defer></script>
