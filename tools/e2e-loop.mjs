@@ -174,6 +174,26 @@ if (!browser) {
   await pubs.unshare(specId);
   process.exit(2);
 }
+// A submit takes every agent-directed thread on the spec, not just this run's.
+// If someone else has unanswered work waiting, this run would sweep it into its
+// own batch and then close it, consuming their comments without a reply. That
+// cannot be unpicked afterwards, so it is refused up front.
+{
+  const waiting = loadComments(specId).threads.filter((t) =>
+    t.state !== 'resolved'
+    && !isOurs(t)
+    && t.comments.some((c) => c.kind !== 'agent' && !c.batchId && /@agent(?![a-z0-9_-])/i.test(c.body || '')));
+  if (waiting.length) {
+    console.error(
+      `refusing to run: ${waiting.length} thread(s) on this spec are addressed to the agent and not yet submitted.\n` +
+      'A submit would sweep them into this run\'s batch, which is then closed, and their comments would never be answered.\n' +
+      'Submit or resolve them first, or run against a spec with no pending agent work.');
+    await browser.close();
+    await pubs.unshare(specId);
+    process.exit(2);
+  }
+}
+
 const page = await browser.newPage();
 let threadCountBefore = loadComments(specId).threads.length;
 
@@ -249,6 +269,11 @@ try {
     const bodies = threads.flatMap((t) => t.comments.filter((c) => c.batchId === batch.batchId).map((c) => c.body));
     check(bodies.some((b) => /@agent please widen/.test(b)), 'the addressed comment is in the batch');
     check(!bodies.some((b) => /why is this bounded/.test(b)), 'the discussion is not');
+    // Guarded again here: a reviewer submitting between the precondition check
+    // and this point could still land their thread in our batch, and closing it
+    // would consume their work.
+    check(batch.threadIds.every((tid) => mineNow.has(tid)),
+      'the batch holds only this run\'s work, so closing it consumes nobody else\'s');
 
     // Stand in for the review flow: the agent replies, then closes the batch.
     // The reply goes to OUR thread, not to threads[0]: a spec with an older
@@ -261,7 +286,10 @@ try {
         body: `${RUN_TAG}: widened, see §4.`, author: 'claude', kind: 'agent',
       }));
     }
-    markBatchDone(specId, batch.batchId);
+    // Closed only if every thread in it is ours. A mixed batch is left for the
+    // owner's session, because an unanswered reviewer thread disappearing is
+    // worse than a batch this run failed to tidy.
+    if (batch.threadIds.every((tid) => mineNow.has(tid))) markBatchDone(specId, batch.batchId);
 
     // The reviewer's page polls, so the reply should arrive without a reload.
     let sawReply = false;
@@ -286,9 +314,21 @@ try {
   // persisted before that variable was assigned would otherwise be left pending
   // forever, pointing at threads the next step is about to delete.
   const mine = ourThreadIds();
-  const ourBatches = listPendingForSpec(specId)
-    .filter((b) => b.batchId === ourBatchId || b.threadIds.some((tid) => mine.has(tid)));
+  const pendingNow = listPendingForSpec(specId);
+  const ourBatches = pendingNow.filter((b) =>
+    (b.batchId === ourBatchId || b.threadIds.some((tid) => mine.has(tid)))
+    && b.threadIds.every((tid) => mine.has(tid)));
   for (const b of ourBatches) markBatchDone(specId, b.batchId);
+
+  // A batch holding someone else's thread as well is left alone, and so are the
+  // threads inside it: closing it would consume their unanswered work, and
+  // deleting from it would leave the batch pointing at nothing.
+  const mixed = pendingNow.filter((b) =>
+    b.threadIds.some((tid) => mine.has(tid)) && !b.threadIds.every((tid) => mine.has(tid)));
+  const stranded = new Set(mixed.flatMap((b) => b.threadIds));
+  if (mixed.length) {
+    console.log(`left ${mixed.length} mixed batch(es) pending: they also carry someone else's work`);
+  }
 
   // Then the threads, swept the same way, so one written by a step that then
   // threw is still found. Only this run's tag and reviewer name match, so
@@ -296,7 +336,7 @@ try {
   let removed = 0;
   mutateComments(specId, (store) => {
     const before = store.threads.length;
-    store.threads = store.threads.filter((t) => !isOurs(t));
+    store.threads = store.threads.filter((t) => !isOurs(t) || stranded.has(t.id));
     removed = before - store.threads.length;
   });
   console.log(`\nunpublished; removed ${removed} thread(s) and ${ourBatches.length} batch(es) this run created.`);
