@@ -60,7 +60,11 @@
    */
   function isForAgentThread(t) {
     return !!(t && t.comments || []).length
-      && t.comments.some(function (c) { return !isAgentComment(c) && mentionsAgentBody(c.body); });
+      && t.comments.some(function (c) {
+        // Unsent only: a mention that was already delivered is history, and
+        // counting it would make every later remark in that thread agent work.
+        return !isAgentComment(c) && !c.batchId && mentionsAgentBody(c.body);
+      });
   }
 
   /**

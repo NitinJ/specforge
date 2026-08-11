@@ -126,6 +126,21 @@ test('a human remark in an answered thread does not re-engage the agent', () => 
   assert.equal(isForAgent(answered), false, 'a thank-you is not a request');
 });
 
+// One @agent early in a thread must not make every later remark in it agent
+// work. The mention that was already delivered is history.
+test('a delivered mention does not make later remarks submittable', () => {
+  const answered = {
+    id: 'th_1', state: 'replied', anchor,
+    comments: [
+      { id: 'c_1', author: 'nitin', body: '@agent widen this', batchId: 'b1' },
+      { id: 'c_2', author: 'claude', kind: 'agent', body: 'done' },
+      { id: 'c_3', author: 'lavee', body: 'looks good now' },
+    ],
+  };
+  assert.equal(isForAgent(answered), false, 'the mention was already sent');
+  assert.equal(wasSentToAgent(answered), true, 'though the thread is still in the loop');
+});
+
 test('adding a mention to an answered thread does re-engage it', () => {
   const reopened = {
     id: 'th_1', state: 'replied', anchor,
