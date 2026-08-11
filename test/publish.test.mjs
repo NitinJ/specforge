@@ -29,12 +29,25 @@ function fetchStub(steps) {
   return fn;
 }
 
-/** A child-process stand-in that records argv and kill signals. */
-function spawnStub() {
+/**
+ * A child-process stand-in that records argv and kill signals.
+ * @param {{ignoreSigterm?:boolean}} opts ignoreSigterm models a wedged process
+ *   that has to be escalated to SIGKILL.
+ */
+function spawnStub(opts = {}) {
   const child = new EventEmitter();
   child.killed = false;
   child.signals = [];
-  child.kill = (sig) => { child.killed = true; child.signals.push(sig); return true; };
+  child.kill = (sig) => {
+    child.killed = true;
+    child.signals.push(sig);
+    // A real child exits on SIGTERM; emit it so stop() can observe the exit it
+    // is contractually waiting for.
+    if (sig === 'SIGKILL' || (sig === 'SIGTERM' && !opts.ignoreSigterm)) {
+      setImmediate(() => child.emit('exit', 0, sig));
+    }
+    return true;
+  };
   const fn = (cmd, args) => { fn.cmd = cmd; fn.args = args; return child; };
   fn.child = child;
   return fn;
@@ -157,6 +170,86 @@ test('a child that exits early fails fast', async () => {
   await tick();
   spawnImpl.child.emit('exit', 1, null);
   await assert.rejects(() => p, /exited/i);
+});
+
+// The budget was checked only between requests, so a metrics endpoint that
+// accepts a connection and never answers held the loop open past its own
+// timeout and past cancellation.
+test('a metrics request that never answers cannot outlive the budget', async () => {
+  let clock = 0;
+  const hung = () => new Promise(() => {});   // never settles, ignores signals
+  await assert.rejects(
+    () => readQuickTunnelHostname('http://127.0.0.1:9', {
+      fetchImpl: hung,
+      sleepImpl: noSleep,
+      nowImpl: () => clock,
+      requestTimeoutMs: 20,
+      // Each attempt burns a slice of the budget, so the loop ends on the clock
+      // rather than running forever.
+      onAttempt: () => { clock += 10000; },
+    }),
+    /within 30000 ms/,
+  );
+});
+
+test('a hung request is abandoned rather than accumulated', async () => {
+  let live = 0;
+  const hung = (_url, init) => new Promise((_, reject) => {
+    live++;
+    // A well-behaved fetch rejects when its signal aborts.
+    init.signal.addEventListener('abort', () => { live--; reject(new Error('aborted')); }, { once: true });
+  });
+  let clock = 0;
+  await assert.rejects(() => readQuickTunnelHostname('http://127.0.0.1:9', {
+    fetchImpl: hung,
+    sleepImpl: noSleep,
+    nowImpl: () => clock,
+    requestTimeoutMs: 20,
+    onAttempt: () => { clock += 10000; },
+  }));
+  assert.equal(live, 0, 'every abandoned request was aborted');
+});
+
+// stop() resolving on the signal rather than the exit lets a caller drop the
+// publication record while the public endpoint is still serving.
+test('stop() waits for the child to actually exit', async () => {
+  const spawnImpl = spawnStub();
+  const { stop } = await publishViaCloudflared(4321, {
+    spawnImpl,
+    fetchImpl: fetchStub([[200, { hostname: 'h.trycloudflare.com' }]]),
+    sleepImpl: noSleep,
+    freePortImpl: async () => 9999,
+  });
+  let exited = false;
+  spawnImpl.child.once('exit', () => { exited = true; });
+  await stop();
+  assert.equal(exited, true, 'stop resolved only after the exit event');
+});
+
+test('stop() escalates to SIGKILL when SIGTERM is ignored', async () => {
+  const spawnImpl = spawnStub({ ignoreSigterm: true });
+  const { stop } = await publishViaCloudflared(4321, {
+    spawnImpl,
+    fetchImpl: fetchStub([[200, { hostname: 'h.trycloudflare.com' }]]),
+    sleepImpl: noSleep,
+    freePortImpl: async () => 9999,
+    killTimeoutMs: 30,
+  });
+  await stop();
+  assert.deepEqual(spawnImpl.child.signals, ['SIGTERM', 'SIGKILL']);
+});
+
+test('stop() is idempotent', async () => {
+  const spawnImpl = spawnStub();
+  const { stop } = await publishViaCloudflared(4321, {
+    spawnImpl,
+    fetchImpl: fetchStub([[200, { hostname: 'h.trycloudflare.com' }]]),
+    sleepImpl: noSleep,
+    freePortImpl: async () => 9999,
+  });
+  await stop();
+  await stop();
+  assert.deepEqual(spawnImpl.child.signals, ['SIGTERM'], 'the second stop signalled nothing');
 });
 
 test('the fake publishes to loopback and stops cleanly', async () => {
