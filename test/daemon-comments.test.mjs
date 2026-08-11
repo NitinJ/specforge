@@ -211,6 +211,26 @@ test('an agent comment cannot be edited over HTTP', async () => {
   assert.match((await r.json()).error, /agent comment/);
 });
 
+// Deleting a spec removes its directory, and with it the record naming the
+// tunnel. Without revoking first, the URL keeps serving a spec that no longer
+// exists and nothing is left that could find the process behind it.
+test('deleting a spec revokes its publication first', async () => {
+  const { publications } = await import('../server/daemon.mjs');
+  const seen = [];
+  const real = publications.unshare;
+  publications.unshare = async (id) => { seen.push({ id, specStillThere: !!readMeta(id) }); return false; };
+  try {
+    const r = await fetch(`${base}/api/spec/${specId}`, { method: 'DELETE' });
+    assert.equal(r.status, 200);
+  } finally {
+    publications.unshare = real;
+  }
+  assert.equal(seen.length, 1, 'the delete route revokes');
+  assert.equal(seen[0].id, specId);
+  assert.equal(seen[0].specStillThere, true, 'and does so before the spec is removed');
+  assert.equal(readMeta(specId), null, 'the spec is then gone');
+});
+
 test('PATCH refuses a comment already frozen into a batch', async () => {
   const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' })).json();
   const cid = thread.comments[0].id;

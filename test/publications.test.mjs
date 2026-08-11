@@ -72,6 +72,57 @@ test('sharing twice returns the same publication, not a second tunnel', async ()
   assert.equal(publishImpl.calls.length, 1, 'only one tunnel was ever started');
 });
 
+// share() awaits a port and a tunnel before it can record anything, so two
+// overlapping calls would both pass the "already live?" check. The loser's
+// tunnel would then be public with nothing tracking it and no way to stop it.
+test('overlapping shares start one tunnel, not two', async () => {
+  seed('zeta');
+  const publish = fakePublisher();
+  const p = createPublications({ publishImpl: publish });
+  const [a, b, c] = await Promise.all([p.share('zeta'), p.share('zeta'), p.share('zeta')]);
+  assert.equal(publish.calls.length, 1, 'only one tunnel was started');
+  assert.equal(a.url, b.url);
+  assert.equal(b.url, c.url);
+  assert.equal(p.list().length, 1);
+  await p.stopAll();
+});
+
+test('a failed share does not poison the next attempt', async () => {
+  seed('eta');
+  let attempt = 0;
+  const flaky = async (port) => {
+    if (++attempt === 1) throw new Error('cloudflared exited before publishing');
+    return { url: `https://ok-${port}.example`, pid: 1, stop: async () => {} };
+  };
+  const p = createPublications({ publishImpl: flaky });
+  await assert.rejects(() => p.share('eta'), /exited/);
+  const rec = await p.share('eta');
+  assert.match(rec.url, /^https:\/\/ok-/, 'the retry publishes');
+  await p.stopAll();
+});
+
+// The record is the only route back to a tunnel whose daemon is gone, so it
+// must outlive the tunnel rather than the other way round.
+test('unshare drops the record only after the tunnel is confirmed stopped', async () => {
+  seed('theta');
+  const order = [];
+  const publish = async (port) => ({
+    url: `https://t-${port}.example`,
+    pid: 7,
+    stop: async () => {
+      order.push('tunnel stopped');
+      // The record must still be readable here: if the process died at this
+      // moment, the pid is the only way a later daemon could reap the tunnel.
+      order.push(readShare('theta') ? 'record still present' : 'record already gone');
+    },
+  });
+  const p = createPublications({ publishImpl: publish });
+  await p.share('theta');
+  await p.unshare('theta');
+  assert.deepEqual(order, ['tunnel stopped', 'record still present']);
+  assert.equal(readShare('theta'), null, 'and it is gone once the tunnel is');
+});
+
 test('two specs get two independent publications', async () => {
   const b = await pubs.share('beta');
   assert.notEqual(b.port, readShare('alpha').port);

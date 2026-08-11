@@ -260,7 +260,13 @@ export function createDaemon() {
     const specRes = path.match(/^\/api\/spec\/([\w-]+)$/);
     if (specRes) {
       if (method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
-      return handleDelete(specRes[1], res);
+      // Revoke first. Deleting the spec removes its directory, and with it the
+      // share record that names the tunnel — which would leave a public URL
+      // serving a spec that no longer exists and no way left to find the
+      // process behind it.
+      return publications.unshare(specRes[1])
+        .catch(() => { /* an un-stoppable tunnel must not block the delete */ })
+        .then(() => handleDelete(specRes[1], res));
     }
 
     if (method === 'GET') {
@@ -409,10 +415,6 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
-    // Publications first: a tunnel that outlives the daemon is a public
-    // endpoint with nothing tracking it. Best-effort, since `exit` handlers
-    // cannot await — clearStale on the next start is the backstop.
-    try { publications.stopAll(); } catch { /* reaped on next start */ }
     if (server6) server6.close();
     clearServerState();
     releaseLock();
@@ -440,9 +442,20 @@ if (isMain) {
     }
     // server.close() fires the 'close' handler registered in ensureServer(),
     // which clears server.json + releases the lock; draining in-flight requests.
+    // Tunnels are torn down before the process exits, and awaited. A cloudflared
+    // child outlives its parent, so exiting without waiting leaves a public
+    // endpoint up with nothing tracking it. stopAll() resolves only once each
+    // child has actually exited (SIGTERM, escalating to SIGKILL), so this is the
+    // one place that can guarantee it; startup reaping is the backstop for a
+    // daemon that was killed outright.
+    let shuttingDown = false;
     const shutdown = () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       if (drainer) drainer.stop();
-      server.close(() => process.exit(0));
+      publications.stopAll()
+        .catch(() => { /* reaped by clearStale on the next start */ })
+        .then(() => server.close(() => process.exit(0)));
     };
     for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, shutdown);
   }).catch((err) => {
