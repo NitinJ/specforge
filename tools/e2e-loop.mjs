@@ -282,17 +282,24 @@ try {
   // Put the spec back. This runs against a real spec with real review history,
   // so every thread this wrote is removed and the batch it created is cleared
   // rather than left pending or left marked done.
-  if (ourBatchId) markBatchDone(specId, ourBatchId);
-  // Swept by tag rather than by a list built as we went, so a thread written by
-  // a step that then threw is still found and removed. Only this run's tag and
-  // reviewer name match, so nothing else can be caught by it.
+  // Batches first, and by tag rather than by ourBatchId. A submit that
+  // persisted before that variable was assigned would otherwise be left pending
+  // forever, pointing at threads the next step is about to delete.
+  const mine = ourThreadIds();
+  const ourBatches = listPendingForSpec(specId)
+    .filter((b) => b.batchId === ourBatchId || b.threadIds.some((tid) => mine.has(tid)));
+  for (const b of ourBatches) markBatchDone(specId, b.batchId);
+
+  // Then the threads, swept the same way, so one written by a step that then
+  // threw is still found. Only this run's tag and reviewer name match, so
+  // nothing else can be caught by it.
   let removed = 0;
   mutateComments(specId, (store) => {
     const before = store.threads.length;
     store.threads = store.threads.filter((t) => !isOurs(t));
     removed = before - store.threads.length;
   });
-  console.log(`\nunpublished; removed ${removed} thread(s) this run created.`);
+  console.log(`\nunpublished; removed ${removed} thread(s) and ${ourBatches.length} batch(es) this run created.`);
 }
 
 console.log(failures ? `\n${failures} FAILURES` : '\nall checks passed');
