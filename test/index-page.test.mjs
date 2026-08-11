@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 
 import { createDaemon, renderIndex } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
@@ -120,10 +120,18 @@ test('GET/PUT /api/prefs persists the index theme', async () => {
 
 // ---- inline page behavior in jsdom ----
 function loadIndex(t, opts) {
-  const dom = new JSDOM(renderIndex(opts), { runScripts: 'dangerously', url: 'http://localhost/' });
+  // location.reload is unforgeable in jsdom — it cannot be stubbed — but calling
+  // it raises a jsdomError, so that is how a reload is counted. Anything else on
+  // that channel is a real page error and is re-raised rather than swallowed.
+  const reloads = { n: 0 };
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (e) => {
+    if (/navigation to another Document/i.test(e.message)) reloads.n += 1;
+    else throw e;
+  });
+  const dom = new JSDOM(renderIndex(opts), { runScripts: 'dangerously', url: 'http://localhost/', virtualConsole });
   const { window } = dom;
   t.after(() => window.close());
-  try { window.location.reload = () => {}; } catch { /* jsdom reload is unimplemented; stub it */ }
   const calls = [];
   window.fetch = (url, init) => {
     const method = (init && init.method) || 'GET';
@@ -132,7 +140,7 @@ function loadIndex(t, opts) {
     // Echo the patch back so the client's DOM updates (rename → d.title, tags → d.tags).
     return Promise.resolve({ ok: true, json: () => Promise.resolve(Object.assign({ ok: true }, body || {})) });
   };
-  return { window, calls };
+  return { window, calls, reloads };
 }
 
 const tick = (window) => new Promise((r) => window.setTimeout(r, 0));
@@ -516,6 +524,45 @@ test('selecting rows opens a bulk bar that moves them into one collection', asyn
   const moves = calls.filter((c) => /\/organize$/.test(c.url));
   assert.equal(moves.length, 2, 'one PATCH per selected spec');
   assert.deepEqual(moves.map((c) => c.body.collection), ['Launch', 'Launch']);
+});
+
+// fetch resolves for a 403 as readily as a 200, so a bare Promise.all over the
+// fan-out would report a half-renamed collection as a finished one.
+test('a collection move that only partly succeeds says so', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'Beta', html: '<h1>B</h1>' });
+  setCollection(a, 'Launch');
+  setCollection(b, 'Launch');
+  const { window, reloads } = loadIndex(t);
+  const { document } = window;
+  let nth = 0;
+  window.fetch = () => {
+    nth += 1;
+    return Promise.resolve({ ok: nth > 1, status: nth > 1 ? 200 : 500, json: () => Promise.resolve({}) });
+  };
+  const crow = document.querySelector('.crow[data-c="Launch"]');
+  crow.querySelector('.cdel').click();
+  crow.querySelector('.cyes').click();
+  await tick(window);
+  const toast = document.querySelector('.toast');
+  assert.ok(toast, 'the failure is surfaced, not swallowed');
+  assert.match(toast.textContent, /1 of 2 specs moved/);
+  assert.match(toast.textContent, /still in "Launch"/, 'it names where the stragglers are');
+  assert.match(window.sessionStorage.getItem('sf-index-msg'), /1 of 2/, 'and survives the reload');
+  assert.equal(reloads.n, 1, 'the page still reloads, so it shows the true state');
+});
+
+test('a collection move that fully succeeds says nothing', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  setCollection(a, 'Launch');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const crow = document.querySelector('.crow[data-c="Launch"]');
+  crow.querySelector('.cdel').click();
+  crow.querySelector('.cyes').click();
+  await tick(window);
+  assert.equal(document.querySelector('.toast'), null);
+  assert.equal(window.sessionStorage.getItem('sf-index-msg'), null);
 });
 
 test('Cancel drops the selection without touching anything', (t) => {

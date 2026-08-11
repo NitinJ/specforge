@@ -58,6 +58,25 @@ test('a submitted batch reads as awaiting', () => {
   assert.equal(s.needs, 0, 'it is sent, so there is nothing left to send');
 });
 
+// The CTA's own test is repliedAgentCount() >= unresolvedAgentCount(): every
+// open agent thread answered, not just one. Reporting "replies to read" early
+// would file the spec under Needs you while its own button said Awaiting
+// response.
+test('one answered thread out of two is still awaiting, not replied', () => {
+  const id = spec('halfway');
+  let first;
+  mutateComments(id, (st) => {
+    first = createThread(st, { anchor, body: '@agent one', author: 'nitin' }).id;
+    createThread(st, { anchor, body: '@agent two', author: 'nitin' });
+  });
+  submitBatch(id);
+  mutateComments(id, (st) => addComment(st, first, { body: 'done', author: 'claude', kind: 'agent' }));
+  const s = specSignals(id);
+  assert.equal(s.review, 'awaiting');
+  assert.equal(s.replied, 1);
+  assert.equal(s.sent, 2, 'both threads are in the agent loop');
+});
+
 test('an agent reply reads as replies to read', () => {
   const id = spec('answered');
   let tid;

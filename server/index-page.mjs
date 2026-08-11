@@ -69,7 +69,7 @@ function reviewHtml(sig) {
   if (sig.review === 'clear') return '';
   const n = sig.review === 'needs' ? sig.needs
     : sig.review === 'replied' ? sig.replied
-      : sig.review === 'discussion' ? sig.discussion : sig.open;
+      : sig.review === 'discussion' ? sig.discussion : sig.sent;
   const count = n ? `<span class="rvn">${n}</span>` : '';
   return `<span class="rv rv-${sig.review}" title="${esc(REVIEW_TITLE[sig.review])}">${ICON_COMMENT}${count}</span>`;
 }
@@ -381,6 +381,13 @@ export function renderIndex({ isShareLive } = {}) {
   .bbtn{height:28px;padding:0 11px;border:1px solid var(--line);border-radius:7px;background:none;color:var(--muted);font-size:12.5px;cursor:pointer}
   .bbtn:hover{color:var(--ink);border-color:var(--line2)}
 
+  /* one-shot warning, carried across the reload a fan-out triggers */
+  .toast{position:fixed;left:22px;bottom:22px;z-index:30;display:flex;align-items:center;gap:10px;max-width:460px;
+         padding:9px 12px;border:1px solid var(--red);border-radius:10px;font-size:12.5px;color:var(--ink);
+         background:color-mix(in srgb,var(--surface) 88%,var(--red));box-shadow:0 8px 28px rgba(0,0,0,.16)}
+  .tx{background:none;border:none;color:var(--muted);font-size:14px;line-height:1;cursor:pointer;padding:0}
+  .tx:hover{color:var(--ink)}
+
   /* ── templates strip ──────────────────────────────────────────────── */
   .tpls{margin:40px 0 0}
   .tstrip{display:flex;gap:12px;flex-wrap:wrap}
@@ -674,11 +681,40 @@ ${strip}
     if(bcoll) bcoll.value='';
     paintBulk();
   }
-  function setColl(list,value){
+  // Every collection move is a fan-out of one PATCH per member, and any of them
+  // can fail on its own. fetch resolves for a 404 or a 403 as readily as a 200,
+  // so the count of successes has to come from the status: reloading on a bare
+  // Promise.all would show a half-renamed collection as a finished one.
+  //
+  // The reload still happens either way — it is what makes the page show the
+  // true state — so the warning is handed to the next load rather than painted
+  // on a page that is about to be replaced.
+  function setColl(list,value,what){
     if(!list.length) return;
-    Promise.all(list.map(function(r){return api(r.getAttribute('data-id'),'/organize','PATCH',{collection:value});}))
-      .then(function(){location.reload();}).catch(function(){location.reload();});
+    Promise.all(list.map(function(r){
+      return api(r.getAttribute('data-id'),'/organize','PATCH',{collection:value})
+        .then(function(x){return !!(x&&x.ok);},function(){return false;});
+    })).then(function(oks){
+      var done=oks.filter(Boolean).length;
+      if(done<list.length) warn(done+' of '+list.length+' specs moved — '+(what||'the rest')+' could not be updated');
+      location.reload();
+    });
   }
+  // Shown now and again after the reload lands, since the reload is what
+  // replaces the page the first one is painted on.
+  var MSGKEY='sf-index-msg';
+  function warn(text){try{sessionStorage.setItem(MSGKEY,text);}catch(e){} showMsg(text);}
+  function showMsg(text){
+    var el=document.createElement('div'); el.className='toast'; el.setAttribute('role','status'); el.textContent=text;
+    var x=document.createElement('button'); x.type='button'; x.className='tx'; x.setAttribute('aria-label','Dismiss'); x.textContent='\\u00d7';
+    x.onclick=function(){el.remove();};
+    el.appendChild(x); document.body.appendChild(el);
+  }
+  (function showCarriedMsg(){
+    var text=null;
+    try{text=sessionStorage.getItem(MSGKEY); if(text) sessionStorage.removeItem(MSGKEY);}catch(e){}
+    if(text) showMsg(text);
+  })();
   function bulkSet(value){setColl(picked(),value);}
   var bclear=document.getElementById('bclear'), bcancel=document.getElementById('bcancel');
   if(bclear) bclear.onclick=function(){bulkSet('');};
@@ -694,7 +730,7 @@ ${strip}
   function renameColl(crow,name){
     var from=crow.getAttribute('data-c');
     if(!name||name===from){endCollEdit(crow);return;}
-    setColl(membersOf(from),name);
+    setColl(membersOf(from),name,'some are still in "'+from+'"');
   }
   document.addEventListener('click',function(e){
     var t=e.target;
@@ -706,7 +742,8 @@ ${strip}
     } else if(t.classList.contains('cno')){
       endCollEdit(t.closest('.crow'));
     } else if(t.classList.contains('cyes')){
-      var cr3=t.closest('.crow'); setColl(membersOf(cr3.getAttribute('data-c')),'');
+      var cr3=t.closest('.crow'), from=cr3.getAttribute('data-c');
+      setColl(membersOf(from),'','some are still in "'+from+'"');
     }
   });
 })();

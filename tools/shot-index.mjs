@@ -1,20 +1,29 @@
 #!/usr/bin/env node
 // Screenshot the index page in both themes, against the real store.
 //
-//   node tools/shot-index.mjs <outDir> [url]
+//   node tools/shot-index.mjs <outDir> [url] [chromiumPath]
 //
-// Uses its own chromium instance — the shared MCP browser is single-instance and
-// grabbing it would evict whatever the human has open.
+// Launches its own browser rather than attaching to one, so it cannot evict a
+// shared/automation browser someone has open. With no third argument it uses
+// whatever Playwright installed for itself; pass a path (or set SF_CHROMIUM) to
+// point at a binary that is already on the machine, which is the usual case when
+// Playwright came in as a transitive dependency and never downloaded a browser.
 
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 
-const EXE = '/home/nitin/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome';
 const out = process.argv[2] || '.';
 const url = process.argv[3] || 'http://127.0.0.1:4180/';
+const exe = process.argv[4] || process.env.SF_CHROMIUM || null;
 
 mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: EXE });
+let browser;
+try {
+  browser = await chromium.launch(exe ? { executablePath: exe } : {});
+} catch (err) {
+  throw new Error(`${err.message}\n\nEither run "npx playwright install chromium", `
+    + 'or pass the path to an existing chromium as the third argument.');
+}
 const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
 
 for (const theme of ['light', 'dark']) {
