@@ -29,8 +29,21 @@ if (!specId) { console.error('usage: e2e-loop.mjs <specId>'); process.exit(2); }
 // Everything this run writes into the store, so it can put it back. The spec is
 // a real one with real review history: leaving synthetic threads and a
 // completed batch behind would corrupt it.
+//
+// A unique tag per run, because "new since I looked" is not the same as "mine".
+// A reviewer commenting while this runs would otherwise be classified as
+// harness output and have their thread deleted, which is a far worse outcome
+// than leaving a stray test comment behind.
+const RUN_TAG = `e2e-${Math.random().toString(36).slice(2, 8)}`;
+const REVIEWER = `${RUN_TAG}-reviewer`;
 const createdThreads = new Set();
 let ourBatchId = null;
+
+/** True only for a thread this run wrote: tagged body and our own author. */
+function isOurs(t) {
+  const first = (t.comments || [])[0];
+  return !!first && first.author === REVIEWER && String(first.body || '').startsWith(RUN_TAG);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
@@ -43,7 +56,22 @@ const pubs = createPublications();
 console.log(`publishing ${specId} ...`);
 const rec = await pubs.share(specId);
 console.log(`published at ${rec.url}\n`);
-await sleep(4000); // let the edge route
+
+// A fresh hostname is not resolvable the instant cloudflared reports it, and a
+// fixed sleep either wastes time or fails on a slow day. Ask until it answers.
+let ready = false;
+for (let i = 0; i < 30 && !ready; i++) {
+  await sleep(2000);
+  try {
+    const r = await fetch(rec.url, { signal: AbortSignal.timeout(8000) });
+    ready = r.status === 200;
+  } catch { /* DNS or edge not ready yet */ }
+}
+if (!ready) {
+  console.error('the published URL never answered; the tunnel or DNS did not come up');
+  await pubs.unshare(specId);
+  process.exit(2);
+}
 
 /**
  * Any chromium under Playwright's browser cache, newest revision first.
@@ -53,19 +81,46 @@ await sleep(4000); // let the edge route
  * that works on one machine, look for whatever is actually there.
  */
 function discoverChromium() {
-  const root = join(homedir(), '.cache', 'ms-playwright');
-  let dirs;
-  try {
-    dirs = readdirSync(root).filter((d) => /^chromium/.test(d));
-  } catch {
-    return [];
-  }
+  // Where Playwright keeps browsers on each platform, plus the override it
+  // honours. Searching only Linux's default would fail on the machines least
+  // likely to have the pinned revision.
+  const roots = [
+    process.env.PLAYWRIGHT_BROWSERS_PATH,
+    join(homedir(), '.cache', 'ms-playwright'),                    // linux
+    join(homedir(), 'Library', 'Caches', 'ms-playwright'),         // macos
+    process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'ms-playwright') : null, // windows
+  ].filter(Boolean);
+
+  // Every executable layout Playwright ships, across platforms and both the
+  // full build and the headless shell.
+  const layouts = [
+    ['chrome-linux64', 'chrome'],
+    ['chrome-linux', 'chrome'],
+    ['chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'],
+    ['chrome-mac-arm64', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'],
+    ['chrome-win', 'chrome.exe'],
+    ['chrome-headless-shell-linux64', 'chrome-headless-shell'],
+    ['chrome-headless-shell-mac', 'chrome-headless-shell'],
+    ['chrome-headless-shell-win', 'chrome-headless-shell.exe'],
+  ];
+
   const rev = (d) => Number((/-(\d+)$/.exec(d) || [, 0])[1]);
-  return dirs.sort((a, b) => rev(b) - rev(a)).flatMap((d) => [
-    join(root, d, 'chrome-linux64', 'chrome'),
-    join(root, d, 'chrome-linux', 'chrome'),
-    join(root, d, 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
-  ]).filter((p) => existsSync(p));
+  const out = [];
+  for (const root of roots) {
+    let dirs;
+    try {
+      dirs = readdirSync(root).filter((d) => /^chromium/.test(d));
+    } catch {
+      continue; // this platform's cache is not here
+    }
+    for (const d of dirs.sort((a, b) => rev(b) - rev(a))) {
+      for (const parts of layouts) {
+        const p = join(root, d, ...parts);
+        if (existsSync(p)) out.push(p);
+      }
+    }
+  }
+  return out;
 }
 
 // SF_CHROMIUM wins, then Playwright's own resolution, then whatever is actually
@@ -109,7 +164,7 @@ try {
     await page.click('.sf-welcome-go');
     const err = await page.textContent('.sf-welcome-err');
     check(/reserved/i.test(err || ''), 'a reserved name is refused before any comment is written');
-    await page.fill('#sf-welcome-name', 'lavee-e2e');
+    await page.fill('#sf-welcome-name', REVIEWER);
     await page.click('.sf-welcome-go');
     await page.waitForTimeout(500);
     check(!(await page.$('#sf-welcome')), 'naming yourself dismisses it');
@@ -125,16 +180,18 @@ try {
     await ta.fill(body);
     await page.click('#sf-rail .sf-primary');
     await page.waitForTimeout(1200);
+    // New AND ours. A reviewer commenting concurrently is new too, and
+    // deleting their thread would be worse than leaving a test comment.
     for (const t of loadComments(specId).threads) {
-      if (!before.has(t.id)) createdThreads.add(t.id);
+      if (!before.has(t.id) && isOurs(t)) createdThreads.add(t.id);
     }
   }
 
-  await commentOnFirstBlock('e2e: why is this bounded at 40 bits?');
+  await commentOnFirstBlock(`${RUN_TAG}: why is this bounded at 40 bits?`);
   const afterDiscussion = loadComments(specId).threads;
   check(afterDiscussion.length === threadCountBefore + 1, 'the reviewer\'s comment is stored');
   const mine = afterDiscussion[afterDiscussion.length - 1];
-  check(mine.comments[0].author === 'lavee-e2e', 'attributed to the name they chose',
+  check(mine.comments[0].author === REVIEWER, 'attributed to the name they chose',
     `author=${mine.comments[0].author}`);
   check(mine.comments[0].kind === 'human', 'and recorded as a human comment');
 
@@ -146,7 +203,7 @@ try {
 
   // Comment 2: addressed to the agent. This one must queue.
   threadCountBefore = loadComments(specId).threads.length;
-  await commentOnFirstBlock('e2e: @agent please widen this to 64 bits');
+  await commentOnFirstBlock(`${RUN_TAG}: @agent please widen this to 64 bits`);
   const caption = (await page.textContent('.sf-foot-caption').catch(() => '')) || '';
   console.log(`     footer reads: ${JSON.stringify(caption.trim())}`);
 
@@ -169,7 +226,7 @@ try {
     // Stand in for the review flow: the agent replies, then closes the batch.
     const target = threads[0];
     mutateComments(specId, (s) => addComment(s, target.id, {
-      body: 'e2e: widened, see §4.', author: 'claude', kind: 'agent',
+      body: `${RUN_TAG}: widened, see §4.`, author: 'claude', kind: 'agent',
     }));
     markBatchDone(specId, batch.batchId);
 
@@ -195,7 +252,9 @@ try {
   if (ourBatchId) markBatchDone(specId, ourBatchId);
   if (createdThreads.size) {
     mutateComments(specId, (store) => {
-      store.threads = store.threads.filter((t) => !createdThreads.has(t.id));
+      // Both conditions again at the point of deletion: recorded as ours, and
+      // still looking like ours. Nothing else is ever removed.
+      store.threads = store.threads.filter((t) => !(createdThreads.has(t.id) && isOurs(t)));
     });
   }
   console.log(`\nunpublished; removed ${createdThreads.size} thread(s) this run created.`);
