@@ -36,13 +36,25 @@ if (!specId) { console.error('usage: e2e-loop.mjs <specId>'); process.exit(2); }
 // than leaving a stray test comment behind.
 const RUN_TAG = `e2e-${Math.random().toString(36).slice(2, 8)}`;
 const REVIEWER = `${RUN_TAG}-reviewer`;
-const createdThreads = new Set();
 let ourBatchId = null;
 
-/** True only for a thread this run wrote: tagged body and our own author. */
+/**
+ * True only for a thread this run wrote: our own author and a tagged body.
+ *
+ * This, not a set recorded as we go, is the authority for what belongs to this
+ * run. A recorded set misses anything written by a step that then threw, which
+ * would strand a synthetic comment in a real spec's history forever; and it can
+ * only ever be a superset guess, which is how a reviewer's thread would get
+ * deleted. Reading the tag back off the store is both.
+ */
 function isOurs(t) {
   const first = (t.comments || [])[0];
   return !!first && first.author === REVIEWER && String(first.body || '').startsWith(RUN_TAG);
+}
+
+/** The ids of every thread in the store that this run wrote. */
+function ourThreadIds() {
+  return new Set(loadComments(specId).threads.filter(isOurs).map((t) => t.id));
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -187,7 +199,6 @@ try {
 
   // Comment 1: discussion. Must not queue anything.
   async function commentOnFirstBlock(body) {
-    const before = new Set(loadComments(specId).threads.map((t) => t.id));
     await page.click('main p, p');
     await page.waitForTimeout(600);
     const ta = await page.$('#sf-rail textarea');
@@ -195,11 +206,6 @@ try {
     await ta.fill(body);
     await page.click('#sf-rail .sf-primary');
     await page.waitForTimeout(1200);
-    // New AND ours. A reviewer commenting concurrently is new too, and
-    // deleting their thread would be worse than leaving a test comment.
-    for (const t of loadComments(specId).threads) {
-      if (!before.has(t.id) && isOurs(t)) createdThreads.add(t.id);
-    }
   }
 
   await commentOnFirstBlock(`${RUN_TAG}: why is this bounded at 40 bits?`);
@@ -215,7 +221,7 @@ try {
   // Asked about our own thread rather than the total count, which someone
   // else's concurrent submit would move.
   const queuedOurDiscussion = listPendingForSpec(specId)
-    .some((b) => b.threadIds.some((tid) => createdThreads.has(tid)));
+    .some((b) => b.threadIds.some((tid) => ourThreadIds().has(tid)));
   check(!queuedOurDiscussion, 'discussion alone queues no work for the agent');
 
   // Comment 2: addressed to the agent. This one must queue.
@@ -231,8 +237,9 @@ try {
   const batchesBefore = new Set(listPendingForSpec(specId).map((b) => b.batchId));
   await page.click('.sf-tb-act');
   await page.waitForTimeout(2000);
+  const mineNow = ourThreadIds();
   const pending = listPendingForSpec(specId).filter((b) =>
-    !batchesBefore.has(b.batchId) && b.threadIds.some((tid) => createdThreads.has(tid)));
+    !batchesBefore.has(b.batchId) && b.threadIds.some((tid) => mineNow.has(tid)));
   check(pending.length > 0, 'submitting queues a batch the owner\'s session will pick up');
 
   if (pending.length) {
@@ -244,10 +251,16 @@ try {
     check(!bodies.some((b) => /why is this bounded/.test(b)), 'the discussion is not');
 
     // Stand in for the review flow: the agent replies, then closes the batch.
-    const target = threads[0];
-    mutateComments(specId, (s) => addComment(s, target.id, {
-      body: `${RUN_TAG}: widened, see §4.`, author: 'claude', kind: 'agent',
-    }));
+    // The reply goes to OUR thread, not to threads[0]: a spec with an older
+    // unresolved @agent thread submits that one alongside ours, and appending a
+    // synthetic reply to a real conversation is the worst thing this could do.
+    const target = threads.find(isOurs);
+    check(!!target, 'the batch carries this run\'s thread to reply to');
+    if (target) {
+      mutateComments(specId, (s) => addComment(s, target.id, {
+        body: `${RUN_TAG}: widened, see §4.`, author: 'claude', kind: 'agent',
+      }));
+    }
     markBatchDone(specId, batch.batchId);
 
     // The reviewer's page polls, so the reply should arrive without a reload.
@@ -270,14 +283,16 @@ try {
   // so every thread this wrote is removed and the batch it created is cleared
   // rather than left pending or left marked done.
   if (ourBatchId) markBatchDone(specId, ourBatchId);
-  if (createdThreads.size) {
-    mutateComments(specId, (store) => {
-      // Both conditions again at the point of deletion: recorded as ours, and
-      // still looking like ours. Nothing else is ever removed.
-      store.threads = store.threads.filter((t) => !(createdThreads.has(t.id) && isOurs(t)));
-    });
-  }
-  console.log(`\nunpublished; removed ${createdThreads.size} thread(s) this run created.`);
+  // Swept by tag rather than by a list built as we went, so a thread written by
+  // a step that then threw is still found and removed. Only this run's tag and
+  // reviewer name match, so nothing else can be caught by it.
+  let removed = 0;
+  mutateComments(specId, (store) => {
+    const before = store.threads.length;
+    store.threads = store.threads.filter((t) => !isOurs(t));
+    removed = before - store.threads.length;
+  });
+  console.log(`\nunpublished; removed ${removed} thread(s) this run created.`);
 }
 
 console.log(failures ? `\n${failures} FAILURES` : '\nall checks passed');
