@@ -2391,3 +2391,86 @@ test('a published spec shows a Shared badge; an unpublished one does not', async
   assert.equal(plain.window.document.querySelector('.sf-tb-shared').hasAttribute('hidden'), true);
 });
 
+
+const discussionThread = (id) => ({
+  id, state: 'open', comments: [{ author: 'lavee', body: 'why 40 bits?' }],
+  anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+});
+
+test('a discussion comment does not report the agent as busy', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    threads: [discussionThread('t1')], meta: { status: 'draft' },
+  });
+  const btn = window.document.querySelector('.sf-act');
+  assert.notEqual(btn.getAttribute('data-state'), 'awaiting',
+    'nothing was submitted, so nothing can be awaited');
+  assert.doesNotMatch(btn.textContent, /Awaiting response/);
+  assert.equal(btn.querySelector('.sf-spin'), null, 'and no work is in flight');
+});
+
+test('the header CTA agrees with the drawer on a discussion comment', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    threads: [discussionThread('t1')], meta: { status: 'draft' },
+  });
+  const head = window.document.querySelector('.sf-tb-act');
+  const foot = window.document.querySelector('#sf-sidebar .sf-act');
+  assert.doesNotMatch(head.textContent, /Awaiting response/);
+  assert.equal(head.getAttribute('data-state'), foot.getAttribute('data-state'),
+    'both surfaces read the same state');
+});
+
+test('a submitted agent thread still drives the agent states', async (t) => {
+  const threads = [
+    discussionThread('t1'),
+    {
+      id: 't2', state: 'open',
+      comments: [{ author: 'nitin', body: '@agent widen this', batchId: 'b1' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+    },
+  ];
+  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'draft' } });
+  const btn = window.document.querySelector('.sf-act');
+  assert.equal(btn.getAttribute('data-state'), 'awaiting',
+    'the submitted agent thread is genuinely awaiting a reply');
+});
+
+test('an answered agent thread reads as replied even with discussion open', async (t) => {
+  const threads = [
+    discussionThread('t1'),
+    {
+      id: 't2', state: 'replied',
+      comments: [
+        { author: 'nitin', body: '@agent widen this', batchId: 'b1' },
+        { author: 'claude', kind: 'agent', body: 'done' },
+      ],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+    },
+  ];
+  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'draft' } });
+  const btn = window.document.querySelector('.sf-act');
+  assert.equal(btn.getAttribute('data-state'), 'replied');
+  assert.match(btn.textContent, /Review replies/);
+});
+
+// A spec that was mid-review when this shipped: its threads were submitted and
+// carry no @agent, because nothing needed one then. They must keep their place
+// in the loop rather than reading as discussion.
+test('a legacy submitted thread still reports as awaiting a reply', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ author: 'human', body: 'tighten this', batchId: 'b1' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+  }];
+  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'draft' } });
+  const btn = window.document.querySelector('.sf-act');
+  assert.equal(btn.getAttribute('data-state'), 'awaiting');
+  assert.match(window.document.querySelector('.sf-foot-caption').textContent, /for agent|^$/);
+});
+
+test('the launcher pill still counts discussion', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    threads: [discussionThread('t1')], meta: { status: 'draft' },
+  });
+  assert.equal(window.document.querySelector('#sf-launcher .sf-l-n').textContent, '1');
+});
+

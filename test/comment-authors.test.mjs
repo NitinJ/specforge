@@ -96,3 +96,26 @@ test('a legacy thread with no mention is discussion, not agent work', () => {
   };
   assert.equal(isForAgent(legacy), false);
 });
+
+// Every comment on a spec written before mentions existed was agent work by
+// construction and carries no @agent. A thread already sent must stay the
+// agent's, or a spec mid-review loses its place the moment this ships: the
+// lifecycle CTA would stop reporting it as awaiting a reply.
+test('a legacy thread already submitted is still agent work', () => {
+  const submitted = {
+    id: 'th_1', state: 'open', anchor,
+    comments: [{ id: 'c_1', author: 'human', body: 'tighten this', batchId: 'b1' }],
+  };
+  assert.equal(isForAgent(submitted), true);
+});
+
+test('a submitted thread the agent answered is still agent work', () => {
+  const answered = {
+    id: 'th_1', state: 'replied', anchor,
+    comments: [
+      { id: 'c_1', author: 'human', body: 'tighten this', batchId: 'b1' },
+      { id: 'c_2', author: 'claude', body: 'done' },
+    ],
+  };
+  assert.equal(isForAgent(answered), true);
+});

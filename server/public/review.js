@@ -51,10 +51,21 @@
     return /@agent(?![a-z0-9_-])/i.test(prose);
   }
 
-  /** True when some human in this thread addressed the agent. */
+  /**
+   * True when an agent should act on this thread: a human in it addressed the
+   * agent, or it has already been submitted.
+   *
+   * The batchId half keeps specs written before mentions existed working. Every
+   * comment on them was agent work by construction and carries no @agent, so a
+   * thread already sent would otherwise stop being the agent's the moment this
+   * shipped, and a spec mid-review would lose its place in the loop. Kept in
+   * step with isForAgent in lib/comments.mjs.
+   */
   function isForAgentThread(t) {
     return !!(t && t.comments || []).length
-      && t.comments.some(function (c) { return !isAgentComment(c) && mentionsAgentBody(c.body); });
+      && t.comments.some(function (c) {
+        return (!isAgentComment(c) && mentionsAgentBody(c.body)) || c.batchId;
+      });
   }
 
   // How you read a spec is yours, not the spec's.
@@ -585,13 +596,15 @@
     if (status === 'done') return { label: 'Done ✓', state: 'done', act: null };
     if (status === 'closed') return { label: 'Closed', state: 'closed', act: null };
     if (pendingCount() > 0) return { label: 'Submit comments', state: 'needs', act: 'submit' };
-    var unresolved = unresolvedCount();
+    // Agent threads only: an open discussion is a conversation between people,
+    // not work in flight, and must not report the agent as busy.
+    var unresolved = unresolvedAgentCount();
     if (unresolved > 0) {
       // All submitted. Once every open thread is answered it's the human's turn to
       // read the replies; until then we surface how far the agent has got —
       // Awaiting response → Picked up comments → Working on comments — from the
       // batch progress the hooks + review-spec skill report via meta.reviewProgress.
-      if (repliedCount() >= unresolved) return { label: 'Review replies', state: 'replied', act: 'review' };
+      if (repliedAgentCount() >= unresolved) return { label: 'Review replies', state: 'replied', act: 'review' };
       // Comments submitted, agent processing, not yet ready to review — one phase, so
       // all three steps carry the loading spinner (loading) to signal work in flight.
       var prog = state.meta && state.meta.reviewProgress;
@@ -646,6 +659,24 @@
   }
   function repliedCount() {
     return state.threads.filter(function (t) { return t.state === 'replied'; }).length;
+  }
+
+  // The same two counts, restricted to threads an agent is expected to act on.
+  //
+  // The lifecycle CTA reads these rather than the totals above. Its "everything
+  // was submitted, we are waiting on the agent" branch assumed every open thread
+  // had been sent, which was true only while every comment was agent work.
+  // Discussion between people was never submitted, so it cannot be awaiting
+  // anything, and counting it made a comment nobody sent report the agent as busy.
+  function unresolvedAgentCount() {
+    return state.threads.filter(function (t) {
+      return t.state !== 'resolved' && isForAgentThread(t);
+    }).length;
+  }
+  function repliedAgentCount() {
+    return state.threads.filter(function (t) {
+      return t.state === 'replied' && isForAgentThread(t);
+    }).length;
   }
 
   // ---------- launcher + menu ----------
