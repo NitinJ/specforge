@@ -26,7 +26,9 @@ beforeEach(() => {
   prevHome = process.env.SPECFORGE_HOME;
   process.env.SPECFORGE_HOME = home;
   id = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  mutateComments(id, (store) => createThread(store, { anchor, body: 'q', author: 'human' }));
+  // Addressed to the agent: only agent-directed threads form a batch, and a
+  // batch is what these tests are about.
+  mutateComments(id, (store) => createThread(store, { anchor, body: '@agent q', author: 'human' }));
 });
 
 afterEach(() => {

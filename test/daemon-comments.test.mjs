@@ -79,7 +79,7 @@ test('reply then resolve a thread', async () => {
 });
 
 test('submit freezes a pending batch; empty submit is a no-op', async () => {
-  await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' });
+  await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' });
   const s = await post(`/api/spec/${specId}/comments/submit`);
   assert.equal(s.status, 201);
   const { ok, batch } = await s.json();
@@ -153,7 +153,7 @@ test('GET meta surfaces batch review progress (null → picked_up → working)',
   const m0 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
   assert.equal(m0.reviewProgress, null);
 
-  await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' });
+  await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' });
   const { batch } = await (await post(`/api/spec/${specId}/comments/submit`)).json();
   advanceBatchProgress(specId, batch.batchId, 'picked_up');
   const m1 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
@@ -175,13 +175,13 @@ test('PATCH edits an unsubmitted human comment', async () => {
 });
 
 test('PATCH refuses a comment already frozen into a batch', async () => {
-  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' })).json();
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' })).json();
   const cid = thread.comments[0].id;
   await post(`/api/spec/${specId}/comments/submit`); // stamps a batchId onto the comment
   const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'too late' });
   assert.equal(r.status, 400);
   const frozen = loadComments(specId).threads.find((t) => t.id === thread.id);
-  assert.equal(frozen.comments[0].body, 'q', 'a submitted comment is left unchanged');
+  assert.equal(frozen.comments[0].body, '@agent q', 'a submitted comment is left unchanged');
 });
 
 test('PATCH 400s for an unknown comment or an empty body', async () => {

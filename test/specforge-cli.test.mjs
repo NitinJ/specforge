@@ -14,7 +14,7 @@ import {
 
 // Stamp a submitted review batch onto a spec (a human comment + submit).
 function seedBatch(id) {
-  mutateComments(id, (s) => createThread(s, { anchor: { block: { index: 0, tag: 'P', text: 'hi' } }, body: 'fix this', author: 'human' }));
+  mutateComments(id, (s) => createThread(s, { anchor: { block: { index: 0, tag: 'P', text: 'hi' } }, body: '@agent fix this', author: 'human' }));
   return submitBatch(id);
 }
 const fastDeps = (session) => ({ session, sleep: async () => {} });
