@@ -1,12 +1,24 @@
 // SpecForge index (home) page — server-rendered, single string, no build step.
-// Design: docs in the PR — Linear/Notion-grade dense list, collections as the
-// primary grouping, status chips + type/sort controls, protected template specs
-// in a bottom strip. All state is in-memory; everything inlined (CSP-friendly).
+//
+// The store grows to hundreds of specs, so the page is built around narrowing:
+// a left rail of saved views (All / Needs you / Live / Shared) and collections,
+// a dense one-line row per spec, and every filter combining in-memory. Each row
+// carries the three signals you would otherwise have to open the spec to learn —
+// whether a session is attached, whether comments are waiting, whether it is
+// published — computed by lib/spec-signals.mjs so the index and the spec's own
+// review layer never disagree.
+//
+// Collections are derived from meta, not stored separately: renaming one is a
+// PATCH per member spec, deleting one clears the field. That keeps the model at
+// one source of truth and needs no new endpoints.
+//
+// All state is in-memory; everything inlined (CSP-friendly).
 
 import { listSpecs, DEFAULT_TYPE } from '../lib/meta.mjs';
 import { sessionDisplay } from '../lib/session-label.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { isStale } from '../lib/attach.mjs';
+import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -49,8 +61,32 @@ function groupByCollection(specs) {
 const STATUSES = ['draft', 'in_review', 'approved', 'implementing', 'done', 'closed'];
 const label = (s) => s.replace(/_/g, ' ');
 
+const ICON_COMMENT = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M1.9 2.2h10.2v7H6.6L3.4 11.6V9.2H1.9z"/></svg>';
+const ICON_SHARE = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="5.2"/><path d="M1.8 7h10.4M7 1.8c1.7 1.8 1.7 8.6 0 10.4M7 1.8C5.3 3.6 5.3 10.4 7 12.2"/></svg>';
+
+/** The comment signal: one bubble, coloured by what the spec is waiting on. */
+function reviewHtml(sig) {
+  if (sig.review === 'clear') return '';
+  const n = sig.review === 'needs' ? sig.needs
+    : sig.review === 'replied' ? sig.replied
+      : sig.review === 'discussion' ? sig.discussion : sig.open;
+  const count = n ? `<span class="rvn">${n}</span>` : '';
+  return `<span class="rv rv-${sig.review}" title="${esc(REVIEW_TITLE[sig.review])}">${ICON_COMMENT}${count}</span>`;
+}
+
+/**
+ * The share signal, shown only while the tunnel actually answers — a dead link
+ * on the index would be worse than no link at all.
+ */
+function shareHtml(sig) {
+  if (!sig.shareLive || !sig.shareUrl) return '';
+  let host = sig.shareUrl;
+  try { host = new URL(sig.shareUrl).hostname.replace(/\.trycloudflare\.com$/, ''); } catch { /* keep raw */ }
+  return `<a class="pub" href="${esc(sig.shareUrl)}" target="_blank" rel="noopener" title="Shared · ${esc(host)}">${ICON_SHARE}</a>`;
+}
+
 /** One working-spec row. */
-function rowHtml(m) {
+function rowHtml(m, sig) {
   const id = esc(m.id);
   const titleRaw = m.title || 'Untitled';
   const title = esc(titleRaw);
@@ -61,18 +97,28 @@ function rowHtml(m) {
   const coll = m.collection || '';
   const key = esc(`${m.id} ${titleRaw} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'} ${tags.join(' ')} ${coll}`.toLowerCase());
   const chips = tags.map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}<button class="x" type="button" title="Remove tag" aria-label="Remove tag">×</button></span>`).join('');
+  const isLive = !!m.attachedSession && !isStale(m);
   const live = m.attachedSession
     ? (isStale(m) ? '<span class="off" title="' + att + '">○ disconnected</span>' : '<span class="live" title="' + att + '"><span class="dot"></span> live</span>')
     : '';
   const edge = m.attachedSession ? (isStale(m) ? ' edge-off' : ' edge-live') : '';
-  return `<li class="row${edge}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}">
+  return `<li class="row${edge}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}">
+  <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
-    <div class="titlerow"><a class="title" href="/spec/${id}">${title}</a><button class="rename" type="button" title="Rename" aria-label="Rename">✎</button><input class="rename-in" type="text" value="${esc(titleRaw)}" aria-label="New name" hidden></div>
-    <div class="sub"><span class="id">${id}</span><span class="att" hidden>${att}</span><span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span></div>
+    <a class="title" href="/spec/${id}" title="${title}">${title}</a>
+    <button class="rename" type="button" title="Rename" aria-label="Rename">✎</button>
+    <input class="rename-in" type="text" value="${esc(titleRaw)}" aria-label="New name" hidden>
+    <span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span>
+    <span class="id" title="Spec id">${id}</span>
+    <span class="att" hidden>${att}</span>
   </div>
   <div class="meta">
-    <div class="l1"><span class="badge t">${esc(rawType)}</span><span class="badge s s-${esc(rawStatus)}"><span class="sdot"></span>${esc(label(rawStatus))}</span></div>
-    <div class="l2">${live}<span class="upd">${esc(relativeTime(m.updated))}</span><button class="collbtn" type="button" title="Move to collection" aria-label="Move to collection">▣</button><input class="coll" list="collections" value="${esc(coll)}" placeholder="Uncollected" aria-label="Collection" hidden><button class="del" type="button" title="Delete spec" aria-label="Delete spec">🗑</button></div>
+    <span class="sig">${reviewHtml(sig)}${shareHtml(sig)}</span>
+    <span class="lv">${live}</span>
+    <span class="badge t">${esc(rawType)}</span>
+    <span class="badge s s-${esc(rawStatus)}"><span class="sdot"></span>${esc(label(rawStatus))}</span>
+    <span class="upd">${esc(relativeTime(m.updated))}</span>
+    <span class="acts"><button class="collbtn" type="button" title="Move to collection" aria-label="Move to collection">▣</button><input class="coll" list="collections" value="${esc(coll)}" placeholder="Uncollected" aria-label="Collection" hidden><button class="del" type="button" title="Delete spec" aria-label="Delete spec">🗑</button></span>
   </div>
   <div class="delconfirm" hidden><span class="dcmsg">Delete <b>${title}</b>? This can't be undone.</span><button class="dcno" type="button">Cancel</button><button class="dcyes" type="button">Delete</button></div>
 </li>`;
@@ -87,23 +133,58 @@ function tplCard(m) {
 </a>`;
 }
 
-export function renderIndex() {
+/** One collection in the rail: filter button + rename / delete affordances. */
+function collRowHtml(key, count) {
+  const name = key === '' ? 'Uncollected' : esc(key);
+  const acts = key === '' ? '' : `<span class="cacts"><button class="cedit" type="button" title="Rename collection" aria-label="Rename collection">✎</button><button class="cdel" type="button" title="Delete collection" aria-label="Delete collection">×</button></span>
+    <input class="cin" type="text" value="${esc(key)}" aria-label="Collection name" hidden>
+    <span class="cconfirm" hidden><span class="ccmsg">Ungroup ${count}?</span><button class="cno" type="button">No</button><button class="cyes" type="button">Yes</button></span>`;
+  return `<div class="crow" data-c="${esc(key)}">
+    <button class="cnav" type="button" data-c="${esc(key)}"><span class="cname">${name}</span><span class="nc">${count}</span></button>
+    ${acts}
+  </div>`;
+}
+
+/**
+ * @param {object} [opts]
+ * @param {(id:string) => boolean} [opts.isShareLive] from the daemon's
+ *   publications registry — a share record on disk can outlive its listener.
+ */
+export function renderIndex({ isShareLive } = {}) {
   const theme = readGlobalPrefs().theme === 'dark' ? 'dark' : 'light';
   const all = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const tpls = all.filter((m) => m.template);
   const specs = all.filter((m) => !m.template);
   const n = specs.length;
+  const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, isShareLive)]));
+  const sigOf = (m) => sigs.get(m.id);
+
   const { order, named } = groupByCollection(specs);
   const datalist = `<datalist id="collections">${named.map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist>`;
+
   const counts = Object.fromEntries(STATUSES.map((s) => [s, specs.filter((m) => (m.status || 'draft') === s).length]));
   const chipsBar = ['all', ...STATUSES].map((s) => {
     const c = s === 'all' ? n : counts[s];
     return `<button class="fchip${s === 'all' ? ' on' : ''}${s !== 'all' && !c ? ' zero' : ''}" type="button" data-f="${s}">${s === 'all' ? 'All' : esc(label(s))}<span class="fc">${c}</span></button>`;
   }).join('');
+
+  const nAttn = specs.filter((m) => ['needs', 'replied'].includes(sigOf(m).review)).length;
+  const nLive = specs.filter((m) => m.attachedSession && !isStale(m)).length;
+  const nPub = specs.filter((m) => sigOf(m).shareLive).length;
+  const views = [
+    ['all', 'All specs', n],
+    ['attn', 'Needs you', nAttn],
+    ['live', 'Live', nLive],
+    ['shared', 'Shared', nPub],
+  ].map(([v, text, c]) => `<button class="nav${v === 'all' ? ' on' : ''}" type="button" data-view="${v}">${text}<span class="nc">${c}</span></button>`).join('');
+
+  const collRows = order.map(({ key, specs: list }) => collRowHtml(key, list.length)).join('\n');
+
   const groups = order.map(({ key, specs: list }) => `<section class="grp" data-coll="${esc(key)}">
   <h2>${key === '' ? 'Uncollected' : esc(key)} <span class="gcount">${list.length}</span></h2>
-  <div class="card"><ul class="rows">${list.map(rowHtml).join('\n')}</ul></div>
+  <div class="card"><ul class="rows">${list.map((m) => rowHtml(m, sigOf(m))).join('\n')}</ul></div>
 </section>`).join('\n');
+
   const strip = tpls.length ? `<section class="tpls">
   <h2>Templates <span class="gcount">${tpls.length}</span></h2>
   <div class="tstrip">${tpls.map(tplCard).join('\n')}</div>
@@ -131,81 +212,145 @@ export function renderIndex() {
   body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif}
   a{color:inherit;text-decoration:none}
   button{font:inherit;color:inherit}
-  .wrap{max-width:1040px;margin:0 auto;padding:0 32px 64px}
-  @media(max-width:960px){.wrap{padding:0 24px 48px}}
 
-  /* sticky header + toolbar */
-  .top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-  .topin{max-width:1040px;margin:0 auto;padding:0 32px}
-  @media(max-width:960px){.topin{padding:0 24px}}
-  header{display:flex;align-items:center;gap:16px;height:56px}
-  .brand{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:650;letter-spacing:-.01em}
+  /* ── shell: fixed rail + scrolling list ───────────────────────────── */
+  .app{display:flex;align-items:flex-start;min-height:100vh}
+  .side{position:sticky;top:0;flex:none;width:238px;height:100vh;overflow-y:auto;padding:0 12px 24px;
+        border-right:1px solid var(--line);background:color-mix(in srgb,var(--surface) 50%,var(--bg))}
+  /* not ".main" — the row's left cluster already owns that name */
+  .pane{flex:1;min-width:0}
+
+  .brand{display:flex;align-items:center;gap:9px;height:56px;padding:0 8px;font-size:16px;font-weight:650;letter-spacing:-.01em}
   .brand svg{color:var(--accent);flex:none}
+  .shead{display:flex;align-items:center;gap:6px;margin:20px 0 6px;padding:0 8px;font-size:10.5px;font-weight:650;
+         text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
+  .shint{padding:2px 8px 0;font-size:11.5px;color:var(--faint);line-height:1.45}
+
+  .nav,.cnav{display:flex;align-items:center;gap:8px;width:100%;height:29px;padding:0 8px;border:none;border-radius:7px;
+             background:none;color:var(--muted);font-size:13px;text-align:left;cursor:pointer;transition:background .12s,color .12s}
+  .nav:hover,.cnav:hover{background:var(--surface2);color:var(--ink)}
+  .nav.on,.cnav.on{background:var(--accent-soft);color:var(--accent);font-weight:560}
+  .nc{margin-left:auto;font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .nav.on .nc,.cnav.on .nc{color:inherit;opacity:.7}
+  .cname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .crow{position:relative;display:flex;align-items:center}
+  .cacts{position:absolute;right:6px;display:flex;gap:2px;opacity:0;transition:opacity .12s}
+  .crow:hover .cacts,.cacts:focus-within{opacity:1}
+  .crow:hover .nc{opacity:0}
+  .cedit,.cdel{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;line-height:1;padding:3px 4px;border-radius:5px}
+  .cedit:hover{color:var(--accent);background:var(--surface2)}
+  .cdel:hover{color:var(--red);background:var(--surface2)}
+  .cin{width:100%;padding:4px 8px;border:1px solid var(--accent);border-radius:7px;background:var(--bg);color:var(--ink);font:inherit;font-size:13px}
+  .cin:focus{outline:none}
+  .cconfirm{display:flex;align-items:center;gap:6px;width:100%;padding:2px 8px;font-size:11.5px;color:var(--muted)}
+  .cconfirm[hidden]{display:none}
+  .ccmsg{margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cno,.cyes{background:none;border:1px solid var(--line2);border-radius:5px;font-size:11px;padding:1px 7px;cursor:pointer}
+  .cyes{border-color:var(--red);color:var(--red)}
+  .cno:hover{border-color:var(--muted)} .cyes:hover{background:var(--red);color:#fff}
+
+  /* ── sticky top: search + toolbar ─────────────────────────────────── */
+  .top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);
+       backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .topin{max-width:1180px;margin:0 auto;padding:0 28px}
+  @media(max-width:960px){.topin{padding:0 18px}}
+  header{display:flex;align-items:center;gap:16px;height:56px}
+  .htitle{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .spacer{flex:1}
   .searchbox{position:relative;display:flex;align-items:center}
   .searchbox svg{position:absolute;left:10px;color:var(--faint);pointer-events:none}
-  .search{width:280px;min-width:180px;height:36px;padding:0 34px 0 32px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:13.5px}
+  .search{width:280px;min-width:160px;height:34px;padding:0 34px 0 32px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:13.5px}
   :root[data-theme="dark"] .search{background:var(--surface2)}
   .search:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   .skey{position:absolute;right:9px;font:11px ui-monospace,Menlo,monospace;color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:0 5px;pointer-events:none}
   .search:focus~.skey,.search:not(:placeholder-shown)~.skey{display:none}
-  .toggle{width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:none;border:none;border-radius:8px;color:var(--muted);cursor:pointer}
+  .toggle{width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:none;border:none;border-radius:8px;color:var(--muted);cursor:pointer;flex:none}
   .toggle:hover{background:var(--surface2);color:var(--ink)}
-  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0 12px}
+  .toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:2px 0 11px}
   .fchip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;transition:color .12s,border-color .12s,background .12s}
   .fchip:hover{border-color:var(--line2);color:var(--ink)}
   .fchip.on{color:var(--accent);background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
   .fchip.zero{opacity:.4}
-  .fchip .fc{color:var(--faint);font-weight:400}
+  .fchip .fc{color:var(--faint);font-weight:400;font-variant-numeric:tabular-nums}
   .tsel{height:26px;padding:0 24px 0 10px;border-radius:999px;border:1px solid var(--line);background:var(--bg) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" fill="none" stroke="%239aa1ab" stroke-width="1.5"/></svg>') no-repeat right 8px center;color:var(--muted);font-size:12px;cursor:pointer;appearance:none;-webkit-appearance:none}
   .tsel:hover{border-color:var(--line2);color:var(--ink)}
   .tsel:focus{outline:none;border-color:var(--accent)}
-  .count{margin-left:auto;color:var(--faint);font-size:12px;white-space:nowrap}
+  .count{margin-left:auto;color:var(--faint);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
 
-  /* collection groups */
-  .grp{margin:28px 0 0}
-  .grp h2,.tpls h2{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:650;margin:0 0 8px 2px}
-  .gcount{display:inline-block;background:var(--surface2);border-radius:999px;padding:0 7px;color:var(--faint);font-weight:500;margin-left:4px}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 28px 96px}
+  @media(max-width:960px){.wrap{padding:0 18px 96px}}
+
+  /* ── collection groups ────────────────────────────────────────────── */
+  .grp{margin:22px 0 0}
+  .grp h2,.tpls h2{display:flex;align-items:center;gap:5px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:650;margin:0 0 7px 2px}
+  /* the collection you are inside stays named while you scroll it */
+  .grp h2{position:sticky;top:94px;z-index:5;background:var(--bg);padding:5px 2px;margin:0 0 3px;cursor:pointer;user-select:none}
+  .grp h2:hover{color:var(--ink)}
+  .gcount{display:inline-block;background:var(--surface2);border-radius:999px;padding:0 7px;color:var(--faint);font-weight:500;font-variant-numeric:tabular-nums}
+  .chev{margin-left:2px;color:var(--faint);transition:transform .14s}
+  .grp.collapsed .chev{transform:rotate(-90deg)}
+  .grp.collapsed .card{display:none}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);overflow:hidden}
   .rows{list-style:none;margin:0;padding:0}
-  .row{position:relative;display:grid;grid-template-columns:1fr auto;gap:4px 16px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line);border-left:2px solid transparent;transition:background .12s}
+
+  /* ── one-line row ─────────────────────────────────────────────────── */
+  .row{position:relative;display:flex;align-items:center;gap:10px;padding:0 14px;min-height:38px;
+       border-bottom:1px solid var(--line);border-left:2px solid transparent;transition:background .12s}
   .row:last-child{border-bottom:none}
   .row:hover{background:color-mix(in srgb,var(--ink) 3%,transparent)}
   .row.edge-live{border-left-color:var(--live)}
   .row.edge-off{border-left-color:var(--line2)}
-  .titlerow{display:flex;align-items:center;gap:7px;min-width:0}
-  .title{font-weight:560;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row.picked{background:var(--accent-soft)}
+  .sel{flex:none;width:14px;height:14px;margin:0;accent-color:var(--accent);cursor:pointer;opacity:0;transition:opacity .12s}
+  .row:hover .sel,.sel:checked,.sel:focus-visible,body.picking .sel{opacity:1}
+  .main{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+  .title{font-weight:540;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44ch}
   .title:hover{color:var(--accent)}
-  .rename{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s;padding:0}
+  .rename{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s;padding:0;flex:none}
   .row:hover .rename,.rename:focus-visible{opacity:1}
   .rename:hover{color:var(--accent)}
-  .rename-in{padding:3px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:13.5px;min-width:220px}
-  .sub{display:flex;align-items:center;gap:10px;min-width:0}
-  .id{font:11.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--faint)}
-  .tags{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center}
-  .chip{display:inline-flex;align-items:center;gap:3px;font-size:12px;background:var(--surface2);color:var(--muted);border-radius:999px;padding:1px 8px}
-  .chip .x{background:none;border:none;color:transparent;cursor:pointer;font-size:13px;line-height:1;padding:0}
+  .rename-in{padding:3px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:13.5px;min-width:240px}
+  .rename-in:focus{outline:none}
+  .tags{display:inline-flex;gap:4px;align-items:center;min-width:0;overflow:hidden}
+  .chip{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;background:var(--surface2);color:var(--muted);border-radius:999px;padding:0 7px;white-space:nowrap}
+  .chip .x{background:none;border:none;color:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0}
   .chip:hover .x{color:var(--muted)}
   .chip .x:hover{color:var(--red)}
-  .addtag{font-size:11px;color:var(--muted);background:none;border:1px dashed var(--line2);border-radius:999px;padding:0 8px;cursor:pointer;opacity:0;transition:opacity .12s}
+  .addtag{font-size:11px;color:var(--muted);background:none;border:1px dashed var(--line2);border-radius:999px;padding:0 7px;cursor:pointer;opacity:0;transition:opacity .12s;white-space:nowrap}
   .row:hover .addtag,.addtag:focus-visible{opacity:1}
   .addtag:hover{color:var(--accent);border-color:var(--accent)}
   .addtag-in{font-size:12px;padding:1px 8px;border:1px solid var(--accent);border-radius:999px;background:var(--bg);color:var(--ink);width:110px}
-  .meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
-  .l1,.l2{display:flex;align-items:center;gap:8px}
+  .addtag-in:focus{outline:none}
+  .id{font:11px ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--faint);opacity:0;transition:opacity .12s;flex:none}
+  .row:hover .id{opacity:1}
+
+  /* Fixed-width slots, so the signals read as columns down the list rather than
+     as a ragged right edge. Empty slots still hold their place. */
+  .meta{display:flex;align-items:center;gap:9px;flex:none;margin-left:auto}
+  .meta>*{flex:none}
+  .sig{display:inline-flex;align-items:center;justify-content:flex-end;gap:8px;width:46px}
+  .lv{display:inline-flex;align-items:center;justify-content:flex-end;width:82px}
+  .rv{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:560;font-variant-numeric:tabular-nums}
+  .rv-needs{color:var(--amber)} .rv-replied{color:var(--accent)}
+  .rv-awaiting{color:var(--faint)} .rv-discussion{color:var(--s-approved)}
+  .pub{display:inline-flex;color:var(--live)}
+  .pub:hover{filter:brightness(1.15)}
   .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}
-  .badge.t{font-size:11px;font-weight:550;text-transform:uppercase;letter-spacing:.05em;background:var(--surface2);padding:2px 7px;border-radius:5px}
-  .badge.s .sdot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+  .badge.t{font-size:10.5px;font-weight:550;text-transform:uppercase;letter-spacing:.05em;background:var(--surface2);padding:1px 6px;border-radius:5px;color:var(--faint);width:84px;justify-content:center}
+  .badge.s{font-size:11.5px;width:92px}
+  .badge.s .sdot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
   .s-draft .sdot{background:var(--s-draft)} .s-in_review .sdot{background:var(--s-in_review)}
   .s-approved .sdot{background:var(--s-approved)} .s-implementing .sdot{background:var(--s-implementing)}
   .s-done .sdot{background:var(--s-done)} .s-closed .sdot{background:var(--s-closed)}
   .s-done,.s-closed{color:var(--faint)}
-  .live{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:550;color:var(--live)}
+  .live{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:550;color:var(--live)}
   .live .dot{width:7px;height:7px;border-radius:50%;background:var(--live);animation:pulse 2.4s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
   @media(prefers-reduced-motion:reduce){.live .dot{animation:none}}
-  .off{font-size:11.5px;color:var(--muted)}
-  .upd{font:11.5px ui-monospace,Menlo,monospace;color:var(--faint);white-space:nowrap}
+  .off{font-size:11px;color:var(--faint);white-space:nowrap}
+  .upd{font:11px ui-monospace,Menlo,monospace;color:var(--faint);white-space:nowrap;width:58px;text-align:right}
+  .acts{display:inline-flex;align-items:center;gap:2px;width:34px;justify-content:flex-end}
   .collbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s;padding:0 2px}
   .row:hover .collbtn,.collbtn:focus-visible{opacity:1}
   .collbtn:hover{color:var(--accent)}
@@ -213,19 +358,30 @@ export function renderIndex() {
   .row:hover .del,.del:focus-visible{opacity:.75}
   .del:hover{opacity:1;color:var(--red);filter:none}
   /* two-step confirm — an overlay bar over the row, so the layout never shifts */
-  .delconfirm{position:absolute;inset:0;display:none;align-items:center;justify-content:flex-end;gap:10px;padding:0 16px;border-radius:0;background:color-mix(in srgb,var(--surface) 92%,var(--red));border-left:2px solid var(--red)}
+  .delconfirm{position:absolute;inset:0;display:none;align-items:center;justify-content:flex-end;gap:10px;padding:0 16px;background:color-mix(in srgb,var(--surface) 92%,var(--red));border-left:2px solid var(--red)}
   .row.confirming .delconfirm{display:flex}
-  .row.confirming .main,.row.confirming .meta{opacity:.25}
+  .row.confirming .main,.row.confirming .meta,.row.confirming .sel{opacity:.25}
   .dcmsg{margin-right:auto;font-size:13px;color:var(--ink)}
   .dcmsg b{font-weight:600}
-  .dcno{background:none;border:1px solid var(--line2);color:var(--muted);border-radius:6px;font-size:12px;padding:4px 12px;cursor:pointer;transition:color .12s,border-color .12s}
+  .dcno{background:none;border:1px solid var(--line2);color:var(--muted);border-radius:6px;font-size:12px;padding:3px 12px;cursor:pointer;transition:color .12s,border-color .12s}
   .dcno:hover{color:var(--ink);border-color:var(--muted)}
-  .dcyes{background:var(--red);border:1px solid var(--red);color:#fff;border-radius:6px;font-size:12px;font-weight:560;padding:4px 12px;cursor:pointer;transition:filter .12s}
+  .dcyes{background:var(--red);border:1px solid var(--red);color:#fff;border-radius:6px;font-size:12px;font-weight:560;padding:3px 12px;cursor:pointer;transition:filter .12s}
   .dcyes:hover{filter:brightness(1.08)}
   .coll{width:130px;padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font-size:12px}
   .coll:focus{outline:none;border-color:var(--accent)}
 
-  /* templates strip */
+  /* ── bulk bar ─────────────────────────────────────────────────────── */
+  .bulk{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:10px;
+        padding:8px 12px;border:1px solid var(--line2);border-radius:11px;background:var(--surface);box-shadow:0 8px 28px rgba(0,0,0,.16)}
+  .bulk[hidden]{display:none}
+  .bn{font-size:12.5px;font-weight:560;white-space:nowrap}
+  .bsep{width:1px;height:20px;background:var(--line)}
+  .bcoll{width:190px;height:28px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font-size:12.5px}
+  .bcoll:focus{outline:none;border-color:var(--accent)}
+  .bbtn{height:28px;padding:0 11px;border:1px solid var(--line);border-radius:7px;background:none;color:var(--muted);font-size:12.5px;cursor:pointer}
+  .bbtn:hover{color:var(--ink);border-color:var(--line2)}
+
+  /* ── templates strip ──────────────────────────────────────────────── */
   .tpls{margin:40px 0 0}
   .tstrip{display:flex;gap:12px;flex-wrap:wrap}
   .tcard{flex:1 1 210px;max-width:250px;display:flex;flex-direction:column;gap:8px;background:var(--surface2);border:1px dashed var(--line2);border-radius:12px;padding:12px 14px;transition:border-color .12s}
@@ -239,12 +395,32 @@ export function renderIndex() {
   #nohits button{background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;padding:0}
   .empty code{background:var(--surface2);border-radius:6px;padding:2px 8px;font-size:12.5px}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .search:focus-visible,.coll:focus-visible,.rename-in:focus-visible,.addtag-in:focus-visible{outline:none}
-  @media(max-width:860px){.meta{flex-direction:row;gap:8px}.l1 .badge.t{display:none}}
+  .search:focus-visible,.coll:focus-visible,.rename-in:focus-visible,.addtag-in:focus-visible,.cin:focus-visible,.bcoll:focus-visible{outline:none}
+
+  @media(max-width:1180px){.title{max-width:34ch}.badge.t{display:none}}
+  @media(max-width:900px){
+    .app{display:block}
+    .side{position:static;width:auto;height:auto;border-right:none;border-bottom:1px solid var(--line);padding-bottom:12px}
+    .side .brand{height:48px}
+    .views,.colls{display:flex;flex-wrap:wrap;gap:4px}
+    .nav,.cnav{width:auto}
+    .crow{width:auto}
+    .cacts{display:none}
+    .tags,.id,.upd{display:none}
+  }
 </style></head><body>
+<div class="app">
+<aside class="side">
+  <span class="brand"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2l1.2 2.6L14 5.8l-2.8 1.2L10 9.6 8.8 7 6 5.8l2.8-1.2z"/><rect x="4" y="11" width="12" height="3.4" rx="1.2"/><rect x="6" y="15.4" width="8" height="2.6" rx="1"/></svg>SpecForge</span>
+  <nav class="views" id="views" aria-label="Views">${views}</nav>
+  <div class="shead">Collections</div>
+  <nav class="colls" id="colls" aria-label="Collections">${collRows}</nav>
+  ${named.length ? '' : '<p class="shint">Select specs with the checkbox, then move them into a collection.</p>'}
+</aside>
+<main class="pane">
 <div class="top"><div class="topin">
 <header>
-  <span class="brand"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2l1.2 2.6L14 5.8l-2.8 1.2L10 9.6 8.8 7 6 5.8l2.8-1.2z"/><rect x="4" y="11" width="12" height="3.4" rx="1.2"/><rect x="6" y="15.4" width="8" height="2.6" rx="1"/></svg>SpecForge</span>
+  <span class="htitle" id="htitle">All specs</span>
   <span class="spacer"></span>
   <span class="searchbox"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6" cy="6" r="4.2"/><path d="M9.2 9.2L12.5 12.5"/></svg><input class="search" id="search" type="search" placeholder="Search specs, tags, collections…" autocomplete="off" aria-label="Search"><span class="skey">/</span></span>
   <button class="toggle" id="theme" type="button" aria-label="Toggle theme" title="Toggle theme">${theme === 'dark'
@@ -261,6 +437,14 @@ ${n ? `<div class="toolbar">${chipsBar}
 ${n ? `${datalist}\n<div id="groups">${groups}</div>\n<div id="nohits">No specs match. <button type="button" id="clearf">Clear filters</button></div>`
     : '<p class="empty">No specs yet. Create one with <code>/specforge:create</code>.</p>'}
 ${strip}
+</div>
+</main>
+</div>
+<div class="bulk" id="bulk" hidden>
+  <span class="bn" id="bn">0 selected</span><span class="bsep"></span>
+  <input class="bcoll" id="bcoll" list="collections" type="text" placeholder="Move to collection…" aria-label="Move to collection">
+  <button class="bbtn" id="bclear" type="button">Ungroup</button>
+  <button class="bbtn" id="bcancel" type="button">Cancel</button>
 </div>
 <script>
 (function(){
@@ -335,34 +519,58 @@ ${strip}
       else if(e.key==='Escape'){endAddTag(rowOf(t));}
     } else if(t.classList&&t.classList.contains('coll')){
       if(e.key==='Escape'){endColl(rowOf(t));}
+    } else if(t.classList&&t.classList.contains('cin')){
+      if(e.key==='Enter'){renameColl(t.closest('.crow'),t.value.trim());}
+      else if(e.key==='Escape'){endCollEdit(t.closest('.crow'));}
+    } else if(t.classList&&t.classList.contains('bcoll')){
+      if(e.key==='Enter'){var bv=t.value.trim(); if(bv) bulkSet(bv);}
+      else if(e.key==='Escape'){clearPick();}
     } else if(t.id==='search'&&e.key==='Escape'){t.value='';t.blur();applyFilters();}
+    else if(e.key==='Escape'){clearPick();}
   });
 
   document.addEventListener('change',function(e){
     if(e.target.classList.contains('coll')){var r=rowOf(e.target),id=r.getAttribute('data-id');
       api(id,'/organize','PATCH',{collection:e.target.value}).then(function(){location.reload();}).catch(function(){});}
+    else if(e.target.classList.contains('sel')){
+      var rs=rowOf(e.target); if(rs) rs.classList.toggle('picked',e.target.checked);
+      paintBulk();
+    }
   });
   document.addEventListener('focusout',function(e){
     if(e.target.classList&&e.target.classList.contains('coll')) endColl(rowOf(e.target));
   });
 
-  // --- search + status chips + type filter + sort (combined, in-memory) ---
+  // --- filters: search + view + collection + status + type, all combining ---
   var search=document.getElementById('search'), count=document.getElementById('count'), nohits=document.getElementById('nohits');
-  var ftype=document.getElementById('ftype'), fsort=document.getElementById('fsort');
+  var ftype=document.getElementById('ftype'), fsort=document.getElementById('fsort'), htitle=document.getElementById('htitle');
   var rows=[].slice.call(document.querySelectorAll('.row[data-id]')), total=rows.length;
-  var grps=[].slice.call(document.querySelectorAll('.grp'));
+  var grps=[].slice.call(document.querySelectorAll('.grp')), tplstrip=document.querySelector('.tpls');
   var chips=[].slice.call(document.querySelectorAll('.fchip'));
-  var fstatus='all';
+  var navs=[].slice.call(document.querySelectorAll('.nav[data-view]'));
+  var cnavs=[].slice.call(document.querySelectorAll('.cnav'));
+  var fstatus='all', fview='all', fcoll=null;
   var SORDER={implementing:0,in_review:1,draft:2,approved:3,done:4,closed:5};
+  var VIEWNAME={all:'All specs',attn:'Needs you',live:'Live',shared:'Shared'};
 
+  function viewOk(r){
+    if(fview==='attn'){var rv=r.getAttribute('data-rv');return rv==='needs'||rv==='replied';}
+    if(fview==='live') return r.getAttribute('data-lv')==='1';
+    if(fview==='shared') return r.getAttribute('data-pb')==='1';
+    return true;
+  }
+  function base(r,q,ty){
+    return (!q||r.getAttribute('data-k').indexOf(q)!==-1)
+      &&(!ty||r.getAttribute('data-t')===ty)
+      &&viewOk(r)
+      &&(fcoll===null||r.getAttribute('data-c')===fcoll);
+  }
   function applyFilters(){
     var q=(search&&search.value.trim().toLowerCase())||'';
     var ty=(ftype&&ftype.value)||'';
     var shown=0;
     rows.forEach(function(r){
-      var hit=(!q||r.getAttribute('data-k').indexOf(q)!==-1)
-        &&(fstatus==='all'||r.getAttribute('data-s')===fstatus)
-        &&(!ty||r.getAttribute('data-t')===ty);
+      var hit=base(r,q,ty)&&(fstatus==='all'||r.getAttribute('data-s')===fstatus);
       r.style.display=hit?'':'none';
       if(hit)shown++;
     });
@@ -371,19 +579,20 @@ ${strip}
       var gc=g.querySelector('.gcount'); if(gc) gc.textContent=vis;
       g.style.display=vis?'':'none';
     });
-    // live chip counts within the current q+type slice
+    // live chip counts within the current search+view+collection+type slice
     chips.forEach(function(ch){
       var f=ch.getAttribute('data-f');
-      var c=rows.filter(function(r){
-        return (!q||r.getAttribute('data-k').indexOf(q)!==-1)
-          &&(!ty||r.getAttribute('data-t')===ty)
-          &&(f==='all'||r.getAttribute('data-s')===f);
-      }).length;
+      var c=rows.filter(function(r){return base(r,q,ty)&&(f==='all'||r.getAttribute('data-s')===f);}).length;
       var fc=ch.querySelector('.fc'); if(fc) fc.textContent=c;
       ch.classList.toggle('zero',f!=='all'&&!c);
     });
-    if(count) count.textContent=(q||fstatus!=='all'||ty)?(shown+' of '+total):(total+' spec'+(total===1?'':'s'));
+    var filtered=!!q||fstatus!=='all'||!!ty||fview!=='all'||fcoll!==null;
+    if(count) count.textContent=filtered?(shown+' of '+total):(total+' spec'+(total===1?'':'s'));
     if(nohits) nohits.style.display=shown?'none':'block';
+    // Templates are not rows and never match a filter; showing them under one
+    // reads as "these are your results".
+    if(tplstrip) tplstrip.style.display=filtered?'none':'';
+    if(htitle) htitle.textContent=fcoll===null?VIEWNAME[fview]:(fcoll===''?'Uncollected':fcoll);
   }
   // Drop a deleted row from the in-memory set and refresh counts/groups.
   function removeRow(id){
@@ -404,21 +613,102 @@ ${strip}
       list.forEach(function(li){ul.appendChild(li);});
     });
   }
+  function paintNav(){
+    navs.forEach(function(x){x.classList.toggle('on',fcoll===null&&x.getAttribute('data-view')===fview);});
+    cnavs.forEach(function(x){x.classList.toggle('on',fcoll!==null&&x.getAttribute('data-c')===fcoll);});
+  }
   chips.forEach(function(ch){ch.onclick=function(){
     var f=ch.getAttribute('data-f');
     fstatus=(fstatus===f)?'all':f;
     chips.forEach(function(x){x.classList.toggle('on',x.getAttribute('data-f')===fstatus);});
     applyFilters();
   };});
+  navs.forEach(function(nv){nv.onclick=function(){
+    fview=nv.getAttribute('data-view'); fcoll=null; paintNav(); applyFilters();
+  };});
+  cnavs.forEach(function(cv){cv.onclick=function(){
+    var c=cv.getAttribute('data-c');
+    fcoll=(fcoll===c)?null:c; if(fcoll!==null) fview='all';
+    paintNav(); applyFilters();
+  };});
   if(search) search.oninput=applyFilters;
   if(ftype) ftype.onchange=applyFilters;
   if(fsort) fsort.onchange=applySort;
   var clearf=document.getElementById('clearf');
   if(clearf) clearf.onclick=function(){
-    if(search)search.value=''; if(ftype)ftype.value=''; fstatus='all';
+    if(search)search.value=''; if(ftype)ftype.value=''; fstatus='all'; fview='all'; fcoll=null;
     chips.forEach(function(x){x.classList.toggle('on',x.getAttribute('data-f')==='all');});
-    applyFilters();
+    paintNav(); applyFilters();
   };
+
+  // --- collapsible groups, remembered across loads ---
+  var CKEY='sf-index-collapsed';
+  function readCollapsed(){try{return JSON.parse(localStorage.getItem(CKEY)||'[]');}catch(e){return [];}}
+  var collapsed=readCollapsed();
+  grps.forEach(function(g){
+    var c=g.getAttribute('data-coll');
+    if(collapsed.indexOf(c)!==-1) g.classList.add('collapsed');
+    var h=g.querySelector('h2'); if(!h) return;
+    var chev=document.createElement('span'); chev.className='chev'; chev.textContent='\\u25be';
+    h.appendChild(chev);
+    h.onclick=function(){
+      g.classList.toggle('collapsed');
+      var next=readCollapsed().filter(function(x){return x!==c;});
+      if(g.classList.contains('collapsed')) next.push(c);
+      try{localStorage.setItem(CKEY,JSON.stringify(next));}catch(e){}
+    };
+  });
+
+  // --- selection + bulk collection moves ---
+  var bulk=document.getElementById('bulk'), bn=document.getElementById('bn'), bcoll=document.getElementById('bcoll');
+  function picked(){return rows.filter(function(r){var s=r.querySelector('.sel');return s&&s.checked;});}
+  function paintBulk(){
+    var p=picked();
+    document.body.classList.toggle('picking',p.length>0);
+    if(!bulk) return;
+    bulk.hidden=p.length===0;
+    if(bn) bn.textContent=p.length+' selected';
+  }
+  function clearPick(){
+    rows.forEach(function(r){var s=r.querySelector('.sel'); if(s&&s.checked){s.checked=false;r.classList.remove('picked');}});
+    if(bcoll) bcoll.value='';
+    paintBulk();
+  }
+  function setColl(list,value){
+    if(!list.length) return;
+    Promise.all(list.map(function(r){return api(r.getAttribute('data-id'),'/organize','PATCH',{collection:value});}))
+      .then(function(){location.reload();}).catch(function(){location.reload();});
+  }
+  function bulkSet(value){setColl(picked(),value);}
+  var bclear=document.getElementById('bclear'), bcancel=document.getElementById('bcancel');
+  if(bclear) bclear.onclick=function(){bulkSet('');};
+  if(bcancel) bcancel.onclick=clearPick;
+
+  // --- collection rename / delete (derived from meta: fan out over members) ---
+  function membersOf(c){return rows.filter(function(r){return r.getAttribute('data-c')===c;});}
+  function endCollEdit(crow){
+    crow.querySelector('.cnav').hidden=false;
+    var cin=crow.querySelector('.cin'); if(cin){cin.hidden=true;cin.value=crow.getAttribute('data-c');}
+    var cf=crow.querySelector('.cconfirm'); if(cf) cf.hidden=true;
+  }
+  function renameColl(crow,name){
+    var from=crow.getAttribute('data-c');
+    if(!name||name===from){endCollEdit(crow);return;}
+    setColl(membersOf(from),name);
+  }
+  document.addEventListener('click',function(e){
+    var t=e.target;
+    if(t.classList.contains('cedit')){
+      var cr=t.closest('.crow'); cr.querySelector('.cnav').hidden=true;
+      var ci=cr.querySelector('.cin'); ci.hidden=false; ci.focus(); ci.select();
+    } else if(t.classList.contains('cdel')){
+      var cr2=t.closest('.crow'); cr2.querySelector('.cnav').hidden=true; cr2.querySelector('.cconfirm').hidden=false;
+    } else if(t.classList.contains('cno')){
+      endCollEdit(t.closest('.crow'));
+    } else if(t.classList.contains('cyes')){
+      var cr3=t.closest('.crow'); setColl(membersOf(cr3.getAttribute('data-c')),'');
+    }
+  });
 })();
 </script>
 </body></html>`;

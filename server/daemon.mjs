@@ -272,7 +272,12 @@ export function createDaemon() {
 
     if (method === 'GET') {
       if (path === '/healthz') return send(res, 200, 'text/plain; charset=utf-8', 'ok');
-      if (path === '/') return send(res, 200, 'text/html; charset=utf-8', renderIndex());
+      // The index shows a Shared marker per spec; the registry, not the record
+      // on disk, decides whether that link actually answers.
+      if (path === '/') {
+        return send(res, 200, 'text/html; charset=utf-8',
+          renderIndex({ isShareLive: (id) => publications.isLive(id) }));
+      }
       if (path === '/events') return serveEvents(url.searchParams.get('spec') || '', req, res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
       if (sm) return serveSpec(sm[1], res);
