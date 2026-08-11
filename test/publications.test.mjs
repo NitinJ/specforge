@@ -124,7 +124,7 @@ test('revoking a share that is still starting still stops it', async () => {
   assert.equal(p.list().length, 0);
 });
 
-test('shutdown waits for a share that is still starting', async () => {
+test('shutdown stops a share that is still starting', async () => {
   seed('kappa');
   let release;
   const held = new Promise((r) => { release = r; });
@@ -137,11 +137,35 @@ test('shutdown waits for a share that is still starting', async () => {
   const sharing = p.share('kappa');
   const stopping = p.stopAll();
   release();
-  const rec = await sharing;
+  // The tunnel comes up into a shutting-down daemon, so it refuses to publish
+  // and takes itself back down rather than landing to be swept.
+  await assert.rejects(() => sharing, /shutting down/);
   await stopping;
-  assert.ok(stopped.includes(rec.port), 'nothing escaped the sweep');
+  assert.equal(stopped.length, 1, 'the tunnel that came up was stopped');
   assert.equal(p.list().length, 0);
   assert.equal(readShare('kappa'), null);
+});
+
+// A tunnel takes seconds to come up, and the spec can be deleted in that
+// window. Publishing it afterwards would serve a spec that no longer exists,
+// and writeShare would recreate the directory the delete had just removed.
+test('a share whose spec is deleted mid-startup publishes nothing', async () => {
+  seed('mu');
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const stopped = [];
+  const slow = async (port) => {
+    await held;
+    return { url: `https://slow-${port}.example`, pid: 5, stop: async () => stopped.push(port) };
+  };
+  const p = createPublications({ publishImpl: slow });
+  const sharing = p.share('mu');
+  rmSync(specDir('mu'), { recursive: true, force: true }); // deleted while the tunnel comes up
+  release();
+  await assert.rejects(() => sharing, /unknown spec/);
+  assert.equal(stopped.length, 1, 'the tunnel that came up was taken down again');
+  assert.equal(existsSync(specDir('mu')), false, 'and the deleted spec was not resurrected');
+  assert.equal(p.list().length, 0);
 });
 
 test('a share arriving after shutdown is refused rather than leaked', async () => {
