@@ -174,6 +174,43 @@ test('PATCH edits an unsubmitted human comment', async () => {
   assert.equal(edited.comments[0].body, 'edited');
 });
 
+// Everything downstream of a comment used to key off the literal author
+// "human". A named reviewer must keep every action that name used to unlock.
+test('a named author can edit their own unsubmitted comment', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'first pass', author: 'lavee' })).json();
+  assert.equal(thread.comments[0].author, 'lavee');
+  const cid = thread.comments[0].id;
+  const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'second pass', author: 'lavee' });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).comment.body, 'second pass');
+});
+
+test('a named author cannot edit someone else\'s comment', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'mine', author: 'lavee' })).json();
+  const cid = thread.comments[0].id;
+  const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'not yours', author: 'nitin' });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /your own/);
+});
+
+test('a named author can queue agent work', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent from lavee', author: 'lavee' })).json();
+  const r = await post(`/api/spec/${specId}/comments/submit`);
+  assert.equal(r.status, 201);
+  const { batch } = await r.json();
+  assert.ok(batch.threadIds.includes(thread.id));
+});
+
+test('an agent comment cannot be edited over HTTP', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'q', author: 'lavee' })).json();
+  mutateComments(specId, (s) => addComment(s, thread.id, { body: 'agent reply', author: 'claude', kind: 'agent' }));
+  const stored = loadComments(specId).threads.find((t) => t.id === thread.id);
+  const agentComment = stored.comments[1];
+  const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${agentComment.id}`, { body: 'rewritten', author: 'lavee' });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /agent comment/);
+});
+
 test('PATCH refuses a comment already frozen into a batch', async () => {
   const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' })).json();
   const cid = thread.comments[0].id;

@@ -272,7 +272,7 @@ test('clicking the review UI does not open a composer', async (t) => {
 
 test('the review command bar lives in the sidebar footer, not the launcher menu', async (t) => {
   const threads = [{
-    id: 't1', state: 'open', comments: [{ author: 'human', body: 'x' }],
+    id: 't1', state: 'open', comments: [{ author: 'human', body: '@agent x' }],
     anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
   }];
   const { window, posts } = await bootReviewLayer(t, { threads, meta: { status: 'draft' } });
@@ -1345,8 +1345,11 @@ test('the active state follows whichever thread on a shared block is active', as
 });
 
 // ---------- lifecycle action button ----------
+// The comment addresses the agent: only agent-directed threads are submittable,
+// and "Submit comments" is what these fixtures are testing. A thread with no
+// mention is discussion, and offering to submit it would submit nothing.
 const PENDING_THREAD = [{
-  id: 't1', state: 'open', comments: [{ author: 'human', body: 'x' }],
+  id: 't1', state: 'open', comments: [{ author: 'human', body: '@agent x' }],
   anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
 }];
 const tick = (window) => new Promise((r) => window.setTimeout(r, 0));
@@ -1490,9 +1493,9 @@ test('action button: a reopened thread with a fresh human comment → "Submit co
   const threads = [{
     id: 't1', state: 'open',
     comments: [
-      { author: 'human', body: 'original', batchId: 'b1' },
+      { author: 'human', body: '@agent original', batchId: 'b1' },
       { author: 'claude', body: 'addressed' },
-      { author: 'human', body: 'actually, reconsider' },
+      { author: 'human', body: '@agent actually, reconsider' },
     ],
     anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
   }];
