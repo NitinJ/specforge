@@ -136,6 +136,49 @@ comment batches via hooks; there's no separate serve/review/implement command.
 
 ---
 
+## Sharing a spec
+
+A spec normally lives on loopback and only you can see it. `share` puts one spec
+on a public URL you can send to anyone:
+
+```
+specforge share <id>      # → https://<random>.trycloudflare.com
+specforge shares          # what is public right now
+specforge unshare <id>    # the link dies, for everyone holding it
+```
+
+It starts a **second listener carrying only that spec id** and points a
+[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+quick tunnel at it, so the tunnel has no route to the daemon, to your spec index,
+or to any other spec. No Cloudflare account, no DNS, no hosting. Sharing twice
+returns the same link rather than starting a second tunnel.
+
+**The link is the capability.** Anyone holding it has your rights on that spec:
+read, comment, resolve, and submit work to your agent. There are no accounts and
+no passwords, and a name is whatever its holder typed. Share it the way you would
+share a document link, and `unshare` when the review is done.
+
+A published spec carries a **Shared** badge in its header, because a share has no
+expiry and visibility is the only thing between it and a forgotten public URL.
+Every share dies when the daemon stops, and a quick tunnel draws a fresh hostname
+each time, so a link is good for one sharing session.
+
+### Discussion, and work for the agent
+
+Comments now carry the name of whoever wrote them, asked for once per browser on
+a published copy. A comment is **discussion between people** unless it says
+`@agent`:
+
+- `why is this bounded at 40 bits?` — a question for a human. Never reaches an agent.
+- `@agent widen this to 64` — work. Enters the next batch you submit.
+
+Adding `@agent` to a thread later hands over the **whole thread**, so the agent
+reads the discussion that produced the request rather than an instruction stripped
+of it. The footer counts both (`2 for agent · 3 discussions`) so a forgotten
+`@agent` is visible before you submit rather than after.
+
+---
+
 ## The lifecycle action button
 
 The pill next to the SF button is one contextual call-to-action driven by the
@@ -170,9 +213,16 @@ from the spec's own CSS variables:
 - **SpecForge launcher menu** — Comments, Contents (auto-built TOC when the spec
   has none), Width, Theme (light/dark), Session (shown as `folder · "first prompt"`
   instead of a raw id, + Detach), and **Export PDF** (print → Save as PDF; the
-  review chrome is stripped from the page). Theme/width/filter persist per spec.
-- **Live reload** — editing the spec, or an agent reply, refreshes the open page
-  over SSE.
+  review chrome is stripped from the page).
+- **Reading settings are yours** — theme, font, width, fit, TOC and filter live in
+  your own browser, so a reviewer switching to dark changes nothing for anyone
+  else. The values stored with the spec seed a browser that has none.
+- **Live reload** — editing the spec, or an agent reply, refreshes the open page.
+  Loopback holds an event stream; a published page polls every 5s, because
+  Cloudflare's edge accepts an SSE response and then buffers every body byte
+  (measured: 0 events in 30s through a tunnel against 15 of 15 on loopback, see
+  `tools/probe-sse-through-tunnel.mjs`). The listener that answers a request says
+  which, so no page waits on a stream that never speaks.
 
 ---
 
@@ -194,6 +244,12 @@ from the spec's own CSS variables:
   `$CLAUDE_CODE_SESSION_ID`); that session receives its review batches. 1 session
   ↔ many specs; a spec is held by at most one live session (stale locks are
   reclaimed on a heartbeat timeout).
+- **Publications** (`lib/publications.mjs`, `lib/publication.mjs`) — `share` starts
+  a listener with one spec id bound at construction and no id in any route, then
+  tunnels that port. The daemon owns both, so a share outlives the terminal that
+  made it; it stops them on shutdown and reaps any left by a previous daemon.
+  Isolation is structural: the index, the other specs and `DELETE` are not behind
+  that socket at all.
 - **Review layer** — `server/public/review.{js,css}`, injected at serve time:
   block comments, the SF menu, the lifecycle button, theme/width, Export PDF.
 - **Token-efficient navigation** — `spec-nav` (`lib/spec-nav-cli.mjs`) builds a
