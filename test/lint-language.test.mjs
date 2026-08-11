@@ -60,6 +60,13 @@ test('unfalsifiable superlatives are reported', () => {
   assert.ok(names(doc('<p>Blocks are the most leveraged unit.</p>')).includes('unfalsifiable superlative'));
 });
 
+// A hyphenated compound names a technique, it does not rank anything, and both
+// of these are common enough in specs to turn the rule into noise.
+test('hyphenated compounds are not superlatives', () => {
+  assert.deepEqual(checkLanguage(doc('<p>It takes the best-effort fallback path.</p>')), []);
+  assert.deepEqual(checkLanguage(doc('<p>Measure the worst-case latency at 200 threads.</p>')), []);
+});
+
 // The contract quotes its own bad forms. A checker that misses the very phrases
 // the contract names is worse than none: it certifies a violating spec as clean.
 // Each entry is [prose, rule that must fire], quoted from references/spec-language.md.
