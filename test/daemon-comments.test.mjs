@@ -79,7 +79,7 @@ test('reply then resolve a thread', async () => {
 });
 
 test('submit freezes a pending batch; empty submit is a no-op', async () => {
-  await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' });
+  await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' });
   const s = await post(`/api/spec/${specId}/comments/submit`);
   assert.equal(s.status, 201);
   const { ok, batch } = await s.json();
@@ -153,7 +153,7 @@ test('GET meta surfaces batch review progress (null → picked_up → working)',
   const m0 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
   assert.equal(m0.reviewProgress, null);
 
-  await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' });
+  await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' });
   const { batch } = await (await post(`/api/spec/${specId}/comments/submit`)).json();
   advanceBatchProgress(specId, batch.batchId, 'picked_up');
   const m1 = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
@@ -174,14 +174,51 @@ test('PATCH edits an unsubmitted human comment', async () => {
   assert.equal(edited.comments[0].body, 'edited');
 });
 
+// Everything downstream of a comment used to key off the literal author
+// "human". A named reviewer must keep every action that name used to unlock.
+test('a named author can edit their own unsubmitted comment', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'first pass', author: 'lavee' })).json();
+  assert.equal(thread.comments[0].author, 'lavee');
+  const cid = thread.comments[0].id;
+  const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'second pass', author: 'lavee' });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).comment.body, 'second pass');
+});
+
+test('a named author cannot edit someone else\'s comment', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'mine', author: 'lavee' })).json();
+  const cid = thread.comments[0].id;
+  const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'not yours', author: 'nitin' });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /your own/);
+});
+
+test('a named author can queue agent work', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent from lavee', author: 'lavee' })).json();
+  const r = await post(`/api/spec/${specId}/comments/submit`);
+  assert.equal(r.status, 201);
+  const { batch } = await r.json();
+  assert.ok(batch.threadIds.includes(thread.id));
+});
+
+test('an agent comment cannot be edited over HTTP', async () => {
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'q', author: 'lavee' })).json();
+  mutateComments(specId, (s) => addComment(s, thread.id, { body: 'agent reply', author: 'claude', kind: 'agent' }));
+  const stored = loadComments(specId).threads.find((t) => t.id === thread.id);
+  const agentComment = stored.comments[1];
+  const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${agentComment.id}`, { body: 'rewritten', author: 'lavee' });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /agent comment/);
+});
+
 test('PATCH refuses a comment already frozen into a batch', async () => {
-  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'q' })).json();
+  const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' })).json();
   const cid = thread.comments[0].id;
   await post(`/api/spec/${specId}/comments/submit`); // stamps a batchId onto the comment
   const r = await patch(`/api/spec/${specId}/comments/${thread.id}/comment/${cid}`, { body: 'too late' });
   assert.equal(r.status, 400);
   const frozen = loadComments(specId).threads.find((t) => t.id === thread.id);
-  assert.equal(frozen.comments[0].body, 'q', 'a submitted comment is left unchanged');
+  assert.equal(frozen.comments[0].body, '@agent q', 'a submitted comment is left unchanged');
 });
 
 test('PATCH 400s for an unknown comment or an empty body', async () => {

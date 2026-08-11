@@ -21,6 +21,40 @@
   //
   // theme + font are STORE-WIDE (apply to every spec) → PUT /api/prefs.
   // width / filter / fit / toc are per-spec → PUT /api/spec/<id>/prefs.
+  // Who wrote a comment is `kind`; `author` is a free display name. Comments
+  // stored before the split carry no kind, so fall back to the one name the
+  // agent used to write under. Never compare an author to 'human': with several
+  // people on a spec, every name is a human name.
+  function isAgentComment(c) {
+    if (!c) return false;
+    if (c.kind === 'agent' || c.kind === 'human') return c.kind === 'agent';
+    return c.author === 'claude';
+  }
+
+  /** The letter on a bubble: the agent's C, else the author's own initial. */
+  function initialOf(c) {
+    if (isAgentComment(c)) return 'C';
+    var m = /[a-z0-9]/i.exec((c && c.author) || '');
+    return m ? m[0].toUpperCase() : 'H';
+  }
+
+  // Addressing, mirroring lib/mentions.mjs. A comment is agent work when it
+  // says @agent outside code; anything else is discussion between people and
+  // never enters a batch. Kept in step with the server rule: if these disagree,
+  // the page offers a submit that submits nothing.
+  function mentionsAgentBody(body) {
+    var prose = String(body == null ? '' : body)
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/`[^`\n]*`/g, ' ');
+    return /@agent(?![a-z0-9_-])/i.test(prose);
+  }
+
+  /** True when some human in this thread addressed the agent. */
+  function isForAgentThread(t) {
+    return !!(t && t.comments || []).length
+      && t.comments.some(function (c) { return !isAgentComment(c) && mentionsAgentBody(c.body); });
+  }
+
   var PREFS = (window.SPECFORGE || {}).prefs || {};
   var GLOBAL_PREF_KEYS = { theme: 1, font: 1 };
   function putJSON(url, body) {
@@ -278,6 +312,32 @@
     return fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
     });
+  }
+
+  // The name this browser writes under. Null until it has one, which the server
+  // reads as the pre-authors default. Every write sends the same value, so the
+  // name on a comment is the name that can edit it: create, reply and edit must
+  // agree or a comment becomes uneditable by the browser that wrote it.
+  var AUTHOR_KEY = 'sf-author';
+  function meAuthor() {
+    try {
+      var v = window.localStorage.getItem(AUTHOR_KEY);
+      return v && v.trim() ? v.trim() : null;
+    } catch (e) {
+      return null; // storage blocked; behave like a browser with no name
+    }
+  }
+  function setMeAuthor(name) {
+    try { window.localStorage.setItem(AUTHOR_KEY, name); } catch (e) { /* not fatal */ }
+  }
+  /** Add the writer's name to a request body, when this browser has one. */
+  function withAuthor(body) {
+    var me = meAuthor();
+    if (!me) return body;
+    var out = {};
+    for (var k in body) if (Object.prototype.hasOwnProperty.call(body, k)) out[k] = body[k];
+    out.author = me;
+    return out;
   }
 
   // ---------- chrome ----------
@@ -994,9 +1054,9 @@
           // Only your own, not-yet-submitted comments can be edited (the server
           // enforces the same rule); once frozen into a batch the agent may be
           // acting on it. id-less fixture comments aren't addressable → no control.
-          var editable = c.author === 'human' && !c.batchId && c.id;
+          var editable = !isAgentComment(c) && !c.batchId && c.id;
           return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
-            (c.author === 'claude' ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
+            (isAgentComment(c) ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
             '<div class="body">' + fmtBody(c.body) + '</div>' +
             (editable ? '<button class="sf-edit-c" type="button" aria-label="Edit comment">Edit</button>' : '') +
             '</div>';
@@ -1032,7 +1092,7 @@
     var send = create('button', { class: 'sf-primary' }, 'Send');
     function submit() {
       if (!ta.value.trim()) return;
-      postJSON(API + '/' + t.id + '/reply', { body: ta.value.trim(), author: 'human' }).then(load);
+      postJSON(API + '/' + t.id + '/reply', withAuthor({ body: ta.value.trim() })).then(load);
     }
     send.onclick = submit;
     row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to send'));
@@ -1066,7 +1126,10 @@
       if (!v) return;
       if (v === c.body) return close(); // no change — just put the body back
       fetch(API + '/' + t.id + '/comment/' + c.id, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: v }),
+        // The name must go with the edit: the server checks it against the one
+        // on the comment, so a browser writing as `lavee` and editing as nobody
+        // cannot edit what it just wrote.
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withAuthor({ body: v })),
       }).then(function (r) { if (r.ok) load(); else flash('Could not save the edit.'); })
         .catch(function () { flash('Could not save the edit.'); });
     }
@@ -1302,7 +1365,7 @@
     var save = create('button', { class: 'sf-primary', type: 'button' }, 'Comment');
     function submit() {
       if (!ta.value.trim()) return;
-      postJSON(API, { anchor: anchor, body: ta.value.trim(), author: 'human' })
+      postJSON(API, withAuthor({ anchor: anchor, body: ta.value.trim() }))
         .then(function (r) {
           if (!r.ok) return flash('Could not add the comment.');
           state.composeEl = null;
@@ -1337,8 +1400,8 @@
     var b = create('button', { class: 'sf-bub' + (orphan ? ' sf-bub-orphan' : ''), type: 'button', 'data-tid': t.id });
     b._anchor = el; // the measured element, re-read every pass
     var first = t.comments[0] || {};
-    var claude = first.author === 'claude';
-    b.innerHTML = '<span class="sf-bub-who' + (claude ? ' claude' : '') + '">' + (claude ? 'C' : 'H') + '</span>' +
+    var claude = isAgentComment(first);
+    b.innerHTML = '<span class="sf-bub-who' + (claude ? ' claude' : '') + '" title="' + esc(first.author || '') + '">' + initialOf(first) + '</span>' +
       '<span class="sf-bub-snip">' + esc(norm(first.body || '')) + '</span>' +
       (t.comments.length > 1 ? '<span class="sf-bub-n">' + (t.comments.length - 1) + '</span>' : '');
     b.onclick = function (e) { e.stopPropagation(); expandThread(t.id, el); };
@@ -1354,13 +1417,14 @@
     var b = create('div', { class: 'sf-bub sf-bub-open' + (orphan ? ' sf-bub-orphan' : ''), 'data-tid': t.id, 'data-focus': '1' });
     b._anchor = el;
     b.innerHTML = '<div class="sf-bub-head"><span class="sf-bub-who' +
-      (t.comments[0] && t.comments[0].author === 'claude' ? ' claude' : '') + '">' +
-      (t.comments[0] && t.comments[0].author === 'claude' ? 'C' : 'H') + '</span>' +
+      (isAgentComment(t.comments[0]) ? ' claude' : '') + '" title="' +
+      esc((t.comments[0] && t.comments[0].author) || '') + '">' +
+      initialOf(t.comments[0]) + '</span>' +
       '<span class="sf-badge ' + esc(t.state) + '">' + esc(t.state) + '</span>' +
       '<button class="sf-bub-x" type="button" aria-label="Collapse thread">×</button></div>' +
       t.comments.map(function (c) {
         return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
-          (c.author === 'claude' ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
+          (isAgentComment(c) ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
           '<div class="body">' + fmtBody(c.body) + '</div></div>';
       }).join('');
     b.onclick = function (e) { e.stopPropagation(); }; // using the card must not dismiss it
@@ -1379,7 +1443,7 @@
     var send = create('button', { class: 'sf-primary', type: 'button' }, 'Reply');
     function submit() {
       if (!ta.value.trim()) return;
-      postJSON(API + '/' + t.id + '/reply', { body: ta.value.trim(), author: 'human' }).then(load);
+      postJSON(API + '/' + t.id + '/reply', withAuthor({ body: ta.value.trim() })).then(load);
     }
     send.onclick = function (e) { e.stopPropagation(); submit(); };
     var res = create('button', { class: 'sf-bub-resolve', type: 'button' }, 'Resolve');
@@ -1549,12 +1613,15 @@
   }
 
   function pendingCount() {
-    // A thread needs submitting if it's live (not resolved) and carries any
-    // un-submitted human comment — `some`, not `every`, so a reopened thread whose
-    // older comments were already submitted (have a batchId) still counts.
+    // A thread needs submitting if it's live (not resolved), addressed to the
+    // agent, and carries any un-submitted human comment — `some`, not `every`,
+    // so a reopened thread whose older comments were already submitted (have a
+    // batchId) still counts. Discussion is excluded: offering to submit it
+    // would submit nothing.
     return state.threads.filter(function (t) {
       return t.state !== 'resolved'
-        && t.comments.some(function (c) { return c.author === 'human' && !c.batchId; });
+        && isForAgentThread(t)
+        && t.comments.some(function (c) { return !isAgentComment(c) && !c.batchId; });
     }).length;
   }
   function renderLauncher() {

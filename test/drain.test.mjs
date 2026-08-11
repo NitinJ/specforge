@@ -40,7 +40,8 @@ function specWithBatch(session = 'sess-1') {
   const id = createSpec({ title: 'A', html: '<h1>A</h1>' });
   attach(id, session);
   const store = loadComments(id);
-  createThread(store, { anchor: { block: { index: 1, tag: 'P', text: 'the problem' } }, body: 'why?' });
+  // Addressed to the agent, since these tests exercise the batch drain.
+  createThread(store, { anchor: { block: { index: 1, tag: 'P', text: 'the problem' } }, body: '@agent why?' });
   saveComments(id, store);
   const batch = submitBatch(id);
   return { id, batch };
