@@ -60,6 +60,26 @@ test('unfalsifiable superlatives are reported', () => {
   assert.ok(names(doc('<p>Blocks are the most leveraged unit.</p>')).includes('unfalsifiable superlative'));
 });
 
+// These two name a technique rather than a ranking, and both are common enough
+// in specs to turn the rule into noise.
+test('best-effort and worst-case are not superlatives', () => {
+  assert.deepEqual(checkLanguage(doc('<p>It takes the best-effort fallback path.</p>')), []);
+  assert.deepEqual(checkLanguage(doc('<p>Measure the worst-case latency at 200 threads.</p>')), []);
+});
+
+// The exemption is those two phrases, NOT the hyphen: a hyphenated compound is
+// usually still a ranking claim, and exempting the punctuation would silence
+// the case the rule exists for.
+test('other hyphenated compounds still fire', () => {
+  const sup = (s) => names(doc(`<p>${s}</p>`)).includes('unfalsifiable superlative');
+  assert.ok(sup('We picked the most cost-effective option.'));
+  assert.ok(sup('That is the best-known technique.'));
+  assert.ok(sup('It is the fastest-growing segment.'));
+  // And the plain forms are untouched by the lookahead.
+  assert.ok(sup('This is the best path.'));
+  assert.ok(sup('This is the worst outcome.'));
+});
+
 // The contract quotes its own bad forms. A checker that misses the very phrases
 // the contract names is worse than none: it certifies a violating spec as clean.
 // Each entry is [prose, rule that must fire], quoted from references/spec-language.md.
