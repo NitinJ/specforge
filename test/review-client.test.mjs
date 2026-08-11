@@ -2273,6 +2273,33 @@ test('a reader who already named themselves is not asked again', async (t) => {
   assert.equal(window.document.getElementById('sf-welcome'), null);
 });
 
+// Storage can be blocked (a private window, third-party-storage settings). The
+// name must still reach the comments: dropping it silently would attribute
+// everything the reviewer writes to nobody while the dialog looked like it
+// worked.
+test('a name survives blocked storage for the session', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, {
+    transport: 'poll',
+    preBoot: (w) => {
+      w.localStorage.setItem = () => { throw new Error('storage blocked'); };
+      w.localStorage.getItem = () => { throw new Error('storage blocked'); };
+    },
+  });
+  const { document } = window;
+  document.querySelector('#sf-welcome-name').value = 'Lavee';
+  document.querySelector('.sf-welcome-go').click();
+  assert.equal(document.getElementById('sf-welcome'), null, 'the dialog still closes');
+
+  document.querySelector('main p, p').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const ta = document.querySelector('#sf-rail textarea');
+  ta.value = 'a comment';
+  document.querySelector('#sf-rail .sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const created = posts.find((p) => !/\/(submit|resolve|reply)$/.test(p.url));
+  assert.equal(created.body.author, 'Lavee', 'the comment still carries the name they typed');
+});
+
 test('the dialog refuses an empty or reserved name', async (t) => {
   const { window } = await bootReviewLayer(t, { transport: 'poll' });
   const dlg = window.document.getElementById('sf-welcome');

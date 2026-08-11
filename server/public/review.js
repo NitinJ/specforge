@@ -194,6 +194,12 @@
   // assigned further down is still `undefined` at that point, and the lookup
   // would silently miss and re-ask a reader who already has a name.
   var AUTHOR_KEY = 'sf-author';
+  // The name is held here first and persisted second. Storage can be blocked
+  // (private windows, third-party-storage settings), and a name that only lived
+  // there would be silently dropped: the dialog would close, the reviewer would
+  // believe they were named, and every comment they wrote would be attributed to
+  // nobody. In memory it at least holds for the session.
+  var _me = null;
 
   var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
@@ -402,15 +408,18 @@
   }
 
   function meAuthor() {
+    if (_me) return _me;
     try {
       var v = window.localStorage.getItem(AUTHOR_KEY);
-      return v && v.trim() ? v.trim() : null;
+      _me = v && v.trim() ? v.trim() : null;
     } catch (e) {
-      return null; // storage blocked; behave like a browser with no name
+      _me = null; // storage blocked; the session copy is all there is
     }
+    return _me;
   }
   function setMeAuthor(name) {
-    try { window.localStorage.setItem(AUTHOR_KEY, name); } catch (e) { /* not fatal */ }
+    _me = name; // authoritative for this page, whatever storage does
+    try { window.localStorage.setItem(AUTHOR_KEY, name); } catch (e) { /* asked again next load */ }
   }
   /** Add the writer's name to a request body, when this browser has one. */
   function withAuthor(body) {
