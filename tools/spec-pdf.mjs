@@ -13,6 +13,7 @@
 // a dark page prints as a solid black rectangle.
 
 import { existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { specHtmlPath } from '../lib/store.mjs';
 
@@ -46,7 +47,9 @@ try {
     + 'or pass the path to an existing chromium as the third argument.');
 }
 const page = await browser.newPage();
-await page.goto(`file://${src}`, { waitUntil: 'networkidle' });
+// pathToFileURL, not string concatenation: a store path containing #, ? or a
+// space would otherwise be read as URL syntax and load the wrong location.
+await page.goto(pathToFileURL(src).href, { waitUntil: 'networkidle' });
 await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
 await page.addStyleTag({ content: PRINT_CSS });
 await page.emulateMedia({ media: 'print' });
