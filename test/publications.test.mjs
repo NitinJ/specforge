@@ -7,6 +7,7 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:net';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,8 +16,9 @@ const home = mkdtempSync(join(tmpdir(), 'sf-pubs-'));
 process.env.SPECFORGE_HOME = home;
 
 const { createPublications } = await import('../lib/publications.mjs');
-const { specDir, specHtmlPath, sharePath } = await import('../lib/store-paths.mjs');
+const { specDir, specHtmlPath, sharePath, tunnelPath } = await import('../lib/store-paths.mjs');
 const { readShare } = await import('../lib/store-share.mjs');
+const { readTunnel } = await import('../lib/store-tunnel.mjs');
 
 function seed(id) {
   mkdirSync(specDir(id), { recursive: true });
@@ -55,9 +57,14 @@ function mkPubs(overrides = {}) {
   const killed = [];
   const deps = {
     publishImpl: fakePublisher(),
+    // A signal that actually takes effect, so a stop that waits for the process
+    // to be gone can observe it going. A killImpl that only records would make
+    // every teardown look like a process that ignored SIGTERM.
     killImpl: (pid) => killed.push(pid),
-    aliveImpl: () => true,
+    aliveImpl: (pid) => !killed.includes(pid),
+    ownsImpl: () => true,
     probeImpl: async () => true,
+    sleepImpl: async () => {},
     port: 0, // tests never bind the production port
     ...overrides,
   };
@@ -75,8 +82,17 @@ function mkPubs(overrides = {}) {
  * carried over, so a fake publisher's call count spans the restart and a test
  * can assert that adopting started no second tunnel.
  */
-function restart(prev, overrides = {}) {
-  return mkPubs({ ...prev.deps, ...overrides });
+async function restart(prev, overrides = {}) {
+  // A killed process releases its listening sockets and nothing else, so the
+  // gateway goes and the detached tunnel stays. Without this the new registry
+  // would be unable to rebind the recorded port, because its own predecessor
+  // would still be holding it inside this one test process.
+  await prev.pubs.closeGateway();
+  const next = mkPubs({ ...prev.deps, ...overrides });
+  // The carried-over killImpl records into the previous fixture's array, so
+  // that array is handed back as this one's. Otherwise `killed` would look
+  // empty on a restart that reaped something.
+  return overrides.killImpl ? next : { ...next, killed: prev.killed };
 }
 
 const registries = [];
@@ -340,7 +356,7 @@ test('restore republishes what was published before, on the same tokens', () => 
   const first = mkPubs();
   const rec = await first.pubs.share('g-restore');
 
-  const second = restart(first);
+  const second = await restart(first);
   await second.pubs.restore();
   assert.equal(second.pubs.resolve(rec.token), 'g-restore', 'the link already sent still works');
   assert.deepEqual(second.pubs.list().map((r) => r.specId), ['g-restore'],
@@ -385,13 +401,259 @@ test('restore tolerates a legacy record whose process is already gone', () => wi
   assert.equal(readShare('g-legacy2'), null);
 }));
 
+// ---- adopting the tunnel a killed daemon left behind (stage 2) ----
+
+// The requirement this whole spec exists for: the URL a reviewer was sent keeps
+// working across a daemon restart, with nothing re-sent.
+test('a published URL survives a restart unchanged', () => withHome(async () => {
+  seed('a-live');
+  const first = mkPubs();
+  const before = await first.pubs.share('a-live');
+
+  const second = await restart(first);
+  await second.pubs.restore();
+  assert.equal(second.publish.calls.length, 1, 'the tunnel was adopted, not restarted');
+  assert.equal(second.pubs.origin(), first.pubs.origin(), 'same origin');
+  assert.deepEqual(second.pubs.shareInfo('a-live'), {
+    url: before.url, token: before.token, createdAt: before.createdAt, live: true,
+  });
+  await second.pubs.stopAll();
+}));
+
+test('adopting rebinds the gateway to the port the tunnel points at', () => withHome(async () => {
+  seed('a-port');
+  const first = mkPubs();
+  await first.pubs.share('a-port');
+  const port = first.pubs.localPort();
+
+  const second = await restart(first);
+  await second.pubs.restore();
+  assert.equal(second.pubs.localPort(), port, 'the tunnel still points somewhere real');
+  await second.pubs.stopAll();
+}));
+
+test('a tunnel whose process is gone is not adopted', () => withHome(async () => {
+  seed('a-dead');
+  const first = mkPubs();
+  const before = await first.pubs.share('a-dead');
+
+  const second = await restart(first, { aliveImpl: () => false });
+  await second.pubs.restore();
+  assert.equal(second.publish.calls.length, 2, 'a new tunnel was started');
+  assert.notEqual(second.pubs.origin(), before.url.split('/s/')[0], 'on a new origin');
+  assert.equal(second.pubs.resolve(before.token), 'a-dead', 'but the token is unchanged');
+  await second.pubs.stopAll();
+}));
+
+// A pid can be alive while the tunnel behind it answers nothing: cloudflared
+// stays up when its edge connection is gone, and the record cannot tell.
+test('a tunnel that is alive but unreachable is reaped, not adopted', () => withHome(async () => {
+  seed('a-mute');
+  const first = mkPubs();
+  await first.pubs.share('a-mute');
+
+  const second = await restart(first, { probeImpl: async () => false });
+  await second.pubs.restore();
+  assert.equal(second.publish.calls.length, 2, 'it was replaced');
+  assert.deepEqual(second.killed, [4242], 'and the mute process was reaped');
+  await second.pubs.stopAll();
+}));
+
+// D8: a gateway anywhere other than the recorded port is not where the tunnel
+// is pointing, so adopting is abandoned rather than half-done. That does mean a
+// new origin, which is why the port lives above 10000 (D6) to make it rare.
+test('a recorded port held by something else forces a new tunnel', () => withHome(async () => {
+  seed('a-clash');
+  const first = mkPubs();
+  await first.pubs.share('a-clash');
+  const port = first.pubs.localPort();
+  const beforeOrigin = first.pubs.origin();
+  await first.pubs.closeGateway();
+
+  // Something unrelated takes the port between the two daemons.
+  const squatter = createServer();
+  await new Promise((r) => squatter.listen(port, '127.0.0.1', r));
+  try {
+    const second = await restart(first);
+    await second.pubs.restore();
+    assert.equal(second.publish.calls.length, 2, 'a fresh tunnel was started');
+    assert.notEqual(second.pubs.origin(), beforeOrigin, 'on a new origin');
+    assert.notEqual(second.pubs.localPort(), port, 'and a port it could actually bind');
+    assert.deepEqual(second.killed, [4242], 'the tunnel aimed at the taken port was reaped');
+    await second.pubs.stopAll();
+  } finally {
+    await new Promise((r) => squatter.close(r));
+  }
+}));
+
+// A pid is not a durable handle. The recorded cloudflared can exit and the
+// kernel hand that number to something unrelated, at which point "is it alive"
+// says yes about a stranger. Signalling it would kill a process on the owner's
+// machine that has nothing to do with SpecForge.
+test('a reused pid is neither adopted nor signalled', () => withHome(async () => {
+  seed('a-reuse');
+  const first = mkPubs();
+  await first.pubs.share('a-reuse');
+
+  const second = await restart(first, { ownsImpl: () => false });
+  await second.pubs.restore();
+  assert.deepEqual(second.killed, [], 'nothing was signalled');
+  assert.equal(second.publish.calls.length, 2, 'and a fresh tunnel was started');
+}));
+
+test('a record whose process is not ours is kept, not deleted', () => withHome(async () => {
+  seed('a-keep-rec');
+  const first = mkPubs();
+  await first.pubs.share('a-keep-rec');
+  const rec = readTunnel();
+
+  const second = await restart(first, { ownsImpl: () => false });
+  await second.pubs.restore();
+  // The old record is overwritten by the new tunnel rather than orphaned, but
+  // it is never deleted on the strength of a signal that was not sent.
+  assert.notEqual(readTunnel().pid, undefined);
+  assert.equal(rec.pid, 4242);
+  await second.pubs.stopAll();
+}));
+
+// The spawned path waits for the child's exit and escalates. An adopted tunnel
+// has no child handle, so the same guarantee has to hold via polling, and the
+// caller deletes the pid record on the strength of it.
+test('an adopted tunnel that ignores SIGTERM is escalated', () => withHome(async () => {
+  seed('a-stubborn');
+  const first = mkPubs();
+  await first.pubs.share('a-stubborn');
+
+  const signals = [];
+  let gone = false;
+  const second = await restart(first, {
+    killImpl: (pid, sig) => { signals.push(sig); if (sig === 'SIGKILL') gone = true; },
+    aliveImpl: () => !gone,
+  });
+  await second.pubs.restore();
+  await second.pubs.unshare('a-stubborn');
+  assert.deepEqual(signals, ['SIGTERM', 'SIGKILL'], 'it was escalated, not abandoned');
+  assert.equal(readTunnel(), null, 'and the record went once the process did');
+}));
+
+test('a tunnel that will not die keeps its record', () => withHome(async () => {
+  seed('a-immortal');
+  const first = mkPubs();
+  await first.pubs.share('a-immortal');
+
+  const second = await restart(first, {
+    killImpl: () => {},          // signals land, nothing happens
+    aliveImpl: () => true,
+    killTimeoutMs: 0,
+  });
+  await second.pubs.restore();
+  await second.pubs.unshare('a-immortal');
+  assert.ok(readTunnel(), 'the only route back to a live process is not thrown away');
+  assert.equal(readTunnel().pid, 4242);
+}));
+
+// The ownership check authorises a signal, so "cloudflared" appearing anywhere
+// in a command line is not enough: an editor holding a file by that name, or a
+// second cloudflared serving something else, would both pass.
+test('ownership requires the recorded port, not just the word cloudflared', () => withHome(async () => {
+  seed('a-lookalike');
+  const first = mkPubs();
+  await first.pubs.share('a-lookalike');
+  const { localPort } = readTunnel();
+
+  const seen = [];
+  const second = await restart(first, {
+    ownsImpl: (pid, port) => { seen.push(port); return false; },
+  });
+  await second.pubs.restore();
+  assert.ok(seen.length > 0, 'the check ran');
+  assert.ok(seen.every((p) => p === localPort), 'and was told which port makes it ours');
+  assert.deepEqual(second.killed, [], 'a lookalike is not signalled');
+}));
+
+// A running tunnel with no record is a public endpoint nothing can adopt or
+// reap, which is worse than no tunnel at all.
+test('a tunnel that cannot be recorded is taken back down', () => withHome(async () => {
+  seed('a-norec');
+  const { pubs: p, publish } = mkPubs();
+  // A directory where the record file goes: writeFileSync fails with EISDIR and
+  // nothing else in the store is disturbed.
+  mkdirSync(tunnelPath(), { recursive: true });
+  await assert.rejects(() => p.share('a-norec'));
+  assert.equal(publish.stopped.length, 1, 'the unrecordable tunnel was stopped');
+  assert.equal(p.origin(), null);
+  assert.equal(p.localPort(), null, 'and the gateway did not stay open');
+}));
+
+// Retiring an adopted tunnel waits on a process. A share landing in that window
+// used to have its record cleared and its gateway closed by the retire that
+// started first, leaving a dead link and an untracked process.
+test('a share during a slow retire is not clobbered by it', () => withHome(async () => {
+  seed('a-race1'); seed('a-race2');
+  let release;
+  const held = new Promise((r) => { release = r; });
+  let slow = false;
+  const { pubs: p } = mkPubs({
+    publishImpl: (() => {
+      const fn = fakePublisher();
+      const wrapped = async (port) => {
+        const t = await fn(port);
+        return { ...t, stop: async () => { if (slow) await held; return fn.stopped.push(port); } };
+      };
+      wrapped.calls = fn.calls; wrapped.stopped = fn.stopped;
+      return wrapped;
+    })(),
+  });
+
+  await p.share('a-race1');
+  slow = true;
+  const retiring = p.unshare('a-race1');        // stops the tunnel, slowly
+  const sharing = p.share('a-race2');           // arrives mid-retire
+  release();
+  await retiring;
+  const rec = await sharing;
+
+  assert.ok(p.origin(), 'the replacement tunnel is up');
+  assert.equal(p.resolve(rec.token), 'a-race2', 'and its spec is reachable');
+  assert.ok(readTunnel(), 'its record was not deleted by the retire');
+  assert.equal(readTunnel().url, p.origin());
+  assert.ok(p.localPort(), 'and its gateway was not closed');
+  await p.stopAll();
+}));
+
+test('nothing published means the leftover tunnel is reaped rather than adopted', () => withHome(async () => {
+  seed('a-none');
+  const first = mkPubs();
+  await first.pubs.share('a-none');
+  await first.pubs.unshare('a-none');   // clears the record but leaves this test honest
+  await first.pubs.share('a-none');
+  await first.pubs.unshare('a-none');
+
+  const second = await restart(first);
+  await second.pubs.restore();
+  assert.equal(second.pubs.origin(), null, 'nothing published, nothing exposed');
+}));
+
+test('the tunnel record is written on start and cleared on the last unpublish', () => withHome(async () => {
+  seed('a-rec');
+  const { pubs: p } = mkPubs();
+  assert.equal(readTunnel(), null);
+  await p.share('a-rec');
+  const rec = readTunnel();
+  assert.equal(rec.url, p.origin());
+  assert.equal(rec.localPort, p.localPort());
+  assert.equal(rec.pid, 4242);
+  await p.unshare('a-rec');
+  assert.equal(readTunnel(), null, 'nothing exposed, nothing recorded');
+}));
+
 test('restore drops a record whose spec is gone', () => withHome(async () => {
   seed('g-orphan');
   const first = mkPubs();
   const rec = await first.pubs.share('g-orphan');
   rmSync(specDir('g-orphan'), { recursive: true, force: true });
 
-  const second = restart(first);
+  const second = await restart(first);
   await second.pubs.restore();
   assert.equal(second.pubs.resolve(rec.token), null, 'a token for a deleted spec resolves to nothing');
   assert.equal(second.pubs.list().length, 0);
@@ -403,7 +665,7 @@ test('restart keeps the records and does not stop the tunnels', async () => {
   const rec = await first.pubs.share('omega');
   assert.equal(first.publish.calls.length, 1);
 
-  const second = restart(first);
+  const second = await restart(first);
   assert.equal(readShare('omega').token, rec.token, 'the record survives');
   assert.equal(second.publish.stopped.length, 0, 'no tunnel was stopped on the way down');
   assert.equal(second.publish.calls.length, 1, 'and the call count carries over');
