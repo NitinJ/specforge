@@ -36,8 +36,48 @@ function fakePublisher() {
   return fn;
 }
 
+/**
+ * A registry with every seam injected and nothing real behind it.
+ *
+ * `aliveImpl`, `probeImpl` and `port` are forwarded but not yet read by
+ * createPublications. They are passed from here so a test written now keeps
+ * working unchanged once the gateway and adopt-on-start start reading them.
+ *
+ * @param {object} [overrides] wins over every default, including killImpl (in
+ *   which case the returned `killed` array stays empty).
+ * @returns {{pubs:object, publish:Function, killed:number[], deps:object}}
+ */
+function mkPubs(overrides = {}) {
+  const killed = [];
+  const deps = {
+    publishImpl: fakePublisher(),
+    killImpl: (pid) => killed.push(pid),
+    aliveImpl: () => true,
+    probeImpl: async () => true,
+    port: 0, // tests never bind the production port
+    ...overrides,
+  };
+  const pubs = createPublications(deps);
+  registries.push(pubs);
+  return { pubs, publish: deps.publishImpl, killed, deps };
+}
+
+/**
+ * What a SIGKILLed daemon leaves behind: the registry object is gone, its
+ * records on disk and any tunnel processes it spawned are not.
+ *
+ * Deliberately does not call stopAll, because a daemon that was killed outright
+ * did not either, and adopt-on-start exists for exactly that case. The seams are
+ * carried over, so a fake publisher's call count spans the restart and a test
+ * can assert that no second tunnel was started.
+ */
+function restart(prev, overrides = {}) {
+  return mkPubs({ ...prev.deps, ...overrides });
+}
+
 let pubs;
 let publishImpl;
+const registries = [];
 
 before(() => {
   seed('alpha');
@@ -46,6 +86,7 @@ before(() => {
 
 after(async () => {
   if (pubs) await pubs.stopAll();
+  await Promise.allSettled(registries.map((r) => r.stopAll()));
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -132,8 +173,7 @@ test('sharing again replaces a publication whose tunnel died', async () => {
 
 test('sharing a healthy publication still returns the same link', async () => {
   seed('phi');
-  const publish = fakePublisher();
-  const p = createPublications({ publishImpl: publish });
+  const { pubs: p, publish } = mkPubs();
   const a = await p.share('phi');
   const b = await p.share('phi');
   assert.equal(a.url, b.url);
@@ -143,24 +183,36 @@ test('sharing a healthy publication still returns the same link', async () => {
 
 test('an unpublished spec is not live', async () => {
   seed('sigma');
-  const p = createPublications({ publishImpl: fakePublisher() });
+  const { pubs: p } = mkPubs();
   assert.equal(p.isLive('sigma'), false);
 });
 
 // Regenerating a dead link is exactly when an orphan tunnel is still running.
 test('publishing over a stale record reaps the tunnel it named', async () => {
   seed('tau');
-  const killed = [];
-  const p = createPublications({
-    publishImpl: fakePublisher(),
-    killImpl: (pid) => killed.push(pid),
-  });
+  const { pubs: p, killed } = mkPubs();
   writeFileSync(sharePath('tau'), JSON.stringify({
     specId: 'tau', url: 'https://dead.example', port: 1, pid: 4321, createdAt: 'then',
   }));
   await p.share('tau');
   assert.deepEqual(killed, [4321], 'the tunnel behind the dead link was stopped first');
   await p.stopAll();
+});
+
+// The fixture's own contract. A restart must leave behind exactly what a killed
+// daemon leaves behind, or every adopt-on-start test built on it is testing a
+// situation that cannot occur.
+test('restart keeps the records and does not stop the tunnels', async () => {
+  seed('omega');
+  const first = mkPubs();
+  const rec = await first.pubs.share('omega');
+  assert.equal(first.publish.calls.length, 1);
+
+  const second = restart(first);
+  assert.deepEqual(readShare('omega'), rec, 'the record survives');
+  assert.equal(second.publish.stopped.length, 0, 'no tunnel was stopped on the way down');
+  assert.equal(second.publish.calls.length, 1, 'and the call count carries over');
+  assert.equal(second.pubs.list().length, 0, 'the new registry starts empty, as a new process would');
 });
 
 test('a failed share does not poison the next attempt', async () => {
