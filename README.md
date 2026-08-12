@@ -48,6 +48,8 @@ built-ins — no `npm install`, no services to run.
 - **Node ≥ 18** on your `PATH` — runs the bundled CLI + review daemon (both
   zero-dependency).
 - A modern browser for the review UI.
+- **[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)**
+  on your `PATH`, but only to share a spec. Everything else works without it.
 - *(dev only)* `jsdom` + `playwright` are dev-dependencies for the test tiers;
   not needed to use the plugin.
 
@@ -177,13 +179,66 @@ with the last `unshare`, so nothing published and nothing exposed are the same
 state. A reboot still changes the hostname: quick tunnels draw a new one on every
 run.
 
-Three ways a link stops working, and they are different:
+A spec's link never changes on its own. The token is written once and kept, so
+only one command ever changes it:
 
-| Action | What happens to the token | What happens to the link |
-|---|---|---|
-| `share` again | kept | same link, no second tunnel |
-| `share --rotate` | replaced | old link 404s, spec stays published |
-| `unshare` | destroyed | old link 404s, spec is unpublished |
+| Action | The link |
+|---|---|
+| `share` again | unchanged |
+| `unshare` then `share` | unchanged; unpublishing stops serving it, it does not kill it |
+| `share --rotate` | **replaced**; every copy already sent stops working |
+
+Rotating is therefore the only way to revoke a link that has leaked.
+
+### A permanent address of your own
+
+By default the hostname is drawn fresh on every cloudflared run, so a reboot
+changes it. One command sets up a named tunnel on a domain you control and points
+SpecForge at it:
+
+```
+specforge setup-tunnel spec.example.com
+```
+
+It authorises with Cloudflare (a browser opens once), creates the tunnel, writes
+the DNS record, writes the cloudflared config, and sets the origin. Re-running it
+changes nothing: an existing tunnel is reused, and a config you wrote by hand is
+left alone rather than rewritten. It never runs `sudo` unless you pass
+`--install-service`; otherwise it prints the one command you still need:
+
+```
+sudo cloudflared --config ~/.cloudflared/config.yml service install
+```
+
+That is what makes the tunnel survive a reboot. After it, restart the daemon.
+
+**For a team**, add each person to the same Cloudflare account and give them a
+subdomain of one shared domain. Each machine runs `setup-tunnel` with its own
+hostname; nobody shares credentials, and nobody needs their own domain:
+
+```
+specforge setup-tunnel spec.example.com     # yours
+specforge setup-tunnel lavee.example.com    # theirs
+```
+
+One tunnel per machine is not optional: a hostname routes to whichever machine
+runs its tunnel, so two machines on one tunnel means requests land on either at
+random.
+
+The origin can also be set directly, for a Tailscale Funnel or anything else
+already serving:
+
+```
+specforge origin https://spec.example.com   # then restart the daemon
+specforge origin                            # what is set now
+specforge origin --clear                    # hand the tunnel back to SpecForge
+```
+
+With an origin set, SpecForge never starts, adopts or kills a tunnel; running
+one is yours to do. It also binds **exactly** 14180 and fails loudly rather than
+walking to another port, because your tunnel's config names one port and serving
+anywhere else would leave it pointed at nothing while every link here still
+reported healthy.
 
 ### Discussion, and work for the agent
 

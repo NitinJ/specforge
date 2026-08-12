@@ -9,7 +9,9 @@ import { join } from 'node:path';
 const home = mkdtempSync(join(tmpdir(), 'sf-share-'));
 process.env.SPECFORGE_HOME = home;
 
-const { readShare, writeShare, clearShare, isLegacyShare } = await import('../lib/store-share.mjs');
+const {
+  readShare, writeShare, clearShare, isLegacyShare, readShareToken,
+} = await import('../lib/store-share.mjs');
 const { specDir, sharePath } = await import('../lib/store-paths.mjs');
 const { newToken } = await import('../lib/tokens.mjs');
 
@@ -30,12 +32,34 @@ test('an unpublished spec has no record', () => {
   assert.equal(readShare('beta'), null);
 });
 
-test('clearShare reports whether there was anything to remove', () => {
+test('clearShare reports whether there was anything to unpublish', () => {
   seed('gamma');
   writeShare('gamma', { specId: 'gamma', token: newToken(), createdAt: 'now' });
   assert.equal(clearShare('gamma'), true);
   assert.equal(clearShare('gamma'), false);
   assert.equal(readShare('gamma'), null);
+});
+
+// A URL that has to survive a reboot has to survive an accidental unshare, which
+// is the more likely event. Unpublishing stops serving the link; only a rotate
+// changes it (D12).
+test('the token outlives an unshare', () => {
+  seed('mu');
+  const token = newToken();
+  writeShare('mu', { specId: 'mu', token, createdAt: 'now' });
+  clearShare('mu');
+  assert.equal(readShare('mu'), null, 'it is not published');
+  assert.equal(readShareToken('mu'), token, 'but re-sharing gets the same URL back');
+});
+
+test('a spec that was never shared has no token', () => {
+  seed('nu');
+  assert.equal(readShareToken('nu'), null);
+});
+
+test('a legacy record carries no token to keep', () => {
+  writeRaw('omicron', { specId: 'omicron', url: 'https://old.example', port: 5, createdAt: 'then' });
+  assert.equal(readShareToken('omicron'), null);
 });
 
 // The old scheme recorded a per-spec url, port and pid. The port is gone after

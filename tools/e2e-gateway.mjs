@@ -1,18 +1,24 @@
 #!/usr/bin/env node
 // End-to-end check of a published spec, through the real tunnel.
 //
-//   node tools/e2e-gateway.mjs <publicUrl> <specId>
+//   node tools/e2e-gateway.mjs <publicUrl> <specId> [--write]
 //
 // Exercises the journeys in spec 0c0a9bcb4a §15 that only a real edge can prove:
 // a reviewer loads the page, comments, mentions @agent, submits, and the batch
 // lands in the owner's inbox on this machine.
+//
+// The write half is opt-in, and deliberately so: it leaves a real comment and a
+// real review batch on the spec it is pointed at. Run against a scratch spec, or
+// be ready to undo it. Twice now it has been run against a spec someone cared
+// about, so the default is the read-only checks.
 
 import { listPendingForSpec } from '../lib/store-inbox.mjs';
 import { loadComments } from '../lib/store-comments.mjs';
 
 const [, , publicUrl, specId] = process.argv;
+const write = process.argv.includes('--write');
 if (!publicUrl || !specId) {
-  console.error('usage: node tools/e2e-gateway.mjs <publicUrl> <specId>');
+  console.error('usage: node tools/e2e-gateway.mjs <publicUrl> <specId> [--write]');
   process.exit(2);
 }
 
@@ -38,6 +44,12 @@ for (const path of ['/', `/spec/${specId}`, '/api/shares', `/api/spec/${specId}/
 }
 
 // 3. A reviewer comments and mentions the agent.
+if (!write) {
+  console.log('\nskipped the comment and submit checks (pass --write to run them,');
+  console.log('which leaves a real comment and review batch on this spec)');
+  console.log(failures ? `\n${failures} failed` : '\nall read-only checks passed');
+  process.exit(failures ? 1 : 0);
+}
 const before = loadComments(specId).threads.length;
 const create = await fetch(`${publicUrl}/api/comments`, {
   method: 'POST',
