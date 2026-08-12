@@ -57,9 +57,14 @@ function mkPubs(overrides = {}) {
   const killed = [];
   const deps = {
     publishImpl: fakePublisher(),
+    // A signal that actually takes effect, so a stop that waits for the process
+    // to be gone can observe it going. A killImpl that only records would make
+    // every teardown look like a process that ignored SIGTERM.
     killImpl: (pid) => killed.push(pid),
-    aliveImpl: () => true,
+    aliveImpl: (pid) => !killed.includes(pid),
+    ownsImpl: () => true,
     probeImpl: async () => true,
+    sleepImpl: async () => {},
     port: 0, // tests never bind the production port
     ...overrides,
   };
@@ -479,6 +484,72 @@ test('a recorded port held by something else forces a new tunnel', () => withHom
   } finally {
     await new Promise((r) => squatter.close(r));
   }
+}));
+
+// A pid is not a durable handle. The recorded cloudflared can exit and the
+// kernel hand that number to something unrelated, at which point "is it alive"
+// says yes about a stranger. Signalling it would kill a process on the owner's
+// machine that has nothing to do with SpecForge.
+test('a reused pid is neither adopted nor signalled', () => withHome(async () => {
+  seed('a-reuse');
+  const first = mkPubs();
+  await first.pubs.share('a-reuse');
+
+  const second = await restart(first, { ownsImpl: () => false });
+  await second.pubs.restore();
+  assert.deepEqual(second.killed, [], 'nothing was signalled');
+  assert.equal(second.publish.calls.length, 2, 'and a fresh tunnel was started');
+}));
+
+test('a record whose process is not ours is kept, not deleted', () => withHome(async () => {
+  seed('a-keep-rec');
+  const first = mkPubs();
+  await first.pubs.share('a-keep-rec');
+  const rec = readTunnel();
+
+  const second = await restart(first, { ownsImpl: () => false });
+  await second.pubs.restore();
+  // The old record is overwritten by the new tunnel rather than orphaned, but
+  // it is never deleted on the strength of a signal that was not sent.
+  assert.notEqual(readTunnel().pid, undefined);
+  assert.equal(rec.pid, 4242);
+  await second.pubs.stopAll();
+}));
+
+// The spawned path waits for the child's exit and escalates. An adopted tunnel
+// has no child handle, so the same guarantee has to hold via polling, and the
+// caller deletes the pid record on the strength of it.
+test('an adopted tunnel that ignores SIGTERM is escalated', () => withHome(async () => {
+  seed('a-stubborn');
+  const first = mkPubs();
+  await first.pubs.share('a-stubborn');
+
+  const signals = [];
+  let gone = false;
+  const second = await restart(first, {
+    killImpl: (pid, sig) => { signals.push(sig); if (sig === 'SIGKILL') gone = true; },
+    aliveImpl: () => !gone,
+  });
+  await second.pubs.restore();
+  await second.pubs.unshare('a-stubborn');
+  assert.deepEqual(signals, ['SIGTERM', 'SIGKILL'], 'it was escalated, not abandoned');
+  assert.equal(readTunnel(), null, 'and the record went once the process did');
+}));
+
+test('a tunnel that will not die keeps its record', () => withHome(async () => {
+  seed('a-immortal');
+  const first = mkPubs();
+  await first.pubs.share('a-immortal');
+
+  const second = await restart(first, {
+    killImpl: () => {},          // signals land, nothing happens
+    aliveImpl: () => true,
+    killTimeoutMs: 0,
+  });
+  await second.pubs.restore();
+  await second.pubs.unshare('a-immortal');
+  assert.ok(readTunnel(), 'the only route back to a live process is not thrown away');
+  assert.equal(readTunnel().pid, 4242);
 }));
 
 test('nothing published means the leftover tunnel is reaped rather than adopted', () => withHome(async () => {
