@@ -38,6 +38,9 @@ function spawnStub(opts = {}) {
   const child = new EventEmitter();
   child.killed = false;
   child.signals = [];
+  child.pid = 24680;
+  child.unrefCalls = 0;
+  child.unref = () => { child.unrefCalls += 1; };
   child.kill = (sig) => {
     child.killed = true;
     child.signals.push(sig);
@@ -48,7 +51,10 @@ function spawnStub(opts = {}) {
     }
     return true;
   };
-  const fn = (cmd, args) => { fn.cmd = cmd; fn.args = args; return child; };
+  const fn = (cmd, args, spawnOpts) => {
+    fn.cmd = cmd; fn.args = args; fn.opts = spawnOpts || {};
+    return child;
+  };
   fn.child = child;
   return fn;
 }
@@ -114,6 +120,23 @@ test('spawns cloudflared pointed at the loopback port', async () => {
     '--no-autoupdate',
   ]);
   assert.equal(url, 'https://h.trycloudflare.com');
+});
+
+// The whole point of stage 2: the daemon restarts often, and a tunnel that is
+// a child of the daemon's process group goes down with it, taking every URL
+// already sent. Detaching is what lets the next daemon adopt it.
+test('the tunnel is detached so it survives the daemon', async () => {
+  const spawnImpl = spawnStub();
+  await publishViaCloudflared(4321, {
+    spawnImpl,
+    fetchImpl: fetchStub([[200, { hostname: 'h.trycloudflare.com' }]]),
+    sleepImpl: noSleep,
+    freePortImpl: async () => 9999,
+  });
+  assert.equal(spawnImpl.opts.detached, true, 'not in the daemon process group');
+  assert.deepEqual(spawnImpl.opts.stdio, ['ignore', 'ignore', 'ignore'],
+    'no pipe back to a parent that will not be there');
+  assert.equal(spawnImpl.child.unrefCalls, 1, 'and it does not hold the event loop open');
 });
 
 test('stop() kills the child', async () => {

@@ -142,16 +142,23 @@ A spec normally lives on loopback and only you can see it. `share` puts one spec
 on a public URL you can send to anyone:
 
 ```
-specforge share <id>      # → https://<random>.trycloudflare.com
-specforge shares          # what is public right now
-specforge unshare <id>    # the link dies, for everyone holding it
+specforge share <id>            # → https://<random>.trycloudflare.com/s/<token>
+specforge share <id> --rotate   # new token; every link already sent stops working
+specforge shares                # what is public right now
+specforge unshare <id>          # the link dies, for everyone holding it
 ```
 
-It starts a **second listener carrying only that spec id** and points a
-[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
-quick tunnel at it, so the tunnel has no route to the daemon, to your spec index,
-or to any other spec. No Cloudflare account, no DNS, no hosting. Sharing twice
-returns the same link rather than starting a second tunnel.
+One **gateway** serves every published spec on a fixed loopback port (14180), and
+one [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+quick tunnel points at it. Publishing a second spec starts nothing: it adds a
+token. No Cloudflare account, no DNS, no hosting.
+
+The tunnel's only downstream is the gateway port, so it has no route to the
+daemon, to your spec index, or to any daemon endpoint. On the gateway itself,
+a spec is reachable only through its **token**: 16 random bytes, never derived
+from a spec id, so a spec id is not a public address and holding one link tells
+you nothing about any other spec. Everything not published answers 404, and so
+does everything revoked, byte for byte.
 
 **The link is the capability.** Anyone holding it has your rights on that spec:
 read, comment, resolve, and submit work to your agent. There are no accounts and
@@ -160,8 +167,23 @@ share a document link, and `unshare` when the review is done.
 
 A published spec carries a **Shared** badge in its header, because a share has no
 expiry and visibility is the only thing between it and a forgotten public URL.
-Every share dies when the daemon stops, and a quick tunnel draws a fresh hostname
-each time, so a link is good for one sharing session.
+
+**A link survives a daemon restart.** The tunnel runs detached from the daemon,
+and a starting daemon adopts the one its predecessor left if the process is still
+alive and the origin still answers, rebinding the gateway to the port that tunnel
+points at. Otherwise it reaps that process and starts a fresh tunnel, which does
+mean a new origin. The tunnel runs while at least one spec is published and stops
+with the last `unshare`, so nothing published and nothing exposed are the same
+state. A reboot still changes the hostname: quick tunnels draw a new one on every
+run.
+
+Three ways a link stops working, and they are different:
+
+| Action | What happens to the token | What happens to the link |
+|---|---|---|
+| `share` again | kept | same link, no second tunnel |
+| `share --rotate` | replaced | old link 404s, spec stays published |
+| `unshare` | destroyed | old link 404s, spec is unpublished |
 
 ### Discussion, and work for the agent
 
@@ -244,12 +266,16 @@ from the spec's own CSS variables:
   `$CLAUDE_CODE_SESSION_ID`); that session receives its review batches. 1 session
   ↔ many specs; a spec is held by at most one live session (stale locks are
   reclaimed on a heartbeat timeout).
-- **Publications** (`lib/publications.mjs`, `lib/publication.mjs`) — `share` starts
-  a listener with one spec id bound at construction and no id in any route, then
-  tunnels that port. The daemon owns both, so a share outlives the terminal that
-  made it; it stops them on shutdown and reaps any left by a previous daemon.
-  Isolation is structural: the index, the other specs and `DELETE` are not behind
-  that socket at all.
+- **Publications** (`lib/publications.mjs`, `lib/gateway.mjs`, `lib/tokens.mjs`) —
+  one gateway on a fixed loopback port serves every published spec at
+  `/s/<token>`, and one detached tunnel points at it. `share.json` per spec holds
+  the token; `~/.specforge/tunnel.json` holds the origin, pid and port. The daemon
+  owns the registry, so a share outlives the terminal that made it, and a starting
+  daemon **adopts** a tunnel its predecessor left rather than reaping it, which is
+  what makes a link survive a restart. Isolation is two properties, both tested:
+  the tunnel's only downstream is the gateway port, so no daemon route is on that
+  socket at all; and a spec is reachable only through a token that was handed out,
+  never through a spec id.
 - **Review layer** — `server/public/review.{js,css}`, injected at serve time:
   block comments, the SF menu, the lifecycle button, theme/width, Export PDF.
 - **Token-efficient navigation** — `spec-nav` (`lib/spec-nav-cli.mjs`) builds a
