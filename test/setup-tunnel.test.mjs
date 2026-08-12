@@ -8,7 +8,34 @@ import assert from 'node:assert/strict';
 
 import {
   renderTunnelConfig, tunnelNameFor, checkHostname, setupTunnel,
+  readCertToken, hostnameSlug,
 } from '../lib/setup-tunnel.mjs';
+
+// ---- deriving the hostname, so nobody has to be told one ----
+
+test('a username becomes a usable label', () => {
+  assert.equal(hostnameSlug('lavee'), 'lavee');
+  assert.equal(hostnameSlug('Nitin.Jaglan'), 'nitin-jaglan');
+  assert.equal(hostnameSlug('  ADMIN_user  '), 'admin-user');
+  assert.equal(hostnameSlug('a'.repeat(80)).length, 30, 'truncated to a legal label');
+  assert.equal(hostnameSlug('---'), 'specs', 'something unusable falls back');
+  assert.equal(hostnameSlug(''), 'specs');
+});
+
+// cert.pem carries a zoneID but not the zone name, so the name has to be looked
+// up with the token already in that file. Without this the person would have to
+// be told their own domain.
+test('the cert token is read out of the PEM armour', () => {
+  const token = Buffer.from(JSON.stringify({ zoneID: 'z1', accountID: 'a1', apiToken: 't1' })).toString('base64');
+  const pem = `-----BEGIN ARGO TUNNEL TOKEN-----\n${token}\n-----END ARGO TUNNEL TOKEN-----\n`;
+  assert.deepEqual(readCertToken(pem), { zoneID: 'z1', accountID: 'a1', apiToken: 't1' });
+});
+
+test('a cert with no token reads as none rather than throwing', () => {
+  assert.equal(readCertToken('-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----'), null);
+  assert.equal(readCertToken(''), null);
+  assert.equal(readCertToken('-----BEGIN ARGO TUNNEL TOKEN-----\nnot base64 json\n-----END ARGO TUNNEL TOKEN-----'), null);
+});
 
 // ---- pure helpers ----
 
@@ -43,6 +70,10 @@ test('the rendered config names the tunnel, the hostname and the gateway port', 
 
 // ---- the flow ----
 
+const CERT = `-----BEGIN ARGO TUNNEL TOKEN-----\n${
+  Buffer.from(JSON.stringify({ zoneID: 'z1', accountID: 'a1', apiToken: 't1' })).toString('base64')
+}\n-----END ARGO TUNNEL TOKEN-----\n`;
+
 /** A machine with nothing set up, and a record of everything asked of it. */
 function fakeMachine(overrides = {}) {
   const files = new Map(overrides.files || []);
@@ -60,7 +91,9 @@ function fakeMachine(overrides = {}) {
       readFile: (p) => files.get(p),
       writeFile: (p, c) => { files.set(p, c); },
       home: '/home/lavee',
+      username: overrides.username || 'lavee',
       setOrigin: (url) => { state.origin = url; },
+      lookupZone: overrides.lookupZone || (async () => 'specforger.cc'),
       state,
       run: async (cmd, args) => {
         ran.push([cmd, ...args].join(' '));
@@ -68,7 +101,7 @@ function fakeMachine(overrides = {}) {
           return { code: 0, stdout: JSON.stringify(state.tunnels) };
         }
         if (args[0] === 'tunnel' && args[1] === 'login') {
-          files.set('/home/lavee/.cloudflared/cert.pem', 'cert');
+          files.set('/home/lavee/.cloudflared/cert.pem', CERT);
           return { code: 0, stdout: '' };
         }
         if (args[0] === 'tunnel' && args[1] === 'create') {
@@ -101,8 +134,34 @@ test('a fresh machine goes from nothing to a configured origin', async () => {
   assert.equal(out.publicUrl, `https://${HOST}`);
 });
 
+// The point of deriving: a teammate cloning the repo has no way to know what
+// hostname to type, and the domain is not something they chose. After the one
+// browser click, everything else is knowable.
+test('with no hostname given, one is derived from the user and the authorised zone', async () => {
+  const m = fakeMachine({ username: 'Lavee.K' });
+  const out = await setupTunnel({}, m.deps);
+  assert.equal(out.hostname, 'lavee-k.specforger.cc');
+  assert.equal(out.derived, true);
+  assert.ok(m.ran.some((c) => c.includes('tunnel route dns specforge-lavee-k lavee-k.specforger.cc')));
+});
+
+test('a hostname given explicitly wins over the derived one', async () => {
+  const m = fakeMachine({ files: [['/home/lavee/.cloudflared/cert.pem', CERT]] });
+  const out = await setupTunnel({ hostname: 'docs.example.com' }, m.deps);
+  assert.equal(out.hostname, 'docs.example.com');
+  assert.equal(out.derived, false);
+});
+
+test('a zone that cannot be looked up asks for a hostname instead of guessing', async () => {
+  const m = fakeMachine({
+    files: [['/home/lavee/.cloudflared/cert.pem', CERT]],
+    lookupZone: async () => { throw new Error('offline'); },
+  });
+  await assert.rejects(() => setupTunnel({}, m.deps), /hostname/i);
+});
+
 test('an already-authenticated machine is not sent to the browser again', async () => {
-  const m = fakeMachine({ files: [['/home/lavee/.cloudflared/cert.pem', 'cert']] });
+  const m = fakeMachine({ files: [['/home/lavee/.cloudflared/cert.pem', CERT]] });
   await setupTunnel({ hostname: HOST }, m.deps);
   assert.ok(!m.ran.some((c) => c.includes('tunnel login')), 'no second login');
 });
@@ -111,7 +170,7 @@ test('an already-authenticated machine is not sent to the browser again', async 
 // to change hostname. It must not leave a second tunnel behind.
 test('an existing tunnel of the same name is reused, not duplicated', async () => {
   const m = fakeMachine({
-    files: [['/home/lavee/.cloudflared/cert.pem', 'cert']],
+    files: [['/home/lavee/.cloudflared/cert.pem', CERT]],
     tunnels: [{ id: 'old-id', name: 'specforge-lavee' }],
   });
   const out = await setupTunnel({ hostname: HOST }, m.deps);
@@ -120,7 +179,7 @@ test('an existing tunnel of the same name is reused, not duplicated', async () =
 });
 
 test('rerunning the whole thing changes nothing', async () => {
-  const m = fakeMachine({ files: [['/home/lavee/.cloudflared/cert.pem', 'cert']] });
+  const m = fakeMachine({ files: [['/home/lavee/.cloudflared/cert.pem', CERT]] });
   const first = await setupTunnel({ hostname: HOST }, m.deps);
   const before = m.files.get('/home/lavee/.cloudflared/config.yml');
   const second = await setupTunnel({ hostname: HOST }, m.deps);
@@ -134,7 +193,7 @@ test('rerunning the whole thing changes nothing', async () => {
 test('a config for a different hostname is refused, not overwritten', async () => {
   const m = fakeMachine({
     files: [
-      ['/home/lavee/.cloudflared/cert.pem', 'cert'],
+      ['/home/lavee/.cloudflared/cert.pem', CERT],
       ['/home/lavee/.cloudflared/config.yml', 'tunnel: something-else\ningress:\n  - hostname: other.example.com\n'],
     ],
   });
@@ -142,10 +201,24 @@ test('a config for a different hostname is refused, not overwritten', async () =
   assert.match(m.files.get('/home/lavee/.cloudflared/config.yml'), /something-else/, 'left alone');
 });
 
+// The guard has to fire before anything is created, or a refusal still leaves a
+// tunnel and a DNS record behind for a setup that did not happen.
+test('a refused config leaves no tunnel and no DNS record', async () => {
+  const m = fakeMachine({
+    files: [
+      ['/home/lavee/.cloudflared/cert.pem', CERT],
+      ['/home/lavee/.cloudflared/config.yml', 'tunnel: something-else\ningress:\n  - hostname: other.example.com\n'],
+    ],
+  });
+  await assert.rejects(() => setupTunnel({ hostname: HOST }, m.deps), /other\.example\.com|--force/);
+  assert.ok(!m.ran.some((c) => c.includes('tunnel create')), 'nothing was created');
+  assert.ok(!m.ran.some((c) => c.includes('route dns')), 'no DNS record was written');
+});
+
 test('--force overwrites it', async () => {
   const m = fakeMachine({
     files: [
-      ['/home/lavee/.cloudflared/cert.pem', 'cert'],
+      ['/home/lavee/.cloudflared/cert.pem', CERT],
       ['/home/lavee/.cloudflared/config.yml', 'tunnel: something-else\n'],
     ],
   });
@@ -156,14 +229,14 @@ test('--force overwrites it', async () => {
 // Installing a system service is privileged and irreversible-ish, so it is not
 // something a setup command should do to a machine uninvited.
 test('the service is not installed unless asked', async () => {
-  const m = fakeMachine({ files: [['/home/lavee/.cloudflared/cert.pem', 'cert']] });
+  const m = fakeMachine({ files: [['/home/lavee/.cloudflared/cert.pem', CERT]] });
   const out = await setupTunnel({ hostname: HOST }, m.deps);
   assert.ok(!m.ran.some((c) => c.includes('service install')), 'no sudo uninvited');
   assert.match(out.nextSteps.join(' '), /service install/, 'but it says how');
 });
 
 test('--install-service runs it', async () => {
-  const m = fakeMachine({ files: [['/home/lavee/.cloudflared/cert.pem', 'cert']] });
+  const m = fakeMachine({ files: [['/home/lavee/.cloudflared/cert.pem', CERT]] });
   await setupTunnel({ hostname: HOST, installService: true }, m.deps);
   assert.ok(m.ran.some((c) => c.includes('service install')));
 });
@@ -173,7 +246,7 @@ test('--install-service runs it', async () => {
 // duplicate tunnel it then could not find.
 test('noise on stderr does not corrupt the tunnel list', async () => {
   const m = fakeMachine({
-    files: [['/home/lavee/.cloudflared/cert.pem', 'cert']],
+    files: [['/home/lavee/.cloudflared/cert.pem', CERT]],
     tunnels: [{ id: 'old-id', name: 'specforge-lavee' }],
   });
   const inner = m.deps.run;
@@ -192,7 +265,7 @@ test('noise on stderr does not corrupt the tunnel list', async () => {
 test('an existing config for this hostname keeps its own tunnel name', async () => {
   const m = fakeMachine({
     files: [
-      ['/home/lavee/.cloudflared/cert.pem', 'cert'],
+      ['/home/lavee/.cloudflared/cert.pem', CERT],
       ['/home/lavee/.cloudflared/config.yml',
         `tunnel: hand-made\ncredentials-file: /home/lavee/.cloudflared/hand.json\ningress:\n  - hostname: ${HOST}\n    service: http://localhost:14180\n  - service: http_status:404\n`],
     ],
@@ -206,7 +279,7 @@ test('an existing config for this hostname keeps its own tunnel name', async () 
 
 test('a DNS record pointing at someone else fails loudly', async () => {
   const m = fakeMachine({
-    files: [['/home/lavee/.cloudflared/cert.pem', 'cert']],
+    files: [['/home/lavee/.cloudflared/cert.pem', CERT]],
     fail: { 'tunnel route': 'record already exists and points elsewhere' },
   });
   await assert.rejects(() => setupTunnel({ hostname: HOST }, m.deps), /points elsewhere|route/i);

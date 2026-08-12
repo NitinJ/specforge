@@ -57,7 +57,28 @@ built-ins — no `npm install`, no services to run.
 
 ## Install
 
-From GitHub:
+```sh
+git clone https://github.com/NitinJ/specforge && cd specforge
+./install.sh
+```
+
+That sets up everything: prerequisites checked, plugin installed, tunnel created,
+and a permanent address for your specs. It asks you nothing. A browser opens once
+so you can pick which domain to use, and your address becomes
+`<your-username>.<that domain>`.
+
+```sh
+./install.sh docs.example.com   # pick the address yourself
+./install.sh --plugin-only      # skip the sharing setup
+./install.sh -n                 # show what would happen, change nothing
+```
+
+It installs nothing with `sudo`; the one privileged step is printed for you to
+run. Prerequisites are reported all at once rather than one per run. Re-running
+is safe, and it refuses before creating anything if your cloudflared config is
+already pointed elsewhere.
+
+Or by hand:
 
 ```sh
 claude plugin marketplace add NitinJ/specforge
@@ -212,14 +233,16 @@ sudo cloudflared --config ~/.cloudflared/config.yml service install
 
 That is what makes the tunnel survive a reboot. After it, restart the daemon.
 
-**For a team**, add each person to the same Cloudflare account and give them a
-subdomain of one shared domain. Each machine runs `setup-tunnel` with its own
-hostname; nobody shares credentials, and nobody needs their own domain:
+**For a team**, add each person to the same Cloudflare account. Everyone then
+runs the same command:
 
 ```
-specforge setup-tunnel spec.example.com     # yours
-specforge setup-tunnel lavee.example.com    # theirs
+./install.sh
 ```
+
+Each person authenticates as themselves, picks the shared domain in their own
+browser, and gets `<their-username>.<that domain>`. Nobody shares credentials,
+nobody needs their own domain, and nobody has to be told what to type.
 
 One tunnel per machine is not optional: a hostname routes to whichever machine
 runs its tunnel, so two machines on one tunnel means requests land on either at
