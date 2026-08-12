@@ -16,7 +16,6 @@ const { specSignals } = await import('../lib/spec-signals.mjs');
 const { createSpec } = await import('../lib/store.mjs');
 const { mutateComments, createThread, addComment } = await import('../lib/store-comments.mjs');
 const { submitBatch } = await import('../lib/store-inbox.mjs');
-const { sharePath } = await import('../lib/store-paths.mjs');
 
 const anchor = { block: { index: 1, tag: 'P', text: 'a block' } };
 const spec = (title) => createSpec({ title, html: `<h1>${title}</h1>` });
@@ -111,18 +110,31 @@ test('resolved threads count for nothing', () => {
   assert.equal(s.open, 0);
 });
 
-test('a share is reported, and its liveness comes from the caller', () => {
+// The record on disk holds only a token, so both the URL and its liveness come
+// from the registry. Without one there is nothing to report, which is what the
+// index sees for a spec whose daemon is not the one that published it.
+test('a share is reported, and both its URL and liveness come from the caller', () => {
   const id = spec('public');
-  writeFileSync(sharePath(id), JSON.stringify({
-    specId: id, url: 'https://calm-fox.trycloudflare.com', port: 1, pid: 2, createdAt: 'now',
-  }));
-  const dead = specSignals(id);
+  const url = 'https://calm-fox.trycloudflare.com/s/1234';
+
+  const none = specSignals(id);
+  assert.equal(none.shared, false, 'no registry, nothing to report');
+  assert.equal(none.shareUrl, null);
+  assert.equal(none.shareLive, false);
+
+  const dead = specSignals(id, () => ({ url, live: false }));
   assert.equal(dead.shared, true);
-  assert.equal(dead.shareUrl, 'https://calm-fox.trycloudflare.com');
+  assert.equal(dead.shareUrl, url);
   assert.equal(dead.shareLive, false, 'a record alone is not proof the link works');
 
-  const live = specSignals(id, () => true);
+  const live = specSignals(id, () => ({ url, live: true }));
   assert.equal(live.shareLive, true);
+
+  // A published spec with no tunnel up has a record but no address, and must
+  // not read as a working link.
+  const noOrigin = specSignals(id, () => ({ url: null, live: true }));
+  assert.equal(noOrigin.shared, true);
+  assert.equal(noOrigin.shareLive, false);
 });
 
 test('an unreadable comment store does not break the row', () => {

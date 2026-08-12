@@ -182,9 +182,9 @@ export function createDaemon() {
     const meta = path.match(/^\/api\/spec\/([\w-]+)\/meta$/);
     if (meta) {
       if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
-      // The registry, not the file, decides whether a publication actually
-      // serves: a record can outlive the listener it names.
-      return handleMeta(meta[1], res, (id) => publications.isLive(id));
+      // The registry, not the file, composes the public URL and decides whether
+      // it actually serves: the record holds only a token.
+      return handleMeta(meta[1], res, (id) => publications.shareInfo(id));
     }
     const status = path.match(/^\/api\/spec\/([\w-]+)\/status$/);
     if (status) {
@@ -240,12 +240,21 @@ export function createDaemon() {
     // --- Publications (loopback only; a publication never serves these) ---
     if (path === '/api/shares') {
       if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
-      return sendJson(res, 200, { shares: publications.list() });
+      // The origin and the local port are reported alongside the list because
+      // this is the surface for answering why a link is not working.
+      return sendJson(res, 200, {
+        origin: publications.origin(),
+        localPort: publications.localPort(),
+        shares: publications.list(),
+      });
     }
     const shareR = path.match(/^\/api\/spec\/([\w-]+)\/share$/);
     if (shareR) {
       if (method === 'POST') {
-        return publications.share(shareR[1])
+        // rotate revokes the token already sent and mints a new one, which is
+        // the only way to kill a link without unpublishing the spec.
+        return readJsonBody(req).catch(() => ({}))
+          .then((b) => publications.share(shareR[1], { rotate: !!(b && b.rotate) }))
           .then((share) => sendJson(res, 201, { ok: true, share }))
           .catch((e) => sendJson(res, 400, { error: e.message }));
       }
@@ -276,7 +285,7 @@ export function createDaemon() {
       // on disk, decides whether that link actually answers.
       if (path === '/') {
         return send(res, 200, 'text/html; charset=utf-8',
-          renderIndex({ isShareLive: (id) => publications.isLive(id) }));
+          renderIndex({ shareInfo: (id) => publications.shareInfo(id) }));
       }
       if (path === '/events') return serveEvents(url.searchParams.get('spec') || '', req, res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
@@ -385,11 +394,11 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
   const url = `http://127.0.0.1:${boundPort}/`;
   writeServerState({ port: boundPort, pid: process.pid, url });
 
-  // Records from a previous daemon name a listener that died with it. Clear
-  // them and reap any tunnel still running, since a cloudflared child survives
-  // a parent that was killed without shutting down.
+  // Republish on the tokens the previous daemon minted, which is what makes the
+  // links it handed out keep working. Records from the older per-spec-tunnel
+  // scheme cannot be honoured and are reaped instead.
   try {
-    publications.clearStale();
+    await publications.restore();
   } catch {
     /* a share record we cannot read must not stop the daemon starting */
   }
