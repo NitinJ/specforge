@@ -1,4 +1,9 @@
-// Publication lifecycle: share, unshare, and what survives a daemon restart.
+// Publication lifecycle: what is published, on what origin, and what survives a
+// daemon restart.
+//
+// One gateway serves every published spec and one tunnel exposes the gateway, so
+// the tests here fall into two groups: the addressing model (tokens, one origin,
+// revocation) and the lifecycle races that predate it and still have to hold.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,9 +44,8 @@ function fakePublisher() {
 /**
  * A registry with every seam injected and nothing real behind it.
  *
- * `aliveImpl`, `probeImpl` and `port` are forwarded but not yet read by
- * createPublications. They are passed from here so a test written now keeps
- * working unchanged once the gateway and adopt-on-start start reading them.
+ * `aliveImpl` and `probeImpl` are forwarded but not read until adopt-on-start
+ * lands, so a test written against them now keeps working unchanged then.
  *
  * @param {object} [overrides] wins over every default, including killImpl (in
  *   which case the returned `killed` array stays empty).
@@ -69,15 +73,32 @@ function mkPubs(overrides = {}) {
  * Deliberately does not call stopAll, because a daemon that was killed outright
  * did not either, and adopt-on-start exists for exactly that case. The seams are
  * carried over, so a fake publisher's call count spans the restart and a test
- * can assert that no second tunnel was started.
+ * can assert that adopting started no second tunnel.
  */
 function restart(prev, overrides = {}) {
   return mkPubs({ ...prev.deps, ...overrides });
 }
 
-let pubs;
-let publishImpl;
 const registries = [];
+
+/**
+ * Run `fn` against a store of its own.
+ *
+ * restore() reads every spec directory in the store, so a test that asserts on
+ * what it restored cannot share a home with the tests that ran before it.
+ * storeRoot() reads the env var per call, so swapping it is enough.
+ */
+async function withHome(fn) {
+  const scratch = mkdtempSync(join(tmpdir(), 'sf-pubs-home-'));
+  const previous = process.env.SPECFORGE_HOME;
+  process.env.SPECFORGE_HOME = scratch;
+  try {
+    return await fn();
+  } finally {
+    process.env.SPECFORGE_HOME = previous;
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
 
 before(() => {
   seed('alpha');
@@ -85,41 +106,318 @@ before(() => {
 });
 
 after(async () => {
-  if (pubs) await pubs.stopAll();
   await Promise.allSettled(registries.map((r) => r.stopAll()));
   rmSync(home, { recursive: true, force: true });
 });
 
-test('sharing returns a URL and records it', async () => {
-  publishImpl = fakePublisher();
-  pubs = createPublications({ publishImpl });
-  const rec = await pubs.share('alpha');
-  assert.match(rec.url, /^https:\/\/fake-\d+\.example$/);
+// ---- addressing: one origin, one token per spec ----
+
+test('sharing returns a token-addressed URL and records the token', async () => {
+  const { pubs: p } = mkPubs();
+  const rec = await p.share('alpha');
   assert.equal(rec.specId, 'alpha');
-  assert.ok(rec.port > 0);
-  assert.deepEqual(readShare('alpha'), rec, 'the record is on disk');
+  assert.match(rec.token, /^[0-9a-f]{32}$/);
+  assert.equal(rec.url, `${p.origin()}/s/${rec.token}`);
+  assert.equal(readShare('alpha').token, rec.token, 'the token is on disk');
+  await p.stopAll();
 });
 
-test('the published listener actually answers on its port', async () => {
-  const rec = readShare('alpha');
-  const r = await fetch(`http://127.0.0.1:${rec.port}/`);
+// A record must not pin an origin, because the origin can change under it and
+// then every record would need rewriting to stay true.
+test('the record holds the token and nothing about the tunnel', async () => {
+  seed('g-disk');
+  const { pubs: p } = mkPubs();
+  await p.share('g-disk');
+  const onDisk = readShare('g-disk');
+  assert.deepEqual(Object.keys(onDisk).sort(), ['createdAt', 'specId', 'token']);
+  await p.stopAll();
+});
+
+// The whole point of the rework: N specs must not mean N tunnels, because a
+// stable origin cannot be built out of one hostname per spec.
+test('two published specs share one tunnel and one origin', async () => {
+  seed('g-one'); seed('g-two');
+  const { pubs: p, publish } = mkPubs();
+  const a = await p.share('g-one');
+  const b = await p.share('g-two');
+  assert.equal(publish.calls.length, 1, 'one tunnel for both');
+  assert.equal(new URL(a.url).origin, new URL(b.url).origin, 'and one origin');
+  assert.notEqual(a.token, b.token);
+  await p.stopAll();
+});
+
+test('the tunnel starts on the first publish, not before', async () => {
+  seed('g-lazy');
+  const { pubs: p, publish } = mkPubs();
+  assert.equal(publish.calls.length, 0, 'nothing published, nothing exposed');
+  assert.equal(p.origin(), null);
+  await p.share('g-lazy');
+  assert.equal(publish.calls.length, 1);
+  await p.stopAll();
+});
+
+// D4: "nothing published" and "nothing exposed" must be the same state.
+test('the tunnel stops on the last unpublish and returns for the next publish', async () => {
+  seed('g-a'); seed('g-b');
+  const { pubs: p, publish } = mkPubs();
+  await p.share('g-a');
+  await p.share('g-b');
+  await p.unshare('g-a');
+  assert.equal(publish.stopped.length, 0, 'one spec left, so the tunnel stays');
+  await p.unshare('g-b');
+  assert.equal(publish.stopped.length, 1, 'nothing published, so nothing exposed');
+  assert.equal(p.origin(), null);
+
+  await p.share('g-a');
+  assert.equal(publish.calls.length, 2, 'and it comes back for the next publish');
+  await p.stopAll();
+});
+
+test('unpublishing one spec leaves the other reachable', async () => {
+  seed('g-keep'); seed('g-drop');
+  const { pubs: p } = mkPubs();
+  const keep = await p.share('g-keep');
+  const drop = await p.share('g-drop');
+  await p.unshare('g-drop');
+  assert.equal(p.resolve(keep.token), 'g-keep', 'still published');
+  assert.equal(p.resolve(drop.token), null, 'revoked immediately');
+  assert.ok(readShare('g-keep'));
+  assert.equal(readShare('g-drop'), null);
+  await p.stopAll();
+});
+
+// D2: republishing is what someone does after losing the link, so it must not
+// invalidate the copies already sent.
+test('republishing returns the same token', async () => {
+  seed('g-again');
+  const { pubs: p, publish } = mkPubs();
+  const first = await p.share('g-again');
+  const second = await p.share('g-again');
+  assert.equal(second.token, first.token);
+  assert.equal(second.url, first.url);
+  assert.equal(publish.calls.length, 1);
+  await p.stopAll();
+});
+
+// D2 keeps a token across a republish, but unpublishing is required to revoke
+// (§2), and a token that came back would resurrect every link already sent. So
+// the two mechanisms are kept disjoint: share-again is idempotent and keeps the
+// token, unshare destroys it, and rotate revokes without unpublishing.
+test('unpublishing destroys the token rather than parking it', async () => {
+  seed('g-cycle');
+  const { pubs: p } = mkPubs();
+  const first = await p.share('g-cycle');
+  await p.unshare('g-cycle');
+  const second = await p.share('g-cycle');
+  assert.notEqual(second.token, first.token, 'the revoked link does not come back');
+  assert.equal(p.resolve(first.token), null);
+  await p.stopAll();
+});
+
+test('rotating mints a new token and revokes the old one', async () => {
+  seed('g-rotate');
+  const { pubs: p } = mkPubs();
+  const first = await p.share('g-rotate');
+  const second = await p.share('g-rotate', { rotate: true });
+  assert.notEqual(second.token, first.token);
+  assert.equal(p.resolve(first.token), null, 'the old link is dead');
+  assert.equal(p.resolve(second.token), 'g-rotate');
+  await p.stopAll();
+});
+
+test('rotating an unpublished spec publishes it', async () => {
+  seed('g-rot-new');
+  const { pubs: p } = mkPubs();
+  const rec = await p.share('g-rot-new', { rotate: true });
+  assert.equal(p.resolve(rec.token), 'g-rot-new');
+  await p.stopAll();
+});
+
+test('resolve refuses anything that is not a live token', async () => {
+  seed('g-res');
+  const { pubs: p } = mkPubs();
+  await p.share('g-res');
+  assert.equal(p.resolve('g-res'), null, 'a spec id is not an address');
+  assert.equal(p.resolve(''), null);
+  assert.equal(p.resolve(null), null);
+  assert.equal(p.resolve('0'.repeat(32)), null, 'a well-formed token nobody minted');
+  await p.stopAll();
+});
+
+test('the gateway answers on the port the registry bound', async () => {
+  seed('g-serve');
+  const { pubs: p } = mkPubs();
+  const rec = await p.share('g-serve');
+  const r = await fetch(`http://127.0.0.1:${p.localPort()}/s/${rec.token}`);
   assert.equal(r.status, 200);
-  assert.match(await r.text(), /alpha/);
+  assert.match(await r.text(), /g-serve/);
+  await p.stopAll();
 });
 
-test('sharing twice returns the same publication, not a second tunnel', async () => {
-  const again = await pubs.share('alpha');
-  assert.equal(again.url, readShare('alpha').url);
-  assert.equal(publishImpl.calls.length, 1, 'only one tunnel was ever started');
+test('the gateway stops answering once the spec is unpublished', async () => {
+  seed('g-revoke'); seed('g-other');
+  const { pubs: p } = mkPubs();
+  const rec = await p.share('g-revoke');
+  await p.share('g-other'); // keeps the gateway up after the revoke
+  const port = p.localPort();
+  assert.equal((await fetch(`http://127.0.0.1:${port}/s/${rec.token}`)).status, 200);
+  await p.unshare('g-revoke');
+  assert.equal((await fetch(`http://127.0.0.1:${port}/s/${rec.token}`)).status, 404,
+    'the link is dead, not stale');
+  await p.stopAll();
 });
 
-// share() awaits a port and a tunnel before it can record anything, so two
-// overlapping calls would both pass the "already live?" check. The loser's
-// tunnel would then be public with nothing tracking it and no way to stop it.
+test('list reports one entry per published spec, each on the shared origin', async () => {
+  seed('g-l1'); seed('g-l2');
+  const { pubs: p } = mkPubs();
+  await p.share('g-l1');
+  await p.share('g-l2');
+  assert.deepEqual(p.list().map((r) => r.specId).sort(), ['g-l1', 'g-l2']);
+  assert.ok(p.list().every((r) => r.url.startsWith(p.origin())));
+  await p.stopAll();
+});
+
+// ---- liveness ----
+
+test('isLive answers for a published spec and denies an unpublished one', async () => {
+  seed('g-live'); seed('g-dead');
+  const { pubs: p } = mkPubs();
+  await p.share('g-live');
+  assert.equal(p.isLive('g-live'), true);
+  assert.equal(p.isLive('g-dead'), false);
+  await p.stopAll();
+});
+
+// Registry membership is not proof the link works. cloudflared can exit on its
+// own, and a badge reading "Shared" over a dead tunnel is worse than none.
+test('a dead tunnel makes every published spec not live', async () => {
+  seed('g-t1'); seed('g-t2');
+  let up = true;
+  const publish = async (port) => ({
+    url: `https://t-${port}.example`, pid: 8,
+    stop: async () => { up = false; }, alive: () => up,
+  });
+  const { pubs: p } = mkPubs({ publishImpl: publish });
+  await p.share('g-t1');
+  await p.share('g-t2');
+  assert.equal(p.isLive('g-t1'), true);
+  up = false;
+  assert.equal(p.isLive('g-t1'), false);
+  assert.equal(p.isLive('g-t2'), false);
+  await p.stopAll();
+});
+
+// The action offered when a link is down is "share again", so that call has to
+// replace a dead tunnel rather than hand its origin back.
+test('sharing again after the tunnel died brings it back on the same token', async () => {
+  seed('g-replace');
+  let n = 0;
+  const alive = [];
+  const publish = async (port) => {
+    const i = n++;
+    alive[i] = true;
+    return {
+      url: `https://gen${i}-${port}.example`, pid: 200 + i,
+      stop: async () => { alive[i] = false; }, alive: () => alive[i],
+    };
+  };
+  const { pubs: p } = mkPubs({ publishImpl: publish });
+  const first = await p.share('g-replace');
+  alive[0] = false;
+  assert.equal(p.isLive('g-replace'), false);
+
+  const second = await p.share('g-replace');
+  assert.equal(second.token, first.token, 'the token is not what broke');
+  assert.notEqual(second.url, first.url, 'but the origin is new');
+  assert.equal(p.isLive('g-replace'), true);
+  await p.stopAll();
+});
+
+// ---- restore across a restart ----
+
+test('restore republishes what was published before, on the same tokens', () => withHome(async () => {
+  seed('g-restore'); seed('g-quiet');
+  const first = mkPubs();
+  const rec = await first.pubs.share('g-restore');
+
+  const second = restart(first);
+  await second.pubs.restore();
+  assert.equal(second.pubs.resolve(rec.token), 'g-restore', 'the link already sent still works');
+  assert.deepEqual(second.pubs.list().map((r) => r.specId), ['g-restore'],
+    'and a spec that was never published stays unpublished');
+  assert.ok(second.pubs.origin(), 'the tunnel is back up');
+  await second.pubs.stopAll();
+}));
+
+test('restore with nothing published starts no tunnel', () => withHome(async () => {
+  seed('g-none');
+  const { pubs: p, publish } = mkPubs();
+  await p.restore();
+  assert.equal(publish.calls.length, 0);
+  assert.equal(p.origin(), null);
+  assert.equal(p.localPort(), null);
+}));
+
+// A record from the scheme that gave each spec its own tunnel names a port that
+// died with its daemon, and a cloudflared child that may not have.
+test('a legacy share record is reaped, not honoured', () => withHome(async () => {
+  seed('g-legacy');
+  const { pubs: p, killed } = mkPubs();
+  writeFileSync(sharePath('g-legacy'), JSON.stringify({
+    specId: 'g-legacy', url: 'https://old.example', port: 5, pid: 31337, createdAt: 'then',
+  }));
+  await p.restore();
+  assert.deepEqual(killed, [31337], 'its tunnel was reaped');
+  assert.equal(readShare('g-legacy'), null, 'and the record is gone');
+  assert.equal(p.list().length, 0);
+  assert.equal(p.origin(), null, 'a legacy record does not count as published');
+}));
+
+test('restore tolerates a legacy record whose process is already gone', () => withHome(async () => {
+  seed('g-legacy2');
+  const { pubs: p } = mkPubs({
+    killImpl: () => { throw new Error('ESRCH'); },
+  });
+  writeFileSync(sharePath('g-legacy2'), JSON.stringify({
+    specId: 'g-legacy2', url: 'https://old.example', port: 5, pid: 999999, createdAt: 'then',
+  }));
+  await p.restore();
+  assert.equal(readShare('g-legacy2'), null);
+}));
+
+test('restore drops a record whose spec is gone', () => withHome(async () => {
+  seed('g-orphan');
+  const first = mkPubs();
+  const rec = await first.pubs.share('g-orphan');
+  rmSync(specDir('g-orphan'), { recursive: true, force: true });
+
+  const second = restart(first);
+  await second.pubs.restore();
+  assert.equal(second.pubs.resolve(rec.token), null, 'a token for a deleted spec resolves to nothing');
+  assert.equal(second.pubs.list().length, 0);
+}));
+
+test('restart keeps the records and does not stop the tunnels', async () => {
+  seed('omega');
+  const first = mkPubs();
+  const rec = await first.pubs.share('omega');
+  assert.equal(first.publish.calls.length, 1);
+
+  const second = restart(first);
+  assert.equal(readShare('omega').token, rec.token, 'the record survives');
+  assert.equal(second.publish.stopped.length, 0, 'no tunnel was stopped on the way down');
+  assert.equal(second.publish.calls.length, 1, 'and the call count carries over');
+  assert.equal(second.pubs.list().length, 0, 'the new registry starts empty, as a new process would');
+});
+
+// ---- lifecycle races (these predate the gateway and still have to hold) ----
+
+// share() awaits a tunnel before it can record anything, so two overlapping
+// calls would both pass the "already published?" check. The loser's tunnel would
+// then be public with nothing tracking it and no way to stop it.
 test('overlapping shares start one tunnel, not two', async () => {
   seed('zeta');
-  const publish = fakePublisher();
-  const p = createPublications({ publishImpl: publish });
+  const { pubs: p, publish } = mkPubs();
   const [a, b, c] = await Promise.all([p.share('zeta'), p.share('zeta'), p.share('zeta')]);
   assert.equal(publish.calls.length, 1, 'only one tunnel was started');
   assert.equal(a.url, b.url);
@@ -128,91 +426,14 @@ test('overlapping shares start one tunnel, not two', async () => {
   await p.stopAll();
 });
 
-// Registry membership is not proof the link works. cloudflared can die on its
-// own, and a badge that reads "Shared" over a dead tunnel is worse than none.
-test('a publication whose tunnel died is not reported as live', async () => {
-  seed('rho');
-  let up = true;
-  const publish = async (port) => ({
-    url: `https://r-${port}.example`, pid: 9, stop: async () => { up = false; }, alive: () => up,
-  });
-  const p = createPublications({ publishImpl: publish });
-  await p.share('rho');
-  assert.equal(p.isLive('rho'), true, 'live while the tunnel is up');
-  up = false; // cloudflared exits on its own
-  assert.equal(p.isLive('rho'), false, 'and not once it is gone');
-  assert.ok(readShare('rho'), 'the record is still there, which is why asking the tunnel matters');
-  await p.stopAll();
-});
-
-// The action offered when a link is down is "share again", so that call has to
-// replace a dead publication rather than hand its URL back.
-test('sharing again replaces a publication whose tunnel died', async () => {
-  seed('upsilon');
-  let n = 0;
-  const alive = [];
-  const publish = async (port) => {
-    const i = n++;
-    alive[i] = true;
-    return {
-      url: `https://gen${i}-${port}.example`, pid: 100 + i,
-      stop: async () => { alive[i] = false; }, alive: () => alive[i],
-    };
-  };
-  const p = createPublications({ publishImpl: publish });
-  const first = await p.share('upsilon');
-  alive[0] = false; // the tunnel dies on its own
-  assert.equal(p.isLive('upsilon'), false);
-
-  const second = await p.share('upsilon');
-  assert.notEqual(second.url, first.url, 'a new link, not the dead one');
-  assert.equal(p.isLive('upsilon'), true, 'and it works');
-  assert.equal(readShare('upsilon').url, second.url, 'the record names the new one');
-  await p.stopAll();
-});
-
-test('sharing a healthy publication still returns the same link', async () => {
-  seed('phi');
+test('overlapping shares of different specs still start one tunnel', async () => {
+  seed('zeta1'); seed('zeta2');
   const { pubs: p, publish } = mkPubs();
-  const a = await p.share('phi');
-  const b = await p.share('phi');
-  assert.equal(a.url, b.url);
-  assert.equal(publish.calls.length, 1, 'and starts no second tunnel');
+  const [a, b] = await Promise.all([p.share('zeta1'), p.share('zeta2')]);
+  assert.equal(publish.calls.length, 1);
+  assert.notEqual(a.token, b.token);
+  assert.equal(p.list().length, 2);
   await p.stopAll();
-});
-
-test('an unpublished spec is not live', async () => {
-  seed('sigma');
-  const { pubs: p } = mkPubs();
-  assert.equal(p.isLive('sigma'), false);
-});
-
-// Regenerating a dead link is exactly when an orphan tunnel is still running.
-test('publishing over a stale record reaps the tunnel it named', async () => {
-  seed('tau');
-  const { pubs: p, killed } = mkPubs();
-  writeFileSync(sharePath('tau'), JSON.stringify({
-    specId: 'tau', url: 'https://dead.example', port: 1, pid: 4321, createdAt: 'then',
-  }));
-  await p.share('tau');
-  assert.deepEqual(killed, [4321], 'the tunnel behind the dead link was stopped first');
-  await p.stopAll();
-});
-
-// The fixture's own contract. A restart must leave behind exactly what a killed
-// daemon leaves behind, or every adopt-on-start test built on it is testing a
-// situation that cannot occur.
-test('restart keeps the records and does not stop the tunnels', async () => {
-  seed('omega');
-  const first = mkPubs();
-  const rec = await first.pubs.share('omega');
-  assert.equal(first.publish.calls.length, 1);
-
-  const second = restart(first);
-  assert.deepEqual(readShare('omega'), rec, 'the record survives');
-  assert.equal(second.publish.stopped.length, 0, 'no tunnel was stopped on the way down');
-  assert.equal(second.publish.calls.length, 1, 'and the call count carries over');
-  assert.equal(second.pubs.list().length, 0, 'the new registry starts empty, as a new process would');
 });
 
 test('a failed share does not poison the next attempt', async () => {
@@ -222,32 +443,32 @@ test('a failed share does not poison the next attempt', async () => {
     if (++attempt === 1) throw new Error('cloudflared exited before publishing');
     return { url: `https://ok-${port}.example`, pid: 1, stop: async () => {} };
   };
-  const p = createPublications({ publishImpl: flaky });
+  const { pubs: p } = mkPubs({ publishImpl: flaky });
   await assert.rejects(() => p.share('eta'), /exited/);
   const rec = await p.share('eta');
   assert.match(rec.url, /^https:\/\/ok-/, 'the retry publishes');
   await p.stopAll();
 });
 
-// A share that has not finished starting is in neither `live` nor the store, so
-// a revoke or a shutdown that only sweeps `live` misses it — and it publishes
-// itself moments later, having outlived the thing meant to stop it.
+// A share that has not finished starting is in neither the registry nor the
+// store, so a revoke that only sweeps the registry misses it, and it publishes
+// itself moments later having outlived the thing meant to stop it.
 test('revoking a share that is still starting still stops it', async () => {
   seed('iota');
   let release;
   const held = new Promise((r) => { release = r; });
   const stopped = [];
   const slow = async (port) => {
-    await held; // the tunnel is still coming up
+    await held;
     return { url: `https://slow-${port}.example`, pid: 3, stop: async () => stopped.push(port) };
   };
-  const p = createPublications({ publishImpl: slow });
+  const { pubs: p } = mkPubs({ publishImpl: slow });
   const sharing = p.share('iota');
   const revoking = p.unshare('iota');   // arrives before the tunnel is up
   release();
-  const rec = await sharing;
+  await sharing;
   await revoking;
-  assert.ok(stopped.includes(rec.port), 'the tunnel that landed late was stopped');
+  assert.equal(stopped.length, 1, 'the tunnel that landed late was stopped');
   assert.equal(readShare('iota'), null, 'and left no record');
   assert.equal(p.list().length, 0);
 });
@@ -261,7 +482,7 @@ test('shutdown stops a share that is still starting', async () => {
     await held;
     return { url: `https://slow-${port}.example`, pid: 4, stop: async () => stopped.push(port) };
   };
-  const p = createPublications({ publishImpl: slow });
+  const { pubs: p } = mkPubs({ publishImpl: slow });
   const sharing = p.share('kappa');
   const stopping = p.stopAll();
   release();
@@ -274,9 +495,9 @@ test('shutdown stops a share that is still starting', async () => {
   assert.equal(readShare('kappa'), null);
 });
 
-// A tunnel takes seconds to come up, and the spec can be deleted in that
-// window. Publishing it afterwards would serve a spec that no longer exists,
-// and writeShare would recreate the directory the delete had just removed.
+// A tunnel takes seconds to come up, and the spec can be deleted in that window.
+// Publishing it afterwards would serve a spec that no longer exists, and
+// writeShare would recreate the directory the delete had just removed.
 test('a share whose spec is deleted mid-startup publishes nothing', async () => {
   seed('mu');
   let release;
@@ -286,9 +507,9 @@ test('a share whose spec is deleted mid-startup publishes nothing', async () => 
     await held;
     return { url: `https://slow-${port}.example`, pid: 5, stop: async () => stopped.push(port) };
   };
-  const p = createPublications({ publishImpl: slow });
+  const { pubs: p } = mkPubs({ publishImpl: slow });
   const sharing = p.share('mu');
-  rmSync(specDir('mu'), { recursive: true, force: true }); // deleted while the tunnel comes up
+  rmSync(specDir('mu'), { recursive: true, force: true });
   release();
   await assert.rejects(() => sharing, /unknown spec/);
   assert.equal(stopped.length, 1, 'the tunnel that came up was taken down again');
@@ -301,12 +522,9 @@ test('a share whose spec is deleted mid-startup publishes nothing', async () => 
 // the door for its whole duration instead.
 test('a share cannot commit anywhere inside a delete', async () => {
   seed('nu');
-  const publish = fakePublisher();
-  const p = createPublications({ publishImpl: publish });
+  const { pubs: p, publish } = mkPubs();
   let refused = null;
   await p.unshareThen('nu', async () => {
-    // Mid-delete: the spec still exists on disk, so an existence check would
-    // pass. The share must be refused anyway.
     refused = await p.share('nu').then(() => null, (e) => e.message);
     rmSync(specDir('nu'), { recursive: true, force: true });
   });
@@ -318,7 +536,7 @@ test('a share cannot commit anywhere inside a delete', async () => {
 
 test('sharing works again once a delete finishes', async () => {
   seed('xi');
-  const p = createPublications({ publishImpl: fakePublisher() });
+  const { pubs: p } = mkPubs();
   await p.unshareThen('xi', async () => {});
   const rec = await p.share('xi');
   assert.ok(rec.url, 'the door reopens');
@@ -327,107 +545,41 @@ test('sharing works again once a delete finishes', async () => {
 
 test('a share arriving after shutdown is refused rather than leaked', async () => {
   seed('lambda');
-  const p = createPublications({ publishImpl: fakePublisher() });
+  const { pubs: p } = mkPubs();
   await p.stopAll();
   await assert.rejects(() => p.share('lambda'), /shutting down/);
   assert.equal(readShare('lambda'), null);
 });
 
-// The record is the only route back to a tunnel whose daemon is gone, so it
-// must outlive the tunnel rather than the other way round.
-test('unshare drops the record only after the tunnel is confirmed stopped', async () => {
-  seed('theta');
-  const order = [];
-  const publish = async (port) => ({
-    url: `https://t-${port}.example`,
-    pid: 7,
-    stop: async () => {
-      order.push('tunnel stopped');
-      // The record must still be readable here: if the process died at this
-      // moment, the pid is the only way a later daemon could reap the tunnel.
-      order.push(readShare('theta') ? 'record still present' : 'record already gone');
-    },
-  });
-  const p = createPublications({ publishImpl: publish });
-  await p.share('theta');
-  await p.unshare('theta');
-  assert.deepEqual(order, ['tunnel stopped', 'record still present']);
-  assert.equal(readShare('theta'), null, 'and it is gone once the tunnel is');
-});
-
-test('two specs get two independent publications', async () => {
-  const b = await pubs.share('beta');
-  assert.notEqual(b.port, readShare('alpha').port);
-  assert.equal(publishImpl.calls.length, 2);
-  assert.equal(pubs.list().length, 2);
-});
-
-test('unsharing stops the tunnel, closes the socket and drops the record', async () => {
-  const { port } = readShare('beta');
-  await pubs.unshare('beta');
-  assert.equal(readShare('beta'), null);
-  assert.equal(existsSync(sharePath('beta')), false);
-  assert.ok(publishImpl.stopped.includes(port), 'the tunnel was stopped');
-  await assert.rejects(() => fetch(`http://127.0.0.1:${port}/`), 'the socket is closed');
-});
-
 test('unsharing something unpublished is not an error', async () => {
-  assert.equal(await pubs.unshare('beta'), false);
+  seed('rho');
+  const { pubs: p } = mkPubs();
+  assert.equal(await p.unshare('rho'), false);
 });
 
 test('sharing an unknown spec fails rather than publishing nothing', async () => {
-  await assert.rejects(() => pubs.share('nosuchspec'), /unknown spec/i);
+  const { pubs: p } = mkPubs();
+  await assert.rejects(() => p.share('nosuchspec'), /unknown spec/i);
 });
 
 // A publish that fails must not leave a listening socket behind.
-test('a failed tunnel leaves no listener and no record', async () => {
+test('a failed tunnel leaves no gateway and no record', async () => {
+  seed('sigma');
   const boom = async () => { throw new Error('cloudflared is not installed'); };
-  const p = createPublications({ publishImpl: boom });
-  await assert.rejects(() => p.share('beta'), /not installed/);
-  assert.equal(readShare('beta'), null);
+  const { pubs: p } = mkPubs({ publishImpl: boom });
+  await assert.rejects(() => p.share('sigma'), /not installed/);
+  assert.equal(readShare('sigma'), null);
   assert.equal(p.list().length, 0);
+  assert.equal(p.localPort(), null, 'the gateway was closed again');
 });
 
-// Records outlive the daemon; the processes they name do not. A cloudflared
-// child survives a SIGKILLed parent, so the record is the only way back to it.
-test('stale records are cleared at startup and their tunnels reaped', async () => {
-  seed('gamma');
-  writeFileSync(sharePath('gamma'), JSON.stringify({
-    specId: 'gamma', url: 'https://gone.example', port: 1, pid: 999999, createdAt: 'then',
-  }));
-  const killed = [];
-  const p = createPublications({ publishImpl: fakePublisher(), killImpl: (pid) => killed.push(pid) });
-  p.clearStale();
-  assert.equal(readShare('gamma'), null, 'the record is gone');
-  assert.ok(killed.includes(999999), 'the tunnel it named was reaped');
-});
-
-test('clearStale tolerates a process that is already gone', () => {
-  seed('delta');
-  writeFileSync(sharePath('delta'), JSON.stringify({
-    specId: 'delta', url: 'https://gone.example', port: 1, pid: 999998, createdAt: 'then',
-  }));
-  const p = createPublications({
-    publishImpl: fakePublisher(),
-    killImpl: () => { throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' }); },
-  });
-  p.clearStale();
-  assert.equal(readShare('delta'), null);
-});
-
-// Startup reaping must not touch a publication this daemon is already serving.
-test('clearStale leaves this instance\'s own publications alone', async () => {
-  seed('epsilon');
-  const p = createPublications({ publishImpl: fakePublisher(), killImpl: () => {} });
-  const rec = await p.share('epsilon');
-  p.clearStale();
-  assert.deepEqual(readShare('epsilon'), rec, 'still published');
-  assert.equal(p.list().length, 1);
+test('stopAll takes down the tunnel and closes the gateway', async () => {
+  seed('g-stop');
+  const { pubs: p, publish } = mkPubs();
+  const rec = await p.share('g-stop');
+  const port = p.localPort();
   await p.stopAll();
-});
-
-test('stopAll takes everything down', async () => {
-  await pubs.stopAll();
-  assert.equal(pubs.list().length, 0);
-  assert.equal(readShare('alpha'), null);
+  assert.equal(publish.stopped.length, 1);
+  assert.equal(p.origin(), null);
+  await assert.rejects(() => fetch(`http://127.0.0.1:${port}/s/${rec.token}`), 'the socket is closed');
 });

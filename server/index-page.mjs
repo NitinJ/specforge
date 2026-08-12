@@ -147,16 +147,17 @@ function collRowHtml(key, count) {
 
 /**
  * @param {object} [opts]
- * @param {(id:string) => boolean} [opts.isShareLive] from the daemon's
- *   publications registry — a share record on disk can outlive its listener.
+ * @param {(id:string) => {url:string|null, live:boolean}|null} [opts.shareInfo]
+ *   from the daemon's publications registry. The record on disk holds only a
+ *   token, so the public URL is composed by whoever knows the current origin.
  */
-export function renderIndex({ isShareLive } = {}) {
+export function renderIndex({ shareInfo } = {}) {
   const theme = readGlobalPrefs().theme === 'dark' ? 'dark' : 'light';
   const all = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const tpls = all.filter((m) => m.template);
   const specs = all.filter((m) => !m.template);
   const n = specs.length;
-  const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, isShareLive)]));
+  const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, shareInfo)]));
   const sigOf = (m) => sigs.get(m.id);
 
   const { order, named } = groupByCollection(specs);

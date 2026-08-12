@@ -421,19 +421,20 @@ test('the Needs you view filters to specs with unsent or answered comments', asy
   assert.equal(document.getElementById('htitle').textContent, 'Needs you', 'the header names the view');
 });
 
-test('a live share shows a link on the row; a dead record shows nothing', async (t) => {
-  const { writeFileSync } = await import('node:fs');
-  const { sharePath } = await import('../lib/store-paths.mjs');
+test('a live share shows a link on the row; a dead one shows nothing', (t) => {
   const up = createSpec({ title: 'Up', html: '<h1>U</h1>' });
   const down = createSpec({ title: 'Down', html: '<h1>D</h1>' });
-  for (const id of [up, down]) {
-    writeFileSync(sharePath(id), JSON.stringify({ specId: id, url: `https://${id}.trycloudflare.com`, port: 1, pid: 2, createdAt: 'now' }));
-  }
-  const { window } = loadIndex(t, { isShareLive: (id) => id === up });
+  // What the publications registry hands back: one origin, one token per spec.
+  const shareInfo = (id) => ({
+    url: `https://one-origin.trycloudflare.com/s/${id.repeat(4).slice(0, 32)}`,
+    live: id === up,
+  });
+  const { window } = loadIndex(t, { shareInfo });
   const { document } = window;
   const pub = document.querySelector(`.row[data-id="${up}"] .pub`);
   assert.ok(pub, 'the reachable share is marked');
-  assert.equal(pub.getAttribute('href'), `https://${up}.trycloudflare.com`, 'the marker opens the public link');
+  assert.match(pub.getAttribute('href'), /^https:\/\/one-origin\.trycloudflare\.com\/s\/[0-9a-f]{32}$/,
+    'the marker opens the composed public link');
   assert.equal(document.querySelector(`.row[data-id="${down}"] .pub`), null, 'an unreachable share is not advertised');
   assert.match(document.querySelector('.nav[data-view="shared"]').textContent, /1$/, 'the rail counts only what answers');
 });
