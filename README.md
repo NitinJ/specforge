@@ -57,7 +57,18 @@ built-ins — no `npm install`, no services to run.
 
 ## Install
 
-From GitHub:
+```sh
+git clone https://github.com/NitinJ/specforge && cd specforge
+./install.sh                      # the plugin
+./install.sh spec.example.com     # ...and a permanent share URL on a host you own
+```
+
+The script checks prerequisites first and reports everything missing at once,
+installs or updates the plugin, and, given a hostname, runs the tunnel setup. It
+installs nothing with `sudo`; the one privileged step is printed for you to run.
+`-n` shows what it would do and changes nothing. Re-running it is safe.
+
+Or by hand:
 
 ```sh
 claude plugin marketplace add NitinJ/specforge
@@ -213,13 +224,15 @@ sudo cloudflared --config ~/.cloudflared/config.yml service install
 That is what makes the tunnel survive a reboot. After it, restart the daemon.
 
 **For a team**, add each person to the same Cloudflare account and give them a
-subdomain of one shared domain. Each machine runs `setup-tunnel` with its own
+subdomain of one shared domain. Each machine runs the installer with its own
 hostname; nobody shares credentials, and nobody needs their own domain:
 
 ```
-specforge setup-tunnel spec.example.com     # yours
-specforge setup-tunnel lavee.example.com    # theirs
+./install.sh spec.example.com      # yours
+./install.sh lavee.example.com     # theirs
 ```
+
+Each person authenticates to Cloudflare as themselves, in their own browser.
 
 One tunnel per machine is not optional: a hostname routes to whichever machine
 runs its tunnel, so two machines on one tunnel means requests land on either at
