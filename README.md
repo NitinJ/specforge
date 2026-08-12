@@ -73,8 +73,8 @@ and survive edits to the document.
 
 The floating **SF** button opens contents, theme, width and **Export → PDF**.
 The pill beside it is the single action worth taking next, which changes as the
-spec moves: *Submit comments → Awaiting response → Review replies → LGTM ✓ →
-Implement → → Done ✓*.
+spec moves: `Submit comments` → `Awaiting response` → `Review replies` →
+`LGTM ✓` → `Implement →` → `Done ✓`.
 
 ### Send comments to the agent
 
