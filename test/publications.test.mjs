@@ -16,7 +16,7 @@ const home = mkdtempSync(join(tmpdir(), 'sf-pubs-'));
 process.env.SPECFORGE_HOME = home;
 
 const { createPublications } = await import('../lib/publications.mjs');
-const { specDir, specHtmlPath, sharePath } = await import('../lib/store-paths.mjs');
+const { specDir, specHtmlPath, sharePath, tunnelPath } = await import('../lib/store-paths.mjs');
 const { readShare } = await import('../lib/store-share.mjs');
 const { readTunnel } = await import('../lib/store-tunnel.mjs');
 
@@ -550,6 +550,75 @@ test('a tunnel that will not die keeps its record', () => withHome(async () => {
   await second.pubs.unshare('a-immortal');
   assert.ok(readTunnel(), 'the only route back to a live process is not thrown away');
   assert.equal(readTunnel().pid, 4242);
+}));
+
+// The ownership check authorises a signal, so "cloudflared" appearing anywhere
+// in a command line is not enough: an editor holding a file by that name, or a
+// second cloudflared serving something else, would both pass.
+test('ownership requires the recorded port, not just the word cloudflared', () => withHome(async () => {
+  seed('a-lookalike');
+  const first = mkPubs();
+  await first.pubs.share('a-lookalike');
+  const { localPort } = readTunnel();
+
+  const seen = [];
+  const second = await restart(first, {
+    ownsImpl: (pid, port) => { seen.push(port); return false; },
+  });
+  await second.pubs.restore();
+  assert.ok(seen.length > 0, 'the check ran');
+  assert.ok(seen.every((p) => p === localPort), 'and was told which port makes it ours');
+  assert.deepEqual(second.killed, [], 'a lookalike is not signalled');
+}));
+
+// A running tunnel with no record is a public endpoint nothing can adopt or
+// reap, which is worse than no tunnel at all.
+test('a tunnel that cannot be recorded is taken back down', () => withHome(async () => {
+  seed('a-norec');
+  const { pubs: p, publish } = mkPubs();
+  // A directory where the record file goes: writeFileSync fails with EISDIR and
+  // nothing else in the store is disturbed.
+  mkdirSync(tunnelPath(), { recursive: true });
+  await assert.rejects(() => p.share('a-norec'));
+  assert.equal(publish.stopped.length, 1, 'the unrecordable tunnel was stopped');
+  assert.equal(p.origin(), null);
+  assert.equal(p.localPort(), null, 'and the gateway did not stay open');
+}));
+
+// Retiring an adopted tunnel waits on a process. A share landing in that window
+// used to have its record cleared and its gateway closed by the retire that
+// started first, leaving a dead link and an untracked process.
+test('a share during a slow retire is not clobbered by it', () => withHome(async () => {
+  seed('a-race1'); seed('a-race2');
+  let release;
+  const held = new Promise((r) => { release = r; });
+  let slow = false;
+  const { pubs: p } = mkPubs({
+    publishImpl: (() => {
+      const fn = fakePublisher();
+      const wrapped = async (port) => {
+        const t = await fn(port);
+        return { ...t, stop: async () => { if (slow) await held; return fn.stopped.push(port); } };
+      };
+      wrapped.calls = fn.calls; wrapped.stopped = fn.stopped;
+      return wrapped;
+    })(),
+  });
+
+  await p.share('a-race1');
+  slow = true;
+  const retiring = p.unshare('a-race1');        // stops the tunnel, slowly
+  const sharing = p.share('a-race2');           // arrives mid-retire
+  release();
+  await retiring;
+  const rec = await sharing;
+
+  assert.ok(p.origin(), 'the replacement tunnel is up');
+  assert.equal(p.resolve(rec.token), 'a-race2', 'and its spec is reachable');
+  assert.ok(readTunnel(), 'its record was not deleted by the retire');
+  assert.equal(readTunnel().url, p.origin());
+  assert.ok(p.localPort(), 'and its gateway was not closed');
+  await p.stopAll();
 }));
 
 test('nothing published means the leftover tunnel is reaped rather than adopted', () => withHome(async () => {
