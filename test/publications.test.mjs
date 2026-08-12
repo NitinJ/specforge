@@ -215,18 +215,32 @@ test('republishing returns the same token', async () => {
   await p.stopAll();
 });
 
-// D2 keeps a token across a republish, but unpublishing is required to revoke
-// (§2), and a token that came back would resurrect every link already sent. So
-// the two mechanisms are kept disjoint: share-again is idempotent and keeps the
-// token, unshare destroys it, and rotate revokes without unpublishing.
-test('unpublishing destroys the token rather than parking it', async () => {
+// D12: a URL that has to survive a reboot has to survive an accidental unshare,
+// which is the likelier event. Unpublishing stops serving the link; rotate is
+// the only thing that changes it.
+test('a token survives an unpublish, so the URL is permanent', async () => {
   seed('g-cycle');
   const { pubs: p } = mkPubs();
   const first = await p.share('g-cycle');
   await p.unshare('g-cycle');
+  assert.equal(p.resolve(first.token), null, 'it stops serving while unpublished');
+
   const second = await p.share('g-cycle');
-  assert.notEqual(second.token, first.token, 'the revoked link does not come back');
-  assert.equal(p.resolve(first.token), null);
+  assert.equal(second.token, first.token, 'and comes back on the path people have');
+  // The origin still moves here, because unpublishing the last spec retires the
+  // quick tunnel and a new one draws a new hostname. Only a configured origin
+  // makes the whole URL stable; see the publicOrigin tests.
+  await p.stopAll();
+});
+
+test('rotating after an unshare still changes the link', async () => {
+  seed('g-cycle-rot');
+  const { pubs: p } = mkPubs();
+  const first = await p.share('g-cycle-rot');
+  await p.unshare('g-cycle-rot');
+  const second = await p.share('g-cycle-rot', { rotate: true });
+  assert.notEqual(second.token, first.token);
+  assert.equal(p.resolve(first.token), null, 'the old link is dead for good');
   await p.stopAll();
 });
 
@@ -671,6 +685,108 @@ test('restart keeps the records and does not stop the tunnels', async () => {
   assert.equal(second.publish.calls.length, 1, 'and the call count carries over');
   assert.equal(second.pubs.list().length, 0, 'the new registry starts empty, as a new process would');
 });
+
+// ---- a tunnel someone else owns ----
+//
+// With publicOrigin set, the tunnel is a named cloudflared or a Funnel run as a
+// service. Every process this module would otherwise start, adopt or kill
+// belongs to somebody else, so it must do none of those.
+
+const PUB = 'https://spec.example.com';
+
+test('a configured origin is used and no tunnel is started', () => withHome(async () => {
+  seed('c-one');
+  const { pubs: p, publish } = mkPubs({ publicOrigin: PUB });
+  const rec = await p.share('c-one');
+  assert.equal(publish.calls.length, 0, 'nothing was spawned');
+  assert.equal(p.origin(), PUB);
+  assert.equal(rec.url, `${PUB}/s/${rec.token}`);
+  assert.ok(p.localPort(), 'the gateway is up for the external tunnel to reach');
+  await p.stopAll();
+}));
+
+test('the gateway binds the exact configured port and does not walk', () => withHome(async () => {
+  seed('c-port');
+  const squatter = createServer();
+  await new Promise((r) => squatter.listen(0, '127.0.0.1', r));
+  const taken = squatter.address().port;
+  try {
+    const { pubs: p } = mkPubs({ publicOrigin: PUB, port: taken });
+    // Walking would leave the external tunnel pointed at a port serving nothing
+    // while every link reported healthy, so this has to fail loudly instead.
+    await assert.rejects(() => p.share('c-port'), /EADDRINUSE|address/i);
+    assert.equal(p.localPort(), null);
+  } finally {
+    await new Promise((r) => squatter.close(r));
+  }
+}));
+
+test('nothing is recorded, because there is no process of ours to find', () => withHome(async () => {
+  seed('c-rec');
+  const { pubs: p } = mkPubs({ publicOrigin: PUB });
+  await p.share('c-rec');
+  assert.equal(readTunnel(), null);
+  await p.stopAll();
+}));
+
+test('unpublishing the last spec kills nothing', () => withHome(async () => {
+  seed('c-last');
+  const { pubs: p, publish, killed } = mkPubs({ publicOrigin: PUB });
+  await p.share('c-last');
+  await p.unshare('c-last');
+  assert.deepEqual(publish.stopped, [], 'no tunnel of ours to stop');
+  assert.deepEqual(killed, [], 'and no process of ours to signal');
+  assert.equal(p.localPort(), null, 'but the gateway closes, so nothing is served');
+}));
+
+test('a restart re-serves on the same URLs without touching the tunnel', () => withHome(async () => {
+  seed('c-restart');
+  const first = mkPubs({ publicOrigin: PUB });
+  const before = await first.pubs.share('c-restart');
+
+  const second = await restart(first);
+  await second.pubs.restore();
+  assert.equal(second.publish.calls.length, 0, 'still nothing spawned');
+  assert.equal(second.pubs.shareInfo('c-restart').url, before.url, 'the same link');
+  await second.pubs.stopAll();
+}));
+
+// Someone can switch to a named tunnel while a quick tunnel of ours is running.
+test('switching to a configured origin reaps the tunnel we used to own', () => withHome(async () => {
+  seed('c-switch');
+  const first = mkPubs();                       // quick tunnel, ours
+  await first.pubs.share('c-switch');
+  assert.ok(readTunnel(), 'ours was recorded');
+
+  const second = await restart(first, { publicOrigin: PUB });
+  await second.pubs.restore();
+  assert.deepEqual(second.killed, [4242], 'the tunnel we no longer need was stopped');
+  assert.equal(readTunnel(), null);
+  assert.equal(second.pubs.origin(), PUB);
+  await second.pubs.stopAll();
+}));
+
+// The point of the whole exercise: with an origin that does not move and a
+// token that does not move, the URL is permanent through anything short of a
+// deliberate rotate.
+test('with a configured origin the whole URL survives an unshare cycle', () => withHome(async () => {
+  seed('c-perm');
+  const { pubs: p } = mkPubs({ publicOrigin: PUB });
+  const first = await p.share('c-perm');
+  await p.unshare('c-perm');
+  const second = await p.share('c-perm');
+  assert.equal(second.url, first.url, 'byte for byte the same link');
+  await p.stopAll();
+}));
+
+test('a configured origin is reported live while the gateway is up', () => withHome(async () => {
+  seed('c-live');
+  const { pubs: p } = mkPubs({ publicOrigin: PUB });
+  await p.share('c-live');
+  assert.equal(p.isLive('c-live'), true);
+  await p.stopAll();
+  assert.equal(p.isLive('c-live'), false);
+}));
 
 // ---- lifecycle races (these predate the gateway and still have to hold) ----
 

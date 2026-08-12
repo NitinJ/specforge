@@ -177,13 +177,37 @@ with the last `unshare`, so nothing published and nothing exposed are the same
 state. A reboot still changes the hostname: quick tunnels draw a new one on every
 run.
 
-Three ways a link stops working, and they are different:
+A spec's link never changes on its own. The token is written once and kept, so
+only one command ever changes it:
 
-| Action | What happens to the token | What happens to the link |
-|---|---|---|
-| `share` again | kept | same link, no second tunnel |
-| `share --rotate` | replaced | old link 404s, spec stays published |
-| `unshare` | destroyed | old link 404s, spec is unpublished |
+| Action | The link |
+|---|---|
+| `share` again | unchanged |
+| `unshare` then `share` | unchanged; unpublishing stops serving it, it does not kill it |
+| `share --rotate` | **replaced**; every copy already sent stops working |
+
+Rotating is therefore the only way to revoke a link that has leaked.
+
+### A permanent address of your own
+
+By default the hostname is drawn fresh on every cloudflared run, so a reboot
+changes it. Point a named tunnel (or a Tailscale Funnel) at the gateway and tell
+SpecForge about it, and the address stops moving entirely:
+
+```
+specforge origin https://spec.example.com   # then restart the daemon
+specforge origin                            # what is set now
+specforge origin --clear                    # hand the tunnel back to SpecForge
+```
+
+With an origin set, SpecForge never starts, adopts or kills a tunnel; running
+one is yours to do. It also binds **exactly** 14180 and fails loudly rather than
+walking to another port, because your tunnel's config names one port and serving
+anywhere else would leave it pointed at nothing while every link here still
+reported healthy.
+
+For cloudflared, the matching setup is a tunnel whose ingress sends your
+hostname to `http://localhost:14180`, run as a service so it survives a reboot.
 
 ### Discussion, and work for the agent
 
