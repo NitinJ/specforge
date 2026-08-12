@@ -91,14 +91,27 @@ specforge unshare <id>          # stop serving it
 specforge shares                # what is public right now
 ```
 
-**A link never changes on its own.** It survives a daemon restart, a tunnel
-restart and a reboot. One command changes it:
+A link is an **origin** plus a **token**, and they are stable for different
+reasons.
 
-| Action | The link |
+**The token never changes on its own.** It is written once per spec and kept:
+
+| Action | The token |
 |---|---|
 | `share` again | unchanged |
-| `unshare` then `share` | unchanged |
+| `unshare` then `share` | unchanged; unpublishing stops serving a link, it does not kill it |
 | `share --rotate` | **replaced**, so rotating is how you revoke |
+
+**The origin depends on which tunnel you run.** By default a cloudflared quick
+tunnel draws a fresh hostname on every run:
+
+| Event | Default quick tunnel | Configured origin |
+|---|---|---|
+| daemon restart | survives, the tunnel is adopted | survives |
+| tunnel restart, or reboot | **new hostname**, so sent links break | survives |
+
+`./install.sh` sets up a configured origin, which is why it is the recommended
+path rather than an advanced one.
 
 **Anyone holding a link has your rights on that spec**: read, comment, resolve,
 and submit work to your agent. There are no accounts. Share it the way you would
@@ -201,8 +214,9 @@ Store-wide, at `~/.specforge/config.json`:
 | `publicOrigin` | An origin you serve yourself. Set it and SpecForge never starts, adopts or kills a tunnel, and binds exactly 14180 or fails. |
 
 Per project, at `<project>/.specforge/config.json` (defaults in `lib/config.mjs`):
-`specsDir`, `defaultTheme`, `port`, `naming`, `trackComments`, `cadence`, and the
-advisory `requiredSections`.
+`specsDir`, `defaultTheme`, `port`, `naming`, `trackComments`, `cadence`, the
+advisory `requiredSections`, and `additionalRequiredSections`, which appends to
+the defaults rather than replacing them.
 
 The lint (`lib/lint-spec.mjs`) checks universal basics only: a title, a lifecycle
 status, unique section ids, the light/dark contract, and the house language
