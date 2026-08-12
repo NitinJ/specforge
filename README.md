@@ -13,16 +13,24 @@
 
 ![The review UI: a spec open in the browser with the block-comment sidebar, threads, and the inline composer](docs/review-ui.png)
 
-## Install
+## Who it is for
+
+- **You work with Claude Code and write design docs.** Specs end up in chat scrollback or a markdown file nobody opens twice. This gives them a home and a review loop.
+- **You want a colleague to review, without giving them your repo.** Send a link. They comment in a browser, with no account and no install.
+- **You want review comments to become edits.** Not a summary of what should change: the actual document, changed.
+
+Not for you if you want a hosted wiki, real-time co-editing, or specs that live in your repo as markdown.
+
+## Getting started
 
 ```sh
 git clone https://github.com/NitinJ/specforge && cd specforge
 ./install.sh
 ```
 
-Checks prerequisites, installs the plugin, and sets up a permanent address for
-your specs. It asks you nothing: a browser opens once to pick a domain, and your
-address becomes `<your-username>.<that domain>`.
+That checks prerequisites, installs the plugin, and sets up a permanent web
+address for your specs. It asks you nothing: a browser opens once so you can
+pick a domain, and your address becomes `<your-username>.<that domain>`.
 
 ```sh
 ./install.sh --plugin-only   # skip the sharing setup
@@ -34,55 +42,56 @@ sharing, [cloudflared](https://developers.cloudflare.com/cloudflare-one/connecti
 The installer reports anything missing and installs none of it, because a script
 that takes root on a new machine is a poor first impression.
 
-## The loop
+Then restart Claude Code, or run `/reload-plugins`.
 
-```mermaid
-flowchart LR
-  A["/specforge:create"] --> B["spec.html<br/><i>light/dark, self-contained</i>"]
-  B --> C["Browser review<br/><i>comment on any block</i>"]
-  C -->|"@agent … then Submit"| D["The owning<br/>Claude session"]
-  D -->|"replies inline, edits the spec"| B
-```
+## What you can do
 
-Submitting wakes the session that owns the spec, even while it sits idle. It
-replies to each thread and amends the document; the open page reloads itself.
+### Write a spec
 
 ```
 /specforge:create research on on-device vs server inference
 ```
 
-SpecForge infers the type, scaffolds the spec, starts the daemon and prints a
-URL. Hover a block to comment. The floating **SF** button opens contents, theme,
-width and Export PDF; the pill beside it is the one action worth taking next.
+SpecForge picks the right kind of document from your wording, confirms it,
+scaffolds it, and prints a URL. Specs are single self-contained HTML files with
+light and dark themes, a floating table of contents, and stable anchors.
 
-## Spec types
-
-`/specforge:create` picks one from your wording and confirms it. Sections are
-starting points the authoring skill adapts, not a rigid schema.
-
-| Type | For | Scaffolds |
+| Kind | For | You get |
 |---|---|---|
 | `design` | a decision or architecture doc | problem, goals, design, alternatives, decisions, open questions |
 | `research` | a findings report | question, method, findings, analysis, recommendations, sources |
-| `design-impl` *(default)* | design **and** build it | the design sections, plus Stages/Tasks, a live tracker, Runtime stubs |
-| `impl` | build an existing design | light scope, plus Stages/Tasks, a live tracker, Runtime stubs |
+| `design-impl` *(default)* | design **and** build it | the design sections, plus a Stages/Tasks plan and a live tracker |
+| `impl` | build an existing design | light scope, plus a Stages/Tasks plan and a live tracker |
 
-## Commands
+Already have a doc? `/specforge:convert <file>` brings a `.md` or `.html` into
+the store, either as-is or re-authored into house style.
 
-| Slash command | Does |
-|---|---|
-| `/specforge:create` | Author a new spec and open it for review |
-| `/specforge:convert <file>` | Bring an existing `.md`/`.html` doc into the store |
-| `/specforge:list` | Specs attached to this session |
-| `/specforge:listall` | Every spec, with the index URL |
-| `/specforge:start` | Start or reuse the daemon, print the index URL |
+### Review it in the browser
 
-Reviewing needs no command. Hooks deliver submitted batches to the session that
-owns the spec.
+Hover any block, click, and type. Threads stick to the block they were left on
+and survive edits to the document.
 
-## Sharing
+The floating **SF** button opens contents, theme, width and **Export → PDF**.
+The pill beside it is the single action worth taking next, which changes as the
+spec moves: `Submit comments` → `Awaiting response` → `Review replies` →
+`LGTM ✓` → `Implement →` → `Done ✓`.
 
-A spec is loopback-only until you share it.
+### Send comments to the agent
+
+A comment is a conversation between people unless it says `@agent`:
+
+- `why is this bounded at 40 bits?` never reaches an agent
+- `@agent widen this to 64` joins the next batch you submit
+
+Submit, and the Claude session that owns the spec wakes up even while idle. It
+replies to every thread and amends the document. Your open page reloads itself.
+
+Adding `@agent` to a thread later hands over the **whole thread**, so the agent
+reads the discussion that led to the request. The footer counts both
+(`2 for agent · 3 discussions`), so a forgotten `@agent` is visible before you
+submit rather than after.
+
+### Share a spec with anyone
 
 ```sh
 specforge share <id>            # → https://you.example.com/s/<token>
@@ -91,10 +100,11 @@ specforge unshare <id>          # stop serving it
 specforge shares                # what is public right now
 ```
 
-A link is an **origin** plus a **token**, and they are stable for different
-reasons.
+They need no account and no install. Anyone holding the link can read, comment,
+resolve, and submit work to your agent, so share it the way you would share a
+document link.
 
-**The token never changes on its own.** It is written once per spec and kept:
+**A link is stable.** The token is written once and never changes on its own:
 
 | Action | The token |
 |---|---|
@@ -102,143 +112,74 @@ reasons.
 | `unshare` then `share` | unchanged; unpublishing stops serving a link, it does not kill it |
 | `share --rotate` | **replaced**, so rotating is how you revoke |
 
-**The origin depends on which tunnel you run.** By default a cloudflared quick
-tunnel draws a fresh hostname on every run:
+The web address is stable too, if you used `./install.sh` to set one up. Without
+that, sharing falls back to a throwaway address that changes whenever the tunnel
+restarts.
 
-| Event | Default quick tunnel | Configured origin |
-|---|---|---|
-| daemon restart | survives, the tunnel is adopted | survives |
-| tunnel restart, or reboot | **new hostname**, so sent links break | survives |
+Nothing is public until you share it, and everything else answers 404, including
+revoked links.
 
-`./install.sh` sets up a configured origin, which is why it is the recommended
-path rather than an advanced one.
-
-**Anyone holding a link has your rights on that spec**: read, comment, resolve,
-and submit work to your agent. There are no accounts. Share it the way you would
-share a document link.
-
-### Discussion, or work
-
-A comment is a conversation between people unless it says `@agent`:
-
-- `why is this bounded at 40 bits?` never reaches an agent
-- `@agent widen this to 64` enters the next batch you submit
-
-Adding `@agent` later hands over the **whole thread**, so the agent reads the
-discussion that produced the request. The footer counts both (`2 for agent · 3
-discussions`), so a forgotten `@agent` is visible before you submit.
-
-### For a team
+### Work as a team
 
 Add each person to the same Cloudflare account. Everyone runs `./install.sh`,
 authenticates as themselves, and gets `<their-username>.<the shared domain>`. No
 credentials are passed around and nobody needs their own domain.
 
-One tunnel per machine is not optional: a hostname routes to whichever machine
-runs its tunnel, so two machines on one tunnel means requests land on either at
-random.
+Each person's specs live on their own machine and are reviewed by their own
+agent, so a spec is readable while its author's machine is on.
 
-## The action button
+### Keep the spec and the work in step
 
-One contextual call-to-action, driven by the spec's comments and status:
+Implementation specs render their Stages and Tasks as a live tracker, and hooks
+nudge when the code drifts from the plan. Hooks are fail-safe: any error exits
+0, and they do nothing unless a spec is in play.
 
-| State | Means |
+## Everyday commands
+
+| Command | Does |
 |---|---|
-| **Submit comments** | you have written comments for the agent |
-| **Awaiting response** | sent; the agent has not engaged |
-| **Picked up** → **Working on comments** | the owning session surfaced it, then started amending |
-| **Review replies** | every open thread answered; read and resolve |
-| **LGTM ✓** → **Implement →** | all resolved, then approved |
-| **Implementing… / Done ✓** | the work, in the attached session |
+| `/specforge:create` | Author a new spec and open it for review |
+| `/specforge:convert <file>` | Bring an existing doc into the store |
+| `/specforge:list` | Specs attached to this session |
+| `/specforge:listall` | Every spec, with the index URL |
+| `/specforge:start` | Start or reuse the review server, print the index URL |
 
-Status lives on the document root: `draft → in_review → approved → implementing
-→ done → closed`.
+Reviewing needs no command. Submitted comments reach the session that owns the
+spec on their own.
 
-## Architecture
+Specs live in `~/.specforge`, not in your project repo, so they follow you across
+projects and never show up in a diff.
 
-```mermaid
-flowchart LR
-  subgraph pub ["public"]
-    R["Reviewer"]
-  end
-  subgraph local ["your machine"]
-    T["cloudflared"] --> G["gateway<br/>:14180"]
-    D["daemon<br/>:4180"] --> S[("~/.specforge<br/>specs · comments · inbox")]
-    G --> S
-    A["Claude session"] --> S
-  end
-  R -->|"https://you.example.com/s/&lt;token&gt;"| T
-```
-
-| Piece | What it is |
-|---|---|
-| **Store** | Every spec at `~/.specforge/specs/<id>/`: `spec.html`, meta, comments, review inbox, nav index. Not in your repo. |
-| **Daemon** | One zero-dep HTTP server per machine on loopback, with a lockfile and port fall-forward. Serves the index and every spec with the review layer injected. |
-| **Gateway** | One socket serving every published spec at `/s/<token>`. The tunnel's only downstream, so no daemon route is reachable from the internet. |
-| **Tunnel** | Runs detached, so it outlives the daemon; a starting daemon adopts it rather than reaping it, which is what makes a link survive a restart. |
-| **Attachment** | A spec belongs to one Claude session, which receives its batches. One session holds many specs; stale locks expire on a heartbeat. |
-| **Review layer** | `server/public/review.{js,css}`, injected at serve time. No build step. |
-| **spec-nav** | A per-spec section index ranked with a hand-rolled BM25, no embeddings. Skills open only the sections a comment touches instead of re-reading the spec. |
-
-**Isolation rests on two tested properties.** The tunnel reaches only the gateway
-port, and a spec is reachable only through a token that was handed out, never
-through a spec id. Everything else answers 404, including revoked tokens, byte
-for byte.
-
-**Live updates** use an event stream on loopback and polling on a published page,
-because Cloudflare's edge accepts an SSE response and then buffers every body
-byte (measured: 0 events in 30s through a tunnel, against 15 of 15 on loopback).
-The listener that answers a request says which, so no page waits on a stream that
-never speaks.
-
-### Hooks
-
-Fail-safe: any error exits 0, and each no-ops unless a spec is in play.
-
-| Hook | Role |
-|---|---|
-| `Stop` | Surface a pending batch; nudge on implementation drift |
-| `UserPromptSubmit` / `SessionStart` | Catch batches a live session missed |
-| `PostToolUse` | Record commits, PRs, test runs to the evidence ledger |
-| `PreToolUse` | Deny edits to a spec marked `closed` |
-
-Specs with no live owner can be drained headlessly: start the daemon with
-`SPECFORGE_DAEMON_DRAIN=1` and it spawns `claude -p` for them.
-
-## Configuration
-
-Store-wide, at `~/.specforge/config.json`:
-
-| Key | Meaning |
-|---|---|
-| `publicOrigin` | An origin you serve yourself. Set it and SpecForge never starts, adopts or kills a tunnel, and binds exactly 14180 or fails. |
-
-Per project, at `<project>/.specforge/config.json` (defaults in `lib/config.mjs`):
-`specsDir`, `defaultTheme`, `port`, `naming`, `trackComments`, `cadence`, the
-advisory `requiredSections`, and `additionalRequiredSections`, which appends to
-the defaults rather than replacing them.
-
-The lint (`lib/lint-spec.mjs`) checks universal basics only: a title, a lifecycle
-status, unique section ids, the light/dark contract, and the house language
-rules. Sections are never enforced, so any spec type passes.
-
-## Development
+## Contributing
 
 ```sh
 npm test    # node --test, ~700 tests, zero runtime deps
 ```
 
+Node built-ins only at runtime. `jsdom` and `playwright` are dev-only, for the
+review-layer and browser test tiers.
+
 | Path | Holds |
 |---|---|
-| `lib/` | store, CLI, publications, gateway, lint, lifecycle |
-| `server/` | the daemon and the injected review layer |
+| `lib/` | store, CLI, publications, lint, lifecycle |
+| `server/` | the review server and the injected review layer |
 | `skills/` · `commands/` · `hooks/` | authoring and review skills, slash commands, session hooks |
 | `templates/` | spec shells and house rules |
 | `tools/` | end-to-end probes and screenshot helpers |
 
-Node built-ins only at runtime. `jsdom` and `playwright` are dev-only, for the
-review-layer and browser test tiers. Contributions go feature branch → PR →
-review → squash merge.
+**How work lands:** feature branch → PR → review → squash merge. Every PR runs
+the full suite on Node 20 and 22. Tests come with the change that needs them,
+and a bug fix starts with a test that reproduces it.
+
+Two house rules worth knowing before your first PR:
+
+- **Comments explain why, not what.** If a line is surprising, say what it
+  prevents.
+- **Prose follows the language rules** in `references/spec-language.md`: no em
+  dashes, no filler, claims separable from confidence.
+
+Issues and PRs welcome at
+[github.com/NitinJ/specforge](https://github.com/NitinJ/specforge).
 
 ## License
 
