@@ -59,14 +59,24 @@ built-ins — no `npm install`, no services to run.
 
 ```sh
 git clone https://github.com/NitinJ/specforge && cd specforge
-./install.sh                      # the plugin
-./install.sh spec.example.com     # ...and a permanent share URL on a host you own
+./install.sh
 ```
 
-The script checks prerequisites first and reports everything missing at once,
-installs or updates the plugin, and, given a hostname, runs the tunnel setup. It
-installs nothing with `sudo`; the one privileged step is printed for you to run.
-`-n` shows what it would do and changes nothing. Re-running it is safe.
+That sets up everything: prerequisites checked, plugin installed, tunnel created,
+and a permanent address for your specs. It asks you nothing. A browser opens once
+so you can pick which domain to use, and your address becomes
+`<your-username>.<that domain>`.
+
+```sh
+./install.sh docs.example.com   # pick the address yourself
+./install.sh --plugin-only      # skip the sharing setup
+./install.sh -n                 # show what would happen, change nothing
+```
+
+It installs nothing with `sudo`; the one privileged step is printed for you to
+run. Prerequisites are reported all at once rather than one per run. Re-running
+is safe, and it refuses before creating anything if your cloudflared config is
+already pointed elsewhere.
 
 Or by hand:
 
@@ -223,16 +233,16 @@ sudo cloudflared --config ~/.cloudflared/config.yml service install
 
 That is what makes the tunnel survive a reboot. After it, restart the daemon.
 
-**For a team**, add each person to the same Cloudflare account and give them a
-subdomain of one shared domain. Each machine runs the installer with its own
-hostname; nobody shares credentials, and nobody needs their own domain:
+**For a team**, add each person to the same Cloudflare account. Everyone then
+runs the same command:
 
 ```
-./install.sh spec.example.com      # yours
-./install.sh lavee.example.com     # theirs
+./install.sh
 ```
 
-Each person authenticates to Cloudflare as themselves, in their own browser.
+Each person authenticates as themselves, picks the shared domain in their own
+browser, and gets `<their-username>.<that domain>`. Nobody shares credentials,
+nobody needs their own domain, and nobody has to be told what to type.
 
 One tunnel per machine is not optional: a hostname routes to whichever machine
 runs its tunnel, so two machines on one tunnel means requests land on either at
