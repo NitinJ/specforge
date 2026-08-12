@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 
 import { createDaemon, renderIndex } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
@@ -119,11 +119,19 @@ test('GET/PUT /api/prefs persists the index theme', async () => {
 });
 
 // ---- inline page behavior in jsdom ----
-function loadIndex(t) {
-  const dom = new JSDOM(renderIndex(), { runScripts: 'dangerously', url: 'http://localhost/' });
+function loadIndex(t, opts) {
+  // location.reload is unforgeable in jsdom — it cannot be stubbed — but calling
+  // it raises a jsdomError, so that is how a reload is counted. Anything else on
+  // that channel is a real page error and is re-raised rather than swallowed.
+  const reloads = { n: 0 };
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on('jsdomError', (e) => {
+    if (/navigation to another Document/i.test(e.message)) reloads.n += 1;
+    else throw e;
+  });
+  const dom = new JSDOM(renderIndex(opts), { runScripts: 'dangerously', url: 'http://localhost/', virtualConsole });
   const { window } = dom;
   t.after(() => window.close());
-  try { window.location.reload = () => {}; } catch { /* jsdom reload is unimplemented; stub it */ }
   const calls = [];
   window.fetch = (url, init) => {
     const method = (init && init.method) || 'GET';
@@ -132,7 +140,7 @@ function loadIndex(t) {
     // Echo the patch back so the client's DOM updates (rename → d.title, tags → d.tags).
     return Promise.resolve({ ok: true, json: () => Promise.resolve(Object.assign({ ok: true }, body || {})) });
   };
-  return { window, calls };
+  return { window, calls, reloads };
 }
 
 const tick = (window) => new Promise((r) => window.setTimeout(r, 0));
@@ -285,6 +293,14 @@ test('template specs render as a bottom strip, excluded from rows and filters', 
   // templates are not filterable rows
   assert.equal(document.querySelectorAll(`.row[data-id="${templateId('design')}"]`).length, 0, 'no template row');
   assert.match(document.getElementById('count').textContent, /1 spec/, 'count excludes templates');
+  // and they step aside under a filter rather than posing as results
+  const search = document.getElementById('search');
+  search.value = 'nothing matches this';
+  search.dispatchEvent(new window.Event('input'));
+  assert.equal(document.querySelector('.tpls').style.display, 'none', 'strip hidden while filtering');
+  search.value = '';
+  search.dispatchEvent(new window.Event('input'));
+  assert.equal(document.querySelector('.tpls').style.display, '', 'strip back when the filter clears');
 });
 
 test('changing the collection input PATCHes /organize', async (t) => {
@@ -354,4 +370,223 @@ test('template cards have no delete affordance', async (t) => {
   const { document } = window;
   assert.equal(document.querySelector('.tcard .del'), null, 'no delete button on template cards');
   assert.equal(document.querySelectorAll('.row .del').length, 1, 'only the real spec row has delete');
+});
+
+// ---- at-a-glance signals: comments and shares, per row ----
+
+const anchor = { block: { index: 1, tag: 'P', text: 'a block' } };
+async function comment(id, body, author = 'nitin') {
+  const { mutateComments, createThread } = await import('../lib/store-comments.mjs');
+  let tid;
+  mutateComments(id, (st) => { tid = createThread(st, { anchor, body, author }).id; });
+  return tid;
+}
+
+test('a spec with comments for the agent shows the review signal; a quiet one does not', async (t) => {
+  const busy = createSpec({ title: 'Busy', html: '<h1>B</h1>' });
+  createSpec({ title: 'Quiet', html: '<h1>Q</h1>' });
+  await comment(busy, '@agent widen this');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const row = document.querySelector(`.row[data-id="${busy}"]`);
+  assert.equal(row.getAttribute('data-rv'), 'needs');
+  assert.equal(row.querySelector('.rv.rv-needs .rvn').textContent, '1', 'the count of unsent comments');
+  const quiet = [].slice.call(document.querySelectorAll('.row[data-id]')).find((r) => r !== row);
+  assert.equal(quiet.getAttribute('data-rv'), 'clear');
+  assert.equal(quiet.querySelector('.rv'), null, 'a clear spec carries no comment marker');
+});
+
+test('discussion is marked apart from work waiting on you', async (t) => {
+  const id = createSpec({ title: 'Chatty', html: '<h1>C</h1>' });
+  await comment(id, 'why 40 bits?', 'lavee');
+  const { window } = loadIndex(t);
+  const row = window.document.querySelector(`.row[data-id="${id}"]`);
+  assert.equal(row.getAttribute('data-rv'), 'discussion');
+  assert.ok(row.querySelector('.rv.rv-discussion'), 'discussion has its own colour, not the "needs you" one');
+});
+
+test('the Needs you view filters to specs with unsent or answered comments', async (t) => {
+  const needs = createSpec({ title: 'Needs', html: '<h1>N</h1>' });
+  const chat = createSpec({ title: 'Chat', html: '<h1>C</h1>' });
+  createSpec({ title: 'Quiet', html: '<h1>Q</h1>' });
+  await comment(needs, '@agent do this');
+  await comment(chat, 'just talking', 'lavee');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  assert.match(document.querySelector('.nav[data-view="attn"]').textContent, /1$/, 'the rail counts one');
+  document.querySelector('.nav[data-view="attn"]').click();
+  const visible = [].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none');
+  assert.deepEqual(visible.map((r) => r.getAttribute('data-id')), [needs], 'only the spec waiting on you');
+  assert.match(document.getElementById('count').textContent, /1 of 3/);
+  assert.equal(document.getElementById('htitle').textContent, 'Needs you', 'the header names the view');
+});
+
+test('a live share shows a link on the row; a dead record shows nothing', async (t) => {
+  const { writeFileSync } = await import('node:fs');
+  const { sharePath } = await import('../lib/store-paths.mjs');
+  const up = createSpec({ title: 'Up', html: '<h1>U</h1>' });
+  const down = createSpec({ title: 'Down', html: '<h1>D</h1>' });
+  for (const id of [up, down]) {
+    writeFileSync(sharePath(id), JSON.stringify({ specId: id, url: `https://${id}.trycloudflare.com`, port: 1, pid: 2, createdAt: 'now' }));
+  }
+  const { window } = loadIndex(t, { isShareLive: (id) => id === up });
+  const { document } = window;
+  const pub = document.querySelector(`.row[data-id="${up}"] .pub`);
+  assert.ok(pub, 'the reachable share is marked');
+  assert.equal(pub.getAttribute('href'), `https://${up}.trycloudflare.com`, 'the marker opens the public link');
+  assert.equal(document.querySelector(`.row[data-id="${down}"] .pub`), null, 'an unreachable share is not advertised');
+  assert.match(document.querySelector('.nav[data-view="shared"]').textContent, /1$/, 'the rail counts only what answers');
+});
+
+// ---- collections rail ----
+
+test('the rail lists every collection with its count and filters on click', (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'Beta', html: '<h1>B</h1>' });
+  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
+  setCollection(a, 'Launch');
+  setCollection(b, 'Launch');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const launch = document.querySelector('.cnav[data-c="Launch"]');
+  assert.match(launch.textContent, /Launch2$/, 'name + member count');
+  assert.ok(document.querySelector('.cnav[data-c=""]'), 'Uncollected is listed too');
+  launch.click();
+  const visible = [].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none');
+  assert.deepEqual(visible.map((r) => r.getAttribute('data-id')).sort(), [a, b].sort());
+  assert.equal(document.getElementById('htitle').textContent, 'Launch');
+  launch.click(); // toggling the active collection clears the filter
+  assert.equal([].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none').length, 3);
+});
+
+test('renaming a collection re-files every member spec', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'Beta', html: '<h1>B</h1>' });
+  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
+  setCollection(a, 'Launch');
+  setCollection(b, 'Launch');
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  const crow = document.querySelector('.crow[data-c="Launch"]');
+  crow.querySelector('.cedit').click();
+  const input = crow.querySelector('.cin');
+  assert.equal(input.hidden, false, 'the rename input is revealed');
+  input.value = 'GA';
+  enter(window, input);
+  await tick(window);
+  const moves = calls.filter((c) => /\/organize$/.test(c.url));
+  assert.equal(moves.length, 2, 'one PATCH per member, none for the uncollected spec');
+  assert.deepEqual(moves.map((c) => c.body.collection), ['GA', 'GA']);
+  assert.ok(moves.every((c) => new RegExp(`/api/spec/(${a}|${b})/organize`).test(c.url)));
+});
+
+test('deleting a collection asks first, then ungroups its specs', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  setCollection(a, 'Launch');
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  const crow = document.querySelector('.crow[data-c="Launch"]');
+  crow.querySelector('.cdel').click();
+  assert.equal(crow.querySelector('.cconfirm').hidden, false, 'a confirm appears before anything moves');
+  crow.querySelector('.cno').click();
+  assert.equal(calls.filter((c) => /\/organize$/.test(c.url)).length, 0, 'No leaves the specs alone');
+  crow.querySelector('.cdel').click();
+  crow.querySelector('.cyes').click();
+  await tick(window);
+  const moves = calls.filter((c) => /\/organize$/.test(c.url));
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0].body.collection, '', 'the spec is ungrouped, not deleted');
+});
+
+// ---- bulk selection ----
+
+function pick(window, id) {
+  const box = window.document.querySelector(`.row[data-id="${id}"] .sel`);
+  box.checked = true;
+  box.dispatchEvent(new window.Event('change', { bubbles: true }));
+}
+
+test('selecting rows opens a bulk bar that moves them into one collection', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'Beta', html: '<h1>B</h1>' });
+  createSpec({ title: 'Untouched', html: '<h1>U</h1>' });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  assert.equal(document.getElementById('bulk').hidden, true, 'hidden until something is selected');
+  pick(window, a);
+  pick(window, b);
+  assert.equal(document.getElementById('bulk').hidden, false);
+  assert.equal(document.getElementById('bn').textContent, '2 selected');
+  const bcoll = document.getElementById('bcoll');
+  bcoll.value = 'Launch';
+  enter(window, bcoll);
+  await tick(window);
+  const moves = calls.filter((c) => /\/organize$/.test(c.url));
+  assert.equal(moves.length, 2, 'one PATCH per selected spec');
+  assert.deepEqual(moves.map((c) => c.body.collection), ['Launch', 'Launch']);
+});
+
+// fetch resolves for a 403 as readily as a 200, so a bare Promise.all over the
+// fan-out would report a half-renamed collection as a finished one.
+test('a collection move that only partly succeeds says so', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'Beta', html: '<h1>B</h1>' });
+  setCollection(a, 'Launch');
+  setCollection(b, 'Launch');
+  const { window, reloads } = loadIndex(t);
+  const { document } = window;
+  let nth = 0;
+  window.fetch = () => {
+    nth += 1;
+    return Promise.resolve({ ok: nth > 1, status: nth > 1 ? 200 : 500, json: () => Promise.resolve({}) });
+  };
+  const crow = document.querySelector('.crow[data-c="Launch"]');
+  crow.querySelector('.cdel').click();
+  crow.querySelector('.cyes').click();
+  await tick(window);
+  const toast = document.querySelector('.toast');
+  assert.ok(toast, 'the failure is surfaced, not swallowed');
+  assert.match(toast.textContent, /1 of 2 specs moved/);
+  assert.match(toast.textContent, /still in "Launch"/, 'it names where the stragglers are');
+  assert.match(window.sessionStorage.getItem('sf-index-msg'), /1 of 2/, 'and survives the reload');
+  assert.equal(reloads.n, 1, 'the page still reloads, so it shows the true state');
+});
+
+test('a collection move that fully succeeds says nothing', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  setCollection(a, 'Launch');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const crow = document.querySelector('.crow[data-c="Launch"]');
+  crow.querySelector('.cdel').click();
+  crow.querySelector('.cyes').click();
+  await tick(window);
+  assert.equal(document.querySelector('.toast'), null);
+  assert.equal(window.sessionStorage.getItem('sf-index-msg'), null);
+});
+
+test('Cancel drops the selection without touching anything', (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  pick(window, a);
+  document.getElementById('bcancel').click();
+  assert.equal(document.getElementById('bulk').hidden, true);
+  assert.equal(document.querySelector(`.row[data-id="${a}"] .sel`).checked, false);
+  assert.equal(calls.filter((c) => c.method === 'PATCH').length, 0);
+});
+
+// The restore-on-load half is not asserted here: each JSDOM instance gets its
+// own storage area, so a second load cannot see the first one's write.
+test('collapsing a group folds it away and records the choice', (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  setCollection(a, 'Launch');
+  const { window } = loadIndex(t);
+  const grp = window.document.querySelector('.grp[data-coll="Launch"]');
+  grp.querySelector('h2').click();
+  assert.ok(grp.classList.contains('collapsed'));
+  assert.deepEqual(JSON.parse(window.localStorage.getItem('sf-index-collapsed')), ['Launch']);
+  grp.querySelector('h2').click();
+  assert.ok(!grp.classList.contains('collapsed'), 'clicking again reopens it');
+  assert.deepEqual(JSON.parse(window.localStorage.getItem('sf-index-collapsed')), [], 'and forgets it');
 });
