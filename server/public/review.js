@@ -586,30 +586,41 @@
    * is not "a session was here once": that was the old rule, and it left specs
    * claiming to be live for half an hour after their window closed.
    *
-   * Hidden on a published copy. A reviewer cannot reconnect someone else's spec
-   * to someone else's agent, and telling them the author's session is down only
+   * A spec attached to nothing says so too. It used to be silent, on the grounds
+   * that "Disconnected" reads as a fault where the truth is that nobody has
+   * claimed the spec yet — which was fair while the daemon had a headless drain
+   * to sweep up batches nobody owned. With that gone, comments written here reach
+   * no one at all, so saying nothing is the worst of the three states to be quiet
+   * about.
+   *
+   * Hidden on a published copy. A reviewer cannot connect someone else's spec to
+   * someone else's agent, and telling them the author's session is down only
    * invites them to stop writing.
    */
   function renderConn() {
     if (!els.conn) return;
     var meta = state.meta;
-    if (!meta || isPublishedCopy() || !meta.attachedSession) {
+    if (!meta || isPublishedCopy()) {
       els.conn.setAttribute('hidden', 'hidden');
       els.conn.innerHTML = '';
       return;
     }
     els.conn.removeAttribute('hidden');
     els.conn.innerHTML = '';
+    var attached = !!meta.attachedSession;
     var connected = !!meta.connected;
     els.conn.className = 'sf-tb-conn' + (connected ? '' : ' sf-tb-conn-off');
     var who = meta.sessionLabel || ('session ' + String(meta.attachedSession).slice(0, 8));
     els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
-    els.conn.appendChild(create('span', { class: 'sf-conn-label' }, connected ? 'Connected' : 'Disconnected'));
+    els.conn.appendChild(create('span', { class: 'sf-conn-label' },
+      connected ? 'Connected' : attached ? 'Disconnected' : 'No agent'));
     els.conn.title = connected
       ? who + ' is watching this spec — comments you submit reach it on its own'
-      : who + ' has stopped watching. Comments you submit will sit unread until a session picks this spec up.';
+      : attached
+        ? who + ' has stopped watching. Comments you submit will sit unread until a session picks this spec up.'
+        : 'No session owns this spec. Comments you submit will sit unread until one takes it.';
     if (connected) return;
-    var btn = create('button', { class: 'sf-conn-act', type: 'button' }, 'Reconnect');
+    var btn = create('button', { class: 'sf-conn-act', type: 'button' }, attached ? 'Reconnect' : 'Connect');
     btn.onclick = function (e) { e.stopPropagation(); copyReconnectPrompt(); };
     els.conn.appendChild(btn);
   }
@@ -624,10 +635,13 @@
    */
   function reconnectPrompt() {
     var cli = (window.SPECFORGE || {}).cli;
+    var attached = !!(state.meta && state.meta.attachedSession);
     return [
       'Connect SpecForge spec ' + SPEC + ' to this session.',
       '',
-      'It is attached to a session that has stopped watching it, so comments submitted',
+      attached
+        ? 'It is attached to a session that has stopped watching it, so comments submitted'
+        : 'No session owns it, so comments submitted',
       'in the browser are not reaching anyone. Take it over here:',
       '',
       '  1. Detach it from wherever it is attached:  node "' + cli + '" detach ' + SPEC,
