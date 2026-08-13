@@ -4,11 +4,21 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
+import { createServer } from 'node:http';
+
 import { createSpec } from '../lib/store.mjs';
 import { createDaemon, ensureServer } from '../server/daemon.mjs';
-import {
-  readServerState, clearServerState, releaseLock, isAlive,
-} from '../lib/daemon-state.mjs';
+
+/** A port nothing listens on (open then immediately close to free it). */
+function freePort() {
+  return new Promise((resolve) => {
+    const srv = createServer();
+    srv.listen(0, '127.0.0.1', () => {
+      const port = srv.address().port;
+      srv.close(() => resolve(port));
+    });
+  });
+}
 
 let home;
 let prevHome;
@@ -34,11 +44,16 @@ async function withDaemon(t, fn) {
   return fn(base);
 }
 
-test('GET /healthz returns 200 ok', async (t) => {
+// The body is load-bearing, not decoration: ensureServer treats "something
+// answers here" as "the daemon is already running", so it has to be able to tell
+// us apart from any other server that happens to hold the port. The pid rides
+// along because the port is now the only handle on the daemon — `curl /healthz`
+// is how you find out which process to kill.
+test('GET /healthz identifies SpecForge and names the process', async (t) => {
   await withDaemon(t, async (base) => {
     const res = await fetch(`${base}/healthz`);
     assert.equal(res.status, 200);
-    assert.equal((await res.text()).trim(), 'ok');
+    assert.deepEqual(await res.json(), { service: 'specforge', pid: process.pid });
   });
 });
 
@@ -99,7 +114,6 @@ test('GET /spec/<unknown> returns 404', async (t) => {
 test('ensureServer seeds the template specs and the index shows them as templates', async (t) => {
   const first = await ensureServer({ port: 0 });
   t.after(() => new Promise((r) => first.server.close(r)));
-  t.after(() => { clearServerState(); releaseLock(); });
 
   const { templateId } = await import('../lib/store-templates.mjs');
   const { readMeta } = await import('../lib/meta.mjs');
@@ -117,7 +131,6 @@ test('the daemon also answers on IPv6 loopback — localhost from a Windows brow
   createSpec({ title: 'One', html: '<h1>One</h1>' });
   const first = await ensureServer({ port: 0 });
   t.after(() => new Promise((r) => first.server.close(r)));
-  t.after(() => { clearServerState(); releaseLock(); });
 
   const res = await fetch(`http://[::1]:${first.port}/healthz`);
   assert.equal(res.status, 200, 'the same port answers on ::1');
@@ -135,33 +148,80 @@ test('the ::1 mirror retries EADDRINUSE — a fast restart still ends up dual-st
 
   const first = await ensureServer({ port });
   t.after(() => new Promise((r) => first.server.close(r)));
-  t.after(() => { clearServerState(); releaseLock(); });
 
   const res = await fetch(`http://[::1]:${first.port}/healthz`);
   assert.equal(res.status, 200, '::1 answers after the blocker released the port');
 });
 
-test('ensureServer is a singleton: a second call reuses the same port', async (t) => {
+// Holding the port IS being the daemon. The kernel admits one holder and settles
+// the race itself, so the loser has nothing to check and nothing to clean up —
+// which is the whole reason the lockfile and server.json could go.
+test('ensureServer is a singleton: the second call finds the first and starts nothing', async (t) => {
   createSpec({ title: 'One', html: '<h1>One</h1>' });
+  const port = await freePort();
 
-  const first = await ensureServer({ port: 0 });
+  const first = await ensureServer({ port });
   assert.ok(first.server, 'first call starts a server');
-  t.after(() => {
-    if (first.server) return new Promise((r) => first.server.close(r));
-  });
-  t.after(() => { clearServerState(); releaseLock(); });
+  assert.equal(first.port, port);
+  t.after(() => new Promise((r) => first.server.close(r)));
 
-  // server.json advertises the running daemon.
-  const state = readServerState();
-  assert.equal(state.port, first.port);
-  assert.ok(isAlive(state.pid));
-
-  const second = await ensureServer({ port: 0 });
+  const second = await ensureServer({ port });
   assert.equal(second.server, null, 'second call reuses, does not start a server');
   assert.equal(second.url, first.url);
   assert.equal(second.port, first.port);
 
-  // The reused daemon answers.
   const res = await fetch(`${first.url}healthz`);
   assert.equal(res.status, 200);
+});
+
+// The bug this whole change exists for. The old code walked to the next free
+// port, which meant a daemon that had just proved another one was already
+// running started anyway — on an address nothing would ever look at, and without
+// the gateway port, so it served specs happily and could not publish.
+test('ensureServer never walks to another port when its own is taken', async (t) => {
+  createSpec({ title: 'One', html: '<h1>One</h1>' });
+  const port = await freePort();
+
+  const first = await ensureServer({ port });
+  t.after(() => new Promise((r) => first.server.close(r)));
+
+  const second = await ensureServer({ port });
+  assert.equal(second.port, port, 'reports the port that is actually serving');
+  assert.equal(second.server, null, 'and no second listener exists anywhere');
+});
+
+// The winner of the port binds before it finishes starting — templates to seed,
+// publications to restore — so the loser can knock while it is too busy to
+// answer. Treating one silent probe as "a stranger has the port" would report
+// the most misleading thing in the file about an entirely normal startup.
+test('a daemon that is still starting up is not mistaken for a stranger', async (t) => {
+  const port = await freePort();
+  let knocked = false;
+  const busyThenReady = createServer((req, res) => {
+    if (!knocked) {
+      knocked = true;
+      return req.destroy(); // still coming up: the probe gets nothing
+    }
+    res.writeHead(200, { 'content-type': 'application/json' })
+      .end(JSON.stringify({ service: 'specforge', pid: 1 }));
+  });
+  await new Promise((r) => busyThenReady.listen(port, '127.0.0.1', r));
+  t.after(() => new Promise((r) => busyThenReady.close(r)));
+
+  const res = await ensureServer({ port });
+  assert.equal(res.server, null, 'found it on the retry instead of erroring');
+  assert.ok(knocked, 'the first probe really did fail');
+});
+
+// A foreign process on the port is the one case the walk was defensible for.
+// Failing loudly beats it: a daemon on some other port looks healthy, serves
+// specs, and silently cannot publish — which is exactly how six of them
+// accumulated unnoticed.
+test('ensureServer refuses to start when the port is held by something else', async (t) => {
+  const port = await freePort();
+  const squatter = createServer((_req, res) => res.writeHead(200).end('ok'));
+  await new Promise((r) => squatter.listen(port, '127.0.0.1', r));
+  t.after(() => new Promise((r) => squatter.close(r)));
+
+  await assert.rejects(() => ensureServer({ port }), /not SpecForge/);
 });

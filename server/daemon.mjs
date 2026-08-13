@@ -4,7 +4,7 @@
 // server/start, server/api — has been retired.)
 //
 // Routes:
-//   GET  /healthz                              → 200 "ok"
+//   GET  /healthz                              → 200 {"service":"specforge","pid":N}
 //   GET  /                                      → index: a table of all store specs
 //   GET  /spec/<id>                             → spec.html with the review layer injected
 //   GET  /events?spec=<id>                      → SSE live-reload for a spec
@@ -20,8 +20,8 @@
 //   PATCH /api/spec/<id>/organize               → set tags / collection
 //
 // ensureServer() (below) is the singleton entrypoint every v2 command calls:
-// reuse a healthy daemon if one is advertised, else acquire the lock, bind a
-// port with fall-forward, write server.json, and return the URL.
+// bind the port, or find out who already has it. Holding the port IS being the
+// daemon — see lib/daemon-state.mjs for why that replaced a lockfile.
 
 import http from 'node:http';
 import { watch } from 'node:fs';
@@ -32,10 +32,7 @@ import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
-import {
-  readServerState, writeServerState, clearServerState,
-  acquireLock, releaseLock, lockHolderPid, isAlive, healthOk,
-} from '../lib/daemon-state.mjs';
+import { SERVICE, daemonAt, daemonUrl, defaultPort } from '../lib/daemon-state.mjs';
 import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
   handleCommentReply, handleCommentResolve, handleCommentEdit, handleAnchorPatch, handleSubmit,
@@ -51,8 +48,6 @@ import { createPublications } from '../lib/publications.mjs';
 // outlive the terminal that made it. One registry per process.
 export const publications = createPublications();
 
-const DEFAULT_PORT = 4180;
-const PORT_RETRY_LIMIT = 20; // up to 20 retries after the first attempt = 21 ports probed
 
 // The index page lives in index-page.mjs; re-exported here because tests and
 // callers import it from the daemon (the module that serves it).
@@ -319,7 +314,12 @@ export function createDaemon() {
     }
 
     if (method === 'GET') {
-      if (path === '/healthz') return send(res, 200, 'text/plain; charset=utf-8', 'ok');
+      // The body is the daemon's identity, not a formality: ensureServer reads
+      // "something is on this port" as "the daemon is already up", so it has to
+      // be able to tell us from any other server that happens to hold it. The
+      // pid is here because the port is now the only handle on the daemon —
+      // `curl /healthz` is how you find out what to kill.
+      if (path === '/healthz') return sendJson(res, 200, { service: SERVICE, pid: process.pid });
       // The index shows a Shared marker per spec; the registry, not the record
       // on disk, decides whether that link actually answers.
       if (path === '/') {
@@ -342,101 +342,76 @@ export function createDaemon() {
   });
 }
 
-function listenWithFallback(server, port, host, retryLimit) {
+/**
+ * Bind exactly this port, or reject.
+ *
+ * The rejection is the feature. Its predecessor walked to the next free port on
+ * EADDRINUSE, which turned "someone else is already the daemon" — the answer the
+ * caller was looking for — into a second daemon nobody would ever address.
+ */
+function listenOn(server, port, host) {
   return new Promise((resolve, reject) => {
-    let tries = 0;
-    const tryPort = (p) => {
-      const onError = (err) => {
-        if (err.code === 'EADDRINUSE' && tries < retryLimit) {
-          tries++;
-          tryPort(p + 1);
-        } else {
-          reject(err);
-        }
-      };
-      server.once('error', onError);
-      server.listen(p, host, () => {
-        server.removeListener('error', onError);
-        // Resolve the *actual* bound port (p may be 0 → OS-assigned).
-        resolve(server.address().port);
-      });
-    };
-    tryPort(port);
+    const onError = (err) => { server.off('listening', onListening); reject(err); };
+    const onListening = () => { server.off('error', onError); resolve(); };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, host);
   });
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Singleton daemon entrypoint. Returns the base url of a healthy daemon,
- * starting one in-process if needed.
+ * Singleton daemon entrypoint. Returns the base url of the daemon, starting one
+ * in-process if the port is free.
  *
- *  - If server.json advertises a daemon whose pid is alive AND /healthz is 200,
- *    reuse its url (no new server).
- *  - Else acquire server.lock (O_EXCL). If the lock is held by a *live* pid,
- *    another ensureServer() is mid-start: briefly retry reading server.json and
- *    reuse it. A lock held by a dead pid is reclaimed.
- *  - Bind a port (DEFAULT_PORT with fall-forward), write server.json, return url.
+ * The port is the election. Bind it and you are the daemon; get EADDRINUSE and
+ * someone else already is, so hand back their url and start nothing. Two
+ * simultaneous callers need no coordination between them — the kernel picks the
+ * winner, and the loser finds it by asking.
  *
- * Single-user / KISS: the lockfile is the only mutual-exclusion primitive — no
- * elaborate CAS. Safe under two near-simultaneous calls.
+ * A stranger on the port is the one case that fails, deliberately and loudly.
+ * The old code walked to the next free port there, which is how a machine ends
+ * up with several daemons: each one serves specs perfectly and answers health
+ * checks, but only the first can hold the publication gateway, so the others
+ * look fine until someone clicks Share.
  *
  * @returns {Promise<{url:string, server:import('node:http').Server|null, port:number}>}
  *   server is null when an existing daemon was reused.
  */
-export async function ensureServer({ port = DEFAULT_PORT } = {}) {
-  // 1. Reuse a healthy advertised daemon.
-  const existing = readServerState();
-  if (existing && isAlive(existing.pid) && (await healthOk(existing.url))) {
-    return { url: existing.url, server: null, port: existing.port };
-  }
-
-  // 2. Acquire the singleton lock.
-  if (!acquireLock()) {
-    const holder = lockHolderPid();
-    if (holder && isAlive(holder)) {
-      // Another start is in flight — give it a moment, then reuse its state.
-      for (let i = 0; i < 20; i++) {
-        await sleep(50);
-        const s = readServerState();
-        if (s && isAlive(s.pid) && (await healthOk(s.url))) {
-          return { url: s.url, server: null, port: s.port };
-        }
-      }
-      // Holder never produced a healthy daemon; fall through and reclaim.
+export async function ensureServer({ port = defaultPort() } = {}) {
+  const server = createDaemon();
+  try {
+    await listenOn(server, port, '127.0.0.1');
+  } catch (err) {
+    if (err.code !== 'EADDRINUSE') throw err;
+    const url = daemonUrl(port);
+    // Asked more than once, because the daemon that just beat us to the port
+    // binds before it finishes starting: it can be seeding templates or
+    // restoring publications when we knock, and one unanswered probe is not
+    // proof of a stranger. Getting this wrong would print the most misleading
+    // message in the file about the most normal event there is.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await sleep(300);
+      if (await daemonAt(url)) return { url, server: null, port };
     }
-    // Stale lock (dead holder, or holder that never came up) — reclaim it.
-    releaseLock();
-    if (!acquireLock()) {
-      // Lost a genuine race; reuse whatever the winner advertised if healthy.
-      const s = readServerState();
-      if (s && isAlive(s.pid) && (await healthOk(s.url))) {
-        return { url: s.url, server: null, port: s.port };
-      }
-      throw new Error('could not acquire daemon lock');
-    }
+    throw new Error(
+      `port ${port} is held by a process that is not SpecForge — free it, or set SPECFORGE_PORT`,
+    );
   }
+  const boundPort = server.address().port;
+  const url = daemonUrl(boundPort);
 
-  // 3. We hold the lock — bind and advertise. The daemon owner also seeds the
-  // per-type template specs (idempotent — existing/edited templates untouched).
-  // Best-effort: a failed seed (read-only/full disk) must not abort startup —
-  // it would leak the just-acquired lock, and create falls back to the bundled
-  // shells anyway.
+  // Seeding the per-type template specs belongs to whoever won the port, which
+  // is why it happens here and not before the bind (idempotent either way —
+  // existing/edited templates are untouched). Best-effort: a failed seed
+  // (read-only/full disk) must not abort startup, and create falls back to the
+  // bundled shells anyway.
   try {
     ensureTemplates();
   } catch {
     /* templateHtmlFor falls back to the bundled shells */
   }
-  const server = createDaemon();
-  let boundPort;
-  try {
-    boundPort = await listenWithFallback(server, port, '127.0.0.1', PORT_RETRY_LIMIT);
-  } catch (err) {
-    releaseLock();
-    throw err;
-  }
-  const url = `http://127.0.0.1:${boundPort}/`;
-  writeServerState({ port: boundPort, pid: process.pid, url });
 
   // Republish on the tokens the previous daemon minted, which is what makes the
   // links it handed out keep working. Records from the older per-spec-tunnel
@@ -452,8 +427,8 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
   // IPv4-only bind makes localhost links flake while 127.0.0.1 works. Same
   // port, same handler; skipped silently where ::1 is unavailable. EADDRINUSE
   // is retried briefly: on a fast restart the previous daemon's ::1 socket can
-  // still be closing after its lock is released (cleanup can't await close),
-  // and giving up on the first conflict would silently regress to IPv4-only.
+  // still be closing after its IPv4 one has gone, and giving up on the first
+  // conflict would silently regress to IPv4-only.
   let server6 = null;
   for (let attempt = 0; attempt < 3 && !server6; attempt++) {
     if (attempt > 0) await sleep(150);
@@ -470,22 +445,17 @@ export async function ensureServer({ port = DEFAULT_PORT } = {}) {
     }
   }
 
-  let cleaned = false;
-  const cleanup = () => {
-    if (cleaned) return;
-    cleaned = true;
-    if (server6) server6.close();
-    clearServerState();
-    releaseLock();
-  };
-  server.on('close', cleanup);
-  process.once('exit', cleanup);
+  // The two listeners are one daemon, so closing the v4 one closes the v6 one.
+  // This is the whole of what shutdown owes the world now: there are no files
+  // to clean up, and the OS reclaims both sockets when the process dies, however
+  // it dies.
+  if (server6) server.on('close', () => server6.close());
 
   return { url, server, port: boundPort };
 }
 
 // Runnable like start.mjs: `node server/daemon.mjs` starts the daemon and keeps
-// it alive until SIGINT/SIGTERM, clearing server.json + releasing the lock.
+// it alive until SIGINT/SIGTERM.
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   ensureServer().then(({ url, server }) => {
