@@ -133,5 +133,6 @@ aphorism or an unlabelled sentence, so a clean report is a floor, not a pass.
   while you're idle. If it isn't already running this session, start it in the
   **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
   Its completion wakes the session with `{ ready, pending }` — on `ready`, run the
-  review-spec flow for each `pending` spec, then relaunch it; on timeout
-  (`ready:false`), just relaunch. One watcher covers every spec attached here.
+  review-spec flow for each `pending` spec, then relaunch it. It does not expire
+  on its own: it runs until a batch arrives or this session ends. One watcher
+  covers every spec attached here.

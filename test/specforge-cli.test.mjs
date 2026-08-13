@@ -157,14 +157,39 @@ test('wait-batch fails loudly with no session id (never silently watches nothing
   );
 });
 
-test('wait-batch tolerates a non-finite timeout (no infinite loop)', { timeout: 5000 }, async () => {
+// A watcher no longer gives up because nothing has happened yet — that is the
+// whole point of it. What ends an idle one is its session going away, so a bad
+// --timeout must not be able to turn it into a loop nothing can stop.
+test('a non-finite timeout is treated as absent, and the session still ends it', { timeout: 5000 }, async () => {
   await cmdCreate({ title: 'A' }, deps('sess-1'));
-  let n = 0;
+  let polls = 0;
   const r = await cmdWaitBatch(
     { timeout: NaN },
-    { session: 'sess-1', sleep: async () => {}, now: () => (n++ === 0 ? 0 : 9e15) },
+    {
+      session: 'sess-1',
+      sleep: async () => {},
+      now: () => 9e15, // long past any deadline a fallback might have invented
+      ppid: () => (polls++ < 3 ? 100 : 1), // reparented on the fourth poll
+    },
   );
-  assert.equal(r.ready, false, 'falls back to a finite deadline and exits');
+  assert.equal(r.ready, false);
+  assert.equal(r.reason, 'session-ended', 'not a timeout — there was none');
+});
+
+test('an idle watcher keeps listening rather than expiring', { timeout: 5000 }, async () => {
+  // The bug this fixes: it stopped after twenty minutes and only came back when
+  // the session next took a turn, so an idle-but-open session went deaf and
+  // comments submitted into it sat unread.
+  await cmdCreate({ title: 'A' }, deps('sess-1'));
+  let polls = 0;
+  const r = await cmdWaitBatch({}, {
+    session: 'sess-1',
+    sleep: async () => {},
+    now: () => 9e15,
+    ppid: () => (polls++ < 50 ? 100 : 1),
+  });
+  assert.ok(polls > 20, `kept polling while idle (${polls} polls)`);
+  assert.equal(r.reason, 'session-ended');
 });
 
 test('listall shows every spec with its attached state', async () => {

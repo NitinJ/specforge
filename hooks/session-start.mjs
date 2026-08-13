@@ -29,7 +29,8 @@ export function run(input, env = process.env) {
     'picked up while you are idle:',
     `  node "${CLI}" wait-batch`,
     'On completion it returns { ready, pending } — on ready, run specforge:review-spec',
-    'for each pending spec then relaunch it; on timeout (ready:false) just relaunch.',
+    'for each pending spec then relaunch it. It does not expire on its own — it',
+    'runs until a batch arrives or this session ends.',
   ].join('\n');
   return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
 }

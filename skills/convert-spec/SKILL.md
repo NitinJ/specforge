@@ -77,4 +77,5 @@ Fix and re-run until `PASS`. **Do not finish on a failing lint.**
   you're idle. If it isn't already running this session, start it in the
   **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
   On its `{ ready, pending }` return, run review-spec for each `pending` spec then
-  relaunch it; on timeout, just relaunch. One watcher covers every spec here.
+  relaunch it. It does not expire on its own: it runs until a batch arrives or
+  this session ends. One watcher covers every spec here.
