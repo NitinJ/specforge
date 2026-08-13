@@ -203,6 +203,7 @@
   // Submit shortcut label: ⌘↵ on Mac, Ctrl+↵ elsewhere (the handler accepts both).
   var IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
   var MOD_HINT = IS_MAC ? '⌘↵' : 'Ctrl+↵';
+  var SUBMIT_HINT = IS_MAC ? '⌘S' : 'Ctrl+S';
 
   // Initialized here (not at the theme section below) because boot() runs on the
   // readyState check above — before that section's top-level code executes — and
@@ -521,6 +522,7 @@
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { clearHover(); closeMenu(); collapseThread(); cancelCompose(); }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) onSaveKey(e);
     });
   }
 
@@ -791,6 +793,9 @@
     btn.textContent = '';
     if (s.loading) btn.appendChild(create('span', { class: 'sf-spin', 'aria-hidden': 'true' }));
     btn.appendChild(document.createTextNode(s.label));
+    // A shortcut nobody can find is not a shortcut. Only on the state it drives.
+    if (s.act === 'submit') btn.title = 'Submit comments (' + SUBMIT_HINT + ')';
+    else btn.removeAttribute('title');
   }
   function onAction() {
     var s = actionState();
@@ -2309,7 +2314,50 @@
   }
 
 
+  /**
+   * ⌘/Ctrl+S submits the batch.
+   *
+   * Submitting is the one thing on this page you do repeatedly and cannot do
+   * from the keyboard, and Save is what the reflex already reaches for on a
+   * document. Nothing here is ever unsaved — comments are written the moment you
+   * post them — so the browser's Save Page is not a shortcut anyone is giving up.
+   *
+   * It is bound to submitting specifically, not to "whatever the button says".
+   * The same button also approves a spec, and a reflex keystroke that silently
+   * approved something would be a bad trade for a saved click.
+   */
+  function onSaveKey(e) {
+    e.preventDefault(); // no "save this page as HTML" on a spec, in any state
+    var s = actionState();
+    if (s.act === 'submit') return submitBatch();
+    if (draftText()) return; // submitBatch said why
+    // Pressed with nothing to send. Say which, rather than appearing to be a
+    // dead key — the counts are already in the footer but the drawer may be shut.
+    var d = discussionCount();
+    if (d) return flash(d + (d === 1 ? ' open thread is' : ' open threads are') + ' discussion — add @agent to send one.');
+    flash('Nothing to submit.');
+  }
+
+  /**
+   * Text typed into a composer or reply box and not yet posted, if any.
+   *
+   * Submitting reloads the comment layer, which rebuilds every card from the
+   * store — and an unposted draft is not in the store, so it goes. The six-second
+   * poll already refuses to run for this reason; submitting has to refuse for the
+   * same one, and it matters more now that a keystroke can reach it mid-sentence.
+   */
+  function draftText() {
+    var boxes = document.querySelectorAll('#sf-rail textarea, #sf-sidebar textarea');
+    for (var i = 0; i < boxes.length; i++) {
+      var v = (boxes[i].value || '').trim();
+      if (v) return v;
+    }
+    return '';
+  }
+
   function submitBatch() {
+    // Never at the cost of something written and not yet posted.
+    if (draftText()) return flash('Post your comment first (' + MOD_HINT + '), then submit.');
     postJSON(API + '/submit', {}).then(function (r) {
       if (r.ok) load();
       else flash('Batch submit activates in the review-loop stage.');
@@ -2408,7 +2456,7 @@
     return out.join('');
   }
   function flash(msg) {
-    var n = create('div', {}, msg);
+    var n = create('div', { class: 'sf-flash', role: 'status' }, msg);
     n.style.cssText = 'position:fixed;bottom:60px;right:16px;z-index:60;background:var(--sf-panel);border:1px solid var(--sf-line);color:var(--sf-ink);border-radius:8px;padding:10px 14px;font:13px system-ui';
     document.body.appendChild(n);
     setTimeout(function () { n.remove(); }, 3000);
