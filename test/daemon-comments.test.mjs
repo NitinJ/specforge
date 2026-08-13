@@ -103,6 +103,20 @@ test('SSE /events streams an initial connected comment', async () => {
   await reader.cancel();
 });
 
+test('GET /api/spec/:id/state reports the mtimes a returning tab needs', async () => {
+  const r = await fetch(`${base}/api/spec/${specId}/state`);
+  assert.equal(r.status, 200);
+  const s = await r.json();
+  assert.ok(s.spec > 0, 'the spec mtime is what "did it move" is measured against');
+  assert.equal(typeof s.comments, 'number');
+  assert.equal(typeof s.busy, 'boolean');
+
+  const before = s.spec;
+  writeSpecHtml(specId, '<h1>A</h1><p>moved</p>');
+  const after = await (await fetch(`${base}/api/spec/${specId}/state`)).json();
+  assert.ok(after.spec > before, 'and it moves when the document does');
+});
+
 // ---------- the reload hold ----------
 //
 // Answering a batch is many writes: a reply, a section rewritten, a table
