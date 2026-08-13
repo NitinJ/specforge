@@ -5,19 +5,23 @@
 // owns nothing returns immediately. Otherwise surface any pending review batches
 // for those specs as context (drain routing — design §7).
 //
-// Like the Stop hook, it does not touch the heartbeat: a turn proves the session
-// exists, not that anything is listening. Only the review watcher beats.
+// It marks the session SEEN but does not beat. A turn proves the window still
+// exists, which is what the ownership lock needs; it says nothing about whether
+// anything is listening for comments, which is what the heartbeat is asked and
+// only the review watcher can answer.
 //
 // Fail-safe: any error exits 0.
 
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
+import { markSeen } from '../lib/attach.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
 
 export function run(input, env = process.env) {
   const { me, mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op
+  markSeen(me);
   const batches = pendingForSession(me);
   if (batches.length) {
     return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: reviewReason(batches) } };

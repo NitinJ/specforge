@@ -7,15 +7,17 @@
 // For owned specs: route the work the human queued in the browser — a submitted
 // review batch, or an export.
 //
-// It deliberately does not touch the heartbeat. A turn here proves the session
-// exists, not that anything is listening for comments, and stamping it made
-// every spec read connected for half an hour after its window closed. Only the
-// review watcher beats (see lib/attach.mjs).
+// It marks the session SEEN but does not beat. A turn here proves the window
+// still exists, which keeps its ownership lock; it says nothing about whether
+// anything is listening for comments, and stamping the heartbeat made every spec
+// read connected for half an hour after its window closed. Only the review
+// watcher beats (see lib/attach.mjs).
 //
 // Fail-safe: any error exits 0 so a SpecForge bug can never wedge a session.
 
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
+import { markSeen } from '../lib/attach.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
 
@@ -25,6 +27,8 @@ export function run(input, env = process.env) {
 
   const { me, mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op
+
+  markSeen(me);
 
   // Pending review batches take priority — route to review-spec before settling.
   const batches = pendingForSession(me);
