@@ -1840,6 +1840,78 @@ test('opening a thread from the drawer pages to its slide', async (t) => {
   assert.equal(window.location.hash, '#s3');
 });
 
+// ---------- ⌘/Ctrl+S submits ----------
+//
+// Submitting is the one thing you do repeatedly on this page and could not do
+// from the keyboard. Bound to submitting specifically rather than to whatever
+// the button currently says: the same button also approves a spec, and a reflex
+// keystroke that silently approved something is a bad trade for a saved click.
+
+const saveKey = (window, opts = {}) => {
+  const e = new window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true, ...opts });
+  window.document.dispatchEvent(e);
+  return e;
+};
+
+test('Ctrl+S submits the batch when there is one to submit', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  saveKey(window);
+  await tick(window);
+  assert.ok(posts.some((p) => /\/comments\/submit$/.test(p.url)));
+});
+
+test('⌘S does the same, for the same reflex on a Mac', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  saveKey(window, { ctrlKey: false, metaKey: true });
+  await tick(window);
+  assert.ok(posts.some((p) => /\/comments\/submit$/.test(p.url)));
+});
+
+test('it never triggers the browser\'s Save Page, even with nothing to submit', async (t) => {
+  // Saving a spec as HTML is not something anyone wants from this page, and a
+  // key that sometimes opens a save dialog is worse than one that never does.
+  const { window } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'draft' } });
+  assert.equal(saveKey(window).defaultPrevented, true);
+});
+
+test('it does not approve a spec, even though the same button would', async (t) => {
+  // RESOLVED_THREAD + draft is the LGTM state. A reflex keystroke must not
+  // approve; only the deliberate click does.
+  const { window, posts } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'draft' } });
+  assert.equal(window.document.querySelector('.sf-act').getAttribute('data-state'), 'lgtm',
+    'the button is offering approval');
+  saveKey(window);
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/status$/.test(p.url)).length, 0, 'and the key did not take it');
+});
+
+test('it does not re-submit a batch the agent already has', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'draft' } });
+  saveKey(window);
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/comments\/submit$/.test(p.url)).length, 0);
+});
+
+test('pressing it with only discussion open says why nothing was sent', async (t) => {
+  // Otherwise it reads as a dead key. The likely mistake is a forgotten @agent,
+  // so name that rather than saying "nothing to submit".
+  const { window } = await bootReviewLayer(t, { threads: DISCUSSION_THREAD, meta: { status: 'draft' } });
+  saveKey(window);
+  await tick(window);
+  const flash = window.document.querySelector('.sf-flash, .sf-toast, #sf-flash');
+  assert.ok(flash, 'something was said');
+  assert.match(flash.textContent, /@agent/);
+});
+
+test('the submit button advertises the shortcut, and only it does', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  assert.match(window.document.querySelector('.sf-act').getAttribute('title'), /Ctrl\+S|⌘S/);
+
+  const other = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'draft' } });
+  assert.equal(other.window.document.querySelector('.sf-act').getAttribute('title'), null,
+    'LGTM has no shortcut, so it must not claim one');
+});
+
 // ---------- the connection pill ----------
 //
 // In the header, not the menu: a spec nobody is watching takes comments all day
