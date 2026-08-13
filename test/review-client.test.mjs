@@ -1986,13 +1986,39 @@ test('a disconnected spec reads as a fault and offers Reconnect', async (t) => {
   assert.match(pill.getAttribute('title'), /sit unread/, 'says what the cost is');
 });
 
-test('a spec attached to nothing shows no pill at all', async (t) => {
-  // There is no connection to report on, and "Disconnected" would read as a
-  // fault where the truth is that nobody has claimed the spec yet.
+// This used to be silent, on the grounds that "Disconnected" reads as a fault
+// where the truth is that nobody has claimed the spec yet. That was fair while
+// the daemon had a headless drain to sweep up batches nobody owned. With it
+// gone, comments written here reach no one, so it is the worst of the three
+// states to say nothing about.
+test('a spec attached to nothing says so, and offers to fix it', async (t) => {
   const { window } = await bootReviewLayer(t, {
     meta: { id: 'test-spec', status: 'draft', attachedSession: null, connected: false },
   });
-  assert.equal(connPill(window).hasAttribute('hidden'), true);
+  const pill = connPill(window);
+  assert.equal(pill.hasAttribute('hidden'), false);
+  assert.match(pill.textContent, /No agent/);
+  assert.equal(pill.classList.contains('sf-tb-conn-off'), true);
+  assert.match(pill.querySelector('.sf-conn-act').textContent, /^Connect$/,
+    'Connect, not Reconnect — it was never connected');
+  assert.match(pill.getAttribute('title'), /No session owns this spec/);
+});
+
+test('the prompt for an unowned spec does not claim it was attached', async (t) => {
+  const copied = [];
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', status: 'draft', attachedSession: null, connected: false },
+    preBoot: (w) => {
+      Object.defineProperty(w.navigator, 'clipboard', {
+        value: { writeText: (s) => { copied.push(s); return Promise.resolve(); } },
+        configurable: true,
+      });
+    },
+  });
+  connPill(window).querySelector('.sf-conn-act').click();
+  assert.match(copied[0], /No session owns it/);
+  assert.doesNotMatch(copied[0], /stopped watching/);
+  assert.match(copied[0], /open test-spec/, 'and still says how to take it');
 });
 
 test('a published copy is not shown the owner\'s connection state', async (t) => {

@@ -44,7 +44,6 @@ import {
   handleBlocksGet, handleBlocksPut,
   handleRename, handleOrganize, handleExport, handleDelete,
 } from '../lib/store-api.mjs';
-import { createDaemonDrain } from '../lib/store-watch.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
 
@@ -495,11 +494,6 @@ if (isMain) {
       process.exit(0);
     }
     console.log(`SpecForge daemon: ${url}`);
-    // Opt-in headless orphan-drain (default off — never spawn Claude unprompted).
-    let drainer = null;
-    if (process.env.SPECFORGE_DAEMON_DRAIN) {
-      drainer = createDaemonDrain({ log: (m) => console.log(m) }).start();
-    }
     // server.close() fires the 'close' handler registered in ensureServer(),
     // which clears server.json + releases the lock; draining in-flight requests.
     // Tunnels are torn down before the process exits, and awaited. A cloudflared
@@ -512,7 +506,6 @@ if (isMain) {
     const shutdown = () => {
       if (shuttingDown) return;
       shuttingDown = true;
-      if (drainer) drainer.stop();
       publications.stopAll()
         .catch(() => { /* reaped by clearStale on the next start */ })
         .then(() => server.close(() => process.exit(0)));
