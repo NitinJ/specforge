@@ -232,15 +232,15 @@ test('removing a tag PATCHes /organize without it and drops the chip', async (t)
 const setStatusMeta = (id, s) => { const m = readMeta(id); m.status = s; writeMeta(id, m); };
 
 test('status chips filter rows; clicking the active chip resets to All', (t) => {
-  const a = createSpec({ title: 'Doing', html: '<h1>A</h1>' });
+  const a = createSpec({ title: 'Agreed', html: '<h1>A</h1>' });
   createSpec({ title: 'Drafting', html: '<h1>B</h1>' });
-  setStatusMeta(a, 'implementing');
+  setStatusMeta(a, 'approved');
   const { window } = loadIndex(t);
   const { document } = window;
-  const chip = [].slice.call(document.querySelectorAll('.fchip')).find((c) => c.getAttribute('data-f') === 'implementing');
+  const chip = [].slice.call(document.querySelectorAll('.fchip')).find((c) => c.getAttribute('data-f') === 'approved');
   chip.click();
   let visible = [].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none');
-  assert.equal(visible.length, 1, 'only the implementing spec shows');
+  assert.equal(visible.length, 1, 'only the approved spec shows');
   assert.match(document.getElementById('count').textContent, /1 of 2/);
   chip.click(); // toggle off → All
   visible = [].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none');
@@ -286,10 +286,13 @@ test('template specs render as a bottom strip, excluded from rows and filters', 
   ensureTemplates();
   const { window } = loadIndex(t);
   const { document } = window;
-  // strip renders one card per type, badge included
-  assert.equal(document.querySelectorAll('.tcard').length, 4, '4 template cards');
+  // One card per spec type, badge included. Counted off SPEC_TYPES rather than a
+  // literal, so adding a type (deck) does not fail a test about the strip.
+  const { SPEC_TYPES } = await import('../lib/meta.mjs');
+  const n = SPEC_TYPES.length;
+  assert.equal(document.querySelectorAll('.tcard').length, n, `${n} template cards`);
   assert.ok(document.querySelector(`.tcard[data-id="${templateId('design')}"]`), 'design template card');
-  assert.equal(document.querySelectorAll('.tcard .badge.tpl').length, 4, 'template badge on each card');
+  assert.equal(document.querySelectorAll('.tcard .badge.tpl').length, n, 'template badge on each card');
   // templates are not filterable rows
   assert.equal(document.querySelectorAll(`.row[data-id="${templateId('design')}"]`).length, 0, 'no template row');
   assert.match(document.getElementById('count').textContent, /1 spec/, 'count excludes templates');

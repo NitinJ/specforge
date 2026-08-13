@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -36,7 +37,7 @@ test('package.json is an ES module with a test script', () => {
 
 test('hooks.json declares the expected events and references existing scripts', () => {
   const h = readJSON('hooks/hooks.json');
-  const expected = ['Stop', 'PostToolUse', 'PreToolUse', 'SessionStart', 'UserPromptSubmit'];
+  const expected = ['Stop', 'SessionStart', 'UserPromptSubmit'];
   for (const ev of expected) {
     assert.ok(Array.isArray(h.hooks[ev]), `event ${ev} declared`);
     for (const group of h.hooks[ev]) {
@@ -72,13 +73,20 @@ test('every command file has a description frontmatter', () => {
   }
 });
 
-test('each hook runs as a fail-safe no-op (exit 0, no output)', () => {
-  const hooks = ['stop', 'post-tool-use', 'pre-tool-use', 'session-start', 'user-prompt-submit'];
+test('each hook runs as a fail-safe no-op (exit 0, no output)', (t) => {
+  // Against an empty store. Without this the hooks read the developer's real
+  // ~/.specforge, so SessionStart legitimately prints its watcher reminder
+  // whenever the machine running the suite happens to own a spec, and the
+  // assertion fails for a reason that has nothing to do with the hook.
+  const home = mkdtempSync(join(tmpdir(), 'sf-scaffold-'));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const hooks = ['stop', 'session-start', 'user-prompt-submit'];
   for (const name of hooks) {
     const res = spawnSync(process.execPath, [join(ROOT, 'hooks', `${name}.mjs`)], {
       input: JSON.stringify({ hook_event_name: 'Test', cwd: ROOT }),
       encoding: 'utf8',
       timeout: 8000,
+      env: { ...process.env, SPECFORGE_HOME: home },
     });
     assert.ifError(res.error); // distinguishes a failed/timed-out spawn from a non-zero exit
     assert.equal(res.status, 0, `${name}.mjs exits 0 (stderr: ${res.stderr})`);

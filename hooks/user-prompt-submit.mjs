@@ -11,10 +11,7 @@
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
 import { heartbeat } from '../lib/attach.mjs';
-import {
-  pendingForSession, reviewReason,
-  implementSignalsForSession, clearImplementSignal, implementReason,
-} from '../lib/store-drain.mjs';
+import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
 
 export function run(input, env = process.env) {
@@ -24,11 +21,6 @@ export function run(input, env = process.env) {
   const batches = pendingForSession(me);
   if (batches.length) {
     return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: reviewReason(batches) } };
-  }
-  const toImplement = implementSignalsForSession(me);
-  if (toImplement.length) {
-    toImplement.forEach((m) => clearImplementSignal(m.id));
-    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: implementReason(toImplement) } };
   }
   const toExport = exportRequestsForSession(me);
   if (toExport.length) {

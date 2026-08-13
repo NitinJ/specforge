@@ -52,17 +52,22 @@ function sseWatcher(id) {
  * and deliberately ignored here, because the rail refetches comments on its own
  * and a full reload on every comment would throw away whatever the reader was
  * typing.
+ *
+ * `busy` says an agent is part-way through answering a batch. Its writes land
+ * one section at a time, so they are remembered and taken as a single reload
+ * once the round finishes — the same hold the event stream applies.
  */
 function pollWatcher(interval) {
-  return `  var last=null, misses=0;
+  return `  var last=null, misses=0, held=false;
   function poll(){
     fetch('/api/state', { cache: 'no-store' }).then(function(r){
       if(!r.ok) throw new Error('state '+r.status);
       return r.json();
     }).then(function(s){
       misses=0; connected();
-      if(last!==null && s.spec!==last){ location.reload(); return; }
-      last=s.spec;
+      if(last===null){ last=s.spec; return; }
+      if(s.spec!==last){ last=s.spec; held=true; }
+      if(held && !s.busy){ location.reload(); }
     }).catch(function(){ if(++misses>1) disconnected(); });
   }
   poll();

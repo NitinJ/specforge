@@ -8,8 +8,8 @@ import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
 import { attach, STALE_MS } from '../lib/attach.mjs';
 import { loadComments, saveComments, createThread } from '../lib/store-comments.mjs';
-import { submitBatch, reviewProgressForSpec } from '../lib/store-inbox.mjs';
-import { appendEvent } from '../lib/store-ledger.mjs';
+import { submitBatch, reviewProgressForSpec, agentBusy } from '../lib/store-inbox.mjs';
+import { readPublicationState } from '../lib/publication-state.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { requestExport, exportRequestsForSession } from '../lib/store-export.mjs';
 import { orphanedBatches, createDaemonDrain } from '../lib/store-watch.mjs';
@@ -46,6 +46,39 @@ function specWithBatch(session = 'sess-1') {
   const batch = submitBatch(id);
   return { id, batch };
 }
+
+// ---------- the reload hold ----------
+// Answering a batch is many writes — a reply, a section rewritten, a table
+// amended — and the page used to reload on each one, throwing the reader back to
+// the top of a document still being edited. The round is the unit worth seeing.
+
+test('a spec is busy from submit until the agent marks the batch done', async () => {
+  const idle = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  assert.equal(agentBusy(idle), false, 'a spec nobody submitted is not busy');
+
+  const { id, batch } = specWithBatch('sess-1');
+  assert.equal(agentBusy(id), true, 'busy the moment the batch is submitted');
+  assert.equal(agentBusy(idle), false, 'and only that spec');
+
+  pendingForSession('sess-1');                                  // a hook surfaces it
+  assert.equal(agentBusy(id), true, 'still busy once picked up');
+  await cmdBatchWorking({ id, batchId: batch.batchId });
+  assert.equal(agentBusy(id), true, 'still busy while the skill amends the spec');
+
+  await cmdBatchDone({ id, batchId: batch.batchId });
+  assert.equal(agentBusy(id), false, 'free once the round is finished');
+});
+
+test('the polled state carries the hold, so a published page can honour it', () => {
+  const { id, batch } = specWithBatch('sess-1');
+  assert.equal(readPublicationState(id).busy, true);
+  return cmdBatchDone({ id, batchId: batch.batchId }).then(() => {
+    const s = readPublicationState(id);
+    assert.equal(s.busy, false);
+    assert.ok(s.spec > 0, 'and still reports the mtimes it always did');
+    assert.equal(typeof s.comments, 'number');
+  });
+});
 
 test('pendingForSession returns the session’s submitted batches with titles', () => {
   const { id, batch } = specWithBatch('sess-1');
@@ -91,11 +124,9 @@ test('reviewReason names the batch and routes to review-spec', () => {
   assert.ok(text.includes(batch.batchId));
 });
 
-test('Stop blocks on a pending batch — and it takes priority over drift', () => {
+test('Stop blocks on a pending batch — and it takes priority over a queued export', () => {
   const { id, batch } = specWithBatch('sess-1');
-  // Also make it look like implementation drift; the batch must win.
-  const m = readMeta(id); m.status = 'implementing'; writeMeta(id, m);
-  appendEvent(id, { kind: 'pr', number: '#42', at: 't' });
+  requestExport(id); // both queued at once; the review batch must win
   const out = stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
   assert.equal(out.decision, 'block');
   assert.ok(out.reason.includes(batch.batchId));

@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
 import { attach } from '../lib/attach.mjs';
-import { appendEvent } from '../lib/store-ledger.mjs';
+import { requestExport } from '../lib/store-export.mjs';
 import { run as stopRun } from '../hooks/stop.mjs';
 import { run as upsRun } from '../hooks/user-prompt-submit.mjs';
 import { run as sessionStartRun } from '../hooks/session-start.mjs';
@@ -31,15 +31,6 @@ afterEach(() => {
   else process.env.SPECFORGE_HOME = prevHome;
   rmSync(home, { recursive: true, force: true });
 });
-
-function implementingSpec(session = 'sess-1') {
-  const id = createSpec({ title: 'A' });
-  attach(id, session);
-  const m = readMeta(id);
-  m.status = 'implementing';
-  writeMeta(id, m);
-  return id;
-}
 
 // --- the gate: a session that owns nothing is an immediate no-op ---
 
@@ -84,13 +75,6 @@ test('SessionStart re-arms the watcher when the (resumed) session owns specs', (
   assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
 });
 
-test('SessionStart does not re-arm when the session owns only closed specs', () => {
-  const id = createSpec({ title: 'A' });
-  attach(id, 'sess-2');
-  const m = readMeta(id); m.status = 'closed'; writeMeta(id, m);
-  assert.equal(sessionStartRun({}, { CLAUDE_CODE_SESSION_ID: 'sess-2' }), null);
-});
-
 // --- heartbeat: owned specs get their lock bumped each turn ---
 
 test('Stop bumps heartbeat for the session’s specs', () => {
@@ -116,9 +100,11 @@ test('UserPromptSubmit bumps heartbeat for the session’s specs', () => {
 // --- loop guard ---
 
 test('Stop respects the loop guard (stop_hook_active)', () => {
-  const id = implementingSpec();
-  appendEvent(id, { kind: 'pr', number: '#42', at: 't' });
-  assert.equal(stopRun({ stop_hook_active: true }, { CLAUDE_CODE_SESSION_ID: 'sess-1' }), null);
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-1');
+  requestExport(id); // Stop would block on this...
+  assert.equal(stopRun({ stop_hook_active: true }, { CLAUDE_CODE_SESSION_ID: 'sess-1' }), null,
+    '...but not on a stop that already followed a stop-hook continuation');
 });
 
 // --- subprocess wiring: the script runs end-to-end and the 100ms readStdin
