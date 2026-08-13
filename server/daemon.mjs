@@ -464,14 +464,13 @@ if (isMain) {
       process.exit(0);
     }
     console.log(`SpecForge daemon: ${url}`);
-    // server.close() fires the 'close' handler registered in ensureServer(),
-    // which clears server.json + releases the lock; draining in-flight requests.
-    // Tunnels are torn down before the process exits, and awaited. A cloudflared
-    // child outlives its parent, so exiting without waiting leaves a public
-    // endpoint up with nothing tracking it. stopAll() resolves only once each
-    // child has actually exited (SIGTERM, escalating to SIGKILL), so this is the
-    // one place that can guarantee it; startup reaping is the backstop for a
-    // daemon that was killed outright.
+    // The listeners need no help — the OS reclaims both sockets whatever kills
+    // this process. The tunnel does: a cloudflared child outlives its parent, so
+    // exiting without waiting leaves a public endpoint up with nothing tracking
+    // it. stopAll() resolves only once each child has actually exited (SIGTERM,
+    // escalating to SIGKILL), so this is the one place that can guarantee it;
+    // startup reaping is the backstop for a daemon that was killed outright.
+    // server.close() then drains in-flight requests before exit.
     let shuttingDown = false;
     const shutdown = () => {
       if (shuttingDown) return;
