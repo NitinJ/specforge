@@ -17,7 +17,6 @@
 import { listSpecs, DEFAULT_TYPE } from '../lib/meta.mjs';
 import { sessionDisplay } from '../lib/session-label.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
-import { isStale } from '../lib/attach.mjs';
 import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
 import { STATUSES } from '../lib/lifecycle.mjs';
 
@@ -95,11 +94,15 @@ function rowHtml(m, sig) {
   const coll = m.collection || '';
   const key = esc(`${m.id} ${titleRaw} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'} ${tags.join(' ')} ${coll}`.toLowerCase());
   const chips = tags.map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}<button class="x" type="button" title="Remove tag" aria-label="Remove tag">×</button></span>`).join('');
-  const isLive = !!m.attachedSession && !isStale(m);
+  // "Connected" is a beating watcher, not merely an attached session — see
+  // specConnected. A spec whose session closed reads disconnected within 30s
+  // instead of claiming to be live for the half-hour the lock takes to go stale.
+  const isLive = sig.connected;
   const live = m.attachedSession
-    ? (isStale(m) ? '<span class="off" title="' + att + '">○ disconnected</span>' : '<span class="live" title="' + att + '"><span class="dot"></span> live</span>')
+    ? (isLive ? '<span class="live" title="' + att + '"><span class="dot"></span> live</span>'
+      : '<span class="off" title="' + att + '">○ disconnected</span>')
     : '';
-  const edge = m.attachedSession ? (isStale(m) ? ' edge-off' : ' edge-live') : '';
+  const edge = m.attachedSession ? (isLive ? ' edge-live' : ' edge-off') : '';
   return `<li class="row${edge}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}">
   <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
@@ -155,7 +158,7 @@ export function renderIndex({ shareInfo } = {}) {
   const tpls = all.filter((m) => m.template);
   const specs = all.filter((m) => !m.template);
   const n = specs.length;
-  const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, shareInfo)]));
+  const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, shareInfo, m)]));
   const sigOf = (m) => sigs.get(m.id);
 
   const { order, named } = groupByCollection(specs);
@@ -168,7 +171,7 @@ export function renderIndex({ shareInfo } = {}) {
   }).join('');
 
   const nAttn = specs.filter((m) => ['needs', 'replied'].includes(sigOf(m).review)).length;
-  const nLive = specs.filter((m) => m.attachedSession && !isStale(m)).length;
+  const nLive = specs.filter((m) => sigOf(m).connected).length;
   const nPub = specs.filter((m) => sigOf(m).shareLive).length;
   const views = [
     ['all', 'All specs', n],

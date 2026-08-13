@@ -75,26 +75,31 @@ test('SessionStart re-arms the watcher when the (resumed) session owns specs', (
   assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
 });
 
-// --- heartbeat: owned specs get their lock bumped each turn ---
+// --- heartbeat: the hooks must NOT beat ---
+//
+// A turn in a window proves the window exists. It says nothing about whether
+// anything is listening for comments, which is what the heartbeat is asked. When
+// the hooks beat, every spec anyone had opened read as connected for the half
+// hour its lock took to go stale, whether or not a watcher was ever armed.
 
-test('Stop bumps heartbeat for the session’s specs', () => {
+test('Stop does not touch the heartbeat', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-1');
   const m = readMeta(id);
   m.heartbeat = 1000;
   writeMeta(id, m);
   stopRun({}, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
-  assert.ok(readMeta(id).heartbeat > 1000);
+  assert.equal(readMeta(id).heartbeat, 1000, 'only the review watcher beats');
 });
 
-test('UserPromptSubmit bumps heartbeat for the session’s specs', () => {
+test('UserPromptSubmit does not touch the heartbeat', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-1');
   const m = readMeta(id);
   m.heartbeat = 1000;
   writeMeta(id, m);
   assert.equal(upsRun({ prompt: 'hi' }, { CLAUDE_CODE_SESSION_ID: 'sess-1' }), null);
-  assert.ok(readMeta(id).heartbeat > 1000);
+  assert.equal(readMeta(id).heartbeat, 1000);
 });
 
 // --- loop guard ---

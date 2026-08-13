@@ -4,14 +4,18 @@
 // Gate: read $CLAUDE_CODE_SESSION_ID → the specs attached to it. A session that
 // owns nothing returns immediately (sub-ms no-op for every non-spec session).
 //
-// For owned specs: bump their heartbeat (keeps the lock alive) and route the work
-// the human queued in the browser — a submitted review batch, or an export.
+// For owned specs: route the work the human queued in the browser — a submitted
+// review batch, or an export.
+//
+// It deliberately does not touch the heartbeat. A turn here proves the session
+// exists, not that anything is listening for comments, and stamping it made
+// every spec read connected for half an hour after its window closed. Only the
+// review watcher beats (see lib/attach.mjs).
 //
 // Fail-safe: any error exits 0 so a SpecForge bug can never wedge a session.
 
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
-import { heartbeat } from '../lib/attach.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
 
@@ -21,8 +25,6 @@ export function run(input, env = process.env) {
 
   const { me, mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op
-
-  heartbeat(me);
 
   // Pending review batches take priority — route to review-spec before settling.
   const batches = pendingForSession(me);

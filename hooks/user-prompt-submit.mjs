@@ -2,22 +2,22 @@
 // SpecForge — UserPromptSubmit hook (v2, session-aware).
 //
 // Gate: read $CLAUDE_CODE_SESSION_ID → the specs attached to it. A session that
-// owns nothing returns immediately. Otherwise bump the owned specs' heartbeat so
-// an active session keeps its locks alive, and surface any pending review batches
+// owns nothing returns immediately. Otherwise surface any pending review batches
 // for those specs as context (drain routing — design §7).
+//
+// Like the Stop hook, it does not touch the heartbeat: a turn proves the session
+// exists, not that anything is listening. Only the review watcher beats.
 //
 // Fail-safe: any error exits 0.
 
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
-import { heartbeat } from '../lib/attach.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
 
 export function run(input, env = process.env) {
   const { me, mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op
-  heartbeat(me);
   const batches = pendingForSession(me);
   if (batches.length) {
     return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: reviewReason(batches) } };
