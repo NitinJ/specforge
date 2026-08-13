@@ -2330,6 +2330,7 @@
     e.preventDefault(); // no "save this page as HTML" on a spec, in any state
     var s = actionState();
     if (s.act === 'submit') return submitBatch();
+    if (draftText()) return; // submitBatch said why
     // Pressed with nothing to send. Say which, rather than appearing to be a
     // dead key — the counts are already in the footer but the drawer may be shut.
     var d = discussionCount();
@@ -2337,7 +2338,26 @@
     flash('Nothing to submit.');
   }
 
+  /**
+   * Text typed into a composer or reply box and not yet posted, if any.
+   *
+   * Submitting reloads the comment layer, which rebuilds every card from the
+   * store — and an unposted draft is not in the store, so it goes. The six-second
+   * poll already refuses to run for this reason; submitting has to refuse for the
+   * same one, and it matters more now that a keystroke can reach it mid-sentence.
+   */
+  function draftText() {
+    var boxes = document.querySelectorAll('#sf-rail textarea, #sf-sidebar textarea');
+    for (var i = 0; i < boxes.length; i++) {
+      var v = (boxes[i].value || '').trim();
+      if (v) return v;
+    }
+    return '';
+  }
+
   function submitBatch() {
+    // Never at the cost of something written and not yet posted.
+    if (draftText()) return flash('Post your comment first (' + MOD_HINT + '), then submit.');
     postJSON(API + '/submit', {}).then(function (r) {
       if (r.ok) load();
       else flash('Batch submit activates in the review-loop stage.');

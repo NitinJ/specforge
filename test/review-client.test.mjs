@@ -1903,6 +1903,48 @@ test('pressing it with only discussion open says why nothing was sent', async (t
   assert.match(flash.textContent, /@agent/);
 });
 
+// Submitting reloads the comment layer, which rebuilds every card from the
+// store. An unposted draft is not in the store, so it went — and Ctrl+S is
+// exactly the reflex you hit mid-sentence. The six-second poll already refuses
+// to run for this reason; submitting has to refuse for the same one.
+test('it will not submit over a comment you are still typing', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  const { document } = window;
+  mouse(window, document.querySelector('p.a'), 'click');
+  await tick(window);
+  document.querySelector('#sf-rail .sf-bub-compose textarea').value = 'half a thought';
+
+  saveKey(window);
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/comments\/submit$/.test(p.url)).length, 0, 'nothing was sent');
+  assert.equal(document.querySelector('#sf-rail .sf-bub-compose textarea').value, 'half a thought',
+    'and the draft is still there');
+  assert.match(document.querySelector('.sf-flash').textContent, /Post your comment first/);
+});
+
+test('the same guard covers the button, which could always discard a draft', async (t) => {
+  // Pre-existing: clicking Submit with a composer open lost it too. Guarding
+  // only the keystroke would leave the same data loss one click away.
+  const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  const { document } = window;
+  mouse(window, document.querySelector('p.a'), 'click');
+  await tick(window);
+  document.querySelector('#sf-rail .sf-bub-compose textarea').value = 'half a thought';
+
+  document.querySelector('.sf-act').click();
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/comments\/submit$/.test(p.url)).length, 0);
+});
+
+test('an empty composer is not a draft and does not block submitting', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
+  mouse(window, window.document.querySelector('p.a'), 'click');
+  await tick(window);
+  saveKey(window);
+  await tick(window);
+  assert.ok(posts.some((p) => /\/comments\/submit$/.test(p.url)), 'nothing to lose, so it goes');
+});
+
 test('the submit button advertises the shortcut, and only it does', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
   assert.match(window.document.querySelector('.sf-act').getAttribute('title'), /Ctrl\+S|⌘S/);
