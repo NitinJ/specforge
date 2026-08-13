@@ -140,6 +140,20 @@ test('coming back to a document that moved reloads it', async () => {
   assert.equal(t.reloads(), 1);
 });
 
+// The baseline must describe the page on screen, not the file at some moment
+// after the stream was dropped. Re-reading it on the way out is a request that
+// resolves once nothing is listening, so a change landing in that gap was
+// recorded as already-seen and the tab came back showing stale content.
+test('a change landing as the tab hides is not mistaken for one already seen', async () => {
+  let m = 100;
+  const t = boot({ mtime: () => m });
+  await settle();
+  m = 200;              // the agent writes at the moment the tab goes away
+  await t.flip(true);
+  await t.flip(false);
+  assert.equal(t.reloads(), 1, 'the page on screen is still the old one, so it must reload');
+});
+
 test('a tab opened in the background still catches a change it never saw', async () => {
   // shownAt is captured at load even while hidden, so the first view compares
   // against the document as it was when the tab was opened.

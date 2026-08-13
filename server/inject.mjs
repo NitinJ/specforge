@@ -89,7 +89,12 @@ function sseWatcher(id) {
   }
   document.addEventListener('visibilitychange', function(){
     if(document.hidden){
-      specMtime().then(function(v){ if(v!==null) shownAt=v; });
+      // Nothing is re-read here on purpose. Asking for the mtime on the way out
+      // is a request that resolves AFTER the stream is gone, so a change landing
+      // in that gap would be recorded as already-seen and the page would come
+      // back stale. shownAt was captured at load and the live stream has kept it
+      // true ever since: any change while visible reloads the page, which
+      // captures it again.
       closeStream();
       // A stream we let go of on purpose is not a lost connection. Leaving the
       // banner armed would greet every return with "Live connection lost".
@@ -101,8 +106,9 @@ function sseWatcher(id) {
       });
     }
   });
-  // Captured even when the tab starts hidden (opened in a background tab), so a
-  // spec that changes before it is ever looked at still reloads on first view.
+  // Captured at load, including when the tab starts hidden (opened in a
+  // background tab), so a spec that changes before it is ever looked at still
+  // reloads on first view.
   specMtime().then(function(v){ if(shownAt===null) shownAt=v; });
   if(!document.hidden) openStream();`;
 }
