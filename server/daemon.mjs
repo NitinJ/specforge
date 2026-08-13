@@ -28,6 +28,7 @@ import { watch } from 'node:fs';
 import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
 import { inboxDir } from '../lib/store-paths.mjs';
 import { agentBusy } from '../lib/store-inbox.mjs';
+import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -327,6 +328,11 @@ export function createDaemon() {
           renderIndex({ shareInfo: (id) => publications.shareInfo(id) }));
       }
       if (path === '/events') return serveEvents(url.searchParams.get('spec') || '', req, res);
+      // The same mtimes a published copy polls. A spec tab that let go of its
+      // event stream while hidden asks this on the way back, to find out whether
+      // the document moved while it was not listening.
+      const st = path.match(/^\/api\/spec\/([\w-]+)\/state$/);
+      if (st) return sendJson(res, 200, readPublicationState(st[1]));
       const sm = path.match(/^\/spec\/([\w-]+)$/);
       if (sm) return serveSpec(sm[1], res);
       const pub = path.match(/^\/public\/([\w.-]+)$/);

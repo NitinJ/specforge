@@ -40,14 +40,71 @@ export function injectReviewLayer(html, { specId, transport = 'sse', api } = {})
   return out;
 }
 
-/** Live-reload over an event stream: the loopback case. */
+/**
+ * Live-reload over an event stream: the loopback case.
+ *
+ * The stream is held only while the tab is visible. Not an optimisation — the
+ * daemon becomes unusable with a handful of specs open without it.
+ *
+ * A browser allows about six concurrent connections per origin over HTTP/1.1,
+ * counted across every tab, and an event stream is a response that deliberately
+ * never completes: it holds one of those six for as long as its tab exists. At
+ * six open specs the origin is saturated, and every other request queues behind
+ * streams that will never finish — so Submit does not fail, it waits forever,
+ * which looks exactly like a dead button. The tabs holding a stream stay healthy
+ * and show no banner, because it is their neighbours' requests that starve.
+ * (A publication is served over HTTP/2, which multiplexes, and is immune.)
+ *
+ * A hidden tab is one nobody is reading, and only one can be visible at a time,
+ * so releasing on hide keeps the cost at about one connection however many specs
+ * are open. Coming back asks whether the document moved meanwhile, which is
+ * precisely what the dropped stream would have told us.
+ */
 function sseWatcher(id) {
-  return `  try {
-    var es=new EventSource('/events?spec='+encodeURIComponent(${id}));
-    es.addEventListener('reload', function(){ location.reload(); });
-    es.onopen=connected;
-    es.onerror=disconnected;
-  } catch (e) { set('○ offline','#9aa3b2'); showBanner(); }`;
+  return `  var es=null;
+  // The spec mtime the page currently on screen was built from. Captured at load
+  // and refreshed on the way out, both moments when the stream was live and the
+  // page therefore current.
+  var shownAt=null;
+  var statePath='/api/spec/'+encodeURIComponent(${id})+'/state';
+  function specMtime(){
+    return fetch(statePath,{cache:'no-store'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(s){ return s ? s.spec : null; })
+      .catch(function(){ return null; });
+  }
+  function openStream(){
+    if(es) return;
+    try {
+      es=new EventSource('/events?spec='+encodeURIComponent(${id}));
+      es.addEventListener('reload', function(){ location.reload(); });
+      es.onopen=connected;
+      es.onerror=disconnected;
+    } catch (e) { set('○ offline','#9aa3b2'); showBanner(); }
+  }
+  function closeStream(){
+    if(!es) return;
+    try { es.close(); } catch (e) {}
+    es=null;
+  }
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden){
+      specMtime().then(function(v){ if(v!==null) shownAt=v; });
+      closeStream();
+      // A stream we let go of on purpose is not a lost connection. Leaving the
+      // banner armed would greet every return with "Live connection lost".
+      disarmBanner(); hideBanner();
+    } else {
+      openStream();
+      specMtime().then(function(v){
+        if(shownAt!==null && v!==null && v!==shownAt) location.reload();
+      });
+    }
+  });
+  // Captured even when the tab starts hidden (opened in a background tab), so a
+  // spec that changes before it is ever looked at still reloads on first view.
+  specMtime().then(function(v){ if(shownAt===null) shownAt=v; });
+  if(!document.hidden) openStream();`;
 }
 
 /**
