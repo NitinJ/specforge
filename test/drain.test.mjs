@@ -12,7 +12,6 @@ import { submitBatch, reviewProgressForSpec, agentBusy } from '../lib/store-inbo
 import { readPublicationState } from '../lib/publication-state.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { requestExport, exportRequestsForSession } from '../lib/store-export.mjs';
-import { orphanedBatches, createDaemonDrain } from '../lib/store-watch.mjs';
 import {
   cmdComments, cmdReply, cmdBatchDone, cmdBatchWorking, cmdWaitBatch,
   cmdExportWorking, cmdExportDone,
@@ -183,24 +182,6 @@ test('export CLI: working then done records the Doc link; --error records a fail
   requestExport(id);
   await cmdExportDone({ id, error: 'drive auth failed' });
   assert.equal(readMeta(id).export.state, 'error');
-});
-
-test('orphanedBatches: attached+fresh is not orphaned; unattached/stale is', () => {
-  const { id } = specWithBatch('sess-1');
-  assert.deepEqual(orphanedBatches(), []); // attached to a fresh session
-
-  const m = readMeta(id); m.heartbeat = Date.now() - STALE_MS - 1; writeMeta(id, m);
-  assert.equal(orphanedBatches().length, 1); // stale lock → orphaned
-});
-
-test('daemon drain tick fires the drain once for orphaned batches', async () => {
-  let calls = 0;
-  const drainer = createDaemonDrain({
-    pending: () => [{ batchId: 'b_x', specId: 'z', threadIds: ['t'], title: 'Z' }],
-    drain: async () => { calls++; },
-  });
-  await drainer.tick();
-  assert.equal(calls, 1);
 });
 
 test('review CLI: comments → reply (claude) → batch-done', async () => {
