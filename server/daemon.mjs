@@ -117,6 +117,11 @@ function serveEvents(id, req, res) {
   };
   const flush = () => {
     if (closed) return;
+    // Drop any spec-write timer still pending. Both watchers call this, so a
+    // final save landing within the debounce of the batch being marked done
+    // would otherwise release the held reload here and fire a second one when
+    // that timer caught up — two reloads for one round.
+    if (debounce) { clearTimeout(debounce); debounce = null; }
     if (agentBusy(id)) { held = true; armInbox(); return; }
     held = false;
     safeWrite('event: reload\ndata: {}\n\n');

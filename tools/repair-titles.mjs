@@ -8,12 +8,26 @@
 // `&`, `<` or a quote reached meta.json still escaped, and every renderer then
 // escaped it again. The reader is fixed; this repairs what it already wrote.
 //
-// Only touches titles that decode to something different, so it is safe to run
-// repeatedly and on a store that was never affected.
+// It repairs a spec only when the document proves the stored value came from the
+// old reader: decoding meta.title must land exactly on what getTitle now returns
+// for that spec.html. Two things fall out of that.
+//
+// It is idempotent. A title that really does contain the text `&lt;` is stored
+// doubly escaped, and after one pass decodes to `&lt;` — which no longer matches
+// the document, so a second pass leaves it alone instead of peeling another
+// layer off until it becomes `<`.
+//
+// And it never renames a spec whose listing name has simply drifted from its
+// <h1>. That happens for ordinary reasons — a spec renamed in the index, a
+// document still holding its {{TITLE}} placeholder — and is none of this tool's
+// business. Taking the document as the answer rather than as corroboration
+// would rewrite dozens of deliberately-chosen names.
 
 import { readdirSync, writeFileSync } from 'node:fs';
 import { specsDir, metaPath } from '../lib/store-paths.mjs';
 import { readMeta } from '../lib/meta.mjs';
+import { readSpecHtml } from '../lib/store.mjs';
+import { getTitle } from '../lib/spec.mjs';
 
 const confirm = process.argv.includes('--confirm');
 
@@ -42,7 +56,14 @@ for (const id of ids) {
   const meta = readMeta(id);
   if (!meta || typeof meta.title !== 'string') continue;
   const fixed = decode(meta.title);
-  if (fixed === meta.title) continue;
+  if (fixed === meta.title) continue; // nothing escaped in it
+  let fromDoc;
+  try {
+    fromDoc = getTitle(readSpecHtml(id));
+  } catch {
+    continue; // spec.html unreadable — no corroboration, so no repair
+  }
+  if (fixed !== fromDoc) continue; // not what the old reader would have written
   changed += 1;
   console.log(`${confirm ? 'fixing ' : 'would fix'} ${id}`);
   console.log(`  was: ${meta.title}`);

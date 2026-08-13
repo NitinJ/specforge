@@ -161,6 +161,25 @@ test('writes while an agent has the batch are held, then land as one reload', as
   await sse.close();
 });
 
+test('a save landing just before batch-done still reloads exactly once', async () => {
+  // Both watchers call the same flush. Without cancelling the pending spec-write
+  // timer, the inbox watcher releases the held reload and that timer fires a
+  // second one a moment later — two reloads for one round.
+  await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' });
+  const { batch } = await (await post(`/api/spec/${specId}/comments/submit`)).json();
+  const sse = await openStream();
+  await settle();
+
+  writeSpecHtml(specId, '<h1>A</h1><p>held</p>');
+  await settle();
+  writeSpecHtml(specId, '<h1>A</h1><p>the last save of the round</p>');
+  markBatchDone(specId, batch.batchId);            // inside the 100ms debounce
+  await settle();
+  await settle();
+  assert.equal(sse.reloads(), 1);
+  await sse.close();
+});
+
 test('a round that finishes without touching the spec reloads nobody', async () => {
   // The agent may answer a batch in comments alone. There is no new document to
   // show, so releasing a reload would be a jump to the same page.
