@@ -88,7 +88,14 @@ A comment is a conversation between people unless it says `@agent`:
 - `@agent widen this to 64` joins the next batch you submit
 
 Submit, and the Claude session that owns the spec wakes up even while idle. It
-replies to every thread and amends the document. Your open page reloads itself.
+replies to every thread and amends the document. Your open page reloads itself,
+once, when the round is finished rather than on every save.
+
+The header says whether anyone is actually listening. **Connected** means a
+session is watching this spec right now, so comments you submit reach it on their
+own; **Disconnected** means they would sit unread. Reconnect copies a short
+prompt — paste it into whichever Claude window you want to own the spec, and it
+takes over from the session that went away.
 
 Adding `@agent` to a thread later hands over the **whole thread**, so the agent
 reads the discussion that led to the request. The footer counts both

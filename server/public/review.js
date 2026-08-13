@@ -563,11 +563,90 @@
     // "Shared" over that would be worse than no pill.
     els.shared = create('span', { class: 'sf-tb-shared', hidden: 'hidden' });
     els.titlebar.appendChild(els.shared);
+    // Whether anything is listening. In the header rather than the menu, because
+    // a spec whose agent has gone is one you can leave comments on all day
+    // without anyone ever seeing them, and that is not something to find out by
+    // opening a popup.
+    els.conn = create('span', { class: 'sf-tb-conn', hidden: 'hidden' });
+    els.titlebar.appendChild(els.conn);
     els.headAction = create('button', { class: 'sf-act sf-tb-act', type: 'button' });
     els.headAction.onclick = onAction;
     els.titlebar.appendChild(els.headAction);
     document.body.appendChild(els.titlebar);
     syncTitle();
+  }
+
+  /**
+   * The connection pill: is anyone listening, and what to do when nobody is.
+   *
+   * "Connected" means a review watcher is beating for the session this spec is
+   * attached to — so comments submitted now would be picked up on their own. It
+   * is not "a session was here once": that was the old rule, and it left specs
+   * claiming to be live for half an hour after their window closed.
+   *
+   * Hidden on a published copy. A reviewer cannot reconnect someone else's spec
+   * to someone else's agent, and telling them the author's session is down only
+   * invites them to stop writing.
+   */
+  function renderConn() {
+    if (!els.conn) return;
+    var meta = state.meta;
+    if (!meta || isPublishedCopy() || !meta.attachedSession) {
+      els.conn.setAttribute('hidden', 'hidden');
+      els.conn.innerHTML = '';
+      return;
+    }
+    els.conn.removeAttribute('hidden');
+    els.conn.innerHTML = '';
+    var connected = !!meta.connected;
+    els.conn.className = 'sf-tb-conn' + (connected ? '' : ' sf-tb-conn-off');
+    var who = meta.sessionLabel || ('session ' + String(meta.attachedSession).slice(0, 8));
+    els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
+    els.conn.appendChild(create('span', { class: 'sf-conn-label' }, connected ? 'Connected' : 'Disconnected'));
+    els.conn.title = connected
+      ? who + ' is watching this spec — comments you submit reach it on its own'
+      : who + ' has stopped watching. Comments you submit will sit unread until a session picks this spec up.';
+    if (connected) return;
+    var btn = create('button', { class: 'sf-conn-act', type: 'button' }, 'Reconnect');
+    btn.onclick = function (e) { e.stopPropagation(); copyReconnectPrompt(); };
+    els.conn.appendChild(btn);
+  }
+
+  /**
+   * Reconnecting is a thing only an agent can do, and nothing here can reach one.
+   *
+   * There is no channel from this page to any Claude session — the connection
+   * runs the other way, an agent attaching itself to a spec. So the button hands
+   * the reader the exact words to paste into whichever session they want to own
+   * this spec, which is the shortest path that does not invent a control plane.
+   */
+  function reconnectPrompt() {
+    var cli = (window.SPECFORGE || {}).cli;
+    return [
+      'Connect SpecForge spec ' + SPEC + ' to this session.',
+      '',
+      'It is attached to a session that has stopped watching it, so comments submitted',
+      'in the browser are not reaching anyone. Take it over here:',
+      '',
+      '  1. Detach it from wherever it is attached:  node "' + cli + '" detach ' + SPEC,
+      '  2. Attach it to this session:               node "' + cli + '" open ' + SPEC,
+      '  3. Arm the review watcher in the background so submitted comments reach you',
+      '     while you are idle:                      node "' + cli + '" wait-batch',
+      '',
+      'On the watcher completing, run the specforge:review-spec skill for each pending',
+      'spec and relaunch it; on timeout just relaunch it.',
+    ].join('\n');
+  }
+  function copyReconnectPrompt() {
+    var text = reconnectPrompt();
+    var done = function () {
+      flash('Prompt copied. Paste it into the Claude session you want to own this spec.');
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done, function () { flash(text); });
+    } catch (e) {
+      flash(text);
+    }
   }
 
   /**
@@ -830,6 +909,11 @@
   }
 
   // The bottom row: [● live]  [session id / "Not attached"]  [Detach].
+  //
+  // The session's NAME stays here — it answers "which window", which is a detail
+  // you go looking for. Whether that window is still listening moved to the
+  // header (renderConn), because that is not a detail: a spec nobody is watching
+  // takes comments all day and delivers none of them.
   function sessionFoot() {
     var foot = create('div', { class: 'sf-menu-foot' });
     if (els.live) foot.appendChild(els.live); // the green SSE live pill, left
@@ -1320,7 +1404,7 @@
   }
 
   // ---------- render ----------
-  function render() { renderSidebar(); renderHighlights(); renderRail(); renderSlideCounts(); renderLauncher(); renderAction(); renderShared(); syncTitle(); }
+  function render() { renderSidebar(); renderHighlights(); renderRail(); renderSlideCounts(); renderLauncher(); renderAction(); renderShared(); renderConn(); syncTitle(); }
 
   function visible() {
     return state.threads.filter(function (t) {

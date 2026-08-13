@@ -2,9 +2,14 @@
 // review UI (comments) onto a content-only spec. The on-disk file is never
 // modified here — injection happens only in the HTTP response.
 
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { renderLiveTracker } from '../lib/tracker.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
+
+/** Absolute path to the CLI, for the Reconnect prompt an agent is meant to run. */
+const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
 
 /**
  * @param {string} html raw spec HTML read from disk
@@ -81,8 +86,14 @@ function reviewSnippet(specId, prefs, transport, api) {
   const id = JSON.stringify(specId);
   // Embed the persisted prefs (store-wide theme/font + per-spec width/…) so
   // review.js applies them on boot with no flash and no extra round-trip.
+  //
+  // `cli` is the path the Reconnect prompt tells an agent to run, and it is
+  // omitted from a published copy: a reviewer cannot reconnect someone else's
+  // spec, so the button never renders there, and a filesystem path on the
+  // author's machine is not something to hand a stranger.
   const cfg = JSON.stringify({
     specId, prefs: prefs || {}, transport, api: api || `/api/spec/${specId}`,
+    ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
   });
   const watcher = transport === 'poll' ? pollWatcher(POLL_INTERVAL_MS) : sseWatcher(id);
   return `<!-- specforge:review-layer -->

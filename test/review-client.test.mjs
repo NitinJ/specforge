@@ -1840,6 +1840,78 @@ test('opening a thread from the drawer pages to its slide', async (t) => {
   assert.equal(window.location.hash, '#s3');
 });
 
+// ---------- the connection pill ----------
+//
+// In the header, not the menu: a spec nobody is watching takes comments all day
+// and delivers none of them, which is not something to discover by opening a
+// popup. Reconnect copies a prompt because nothing here can reach a Claude
+// session — the connection runs the other way.
+
+const connPill = (window) => window.document.querySelector('#sf-titlebar .sf-tb-conn');
+
+test('a connected spec says so, quietly, with nothing to do', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', status: 'draft', attachedSession: 'sess-1', sessionLabel: 'session sess-1', connected: true },
+  });
+  const pill = connPill(window);
+  assert.equal(pill.hasAttribute('hidden'), false);
+  assert.match(pill.textContent, /Connected/);
+  assert.equal(pill.classList.contains('sf-tb-conn-off'), false);
+  assert.equal(pill.querySelector('.sf-conn-act'), null, 'nothing to fix');
+});
+
+test('a disconnected spec reads as a fault and offers Reconnect', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', status: 'draft', attachedSession: 'sess-1', sessionLabel: 'session sess-1', connected: false },
+  });
+  const pill = connPill(window);
+  assert.equal(pill.hasAttribute('hidden'), false);
+  assert.match(pill.textContent, /Disconnected/);
+  assert.equal(pill.classList.contains('sf-tb-conn-off'), true);
+  assert.match(pill.querySelector('.sf-conn-act').textContent, /Reconnect/);
+  assert.match(pill.getAttribute('title'), /sit unread/, 'says what the cost is');
+});
+
+test('a spec attached to nothing shows no pill at all', async (t) => {
+  // There is no connection to report on, and "Disconnected" would read as a
+  // fault where the truth is that nobody has claimed the spec yet.
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', status: 'draft', attachedSession: null, connected: false },
+  });
+  assert.equal(connPill(window).hasAttribute('hidden'), true);
+});
+
+test('a published copy is not shown the owner\'s connection state', async (t) => {
+  // A reviewer cannot reconnect someone else's spec to someone else's agent, and
+  // telling them the author's session is down only invites them to stop writing.
+  const { window } = await bootReviewLayer(t, {
+    transport: 'poll', seedStorage: { 'sf-author': 'Lavee' },
+    meta: { id: 'test-spec', status: 'draft', attachedSession: 'sess-1', connected: false },
+  });
+  assert.equal(connPill(window).hasAttribute('hidden'), true);
+});
+
+test('Reconnect copies a prompt naming this spec and the takeover steps', async (t) => {
+  const copied = [];
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', status: 'draft', attachedSession: 'sess-1', connected: false },
+    preBoot: (w) => {
+      w.SPECFORGE = w.SPECFORGE || {};
+      Object.defineProperty(w.navigator, 'clipboard', {
+        value: { writeText: (s) => { copied.push(s); return Promise.resolve(); } },
+        configurable: true,
+      });
+    },
+  });
+  connPill(window).querySelector('.sf-conn-act').click();
+  assert.equal(copied.length, 1, 'the prompt is on the clipboard');
+  const text = copied[0];
+  assert.match(text, /test-spec/, 'names the spec');
+  assert.match(text, /detach test-spec/, 'frees it from the session that stopped watching');
+  assert.match(text, /open test-spec/, 'attaches it to the pasting session');
+  assert.match(text, /wait-batch/, 'and arms the watcher, or it would disconnect again at once');
+});
+
 // ---------- launcher unresolved-comment pill ----------
 test('the SF launcher shows a pill with the unresolved-thread count', async (t) => {
   const threads = [
