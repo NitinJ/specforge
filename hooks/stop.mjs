@@ -18,7 +18,7 @@
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
 import { markSeen } from '../lib/attach.mjs';
-import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
+import { pendingForSession, reviewReason, watcherBeating, armWatcherReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
 
 export function run(input, env = process.env) {
@@ -39,6 +39,15 @@ export function run(input, env = process.env) {
   if (toExport.length) {
     toExport.forEach((m) => markExportWorking(m.id));
     return { decision: 'block', reason: exportReason(toExport) };
+  }
+
+  // Last: don't settle owning specs nobody is listening to. Blocking rather than
+  // mentioning, because settling in that state IS the bug — a spec that takes
+  // comments and delivers none of them, with the page saying Disconnected and the
+  // human none the wiser. The stop_hook_active guard above caps this at one nag
+  // per settle, and once a watcher is beating it never fires again.
+  if (!watcherBeating(me)) {
+    return { decision: 'block', reason: armWatcherReason(mine) };
   }
 
   return null;

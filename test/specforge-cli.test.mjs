@@ -133,6 +133,25 @@ test('wait-batch returns ready with this session’s pending batches', async () 
   assert.ok(r.pending.some((p) => p.specId === a.id), 'pending lists the spec');
 });
 
+// Delivering is how this process ends, so every pickup costs the session its
+// watcher. This return is the one message the agent is certain to read — it is
+// what woke it — so it carries the instruction rather than leaving it to the
+// skill's last step.
+test('a delivery says to re-arm, with a command that can be run as written', async () => {
+  const a = await cmdCreate({ title: 'A' }, deps('sess-1'));
+  seedBatch(a.id);
+  const r = await cmdWaitBatch({ timeout: 0 }, fastDeps('sess-1'));
+  assert.match(r.next, /review-spec/, 'says what to do with the batch');
+  assert.match(r.next, /re-arm/, 'and that the watcher has to come back');
+  assert.match(r.next, /specforge-cli\.mjs" wait-batch/);
+});
+
+test('an idle return carries no instruction — there is nothing to act on', async () => {
+  await cmdCreate({ title: 'A' }, deps('sess-1'));
+  const r = await cmdWaitBatch({ timeout: 0 }, fastDeps('sess-1'));
+  assert.equal(r.next, undefined);
+});
+
 test('wait-batch times out (ready:false) when nothing is pending', async () => {
   await cmdCreate({ title: 'A' }, deps('sess-1'));
   const r = await cmdWaitBatch({ timeout: 0 }, fastDeps('sess-1'));
