@@ -1,0 +1,403 @@
+<!--
+  SpecForge deck template.
+
+  Shape: a filmstrip of slide thumbnails on the left, one slide at a time on the
+  right. Each slide is its own <section data-sf-section> so it stays anchorable
+  and commentable; hidden slides are display:none, never removed, so the review
+  layer can still resolve every block id.
+
+  Authoring:
+  - One <section> per slide. Give it a stable id: the id is the slide's link.
+  - Numbered slides carry data-slide="NN"; part dividers carry none, and the
+    counter reads "Part divider" on them.
+  - A slide's first <svg> should also appear as a <symbol> in the hidden defs at
+    the top, referenced by the filmstrip thumbnail via <use href="#wN">, so the
+    thumbnail cannot drift from the slide.
+  - Wireframe fidelity only: layout, hierarchy, what occupies the canvas. No type,
+    colour or spacing decisions; those belong to the design system.
+  - Cite rules by id in the "Bound by" footer rather than restating them.
+  - Group slides inside a part with <span class="fs-group">Label</span> in the
+    filmstrip, placed before the first slide of the group.
+  - A wireframe slide may be paired with a component inventory slide, numbered
+    NNc, listing every component the wireframe uses as a card: small wireframe,
+    name, atomic level, one-line role. Draw each component once as a <symbol>
+    at viewBox 0 0 160 90 and <use> it, so a component shared by two slides
+    cannot be drawn two ways.
+
+  This template suppresses the review layer's injected #sf-toc, because the
+  filmstrip is already the contents pane.
+-->
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="{{STATUS}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} · Deck</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 1px 0 rgba(255,255,255,.02), 0 8px 24px rgba(0,0,0,.28);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    /* The review layer reads --maxw and defaults to 820px, which leaves ~600px of
+       stage beside a 198px filmstrip. A deck slide needs the width. */
+    --maxw:1500px;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#ffffff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#fbfaf7; --panel:#ffffff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+      --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+      --code:#f1efe9; --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,kbd{font-family:var(--mono);font-size:.86em;background:var(--code);
+    border:1px solid var(--line);border-radius:5px;padding:.08em .38em}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto}
+
+  /* The review layer injects its own floating Contents rail (#sf-toc) on every
+     served spec and enters docs mode. This deck already has a contents pane: the
+     filmstrip. Suppress the injected rail and its chevron, and take back the width
+     docs mode reserved for it. review.css loads after this block, so these carry
+     !important to win the cascade. */
+  #sf-toc,#sf-tocbtn{display:none!important}
+  html[data-sf-docs] .layout{max-width:var(--maxw,1500px)!important}
+  html[data-sf-docs] main{margin-left:0!important;margin-right:0!important}
+
+  /* The filmstrip lives inside <main> because the review layer hides nav.toc and
+     forces .layout to display:block. Sections stay direct children of main so the
+     review layer still resolves them. */
+  .layout{max-width:var(--maxw,1500px);margin:0 auto}
+  main{padding:24px 28px 120px;min-width:0}
+  /* Floated rather than a grid column: `grid-row:1/-1` does not span implicit
+     rows, so the filmstrip inflated row 1 by 100vh and pushed every slide down.
+     A float keeps sections as direct children of main, which the review layer needs. */
+  .filmstrip{float:left;width:198px;position:sticky;top:0;
+    max-height:100vh;overflow-y:auto;padding:4px 10px 30px 0}
+  main>header,main>section,main>.footnote,main>.deck-nav{margin-left:222px;min-width:0}
+  .filmstrip .fs-head{font:800 10px var(--mono);letter-spacing:.9px;text-transform:uppercase;
+    color:var(--muted);margin:0 6px 8px}
+  @media (max-width:900px){
+    main{padding:18px 16px 80px}
+    main>header,main>section,main>.footnote,main>.deck-nav{margin-left:0}
+    .filmstrip{float:none;width:auto;position:static;max-height:none;padding:0 0 14px;
+      display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;align-items:start;
+      border-bottom:1px solid var(--line);margin-bottom:18px}
+    .filmstrip .fs-head{grid-column:1/-1}
+  }
+  .fs-item{display:block;padding:5px;border:1px solid transparent;border-radius:7px;
+    margin-bottom:5px;text-decoration:none}
+  .fs-item:hover{background:var(--bg);text-decoration:none}
+  .fs-thumb{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;
+    background:var(--bg);border:1px solid var(--line);border-radius:4px}
+  .fs-meta{display:block;margin-top:4px;font-size:11.5px;line-height:1.3;color:var(--muted)}
+  .fs-meta b{font-family:var(--mono);font-size:10px;color:var(--accent);margin-right:6px}
+  .fs-item.active{background:var(--panel);border-color:var(--accent)}
+  .fs-item.active .fs-meta{color:var(--ink)}
+  .fs-item.active .fs-thumb{border-color:var(--accent)}
+  .fs-part{display:block;margin:16px 6px 7px;font:800 9.5px var(--mono);letter-spacing:.9px;
+    text-transform:uppercase;color:var(--ink);padding-bottom:5px;border-bottom:1px solid var(--line);
+    text-decoration:none}
+  .fs-part:hover{color:var(--accent);text-decoration:none}
+  .fs-part.active{color:var(--accent)}
+  @media (max-width:900px){.fs-part{grid-column:1/-1;margin-top:8px}}
+
+  h1{font-size:30px;line-height:1.2;margin:0 0 8px;letter-spacing:-.4px}
+  p{margin:9px 0}
+  ul,ol{margin:9px 0;padding-left:20px}
+  li{margin:4px 0}
+  .sub{color:var(--muted);font-size:14px}
+
+  /* One slide at a time. Sections stay in the DOM so the review layer can still
+     resolve every block; only the current one renders. Print shows them all. */
+  main>section[data-sf-section]{display:none}
+  main>section.is-current{display:block}
+  @media print{main>section[data-sf-section]{display:block!important}.filmstrip,.deck-nav{display:none}}
+
+  /* A slide fills the height available to it. */
+  .slide{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);padding:26px 30px 24px;margin:0;
+    min-height:calc(100vh - 168px);display:flex;flex-direction:column}
+  .sl-hd{border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:18px}
+  .sl-kicker{margin:0}
+  .sl-num{font:800 11px var(--mono);letter-spacing:1px;color:var(--accent)}
+  .sl-foot p{margin:0}
+  .sl-tag{font:700 10.5px var(--mono);letter-spacing:.9px;text-transform:uppercase;
+    color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 9px;margin-left:10px}
+  .sl-h{font-size:25px;line-height:1.15;margin:10px 0 4px;letter-spacing:-.4px}
+  .sl-sub{margin:0;color:var(--muted);font-size:14.5px;max-width:78ch}
+  .sl-body{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:26px;flex:1}
+  .sl-body.wide{grid-template-columns:minmax(0,1fr)}
+  .sl-art svg{display:block;width:100%;height:auto;background:var(--bg);
+    border:1px solid var(--line);border-radius:8px;padding:12px}
+  .sl-cap{color:var(--muted);font-size:12.5px;line-height:1.55;margin:10px 0 0}
+  .sl-notes h4{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);
+    margin:0 0 8px;font-weight:800}
+  .sl-notes h4+h4,.sl-notes *+h4{margin-top:20px}
+  .sl-notes p,.sl-notes li{font-size:14px}
+  .sl-notes table{font-size:12.5px}
+  .sl-foot{border-top:1px solid var(--line);margin-top:18px;padding-top:11px;
+    font-size:12.5px;color:var(--muted)}
+  .sl-foot-l{font:700 10px var(--mono);letter-spacing:.8px;text-transform:uppercase;margin-right:10px}
+  .sl-foot code{margin-right:6px}
+  @media (max-width:1100px){.sl-body{grid-template-columns:1fr}}
+
+  /* Filmstrip subheading: groups slides inside a part without claiming to be one. */
+  .fs-group{display:block;margin:11px 6px 5px;font:700 9px var(--mono);letter-spacing:.8px;
+    text-transform:uppercase;color:var(--muted)}
+  @media (max-width:900px){.fs-group{grid-column:1/-1;margin-top:6px}}
+
+  /* Component inventory: one card per component, wireframe over name. */
+  .cmp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:14px;margin:0}
+  .cmp{margin:0}
+  .cmp svg{display:block;width:100%;height:auto;aspect-ratio:16/9;background:var(--bg);
+    border:1px solid var(--line);border-radius:6px}
+  .cmp-name{display:block;margin:7px 0 0;font-size:12.5px;font-weight:700;line-height:1.25}
+  .cmp-lvl{font:700 8.5px var(--mono);letter-spacing:.7px;text-transform:uppercase;
+    color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 6px;margin-left:6px;
+    vertical-align:1px}
+  .cmp-role{display:block;margin:3px 0 0;font-size:11.5px;line-height:1.4;color:var(--muted)}
+  .cmp-sec{margin:0 0 8px;font:800 11px var(--mono);letter-spacing:.7px;text-transform:uppercase;
+    color:var(--muted)}
+  .cmp-sec+.cmp-grid{margin-bottom:22px}
+
+  /* Paging controls under the stage. */
+  .deck-nav{display:flex;align-items:center;gap:14px;margin:14px 0 0;
+    padding-top:12px;border-top:1px solid var(--line)}
+  .deck-nav button{font:600 13px inherit;color:var(--ink);background:var(--panel);
+    border:1px solid var(--line);border-radius:7px;padding:7px 14px;cursor:pointer;min-height:32px}
+  .deck-nav button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  .deck-nav button:disabled{opacity:.4;cursor:default}
+  .deck-nav .dn-count{font:600 12px var(--mono);color:var(--muted);margin-left:auto}
+  .deck-nav .dn-hint{font-size:12px;color:var(--muted)}
+
+  .slide-divider{min-height:calc(100vh - 168px);background:var(--panel2);text-align:left;
+    padding:34px 30px;justify-content:center}
+  .slide-divider .sl-eyebrow{font:800 10.5px var(--mono);letter-spacing:1.1px;
+    text-transform:uppercase;color:var(--accent)}
+  .slide-divider .sl-title{font-size:30px;margin:10px 0 8px;letter-spacing:-.5px;border:none;padding:0}
+  .slide-divider .sl-lede{margin:0;color:var(--muted);font-size:15px;max-width:80ch}
+  .slide-divider .sl-meta{margin-top:14px;font-size:13px;color:var(--muted)}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin:14px 0;box-shadow:var(--shadow)}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0}
+  .callout{border-left:3px solid var(--accent);background:var(--panel2);border-radius:0 10px 10px 0;
+    padding:11px 14px;margin:14px 0;font-size:13.5px}
+  .callout.warn{border-left-color:var(--amber)}
+  .callout.good{border-left-color:var(--green)}
+  .callout.bad{border-left-color:var(--red)}
+
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel);line-height:1.5}
+  .tag.accent{color:var(--accent)} .tag.good{color:var(--green)} .tag.warn{color:var(--amber)}
+  .tag.bad{color:var(--red)} .tag.todo{color:var(--muted)} .tag.done{color:var(--green)}
+
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th,td{text-align:left;padding:8px 10px;border:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);font-weight:600}
+  td.n{white-space:nowrap;font-family:var(--mono);font-size:12px}
+
+  .footnote{color:var(--muted);font-size:12.5px}
+  .srcid{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  a.srcid{border-bottom:1px dotted var(--line);white-space:nowrap}
+  a[href^="/spec/"]{color:var(--ink);font-family:var(--mono);font-size:.9em;
+    border-bottom:1px dotted var(--accent);white-space:nowrap}
+  a[href^="/spec/"]:hover{color:var(--accent);text-decoration:none}
+  code a[href^="/spec/"]{border-bottom:none;font-size:1em}
+
+  .svg-lbl{font:600 11px var(--mono);fill:var(--ink)}
+  .svg-lbl-m{font:400 10.5px var(--mono);fill:var(--muted)}
+  .svg-ttl{font:700 12.5px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:var(--ink)}
+  .svg-box{fill:var(--panel2);stroke:var(--line);stroke-width:1}
+  .svg-box-a{fill:none;stroke:var(--accent);stroke-width:1.5}
+  .svg-canvas{fill:var(--muted);opacity:.28;stroke:none}
+  /* Component-card scale: the 160x90 viewBox renders ~178px wide. */
+  .svg-c{font:600 7px var(--mono);fill:var(--ink)}
+  .svg-cm{font:400 6.5px var(--mono);fill:var(--muted)}
+  .svg-arrow{stroke:var(--muted);stroke-width:1.2;fill:none}
+  .pane-hd{font:600 11px var(--mono);fill:var(--muted)}
+  .ok{fill:var(--green)} .no{fill:var(--red)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <defs>
+    <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--muted)"/>
+    </marker>
+  </defs>
+  <symbol id="w1" viewBox="0 0 900 340">
+            <rect x="0" y="0" width="150" height="340" fill="var(--panel2)" stroke="var(--line)"/>
+            <text x="14" y="26" class="svg-ttl">RAIL</text>
+            <rect x="166" y="0" width="540" height="280" class="svg-canvas"/>
+            <text x="390" y="146" class="svg-lbl">CANVAS</text>
+            <rect x="722" y="0" width="178" height="280" fill="var(--panel)" stroke="var(--line)"/>
+            <text x="736" y="26" class="svg-lbl-m">inspector</text>
+            <rect x="166" y="296" width="734" height="36" class="svg-box-a"/>
+            <text x="180" y="319" class="svg-lbl-m">commit bar · state left, one commit right</text>
+          </symbol>
+</svg>
+<div class="layout">
+<main>
+  <nav class="filmstrip" aria-label="Slide contents">
+    <p class="fs-head">Contents</p>
+      <a class="fs-part" href="#part-1">{{ Part title }}</a>
+      <a class="fs-item" href="#slide-1">
+        <svg class="fs-thumb" viewBox="0 0 900 340" aria-hidden="true"><use href="#w1"/></svg>
+        <span class="fs-meta"><b>01</b>{{ Slide title }}</span>
+      </a>
+      <a class="fs-item" href="#slide-2">
+        <svg class="fs-thumb" viewBox="0 0 160 90" aria-hidden="true">
+        <rect x="0" y="0" width="160" height="90" fill="var(--panel)"/>
+        <rect x="12" y="12" width="72" height="7" fill="var(--muted)" opacity=".55"/>
+        <rect x="12" y="26" width="110" height="4" fill="var(--muted)" opacity=".3"/>
+        <rect x="12" y="42" width="136" height="3" fill="var(--muted)" opacity=".22"/>
+        <rect x="12" y="52" width="136" height="3" fill="var(--muted)" opacity=".22"/>
+        <rect x="12" y="62" width="136" height="3" fill="var(--muted)" opacity=".22"/>
+        <rect x="12" y="72" width="96" height="3" fill="var(--muted)" opacity=".22"/>
+      </svg>
+        <span class="fs-meta"><b>02</b>{{ A slide with no wireframe }}</span>
+      </a>
+  </nav>
+
+  <header>
+    <h1>{{TITLE}}</h1>
+    <p class="sub">Deck · {{DATE}} · status: <span class="tag accent">{{STATUS}}</span> · owner: {{OWNER}} · {{ one line: what this deck covers and how it is grouped }}</p>
+  </header>
+
+  <section id="part-1" data-sf-section>
+    <div class="slide slide-divider">
+      <p class="sl-eyebrow">Part 1</p>
+      <h2 class="sl-title">{{ Part title }}</h2>
+      <p class="sl-lede">{{ One or two lines on what this part covers and who drives it. Group slides by journey or flow, not by screen. }}</p>
+      <p class="sl-meta">{{ Slides 01 to 02 }}</p>
+    </div>
+  </section>
+
+  <section id="slide-1" data-sf-section data-slide="01">
+    <div class="slide">
+      <div class="sl-hd">
+        <p class="sl-kicker"><span class="sl-num">01</span><span class="sl-tag">{{ Journey or theme }}</span></p>
+        <h3 class="sl-h">{{ Slide title }}</h3>
+        <p class="sl-sub">{{ One line stating what this surface is and the single idea the slide carries. }}</p>
+      </div>
+      <div class="sl-body">
+        <div class="sl-art">
+          <svg viewBox="0 0 900 340" role="img" aria-label="{{ Describe the wireframe for screen readers. }}"><use href="#w1"/></svg>
+          <p class="sl-cap">{{ What the wireframe shows, and the one thing to notice in it. }}</p>
+        </div>
+        <div class="sl-notes">
+<h4>States</h4><ul><li>{{ Empty }}</li><li>{{ Loading or partial }}</li><li>{{ Error or terminal failure }}</li></ul><h4>Controls</h4><table><thead><tr><th>Control</th><th>Class</th><th>Behaviour</th></tr></thead><tbody><tr><td>{{ name }}</td><td>{{ setting / selection / view / spend / gate / destructive }}</td><td>{{ what it does, and what confirms it }}</td></tr></tbody></table><div class="callout">{{ The one rule this surface would most easily break, and why it must not. }}</div>
+        </div>
+      </div>
+      <div class="sl-foot"><p><span class="sl-foot-l">Bound by</span><code>{{ C1 }}</code><code>{{ K3 }}</code></p></div>
+    </div>
+  </section>
+
+  <section id="slide-2" data-sf-section data-slide="02">
+    <div class="slide">
+      <div class="sl-hd">
+        <p class="sl-kicker"><span class="sl-num">02</span><span class="sl-tag">{{ Journey or theme }}</span></p>
+        <h3 class="sl-h">{{ A slide with no wireframe }}</h3>
+        <p class="sl-sub">{{ Use wide when the slide is a table or a decision list rather than a screen. }}</p>
+      </div>
+      <div class="sl-body wide">
+        <div class="sl-art">
+          
+          
+        </div>
+        <div class="sl-notes">
+<div class="sl-2col"><table><thead><tr><th>{{ Column }}</th><th>{{ Column }}</th></tr></thead><tbody><tr><td>{{ value }}</td><td>{{ value }}</td></tr></tbody></table><div class="callout warn">{{ Anything named but not drawn belongs here rather than being silently absent. }}</div></div>
+        </div>
+      </div>
+      
+    </div>
+  </section>
+
+  <div class="deck-nav">
+    <button type="button" id="dn-prev">‹ Previous</button>
+    <button type="button" id="dn-next">Next ›</button>
+    <span class="dn-hint">Arrow keys work too</span>
+    <span class="dn-count" id="dn-count"></span>
+  </div>
+
+  <p class="footnote" style="margin-top:20px">Authored with SpecForge · {{DATE}}</p>
+</main>
+</div>
+
+<script>
+  // Deck paging: one slide visible at a time, driven by the hash so a slide stays
+  // linkable and shareable. Sections are never removed from the DOM, only hidden,
+  // so the review layer can still resolve every block id.
+  (function(){
+    var slides=[].slice.call(document.querySelectorAll("main > section[data-sf-section]"));
+    if(!slides.length)return;
+    var links=[].slice.call(document.querySelectorAll(".filmstrip a"));
+    var prev=document.getElementById("dn-prev");
+    var next=document.getElementById("dn-next");
+    var count=document.getElementById("dn-count");
+    var numbered=slides.filter(function(s){return s.hasAttribute("data-slide");}).length;
+    var i=0;
+
+    function render(){
+      slides.forEach(function(s,n){s.classList.toggle("is-current",n===i);});
+      var id=slides[i].id;
+      links.forEach(function(a){
+        var on=a.getAttribute("href")==="#"+id;
+        a.classList.toggle("active",on);
+        if(on&&a.scrollIntoView)a.scrollIntoView({block:"nearest"});
+      });
+      if(prev)prev.disabled=i===0;
+      if(next)next.disabled=i===slides.length-1;
+      // Count against the printed slide numbers, not the raw section index:
+      // part dividers sit between slides and carry no number.
+      if(count){
+        var num=slides[i].getAttribute("data-slide");
+        count.textContent=num?(num+" / "+numbered):"Part divider";
+      }
+    }
+
+    function goToHash(){
+      var id=(location.hash||"").slice(1);
+      var n=slides.findIndex(function(s){return s.id===id;});
+      // An unknown hash (a comment anchor inside a slide) leaves the slide as is.
+      if(n>-1&&n!==i){i=n;render();window.scrollTo(0,0);}
+      else if(n>-1){render();}
+    }
+
+    function step(d){
+      var n=Math.min(slides.length-1,Math.max(0,i+d));
+      if(n===i)return;
+      i=n;
+      // Update the hash without stacking history entries per keypress.
+      history.replaceState(null,"","#"+slides[i].id);
+      render();window.scrollTo(0,0);
+    }
+
+    if(prev)prev.addEventListener("click",function(){step(-1);});
+    if(next)next.addEventListener("click",function(){step(1);});
+    window.addEventListener("hashchange",goToHash);
+    document.addEventListener("keydown",function(e){
+      if(e.metaKey||e.ctrlKey||e.altKey)return;
+      var t=e.target;
+      if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))return;
+      if(e.key==="ArrowRight"){step(1);e.preventDefault();}
+      if(e.key==="ArrowLeft"){step(-1);e.preventDefault();}
+    });
+
+    goToHash();render();
+  })();
+</script>
+</body>
+</html>

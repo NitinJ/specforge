@@ -267,7 +267,8 @@ test('clicking a block (no <section> needed) opens the composer and posts a bloc
   assert.equal(posts.length, 1, 'one comment POSTed');
   assert.equal(posts[0].body.anchor.block.tag, 'LI', 'anchored to the LI block');
   assert.equal(posts[0].body.anchor.block.text, 'A list item block.');
-  assert.equal(posts[0].body.body, 'a block comment');
+  // The owner's audience chip defaults to the agent and writes the mention.
+  assert.equal(posts[0].body.body, '@agent a block comment');
 });
 
 test('clicking the review UI does not open a composer', async (t) => {
@@ -435,6 +436,92 @@ test('a claude (agent) comment has no Edit control', async (t) => {
   const c2 = window.document.querySelector('.sf-comment[data-cid="c2"]');
   assert.ok(c2, 'claude comment rendered');
   assert.ok(!c2.querySelector('.sf-edit-c'), 'claude comments are not editable');
+});
+
+// The rail is where a thread is actually read. It rendered comments with its own
+// copy of the markup and lost the Edit control by omission, so the same comment
+// was editable in the sidebar and frozen in the bubble.
+test('a comment expanded in the rail is editable there too', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'human', body: 'original' }],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window, patches } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  document.querySelector('#sf-rail .sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const cEl = document.querySelector('.sf-bub-open .sf-comment[data-cid="c1"]');
+  assert.ok(cEl, 'the expanded thread renders the comment');
+  const editBtn = cEl.querySelector('.sf-edit-c');
+  assert.ok(editBtn, 'with the same Edit control the sidebar offers');
+
+  editBtn.click();
+  const ta = cEl.querySelector('.sf-edit textarea');
+  assert.equal(ta.value, 'original', 'prefilled with the current body');
+  ta.value = 'edited in the rail';
+  cEl.querySelector('.sf-edit .sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = patches.find((x) => /\/comments\/t1\/comment\/c1$/.test(x.url));
+  assert.ok(p, 'Save PATCHes the comment endpoint');
+  assert.equal(p.body.body, 'edited in the rail');
+});
+
+test('the rail applies the same rules about what may be edited', async (t) => {
+  const threads = [{
+    id: 't1', state: 'replied',
+    comments: [
+      { id: 'c1', author: 'human', body: 'submitted', batchId: 'b1' },
+      { id: 'c2', author: 'claude', body: 'fixed' },
+      { id: 'c3', author: 'human', body: 'not yet submitted' },
+    ],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  document.querySelector('#sf-rail .sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const bub = document.querySelector('.sf-bub-open');
+  assert.ok(!bub.querySelector('.sf-comment[data-cid="c1"] .sf-edit-c'), 'batched: frozen');
+  assert.ok(!bub.querySelector('.sf-comment[data-cid="c2"] .sf-edit-c'), 'the agent\'s own: not yours');
+  assert.ok(bub.querySelector('.sf-comment[data-cid="c3"] .sf-edit-c'), 'yours and unsent: editable');
+});
+
+test('editing in the rail hides the body until the edit resolves', async (t) => {
+  // Leaving the rendered body above a prefilled editor shows the comment twice
+  // and makes it unclear which one is live.
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'human', body: 'original' }],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  document.querySelector('#sf-rail .sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const cEl = document.querySelector('.sf-bub-open .sf-comment[data-cid="c1"]');
+  cEl.querySelector('.sf-edit-c').click();
+  assert.equal(cEl.querySelector('.body').style.display, 'none', 'the body is hidden while editing');
+
+  cEl.querySelector('.sf-edit .sf-ghost').click();      // Cancel
+  assert.equal(cEl.querySelector('.sf-edit'), null, 'the editor is gone');
+  assert.equal(cEl.querySelector('.body').style.display, '', 'and the body is back');
+});
+
+test('editing inside the rail card does not collapse the thread', async (t) => {
+  const threads = [{
+    id: 't1', state: 'open',
+    comments: [{ id: 'c1', author: 'human', body: 'original' }],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const { document } = window;
+  document.querySelector('#sf-rail .sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  document.querySelector('.sf-bub-open .sf-edit-c').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(document.querySelectorAll('.sf-bub-open').length, 1, 'still expanded');
+  assert.ok(document.querySelector('.sf-bub-open .sf-edit textarea'), 'with the editor open');
 });
 
 // ---------- spec header (full-width, always on top) ----------
@@ -808,7 +895,7 @@ test('replying from the expanded card posts to the thread', async (t) => {
   await new Promise((r) => window.setTimeout(r, 0));
   const p = posts.find((x) => /\/comments\/t1\/reply$/.test(x.url));
   assert.ok(p, 'posts to the reply endpoint');
-  assert.equal(p.body.body, 'a reply from the rail');
+  assert.equal(p.body.body, '@agent a reply from the rail', 'with the owner default mention');
 });
 
 test('resolving from the expanded card posts resolve', async (t) => {
@@ -922,7 +1009,7 @@ test('submitting the rail composer creates a new thread on that block', async (t
   await new Promise((r) => window.setTimeout(r, 0));
   const p = posts.find((x) => /\/comments$/.test(x.url));
   assert.ok(p, 'posts to the create-thread endpoint');
-  assert.equal(p.body.body, 'a brand new thread');
+  assert.equal(p.body.body, '@agent a brand new thread', 'with the owner default mention');
   assert.equal(p.body.anchor.block.text, 'The quick brown fox.', 'anchored to the clicked block');
 });
 
@@ -1358,7 +1445,7 @@ test('clicking an already-commented block opens a NEW-thread composer', async (t
   await new Promise((r) => window.setTimeout(r, 0));
   const p = posts.find((x) => /\/comments$/.test(x.url));
   assert.ok(p, 'posts to the create-thread endpoint');
-  assert.equal(p.body.body, 'a second, separate thread');
+  assert.equal(p.body.body, '@agent a second, separate thread');
   assert.equal(p.body.anchor.block.text, 'The quick brown fox.', 'anchored to the same block');
 });
 
@@ -1433,6 +1520,13 @@ const REPLIED_THREAD = [{
   anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
 }];
 
+// Discussion fixture — open, no mention and no batchId, so it is outside the
+// agent loop entirely. Nothing to submit and nobody working; simply unresolved.
+const DISCUSSION_THREAD = [{
+  id: 't1', state: 'open', comments: [{ author: 'lavee', body: 'is this still true?' }],
+  anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
+}];
+
 test('action button: an unsubmitted comment → "Submit comments" and submits the batch', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'draft' } });
   const btn = window.document.querySelector('.sf-act');
@@ -1446,7 +1540,7 @@ test('action button: an unsubmitted comment → "Submit comments" and submits th
 });
 
 test('action button: all comments resolved, not yet approved → "LGTM" and approves', async (t) => {
-  const { window, posts } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'in_review' } });
+  const { window, posts } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'draft' } });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'lgtm');
   btn.click();
@@ -1455,22 +1549,23 @@ test('action button: all comments resolved, not yet approved → "LGTM" and appr
   assert.ok(p && p.body.status === 'approved', 'clicking LGTM POSTs status=approved');
 });
 
-test('action button: all resolved AND approved → "Implement →" and sets implementing', async (t) => {
-  const { window, posts } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'approved' } });
+test('action button: approved is the end of the line — a display, not an action', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: RESOLVED_THREAD, meta: { status: 'approved' } });
   const btn = window.document.querySelector('.sf-act');
-  assert.equal(btn.getAttribute('data-state'), 'impl');
-  assert.match(btn.textContent, /Implement/);
-  btn.click();
-  await tick(window);
-  const p = posts.find((x) => /\/status$/.test(x.url));
-  assert.ok(p && p.body.status === 'implementing', 'clicking Implement POSTs status=implementing');
+  assert.equal(btn.getAttribute('data-state'), 'done');
+  assert.match(btn.textContent, /Approved/);
+  assert.ok(btn.disabled, 'there is nothing after approved');
 });
 
-test('action button: an unsubmitted comment overrides approved status → "Submit comments"', async (t) => {
-  const { window } = await bootReviewLayer(t, { threads: PENDING_THREAD, meta: { status: 'approved' } });
+// A thread that is still open cannot sit under an approved spec on the server —
+// writing a comment sends it back to draft — so the CTA reads the status first
+// and does not need to re-derive that precedence from the threads.
+test('action button: a thread still open holds back approval', async (t) => {
+  const { window } = await bootReviewLayer(t, { threads: DISCUSSION_THREAD, meta: { status: 'draft' } });
   const btn = window.document.querySelector('.sf-act');
-  assert.equal(btn.getAttribute('data-state'), 'needs', 'open comment takes priority over approved');
-  assert.match(btn.textContent, /Submit comments/);
+  assert.equal(btn.getAttribute('data-state'), 'other');
+  assert.match(btn.textContent, /Resolve to approve/);
+  assert.ok(btn.disabled, 'an open discussion is unfinished business, so LGTM is not offered');
 });
 
 // ---------- the same CTA, mirrored in the header ----------
@@ -1494,7 +1589,7 @@ test('clicking the header CTA submits the batch', async (t) => {
 });
 
 test('the header CTA reports the agent working, disabled and spinning', async (t) => {
-  const meta = { status: 'in_review', attachedSession: null, reviewProgress: 'working' };
+  const meta = { status: 'draft', attachedSession: null, reviewProgress: 'working' };
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
   const head = window.document.querySelector('#sf-titlebar .sf-act');
   assert.equal(head.getAttribute('data-state'), 'reviewing');
@@ -1504,7 +1599,7 @@ test('the header CTA reports the agent working, disabled and spinning', async (t
 });
 
 test('action button: submitted but unresolved → "Awaiting response" (disabled, nothing to submit)', async (t) => {
-  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'in_review' } });
+  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'draft' } });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'awaiting');
   assert.match(btn.textContent, /Awaiting/);
@@ -1513,7 +1608,7 @@ test('action button: submitted but unresolved → "Awaiting response" (disabled,
 });
 
 test('action button: picked-up batch → "Picked up comments" (disabled)', async (t) => {
-  const meta = { status: 'in_review', attachedSession: null, reviewProgress: 'picked_up' };
+  const meta = { status: 'draft', attachedSession: null, reviewProgress: 'picked_up' };
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'picked');
@@ -1523,7 +1618,7 @@ test('action button: picked-up batch → "Picked up comments" (disabled)', async
 });
 
 test('action button: working batch → "Working on comments" (disabled)', async (t) => {
-  const meta = { status: 'in_review', attachedSession: null, reviewProgress: 'working' };
+  const meta = { status: 'draft', attachedSession: null, reviewProgress: 'working' };
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'reviewing');
@@ -1533,17 +1628,12 @@ test('action button: working batch → "Working on comments" (disabled)', async 
 });
 
 test('action button: a replied thread beats reviewProgress → "Review replies"', async (t) => {
-  const meta = { status: 'in_review', attachedSession: null, reviewProgress: 'working' };
+  const meta = { status: 'draft', attachedSession: null, reviewProgress: 'working' };
   const { window } = await bootReviewLayer(t, { threads: REPLIED_THREAD, meta });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'replied', 'reply state wins once every open thread is answered');
 });
 
-test('action button: a submitted-but-open comment still blocks Implement on an approved doc', async (t) => {
-  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta: { status: 'approved' } });
-  const btn = window.document.querySelector('.sf-act');
-  assert.equal(btn.getAttribute('data-state'), 'awaiting', 'an unresolved comment overrides approved → not Implement');
-});
 
 test('action button: a reopened thread with a fresh human comment → "Submit comments"', async (t) => {
   // A previously-submitted thread (old comments carry batchId) the human reopened
@@ -1557,14 +1647,14 @@ test('action button: a reopened thread with a fresh human comment → "Submit co
     ],
     anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },
   }];
-  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'in_review' } });
+  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'draft' } });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'needs');
   assert.match(btn.textContent, /Submit comments/);
 });
 
 test('action button: agent replied to every open thread → "Review replies", clicking opens the sidebar', async (t) => {
-  const { window } = await bootReviewLayer(t, { threads: REPLIED_THREAD, meta: { status: 'in_review' } });
+  const { window } = await bootReviewLayer(t, { threads: REPLIED_THREAD, meta: { status: 'draft' } });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'replied', 'replied thread is no longer "awaiting"');
   assert.match(btn.textContent, /Review replies/);
@@ -1579,7 +1669,7 @@ test('action button: one unanswered thread keeps "Awaiting response" even when a
     { id: 't2', state: 'open', comments: [{ author: 'human', body: 'y', batchId: 'b1' }],
       anchor: { block: { index: 1, tag: 'P', text: 'Second.', sectionPath: [] } } },
   ];
-  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'in_review' } });
+  const { window } = await bootReviewLayer(t, { threads, meta: { status: 'draft' } });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'awaiting', 'still waiting while any open thread is unanswered');
 });
@@ -1591,11 +1681,16 @@ test('action button: an unknown status is an inert display (no silent approve)',
   assert.ok(btn.disabled, 'an unrecognized status carries no action');
 });
 
-test('action button: implementing is a disabled status display', async (t) => {
-  const { window } = await bootReviewLayer(t, { meta: { status: 'implementing' } });
-  const btn = window.document.querySelector('.sf-act');
-  assert.equal(btn.getAttribute('data-state'), 'working');
-  assert.ok(btn.disabled, 'no action while implementing');
+// A store the migration has not been run against. The retired status is shown as
+// it stands; offering LGTM over the top of it would erase what it recorded.
+test('action button: a retired status displays itself and offers nothing', async (t) => {
+  for (const status of ['implementing', 'done', 'closed']) {
+    const { window } = await bootReviewLayer(t, { meta: { status } });
+    const btn = window.document.querySelector('.sf-act');
+    assert.equal(btn.getAttribute('data-state'), 'other', status);
+    assert.match(btn.textContent, new RegExp(status));
+    assert.ok(btn.disabled, `${status} carries no action`);
+  }
 });
 
 test('there is no floating action pill — the lifecycle CTA lives only in the sidebar footer', async (t) => {
@@ -1612,6 +1707,137 @@ test('resolve-all shows when threads are open and posts resolve-all', async (t) 
   btn.click();
   await tick(window);
   assert.ok(posts.some((p) => /\/comments\/resolve-all$/.test(p.url)), 'posts resolve-all');
+});
+
+// ---------- decks: one slide on screen at a time ----------
+//
+// A deck pages its sections: exactly one carries `is-current`, the rest are
+// display:none. A hidden block measures as a zero rect at the top of the page,
+// which is why every thread in the deck used to pile onto whichever slide the
+// reader was on, and why the off-screen chips counted a scroll distance that did
+// not exist.
+
+const DECK_BODY = `
+  <main>
+    <section id="s1" data-sf-section class="is-current"><p class="a">The quick brown fox.</p></section>
+    <section id="s2" data-sf-section><p class="b">Second paragraph for hover.</p></section>
+    <section id="s3" data-sf-section><ul><li class="c">A list item block.</li></ul></section>
+  </main>
+  <nav class="filmstrip">
+    <a class="fs-item" href="#s1">one</a>
+    <a class="fs-item" href="#s2">two</a>
+    <a class="fs-item" href="#s3">three</a>
+  </nav>
+  <div id="sf-live">● live</div>
+`;
+
+/** One open thread per slide, anchored to that slide's only block. */
+const DECK_THREADS = [
+  { id: 't1', state: 'open', comments: [{ author: 'human', body: 'on one' }],
+    anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: ['s1'] } } },
+  { id: 't2', state: 'open', comments: [{ author: 'human', body: 'on two' }],
+    anchor: { block: { index: 1, tag: 'P', text: 'Second paragraph for hover.', sectionPath: ['s2'] } } },
+  { id: 't3', state: 'open', comments: [{ author: 'human', body: 'on three' }],
+    anchor: { block: { index: 2, tag: 'LI', text: 'A list item block.', sectionPath: ['s3'] } } },
+];
+
+// innerWidth: the rail hides itself below 1100px, and a hidden rail skips the
+// layout pass that renders the off-screen chips.
+const bootDeck = (t, opts = {}) =>
+  bootReviewLayer(t, { body: DECK_BODY, threads: DECK_THREADS, innerWidth: 1600, ...opts });
+const railTids = (window) => Array.prototype.map.call(
+  window.document.querySelectorAll('#sf-rail .sf-bub'), (b) => b.getAttribute('data-tid'));
+const chipText = (window) => Array.prototype.map.call(
+  window.document.querySelectorAll('.sf-rail-chip'), (c) => c.textContent);
+
+/** Page the fixture deck the way its own script would. */
+function pageTo(window, id) {
+  Array.prototype.forEach.call(window.document.querySelectorAll('main > section[data-sf-section]'),
+    (s) => s.classList.toggle('is-current', s.id === id));
+}
+
+test('a deck draws only the current slide\'s comments', async (t) => {
+  const { window } = await bootDeck(t);
+  assert.deepEqual(railTids(window), ['t1'], 'the other two slides are not on screen to point at');
+});
+
+test('paging the deck re-renders the rail for the new slide', async (t) => {
+  // The deck's prev/next use history.replaceState, which fires no event at all.
+  // What always happens is `is-current` moving, so that is what the layer watches.
+  const { window } = await bootDeck(t);
+  pageTo(window, 's2');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.deepEqual(railTids(window), ['t2']);
+  pageTo(window, 's3');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.deepEqual(railTids(window), ['t3']);
+});
+
+test('a scrolling spec is untouched by any of this', async (t) => {
+  const threads = [
+    { id: 't1', state: 'open', comments: [{ author: 'human', body: 'a' }],
+      anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } } },
+    { id: 't2', state: 'open', comments: [{ author: 'human', body: 'b' }],
+      anchor: { block: { index: 1, tag: 'P', text: 'Second paragraph for hover.', sectionPath: [] } } },
+  ];
+  const { window } = await bootReviewLayer(t, { threads });
+  assert.deepEqual(railTids(window), ['t1', 't2'], 'every thread still draws — nothing is hidden');
+  assert.equal(window.document.querySelector('.sf-fs-count'), null, 'and no slide badges');
+});
+
+test('the off-screen chips count slides, and say so', async (t) => {
+  const { window } = await bootDeck(t);
+  assert.deepEqual(chipText(window), ['↓ 2 later'], 'two slides ahead carry comments');
+  pageTo(window, 's2');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.deepEqual(chipText(window), ['↑ 1 earlier', '↓ 1 later']);
+  pageTo(window, 's3');
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.deepEqual(chipText(window), ['↑ 2 earlier']);
+});
+
+test('clicking a chip pages to the nearest slide that has a comment', async (t) => {
+  // Via the hash, which is the deck's own paging contract. A scrollIntoView on a
+  // display:none block reaches nothing, which is why these read as dead before.
+  const { window } = await bootDeck(t);
+  window.document.querySelector('.sf-rail-below').click();
+  assert.equal(window.location.hash, '#s2', 'the nearest later slide, not the last one');
+
+  pageTo(window, 's3');
+  await new Promise((r) => window.setTimeout(r, 0));
+  window.document.querySelector('.sf-rail-above').click();
+  assert.equal(window.location.hash, '#s2', 'and the nearest earlier one going back');
+});
+
+test('the filmstrip carries a comment count per slide', async (t) => {
+  const { window } = await bootDeck(t);
+  const badges = Array.prototype.map.call(window.document.querySelectorAll('.sf-fs-count'),
+    (c) => c.closest('a').getAttribute('href') + '=' + c.textContent);
+  assert.deepEqual(badges, ['#s1=1', '#s2=1', '#s3=1'],
+    'a slide you are not on is otherwise silent about having comments');
+});
+
+test('the counts follow the comments, and a resolved thread stops counting', async (t) => {
+  const threads = [
+    DECK_THREADS[0],
+    { ...DECK_THREADS[1], id: 't2b' },
+    { ...DECK_THREADS[1], id: 't2c' },
+    { ...DECK_THREADS[2], state: 'resolved' },
+  ];
+  const { window } = await bootDeck(t, { threads });
+  const badges = Array.prototype.map.call(window.document.querySelectorAll('.sf-fs-count'),
+    (c) => c.closest('a').getAttribute('href') + '=' + c.textContent);
+  assert.deepEqual(badges, ['#s1=1', '#s2=2'], 'two on slide two, and the resolved one is gone');
+});
+
+test('opening a thread from the drawer pages to its slide', async (t) => {
+  // Without this the drawer lists every thread and clicking one that lives on
+  // another slide scrolls to a block nobody can see.
+  const { window } = await bootDeck(t);
+  const card = window.document.querySelector('#sf-sidebar .sf-thread[data-tid="t3"]');
+  assert.ok(card, 'the drawer lists threads from every slide');
+  card.click();
+  assert.equal(window.location.hash, '#s3');
 });
 
 // ---------- launcher unresolved-comment pill ----------
@@ -2622,5 +2848,151 @@ test('the pill reports work in flight while publishing', async (t) => {
   const pill = document.querySelector('.sf-tb-shared');
   assert.equal(pill.hasAttribute('hidden'), false, 'shown even though nothing is published yet');
   assert.match(pill.textContent, /Publishing…/);
+});
+
+
+// ---------- audience chips ----------
+// Typing @agent on every comment is the tax these remove. The mention is still
+// the only thing that routes a comment — the chips write it — so a chip and the
+// text it produces can never disagree about where a comment is going.
+
+/** The two chips of a composer card, by the order they are built in. */
+function chipsOf(card) {
+  const all = card.querySelectorAll('.sf-aud-chip');
+  return { agent: all[0], human: all[1] };
+}
+
+/** Open the rail composer on the first block and hand back its card. */
+async function composerOn(window, sel = 'p.a') {
+  mouse(window, window.document.querySelector(sel), 'click');
+  await new Promise((r) => window.setTimeout(r, 0));
+  return window.document.querySelector('#sf-rail .sf-bub-compose');
+}
+
+const reviewer = { transport: 'poll', seedStorage: { 'sf-author': 'Lavee' } };
+
+test('an owner composes for their agent by default, and the mention is written for them', async (t) => {
+  const { window, posts } = await bootReviewLayer(t);
+  const card = await composerOn(window);
+  const { agent, human } = chipsOf(card);
+  assert.ok(agent, 'the composer carries the chips');
+  assert.equal(agent.classList.contains('on'), true, 'the agent chip is the owner default');
+  assert.equal(human.classList.contains('on'), false);
+  assert.equal(agent.getAttribute('aria-pressed'), 'true', 'and says so to a screen reader');
+
+  card.querySelector('textarea').value = 'tighten the goals section';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments$/.test(x.url));
+  assert.equal(p.body.body, '@agent tighten the goals section',
+    'the mention is prepended, so the comment routes without the owner typing it');
+});
+
+test('a reviewer composes discussion by default, and nothing is added to their text', async (t) => {
+  // A reviewer on someone else's spec who submits work to that agent by accident
+  // cannot undo it, so the safe side is the default here.
+  const { window, posts } = await bootReviewLayer(t, reviewer);
+  const card = await composerOn(window);
+  const { agent, human } = chipsOf(card);
+  assert.equal(human.classList.contains('on'), true, 'discussion is the reviewer default');
+  assert.equal(agent.classList.contains('on'), false);
+
+  card.querySelector('textarea').value = 'is this still true?';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments$/.test(x.url));
+  assert.equal(p.body.body, 'is this still true?', 'sent verbatim — no mention, no agent');
+});
+
+test('a reviewer can still choose the agent, which is the whole point of the chip', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, reviewer);
+  const card = await composerOn(window);
+  chipsOf(card).agent.click();
+  card.querySelector('textarea').value = 'please add a rollback plan';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments$/.test(x.url));
+  assert.equal(p.body.body, '@agent please add a rollback plan');
+});
+
+test('choosing discussion removes a mention already typed', async (t) => {
+  // Otherwise the chip reads "discussion" and the comment still reaches the
+  // agent, because the text is what routes it.
+  const { window, posts } = await bootReviewLayer(t);
+  const card = await composerOn(window);
+  const ta = card.querySelector('textarea');
+  ta.value = '@agent why this order?';
+  chipsOf(card).human.click();
+  assert.equal(ta.value, 'why this order?', 'the mention is stripped out of the box');
+
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments$/.test(x.url));
+  assert.equal(p.body.body, 'why this order?');
+});
+
+test('typing the mention by hand raises the chip to match', async (t) => {
+  const { window } = await bootReviewLayer(t, reviewer);
+  const card = await composerOn(window);
+  const ta = card.querySelector('textarea');
+  const { agent, human } = chipsOf(card);
+  assert.equal(human.classList.contains('on'), true, 'starts on discussion');
+
+  ta.value = '@agent do this';
+  ta.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(agent.classList.contains('on'), true, 'the chip follows the text up');
+  assert.equal(human.classList.contains('on'), false);
+});
+
+test('typing ordinary text never lowers the chip', async (t) => {
+  // The sync is one-way. Mirroring downward would clear the owner's @agent
+  // default on their first keystroke, since writing the mention is the exact
+  // work the chip exists to do for them.
+  const { window, posts } = await bootReviewLayer(t);
+  const card = await composerOn(window);
+  const ta = card.querySelector('textarea');
+  ta.value = 'tighten this paragraph';
+  ta.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(chipsOf(card).agent.classList.contains('on'), true, 'still addressed to the agent');
+
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(posts.find((x) => /\/comments$/.test(x.url)).body.body,
+    '@agent tighten this paragraph');
+});
+
+test('a mention that is already there is not written twice', async (t) => {
+  const { window, posts } = await bootReviewLayer(t);
+  const card = await composerOn(window);
+  card.querySelector('textarea').value = '@agent split stage 2';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments$/.test(x.url));
+  assert.equal(p.body.body, '@agent split stage 2');
+});
+
+test('replying to a thread gets the same chips', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
+  const { document } = window;
+  document.querySelector('.sf-bub[data-tid="t1"]').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const card = document.querySelector('.sf-bub-open');
+  assert.equal(chipsOf(card).agent.classList.contains('on'), true, 'owner default holds on a reply');
+  card.querySelector('textarea').value = 'done, take another look';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const p = posts.find((x) => /\/comments\/t1\/reply$/.test(x.url));
+  assert.equal(p.body.body, '@agent done, take another look');
+});
+
+test('an empty comment stays empty rather than becoming a bare mention', async (t) => {
+  // body() prepending onto nothing would post "@agent", which is a thread that
+  // asks the agent for nothing at all.
+  const { window, posts } = await bootReviewLayer(t);
+  const card = await composerOn(window);
+  card.querySelector('textarea').value = '   ';
+  card.querySelector('.sf-primary').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(posts.filter((x) => /\/comments$/.test(x.url)).length, 0, 'nothing was created');
 });
 

@@ -407,6 +407,18 @@
    primary button (it used to, rendering "Comment" as a muted ghost). */
 .sf-compose-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .sf-compose-foot .sf-hint { margin-right: auto; font-size: 11px; color: var(--sf-muted); }
+
+/* Who the comment is for: its own row under the box, above the actions. It is a
+   property of what you are writing rather than an action on it, and the rail's
+   card is ~270px wide — sharing the action row pushed a chip off the edge. */
+.sf-aud { display: flex; gap: 4px; margin-top: 8px; }
+.sf-aud-chip { background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
+  border-radius: 999px; font: 600 11px/1 system-ui, sans-serif; padding: 5px 9px; cursor: pointer;
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease),
+    background var(--sf-dur-fast) var(--sf-ease); }
+.sf-aud-chip:hover { color: var(--sf-ink); border-color: var(--sf-muted); }
+.sf-aud-chip.on { color: var(--sf-accent); border-color: var(--sf-accent);
+  background: color-mix(in srgb, var(--sf-accent) 12%, transparent); }
 .sf-primary { background: var(--sf-accent); color: var(--sf-on-accent); border: none; border-radius: var(--sf-r-sm);
   font: 700 12px/1 system-ui, sans-serif; padding: 9px 14px; cursor: pointer;
   transition: filter var(--sf-dur-fast) var(--sf-ease), transform var(--sf-dur-fast) var(--sf-ease); }
@@ -421,11 +433,11 @@
    bar (.sf-act); its base style is the `.sf-act` rule under the sidebar footer. */
 .sf-act[data-state="needs"] { background: var(--sf-amber); color: var(--sf-on-accent); border-color: transparent; }
 .sf-act[data-state="lgtm"] { background: var(--sf-green); color: var(--sf-on-accent); border-color: transparent; }
-.sf-act[data-state="impl"] { background: var(--sf-accent); color: var(--sf-on-accent); border-color: transparent; }
-.sf-act[data-state="working"] { color: var(--sf-accent); border-color: var(--sf-accent); }
 .sf-act[data-state="replied"] { color: var(--sf-accent); border-color: var(--sf-accent); }
+/* Approved — the end of the line, so it reads green like the LGTM that got it
+   there, outlined rather than filled because there is nothing left to click. */
 .sf-act[data-state="done"] { color: var(--sf-green); border-color: var(--sf-green); }
-.sf-act[data-state="closed"], .sf-act[data-state="other"], .sf-act[data-state="awaiting"] { color: var(--sf-muted); }
+.sf-act[data-state="other"], .sf-act[data-state="awaiting"] { color: var(--sf-muted); }
 
 /* "↑ Top" back-to-top button — top-right glass pill, shown once scrolled down.
    Base state stays laid out (opacity/visibility, not display) so both directions
@@ -716,6 +728,21 @@ html[data-sf-header] #sf-tocbtn { top: calc(50% + var(--sf-header-h) / 2); }
 .sf-rail-chip:focus-visible { outline: none; box-shadow: var(--sf-ring), var(--sf-shadow-1); }
 .sf-rail-above { top: 10px; }
 .sf-rail-below { bottom: 10px; }
+
+/* Comment count on a deck's filmstrip entry. A deck renders one slide and hides
+   the rest, so the filmstrip is the only place a reader can see that a slide
+   they are not on has comments waiting. Positioned against the entry the review
+   layer flags rather than the deck's own classes, so it does not depend on how a
+   particular deck names its navigation. */
+.sf-fs-has { position: relative; }
+.sf-fs-count {
+  position: absolute; top: 4px; right: 4px; z-index: 2;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sf-accent); color: var(--sf-on-accent);
+  font: 700 10.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: var(--sf-shadow-1);
+}
 
 /* SpecForge launcher — the single floating control. A glass squircle (reads as a
    modern tool trigger, not a generic FAB); the SF mark cross-fades to a × while

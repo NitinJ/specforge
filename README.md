@@ -74,7 +74,11 @@ and survive edits to the document.
 The floating **SF** button opens contents, theme, width and **Export → PDF**.
 The pill beside it is the single action worth taking next, which changes as the
 spec moves: `Submit comments` → `Awaiting response` → `Review replies` →
-`LGTM ✓` → `Implement →` → `Done ✓`.
+`LGTM ✓` → `Approved ✓`.
+
+A spec is a draft until you approve it, and that is the whole lifecycle. Leave a
+comment on an approved spec and it goes back to draft until the thread is
+resolved, because approval means nothing is left to argue about.
 
 ### Send comments to the agent
 

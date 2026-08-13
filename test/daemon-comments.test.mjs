@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { createDaemon } from '../server/daemon.mjs';
-import { createSpec } from '../lib/store.mjs';
+import { createSpec, writeSpecHtml } from '../lib/store.mjs';
 import { loadComments, mutateComments, addComment } from '../lib/store-comments.mjs';
-import { listPendingForSpec, advanceBatchProgress } from '../lib/store-inbox.mjs';
+import { listPendingForSpec, advanceBatchProgress, markBatchDone } from '../lib/store-inbox.mjs';
 import { attach, STALE_MS } from '../lib/attach.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
 
@@ -101,6 +101,96 @@ test('SSE /events streams an initial connected comment', async () => {
   const { value } = await reader.read();
   assert.match(new TextDecoder().decode(value), /connected/);
   await reader.cancel();
+});
+
+// ---------- the reload hold ----------
+//
+// Answering a batch is many writes: a reply, a section rewritten, a table
+// amended. Reloading on each one threw the reader back to the top of a document
+// that was still being edited, so the writes coalesce into one reload when the
+// agent marks the batch done.
+
+/** Open the stream and collect frames; `sse.reloads()` counts what arrived. */
+async function openStream() {
+  const res = await fetch(`${base}/events?spec=${specId}`);
+  const reader = res.body.getReader();
+  let text = '';
+  const pump = (async () => {
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        text += new TextDecoder().decode(value);
+      }
+    } catch { /* cancelled */ }
+  })();
+  return {
+    reloads: () => (text.match(/event: reload/g) || []).length,
+    close: async () => { await reader.cancel().catch(() => {}); await pump; },
+  };
+}
+
+/** fs.watch is asynchronous; give it room to deliver before asserting. */
+const settle = () => new Promise((r) => setTimeout(r, 350));
+
+test('a spec nobody is working on still reloads on every save', async () => {
+  const sse = await openStream();
+  await settle();
+  writeSpecHtml(specId, '<h1>A</h1><p>one</p>');
+  await settle();
+  assert.equal(sse.reloads(), 1, 'the ordinary live-reload is unchanged');
+  await sse.close();
+});
+
+test('writes while an agent has the batch are held, then land as one reload', async () => {
+  await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' });
+  const { batch } = await (await post(`/api/spec/${specId}/comments/submit`)).json();
+
+  const sse = await openStream();
+  await settle();
+  // The agent works: three saves across the round.
+  for (const html of ['<h1>A</h1><p>1</p>', '<h1>A</h1><p>2</p>', '<h1>A</h1><p>3</p>']) {
+    writeSpecHtml(specId, html);
+    await settle();
+  }
+  assert.equal(sse.reloads(), 0, 'the reader is not thrown around mid-round');
+
+  markBatchDone(specId, batch.batchId);
+  await settle();
+  assert.equal(sse.reloads(), 1, 'and gets the finished document exactly once');
+  await sse.close();
+});
+
+test('a save landing just before batch-done still reloads exactly once', async () => {
+  // Both watchers call the same flush. Without cancelling the pending spec-write
+  // timer, the inbox watcher releases the held reload and that timer fires a
+  // second one a moment later — two reloads for one round.
+  await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' });
+  const { batch } = await (await post(`/api/spec/${specId}/comments/submit`)).json();
+  const sse = await openStream();
+  await settle();
+
+  writeSpecHtml(specId, '<h1>A</h1><p>held</p>');
+  await settle();
+  writeSpecHtml(specId, '<h1>A</h1><p>the last save of the round</p>');
+  markBatchDone(specId, batch.batchId);            // inside the 100ms debounce
+  await settle();
+  await settle();
+  assert.equal(sse.reloads(), 1);
+  await sse.close();
+});
+
+test('a round that finishes without touching the spec reloads nobody', async () => {
+  // The agent may answer a batch in comments alone. There is no new document to
+  // show, so releasing a reload would be a jump to the same page.
+  await post(`/api/spec/${specId}/comments`, { anchor, body: '@agent q' });
+  const { batch } = await (await post(`/api/spec/${specId}/comments/submit`)).json();
+  const sse = await openStream();
+  await settle();
+  markBatchDone(specId, batch.batchId);
+  await settle();
+  assert.equal(sse.reloads(), 0);
+  await sse.close();
 });
 
 test('GET meta returns lifecycle + ownership; POST status transitions', async () => {

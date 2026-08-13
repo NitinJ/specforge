@@ -26,6 +26,8 @@
 import http from 'node:http';
 import { watch } from 'node:fs';
 import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
+import { inboxDir } from '../lib/store-paths.mjs';
+import { agentBusy } from '../lib/store-inbox.mjs';
 import { renderIndex } from './index-page.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -71,7 +73,16 @@ function serveSpec(id, res) {
   send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id }));
 }
 
-/** SSE live-reload: push a `reload` event whenever the spec's spec.html changes. */
+/**
+ * SSE live-reload: push a `reload` event when the spec's spec.html changes.
+ *
+ * Held while an agent is mid-round. Answering a batch of comments is many writes
+ * — a reply, a section rewritten, a table amended — and reloading on each one
+ * threw the reader back to the top of a document that was still being edited.
+ * The round is the unit worth seeing, so the writes coalesce into one reload
+ * when the agent marks the batch done, which is the same moment the action
+ * button turns into "Review replies".
+ */
 function serveEvents(id, req, res) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -88,11 +99,38 @@ function serveEvents(id, req, res) {
 
   let debounce = null;
   let watcher = null;
+  let inbox = null;
+  let held = false; // the spec moved while an agent had it
+
+  // The release edge is a batch file being removed, so watch for it rather than
+  // polling: without this the held reload would wait for the next spec write,
+  // which on a finished round never comes. Armed at the moment of the first hold
+  // rather than up front — that is when a batch is known to exist, so the inbox
+  // directory does too, and merely opening a page never creates one.
+  const armInbox = () => {
+    if (inbox || closed) return;
+    try {
+      inbox = watch(inboxDir(id), () => { if (!closed && held) flush(); });
+    } catch {
+      inbox = null;
+    }
+  };
+  const flush = () => {
+    if (closed) return;
+    // Drop any spec-write timer still pending. Both watchers call this, so a
+    // final save landing within the debounce of the batch being marked done
+    // would otherwise release the held reload here and fire a second one when
+    // that timer caught up — two reloads for one round.
+    if (debounce) { clearTimeout(debounce); debounce = null; }
+    if (agentBusy(id)) { held = true; armInbox(); return; }
+    held = false;
+    safeWrite('event: reload\ndata: {}\n\n');
+  };
   try {
     watcher = watch(specHtmlPath(id), () => {
       if (closed) return;
       if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(() => safeWrite('event: reload\ndata: {}\n\n'), 100);
+      debounce = setTimeout(flush, 100);
       debounce.unref?.();
     });
   } catch {
@@ -106,6 +144,7 @@ function serveEvents(id, req, res) {
     clearInterval(heartbeat);
     if (debounce) clearTimeout(debounce);
     if (watcher) { try { watcher.close(); } catch { /* already closed */ } }
+    if (inbox) { try { inbox.close(); } catch { /* already closed */ } }
   };
   req.on('close', cleanup);
   req.on('error', cleanup);

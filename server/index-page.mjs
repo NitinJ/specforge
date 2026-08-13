@@ -19,6 +19,7 @@ import { sessionDisplay } from '../lib/session-label.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { isStale } from '../lib/attach.mjs';
 import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
+import { STATUSES } from '../lib/lifecycle.mjs';
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -57,9 +58,6 @@ function groupByCollection(specs) {
   const order = groups.has('') ? [...named, ''] : named;
   return { order: order.map((k) => ({ key: k, specs: groups.get(k) })), named };
 }
-
-const STATUSES = ['draft', 'in_review', 'approved', 'implementing', 'done', 'closed'];
-const label = (s) => s.replace(/_/g, ' ');
 
 const ICON_COMMENT = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M1.9 2.2h10.2v7H6.6L3.4 11.6V9.2H1.9z"/></svg>';
 const ICON_SHARE = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="5.2"/><path d="M1.8 7h10.4M7 1.8c1.7 1.8 1.7 8.6 0 10.4M7 1.8C5.3 3.6 5.3 10.4 7 12.2"/></svg>';
@@ -116,7 +114,7 @@ function rowHtml(m, sig) {
     <span class="sig">${reviewHtml(sig)}${shareHtml(sig)}</span>
     <span class="lv">${live}</span>
     <span class="badge t">${esc(rawType)}</span>
-    <span class="badge s s-${esc(rawStatus)}"><span class="sdot"></span>${esc(label(rawStatus))}</span>
+    <span class="badge s s-${esc(rawStatus)}"><span class="sdot"></span>${esc(rawStatus)}</span>
     <span class="upd">${esc(relativeTime(m.updated))}</span>
     <span class="acts"><button class="collbtn" type="button" title="Move to collection" aria-label="Move to collection">▣</button><input class="coll" list="collections" value="${esc(coll)}" placeholder="Uncollected" aria-label="Collection" hidden><button class="del" type="button" title="Delete spec" aria-label="Delete spec">🗑</button></span>
   </div>
@@ -166,7 +164,7 @@ export function renderIndex({ shareInfo } = {}) {
   const counts = Object.fromEntries(STATUSES.map((s) => [s, specs.filter((m) => (m.status || 'draft') === s).length]));
   const chipsBar = ['all', ...STATUSES].map((s) => {
     const c = s === 'all' ? n : counts[s];
-    return `<button class="fchip${s === 'all' ? ' on' : ''}${s !== 'all' && !c ? ' zero' : ''}" type="button" data-f="${s}">${s === 'all' ? 'All' : esc(label(s))}<span class="fc">${c}</span></button>`;
+    return `<button class="fchip${s === 'all' ? ' on' : ''}${s !== 'all' && !c ? ' zero' : ''}" type="button" data-f="${s}">${s === 'all' ? 'All' : esc(s)}<span class="fc">${c}</span></button>`;
   }).join('');
 
   const nAttn = specs.filter((m) => ['needs', 'replied'].includes(sigOf(m).review)).length;
@@ -197,7 +195,7 @@ export function renderIndex({ shareInfo } = {}) {
   :root[data-theme="light"]{
     --bg:#faf9f6;--surface:#ffffff;--surface2:#f3f1ec;--ink:#1c2024;--muted:#6b7280;--faint:#9aa1ab;
     --line:#e7e4dd;--line2:#d5d1c8;--accent:#4f46e5;--accent-soft:#eef0fd;--live:#16a34a;
-    --s-draft:#6b7280;--s-in_review:#b45309;--s-approved:#0d9488;--s-implementing:#4f46e5;--s-done:#16a34a;--s-closed:#9aa1ab;
+    --s-draft:#6b7280;--s-approved:#16a34a;--s-discussion:#0d9488;
     --shadow:0 1px 2px rgba(28,32,36,.05),0 4px 12px rgba(28,32,36,.04);
     /* review-layer compat: pages sometimes read these generic names */
     --panel:var(--surface);--green:var(--live);--amber:#b45309;--red:#cf222e
@@ -205,7 +203,7 @@ export function renderIndex({ shareInfo } = {}) {
   :root[data-theme="dark"]{
     --bg:#101114;--surface:#17181c;--surface2:#1f2126;--ink:#e8eaed;--muted:#9aa1ab;--faint:#6b7280;
     --line:#26282e;--line2:#34373f;--accent:#818cf8;--accent-soft:#232441;--live:#4ade80;
-    --s-draft:#9aa1ab;--s-in_review:#e5a54b;--s-approved:#2dd4bf;--s-implementing:#818cf8;--s-done:#4ade80;--s-closed:#6b7280;
+    --s-draft:#9aa1ab;--s-approved:#4ade80;--s-discussion:#2dd4bf;
     --shadow:none;
     --panel:var(--surface);--green:var(--live);--amber:#e5a54b;--red:#f85149
   }
@@ -306,7 +304,9 @@ export function renderIndex({ shareInfo } = {}) {
   .sel{flex:none;width:14px;height:14px;margin:0;accent-color:var(--accent);cursor:pointer;opacity:0;transition:opacity .12s}
   .row:hover .sel,.sel:checked,.sel:focus-visible,body.picking .sel{opacity:1}
   .main{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
-  .title{font-weight:540;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44ch}
+  /* Takes whatever the row has left. A fixed cap truncated titles at a third of
+     the row while the space beside them sat empty. */
+  .title{font-weight:540;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;min-width:0}
   .title:hover{color:var(--accent)}
   .rename{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s;padding:0;flex:none}
   .row:hover .rename,.rename:focus-visible{opacity:1}
@@ -334,17 +334,15 @@ export function renderIndex({ shareInfo } = {}) {
   .lv{display:inline-flex;align-items:center;justify-content:flex-end;width:82px}
   .rv{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:560;font-variant-numeric:tabular-nums}
   .rv-needs{color:var(--amber)} .rv-replied{color:var(--accent)}
-  .rv-awaiting{color:var(--faint)} .rv-discussion{color:var(--s-approved)}
+  .rv-awaiting{color:var(--faint)} .rv-discussion{color:var(--s-discussion)}
   .pub{display:inline-flex;color:var(--live)}
   .pub:hover{filter:brightness(1.15)}
   .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}
   .badge.t{font-size:10.5px;font-weight:550;text-transform:uppercase;letter-spacing:.05em;background:var(--surface2);padding:1px 6px;border-radius:5px;color:var(--faint);width:84px;justify-content:center}
   .badge.s{font-size:11.5px;width:92px}
   .badge.s .sdot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
-  .s-draft .sdot{background:var(--s-draft)} .s-in_review .sdot{background:var(--s-in_review)}
-  .s-approved .sdot{background:var(--s-approved)} .s-implementing .sdot{background:var(--s-implementing)}
-  .s-done .sdot{background:var(--s-done)} .s-closed .sdot{background:var(--s-closed)}
-  .s-done,.s-closed{color:var(--faint)}
+  .s-draft .sdot{background:var(--s-draft)}
+  .s-approved .sdot{background:var(--s-approved)} .s-approved{color:var(--s-approved)}
   .live{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:550;color:var(--live)}
   .live .dot{width:7px;height:7px;border-radius:50%;background:var(--live);animation:pulse 2.4s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
@@ -405,7 +403,7 @@ export function renderIndex({ shareInfo } = {}) {
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .search:focus-visible,.coll:focus-visible,.rename-in:focus-visible,.addtag-in:focus-visible,.cin:focus-visible,.bcoll:focus-visible{outline:none}
 
-  @media(max-width:1180px){.title{max-width:34ch}.badge.t{display:none}}
+  @media(max-width:1180px){.badge.t{display:none}}
   @media(max-width:900px){
     .app{display:block}
     .side{position:static;width:auto;height:auto;border-right:none;border-bottom:1px solid var(--line);padding-bottom:12px}
@@ -558,7 +556,7 @@ ${strip}
   var navs=[].slice.call(document.querySelectorAll('.nav[data-view]'));
   var cnavs=[].slice.call(document.querySelectorAll('.cnav'));
   var fstatus='all', fview='all', fcoll=null;
-  var SORDER={implementing:0,in_review:1,draft:2,approved:3,done:4,closed:5};
+  var SORDER={draft:0,approved:1};
   var VIEWNAME={all:'All specs',attn:'Needs you',live:'Live',shared:'Shared'};
 
   function viewOk(r){

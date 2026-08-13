@@ -226,6 +226,15 @@
   // nobody. In memory it at least holds for the session.
   var _me = null;
 
+  // A deck's slides, and how far inside one its comments sit. Up here for the
+  // same reason as the two above: boot() runs at the readyState check below, and
+  // watchSlides() reads SLIDE_SEL from there. Declared mid-file it is still
+  // `undefined` at that point, querySelectorAll("undefined") matches nothing, and
+  // the deck is silently treated as an ordinary scrolling spec — so the rail
+  // never re-renders when a slide changes.
+  var SLIDE_SEL = 'main > section[data-sf-section]';
+  var DECK_INSET = 16;
+
   var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState !== 'loading') boot();
@@ -506,6 +515,7 @@
     buildTop();
     buildTitleBar();
     buildRail();
+    watchSlides();
 
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
@@ -637,21 +647,18 @@
 
   // ---------- lifecycle action button ----------
   // One contextual primary CTA, rendered in the sidebar command bar (the comments
-  // bar). Once implementation has started the button is just a status display;
-  // before that it follows comments → review → approval:
+  // bar). It follows comments → review → approval, and approval is the end:
+  //   approved                        → "Approved ✓"        (status display, no action)
   //   unsubmitted comment(s)          → "Submit comments"   (freeze a batch for the agent)
   //   submitted, agent not yet replied→ "Awaiting response" (disabled; agent is working)
   //   agent replied to every thread   → "Review replies"    (read them, then resolve)
-  //   all resolved, not yet approved  → "LGTM ✓"            (status → approved)
-  //   all resolved AND approved       → "Implement →"       (status → implementing)
-  //   implementing / done / closed    → status display (no action)
-  // Open comments take priority over `approved`, so new feedback on an approved
-  // doc reverts the CTA away from "Implement →".
+  //   a thread still open             → "Resolve to approve"(disabled)
+  //   nothing unresolved              → "LGTM ✓"            (status → approved)
+  // `approved` is read first, which is safe because it cannot coexist with an
+  // unresolved thread: writing a comment on an approved spec sends it back to draft.
   function actionState() {
     var status = (state.meta && state.meta.status) || 'draft';
-    if (status === 'implementing') return { label: 'Implementing…', state: 'working', act: null };
-    if (status === 'done') return { label: 'Done ✓', state: 'done', act: null };
-    if (status === 'closed') return { label: 'Closed', state: 'closed', act: null };
+    if (status === 'approved') return { label: 'Approved ✓', state: 'done', act: null };
     if (pendingCount() > 0) return { label: 'Submit comments', state: 'needs', act: 'submit' };
     // Agent threads only: an open discussion is a conversation between people,
     // not work in flight, and must not report the agent as busy.
@@ -669,9 +676,14 @@
       if (prog === 'picked_up') return { label: 'Picked up comments', state: 'picked', act: null, loading: true };
       return { label: 'Awaiting response', state: 'awaiting', act: null, loading: true };
     }
-    if (status === 'approved') return { label: 'Implement →', state: 'impl', act: 'implement' };
-    if (status === 'draft' || status === 'in_review') return { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
-    return { label: status, state: 'other', act: null }; // unknown status → inert display, never a silent approve
+    // A human discussion nobody resolved is still unfinished business, and an
+    // approval granted over it would be revoked by the next comment anyway.
+    if (unresolvedCount() > 0) return { label: 'Resolve to approve', state: 'other', act: null };
+    // A status from before the lifecycle was cut to two — done, implementing,
+    // closed — on a store nobody has migrated. Show it; never offer to approve
+    // over the top of it, which would erase what it recorded.
+    if (status !== 'draft') return { label: status, state: 'other', act: null };
+    return { label: 'LGTM ✓', state: 'lgtm', act: 'approve' };
   }
   function renderAction() {
     var s = actionState();
@@ -706,8 +718,7 @@
     if (!s.act) return;
     if (s.act === 'submit') return submitBatch();
     if (s.act === 'review') return setSidebar(true); // open the sidebar to read the agent's replies
-    var status = s.act === 'approve' ? 'approved' : 'implementing';
-    postJSON(SPEC_API + '/status', { status: status }).then(function (r) {
+    postJSON(SPEC_API + '/status', { status: 'approved' }).then(function (r) {
       if (r.ok) load(); else flash('Could not update status.');
     }).catch(function () { flash('Could not update status.'); });
   }
@@ -1309,7 +1320,7 @@
   }
 
   // ---------- render ----------
-  function render() { renderSidebar(); renderHighlights(); renderRail(); renderLauncher(); renderAction(); renderShared(); syncTitle(); }
+  function render() { renderSidebar(); renderHighlights(); renderRail(); renderSlideCounts(); renderLauncher(); renderAction(); renderShared(); syncTitle(); }
 
   function visible() {
     return state.threads.filter(function (t) {
@@ -1335,24 +1346,8 @@
         '<div class="sf-meta"><span class="sf-badge ' + t.state + '">' + esc(t.state) + '</span>' +
         '<span class="sf-loc">' + esc((block.tag || 'block').toLowerCase()) + '</span></div>' +
         '<div class="sf-quote">' + esc((block.text || '').slice(0, 140)) + '</div>' +
-        t.comments.map(function (c) {
-          // Only your own, not-yet-submitted comments can be edited (the server
-          // enforces the same rule); once frozen into a batch the agent may be
-          // acting on it. id-less fixture comments aren't addressable → no control.
-          var editable = !isAgentComment(c) && !c.batchId && c.id;
-          return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
-            (isAgentComment(c) ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
-            '<div class="body">' + fmtBody(c.body) + '</div>' +
-            (editable ? '<button class="sf-edit-c" type="button" aria-label="Edit comment">Edit</button>' : '') +
-            '</div>';
-        }).join('');
-      Array.prototype.forEach.call(card.querySelectorAll('.sf-comment'), function (cEl) {
-        var btn = cEl.querySelector('.sf-edit-c');
-        if (!btn) return;
-        var cid = cEl.getAttribute('data-cid');
-        var c = t.comments.filter(function (x) { return x.id === cid; })[0];
-        if (c) btn.onclick = function (e) { e.stopPropagation(); openCommentEdit(cEl, t, c); };
-      });
+        t.comments.map(commentHTML).join('');
+      wireCommentEdits(card, t);
       var acts = create('div', { class: 'sf-acts' });
       var replyBtn = create('button', {}, 'Reply');
       replyBtn.onclick = function (e) { e.stopPropagation(); openReply(card, t); };
@@ -1374,18 +1369,47 @@
     box.onclick = function (e) { e.stopPropagation(); }; // typing shouldn't re-activate the card
     var ta = create('textarea', { class: 'sf-input', placeholder: 'Reply…', rows: '2' });
     var row = create('div', { class: 'sf-compose-foot' });
+    var aud = audienceChips(ta);
     var send = create('button', { class: 'sf-primary' }, 'Send');
     function submit() {
-      if (!ta.value.trim()) return;
-      postJSON(API + '/' + t.id + '/reply', withAuthor({ body: ta.value.trim() })).then(load);
+      var body = aud.body();
+      if (!body) return;
+      postJSON(API + '/' + t.id + '/reply', withAuthor({ body: body })).then(load);
     }
     send.onclick = submit;
     row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to send'));
     row.appendChild(send);
-    box.appendChild(ta); box.appendChild(row);
+    box.appendChild(ta); box.appendChild(aud.el); box.appendChild(row);
     card.appendChild(box);
     wireInput(ta, submit);
     ta.focus();
+  }
+
+  // One comment, rendered the same way wherever it is read — the sidebar list
+  // and the rail's expanded thread. They diverged once, and the rail lost the
+  // Edit control by omission rather than by decision.
+  //
+  // Only your own, not-yet-submitted comments carry it (the server enforces the
+  // same rule); once frozen into a batch the agent may already be acting on it.
+  // id-less fixture comments aren't addressable → no control.
+  function commentHTML(c) {
+    var editable = !isAgentComment(c) && !c.batchId && c.id;
+    return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
+      (isAgentComment(c) ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
+      '<div class="body">' + fmtBody(c.body) + '</div>' +
+      (editable ? '<button class="sf-edit-c" type="button" aria-label="Edit comment">Edit</button>' : '') +
+      '</div>';
+  }
+
+  /** Point every Edit control under `root` at the inline editor for its comment. */
+  function wireCommentEdits(root, t) {
+    Array.prototype.forEach.call(root.querySelectorAll('.sf-comment'), function (cEl) {
+      var btn = cEl.querySelector('.sf-edit-c');
+      if (!btn) return;
+      var cid = cEl.getAttribute('data-cid');
+      var c = t.comments.filter(function (x) { return x.id === cid; })[0];
+      if (c) btn.onclick = function (e) { e.stopPropagation(); openCommentEdit(cEl, t, c); };
+    });
   }
 
   // Inline edit of an own, not-yet-submitted comment — swaps the body for a
@@ -1548,6 +1572,77 @@
     window.requestAnimationFrame(function () { railTick = false; positionRail(); });
   }
 
+  // ---------- decks: one section on screen at a time ----------
+  //
+  // A deck pages its sections instead of scrolling them: exactly one carries
+  // `is-current` and the rest are display:none. Every assumption the rail makes
+  // breaks on that, because a hidden block measures as a zero-height rect at the
+  // top of the page. Threads from all 22 slides land on the one slide you are
+  // reading, stacked in a column with nothing to anchor them to, and "N above"
+  // counts a scroll distance that does not exist.
+  //
+  // So on a deck the rail is scoped to the current slide, sits on that slide
+  // rather than in a gutter a deck does not have, and counts by slide.
+  //
+  // Detected from the rendered result rather than the spec type, so it holds for
+  // anything that pages sections. The deck's own script is inline at the end of
+  // the body and review.js is deferred, so `is-current` is set before this runs.
+  function deckSlides() {
+    var secs = document.querySelectorAll(SLIDE_SEL);
+    if (secs.length < 2) return null;
+    for (var i = 0; i < secs.length; i++) {
+      if (secs[i].classList.contains('is-current')) return secs;
+    }
+    return null;
+  }
+  /** The slide a block sits on, or null off a deck. */
+  function slideOf(el) {
+    return el && el.closest ? el.closest(SLIDE_SEL) : null;
+  }
+  function slideIndex(slides, sec) {
+    return sec ? Array.prototype.indexOf.call(slides, sec) : -1;
+  }
+  function currentSlideIndex(slides) {
+    for (var i = 0; i < slides.length; i++) if (slides[i].classList.contains('is-current')) return i;
+    return -1;
+  }
+  /**
+   * Page the deck to a slide.
+   *
+   * Through the hash, which is the deck's own paging contract (it listens for
+   * hashchange and maps the id to a slide), so the review layer never has to
+   * know how a deck decides what to render.
+   */
+  function showSlide(sec) {
+    if (!sec || !sec.id) return;
+    if (sec.classList.contains('is-current')) return;
+    location.hash = '#' + sec.id;
+  }
+  /** Page to the slide holding `el`, if that is somewhere else. Safe off a deck. */
+  function revealSlideFor(el) {
+    if (!deckSlides()) return;
+    showSlide(slideOf(el));
+  }
+
+  /**
+   * Re-render the rail when the deck pages.
+   *
+   * Not on hashchange: the deck's own prev/next buttons and arrow keys use
+   * history.replaceState, which fires nothing. What always happens is the
+   * `is-current` class moving between sections, so that is what this watches.
+   */
+  function watchSlides() {
+    if (!window.MutationObserver || !deckSlides()) return;
+    var main = document.querySelector('main');
+    if (!main) return;
+    new window.MutationObserver(function (records) {
+      // renderHighlights marks blocks INSIDE slides on every render; reacting to
+      // those would re-render from within a render, forever.
+      var paged = records.some(function (r) { return r.target.matches && r.target.matches(SLIDE_SEL); });
+      if (paged) render();
+    }).observe(main, { attributes: true, attributeFilter: ['class'], subtree: true });
+  }
+
   // Live threads whose anchor still resolves, paired with their block, in
   // DOCUMENT order (ties — several threads on one block — keep store order).
   // Ordering deliberately uses document position rather than measured tops: the
@@ -1575,6 +1670,21 @@
       if (rel & 4) return -1;  // DOCUMENT_POSITION_FOLLOWING — b comes after a
       if (rel & 2) return 1;   // DOCUMENT_POSITION_PRECEDING
       return a.seq - b.seq;
+    });
+  }
+
+  /**
+   * The threads the rail actually draws: everything on a scrolling spec, and on
+   * a deck only the current slide's. A bubble for a slide nobody is looking at
+   * has nothing on screen to point at, so it can only mislead.
+   */
+  function railEntries() {
+    var all = railThreads();
+    var slides = deckSlides();
+    if (!slides) return all;
+    return all.filter(function (r) {
+      var s = slideOf(r.el);
+      return s && s.classList.contains('is-current');
     });
   }
 
@@ -1607,7 +1717,7 @@
     if (!els.rail) return;
     syncRailVisibility();
     els.rail.innerHTML = '';
-    var entries = railThreads();
+    var entries = railEntries();
     // The composer is a focused entry in the rail, ordered with the threads so
     // it takes its block's anchor line and pushes that block's threads down.
     if (state.composeEl) {
@@ -1647,10 +1757,12 @@
 
     var ta = create('textarea', { class: 'sf-input', placeholder: 'Add a comment…', rows: '2' });
     var row = create('div', { class: 'sf-compose-foot' });
+    var aud = audienceChips(ta);
     var save = create('button', { class: 'sf-primary', type: 'button' }, 'Comment');
     function submit() {
-      if (!ta.value.trim()) return;
-      postJSON(API, withAuthor({ anchor: anchor, body: ta.value.trim() }))
+      var body = aud.body();
+      if (!body) return;
+      postJSON(API, withAuthor({ anchor: anchor, body: body }))
         .then(function (r) {
           if (!r.ok) return flash('Could not add the comment.');
           state.composeEl = null;
@@ -1660,7 +1772,7 @@
     save.onclick = function (e) { e.stopPropagation(); submit(); };
     row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to comment'));
     row.appendChild(save);
-    b.appendChild(ta); b.appendChild(row);
+    b.appendChild(ta); b.appendChild(aud.el); b.appendChild(row);
     wireInput(ta, submit);
     setTimeout(function () { try { ta.focus(); } catch (e) {} }, 0);
     return b;
@@ -1707,13 +1819,10 @@
       initialOf(t.comments[0]) + '</span>' +
       '<span class="sf-badge ' + esc(t.state) + '">' + esc(t.state) + '</span>' +
       '<button class="sf-bub-x" type="button" aria-label="Collapse thread">×</button></div>' +
-      t.comments.map(function (c) {
-        return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
-          (isAgentComment(c) ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
-          '<div class="body">' + fmtBody(c.body) + '</div></div>';
-      }).join('');
+      t.comments.map(commentHTML).join('');
     b.onclick = function (e) { e.stopPropagation(); }; // using the card must not dismiss it
     b.querySelector('.sf-bub-x').onclick = function (e) { e.stopPropagation(); collapseThread(); };
+    wireCommentEdits(b, t);
     // Say plainly that the content is gone, above the thread, and keep the
     // original quote so the reader can see what it was about before deciding.
     if (orphan) {
@@ -1725,10 +1834,12 @@
 
     var ta = create('textarea', { class: 'sf-input', placeholder: 'Reply…', rows: '2' });
     var row = create('div', { class: 'sf-compose-foot' });
+    var aud = audienceChips(ta);
     var send = create('button', { class: 'sf-primary', type: 'button' }, 'Reply');
     function submit() {
-      if (!ta.value.trim()) return;
-      postJSON(API + '/' + t.id + '/reply', withAuthor({ body: ta.value.trim() })).then(load);
+      var body = aud.body();
+      if (!body) return;
+      postJSON(API + '/' + t.id + '/reply', withAuthor({ body: body })).then(load);
     }
     send.onclick = function (e) { e.stopPropagation(); submit(); };
     var res = create('button', { class: 'sf-bub-resolve', type: 'button' }, 'Resolve');
@@ -1744,7 +1855,7 @@
       }).catch(function () { flash('Could not resolve the thread.'); });
     };
     row.appendChild(res); row.appendChild(send);
-    b.appendChild(ta); b.appendChild(row);
+    b.appendChild(ta); b.appendChild(aud.el); b.appendChild(row);
     wireInput(ta, submit);
     wireBubbleHover(b, el);
     return b;
@@ -1808,6 +1919,22 @@
   var RAIL_MARGIN = 8;
   function positionRailX() {
     var right = 0;
+    // A deck fills its stage edge to edge — there is no gutter beside the slide
+    // to hang a rail in, and clamping one to the window put it half off screen.
+    // So the comments sit ON the slide they annotate, inset from its right edge:
+    // the "anchored to the container" reading of a margin comment, for a layout
+    // that has no margin.
+    var slides = deckSlides();
+    if (slides) {
+      var cur = slides[currentSlideIndex(slides)];
+      var rect = cur && cur.getBoundingClientRect();
+      if (rect && rect.width) {
+        var w = els.rail.offsetWidth || 272;
+        els.rail.style.left = Math.max(RAIL_MARGIN, rect.right - w - DECK_INSET) + 'px';
+        els.rail.style.right = 'auto';
+        return;
+      }
+    }
     try { right = widthContainer().getBoundingClientRect().right || 0; } catch (e) {}
     // offsetWidth keeps the CSS as the source of truth for the rail's width; the
     // fallback is only for environments without layout (jsdom) and must match
@@ -1849,7 +1976,27 @@
       if (offscreenDir(items[i].top, vp) === 'above') above++;
       else if (offscreenDir(items[i].top, vp) === 'below') below++;
     });
-    renderOffscreenChips(above, below);
+    var bySlide = offSlideCounts();
+    if (bySlide) renderOffscreenChips(bySlide.before, bySlide.after);
+    else renderOffscreenChips(above, below);
+  }
+
+  /**
+   * On a deck, what is out of sight is on another slide, not further down the
+   * page — so count earlier and later slides. Returns null off a deck, which is
+   * how the caller picks between the two meanings.
+   */
+  function offSlideCounts() {
+    var slides = deckSlides();
+    if (!slides) return null;
+    var cur = currentSlideIndex(slides);
+    var before = 0, after = 0;
+    railThreads().forEach(function (r) {
+      var i = slideIndex(slides, slideOf(r.el));
+      if (i < 0 || i === cur) return;
+      if (i < cur) before++; else after++;
+    });
+    return { before: before, after: after };
   }
 
   // Bubbles live INSIDE the rail, which starts below the fixed header, so every
@@ -1869,17 +2016,21 @@
   }
 
   // "N above / N below" — without these, a comment on scrolled-past content is
-  // simply invisible. Clicking jumps to the nearest one in that direction.
+  // simply invisible. Clicking jumps to the nearest one in that direction. On a
+  // deck the same two chips mean earlier and later SLIDES, and clicking pages
+  // there, so they are labelled for what they actually cross.
   function renderOffscreenChips(above, below) {
     if (!els.rail) return;
     Array.prototype.forEach.call(els.rail.querySelectorAll('.sf-rail-chip'), function (c) { c.remove(); });
-    if (above) els.rail.appendChild(chip('above', '↑ ' + above + ' above'));
-    if (below) els.rail.appendChild(chip('below', '↓ ' + below + ' below'));
+    var deck = !!deckSlides();
+    if (above) els.rail.appendChild(chip('above', '↑ ' + above + (deck ? ' earlier' : ' above')));
+    if (below) els.rail.appendChild(chip('below', '↓ ' + below + (deck ? ' later' : ' below')));
   }
   function chip(dir, label) {
     var c = create('button', { class: 'sf-rail-chip sf-rail-' + dir, type: 'button' }, label);
     c.onclick = function (e) {
       e.stopPropagation();
+      if (jumpSlide(dir)) return;
       // Navigate over exactly what the chips COUNT — the rail's own cards, in
       // the rail's coordinate space. Counting from one set (or one coordinate
       // space) and navigating in another strands whatever only the counter
@@ -1895,6 +2046,64 @@
       if (best && best.scrollIntoView) best.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
     return c;
+  }
+
+  /**
+   * Page to the nearest slide in `dir` that carries a comment. The chip counted
+   * slides, so it navigates slides — a scrollIntoView on a display:none block
+   * does nothing at all, which is why these chips read as dead on a deck.
+   * @returns {boolean} whether this was a deck and the jump was handled
+   */
+  function jumpSlide(dir) {
+    var slides = deckSlides();
+    if (!slides) return false;
+    var cur = currentSlideIndex(slides);
+    var best = -1;
+    railThreads().forEach(function (r) {
+      var i = slideIndex(slides, slideOf(r.el));
+      if (i < 0) return;
+      if (dir === 'above' ? i >= cur : i <= cur) return;
+      // Nearest in that direction: the largest index before, the smallest after.
+      if (best < 0 || (dir === 'above' ? i > best : i < best)) best = i;
+    });
+    if (best >= 0) showSlide(slides[best]);
+    return true;
+  }
+
+  /**
+   * A count badge on each filmstrip entry whose slide carries live comments.
+   *
+   * On a scrolling spec the rail is the map: every comment on the document is
+   * somewhere on the same page. A deck hides 21 slides out of 22, so without
+   * this there is nothing to tell you a slide has comments except opening it.
+   *
+   * Keyed off the filmstrip's own `href="#<slide id>"`, which is the contract
+   * the deck already uses to page itself, so the badge lands on whatever
+   * navigation a deck happens to render.
+   */
+  function renderSlideCounts() {
+    Array.prototype.forEach.call(document.querySelectorAll('.sf-fs-count'), function (c) { c.remove(); });
+    Array.prototype.forEach.call(document.querySelectorAll('.sf-fs-has'), function (a) { a.classList.remove('sf-fs-has'); });
+    var slides = deckSlides();
+    if (!slides) return;
+    var counts = {};
+    railThreads().forEach(function (r) {
+      var s = slideOf(r.el);
+      if (s && s.id) counts[s.id] = (counts[s.id] || 0) + 1;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('nav a[href^="#"]'), function (a) {
+      // The review layer's own TOC drawer links to the same slides. Badging it
+      // too would put a count in a panel that is closed by default, styled for a
+      // thumbnail it does not have.
+      if (inUI(a)) return;
+      var n = counts[a.getAttribute('href').slice(1)];
+      if (!n) return;
+      a.classList.add('sf-fs-has');
+      a.appendChild(create('span', {
+        class: 'sf-fs-count',
+        title: n + (n === 1 ? ' comment' : ' comments') + ' on this slide',
+      }, String(n)));
+    });
   }
 
   /** Live threads nobody addressed to the agent: conversation, not a queue. */
@@ -1943,6 +2152,78 @@
     });
   }
 
+  /** True on a published copy, which is to say: the reader is not the owner. */
+  function isPublishedCopy() {
+    return (window.SPECFORGE || {}).transport === 'poll';
+  }
+
+  /**
+   * Who a comment is for, as two chips instead of remembering to type @agent.
+   *
+   * The mention stays the only thing that routes a comment, here and on the
+   * server; these chips write it for you. The alternative was a second field
+   * meaning the same thing, which is two sources of truth for one question and
+   * a thread whose text no longer says who it was addressed to.
+   *
+   * The default differs by who is reading. An owner's comments are nearly always
+   * work for their own agent; a reviewer's are nearly always a question for a
+   * person, and a reviewer who submits to someone else's agent by accident
+   * cannot easily undo it.
+   */
+  function audienceChips(ta) {
+    var forAgent = !isPublishedCopy();
+    var wrap = create('span', { class: 'sf-aud' });
+    var agentBtn = create('button', {
+      class: 'sf-aud-chip', type: 'button',
+      title: 'Work for the agent. Sends @agent with your comment.',
+    }, '@agent');
+    var humanBtn = create('button', {
+      class: 'sf-aud-chip', type: 'button',
+      title: 'A question or note for a person. Never reaches an agent.',
+    }, 'discussion');
+
+    function paint() {
+      agentBtn.classList.toggle('on', forAgent);
+      humanBtn.classList.toggle('on', !forAgent);
+      agentBtn.setAttribute('aria-pressed', forAgent ? 'true' : 'false');
+      humanBtn.setAttribute('aria-pressed', forAgent ? 'false' : 'true');
+    }
+    function pick(next) {
+      forAgent = next;
+      // Chosen "discussion" while the text already says @agent: the text wins
+      // over the chip unless the mention goes, so it goes. Doing nothing would
+      // leave a chip that says one thing and a comment that does another.
+      if (!forAgent && mentionsAgentBody(ta.value)) {
+        ta.value = ta.value.replace(/@agent(?![a-z0-9_-])\s*/gi, '').trim();
+        autoGrow(ta);
+      }
+      paint();
+    }
+    agentBtn.onclick = function (e) { e.stopPropagation(); pick(true); };
+    humanBtn.onclick = function (e) { e.stopPropagation(); pick(false); };
+    // Typing the mention by hand raises the chip, so a comment that says @agent
+    // never sits under a chip that says discussion. The sync only goes up: text
+    // without a mention means nothing, since writing it is exactly the work the
+    // chip does for you. Mirroring downward would clear the owner's default on
+    // their first keystroke.
+    ta.addEventListener('input', function () {
+      if (!forAgent && mentionsAgentBody(ta.value)) { forAgent = true; paint(); }
+    });
+
+    paint();
+    wrap.appendChild(agentBtn);
+    wrap.appendChild(humanBtn);
+    return {
+      el: wrap,
+      /** The body to send: the mention added when it is missing. */
+      body: function () {
+        var v = ta.value.trim();
+        if (!forAgent || !v || mentionsAgentBody(v)) return v;
+        return '@agent ' + v;
+      },
+    };
+  }
+
 
   function submitBatch() {
     postJSON(API + '/submit', {}).then(function (r) {
@@ -1967,6 +2248,9 @@
     // every later thread on a shared block.
     var t = state.threads.filter(function (x) { return x.id === id; })[0];
     var el = t ? findBlock(t.anchor) : null;
+    // On a deck the block may be on a slide that is not rendered, where a scroll
+    // reaches nothing. Page there first; the slide change re-renders the rail.
+    revealSlideFor(el);
     if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
