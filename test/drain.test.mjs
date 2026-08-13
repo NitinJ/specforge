@@ -10,7 +10,9 @@ import { attach, STALE_MS } from '../lib/attach.mjs';
 import { loadComments, saveComments, createThread } from '../lib/store-comments.mjs';
 import { submitBatch, reviewProgressForSpec, agentBusy } from '../lib/store-inbox.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
-import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
+import {
+  pendingForSession, reviewReason, watcherBeating, armWatcherReason,
+} from '../lib/store-drain.mjs';
 import { requestExport, exportRequestsForSession } from '../lib/store-export.mjs';
 import {
   cmdComments, cmdReply, cmdBatchDone, cmdBatchWorking, cmdWaitBatch,
@@ -182,6 +184,78 @@ test('export CLI: working then done records the Doc link; --error records a fail
   requestExport(id);
   await cmdExportDone({ id, error: 'drive auth failed' });
   assert.equal(readMeta(id).export.state, 'error');
+});
+
+// ---------- keeping a watcher armed ----------
+//
+// Nothing in code ever arms one: an agent reads an instruction and runs a
+// background command, or forgets to. And the watcher exits every time it
+// delivers a batch, because exiting is how it reports — so a session losing its
+// watcher is normal operation, not an accident. Two things push back: a reminder
+// at the moment it happens, and a check that looks at the fact.
+
+/** A spec owned by `session`, with its heartbeat set `agoMs` in the past. */
+function owned(session, agoMs) {
+  const id = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  attach(id, session);
+  const m = readMeta(id);
+  writeMeta(id, { ...m, heartbeat: Date.now() - agoMs });
+  return id;
+}
+
+test('watcherBeating reads the heartbeat the watcher stamps', () => {
+  owned('sess-1', 0);
+  assert.equal(watcherBeating('sess-1'), true);
+  assert.equal(watcherBeating('sess-2'), false, 'and only for that session');
+});
+
+test('watcherBeating is false once the beats stop', () => {
+  owned('sess-1', 10 * 60 * 1000);
+  assert.equal(watcherBeating('sess-1'), false);
+});
+
+test('one beating spec is enough — a watcher stamps every spec it owns', () => {
+  owned('sess-1', 10 * 60 * 1000);
+  owned('sess-1', 0);
+  assert.equal(watcherBeating('sess-1'), true);
+});
+
+test('Stop refuses to settle while the session owns specs nobody watches', () => {
+  const id = owned('sess-1', 10 * 60 * 1000);
+  const out = stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
+  assert.equal(out.decision, 'block', 'settling in that state IS the bug');
+  assert.ok(out.reason.includes(id), 'names the spec');
+  assert.match(out.reason, /wait-batch/, 'and the command that fixes it');
+});
+
+test('Stop settles quietly once a watcher is beating', () => {
+  owned('sess-1', 0);
+  assert.equal(stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' }), null);
+});
+
+test('the nag cannot loop — the stop-guard caps it at one per settle', () => {
+  owned('sess-1', 10 * 60 * 1000);
+  assert.equal(stopRun({ stop_hook_active: true }, { CLAUDE_CODE_SESSION_ID: 'sess-1' }), null);
+});
+
+test('a pending batch outranks the nag, and its own text says to re-arm', () => {
+  // Both are true at once for a session with no watcher and a waiting batch.
+  // The batch is the urgent one, and reviewReason now carries the reminder, so
+  // nothing is lost by it winning.
+  const { id } = specWithBatch('sess-1');
+  const m = readMeta(id); writeMeta(id, { ...m, heartbeat: Date.now() - 10 * 60 * 1000 });
+  const out = stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
+  assert.match(out.reason, /review batch/i, 'the batch wins');
+  assert.match(out.reason, /re-arm the review watcher/, 'and still says to re-arm');
+});
+
+test('armWatcherReason names every unwatched spec and the exact command', () => {
+  const a = owned('sess-1', 10 * 60 * 1000);
+  const b = owned('sess-1', 10 * 60 * 1000);
+  const text = armWatcherReason([a, b]);
+  assert.ok(text.includes(a) && text.includes(b));
+  assert.match(text, /sit unread/, 'says what it costs');
+  assert.match(text, /specforge-cli\.mjs" wait-batch/, 'a command that can be run as written');
 });
 
 test('review CLI: comments → reply (claude) → batch-done', async () => {
