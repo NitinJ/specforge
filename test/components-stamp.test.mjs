@@ -144,6 +144,23 @@ test('sync --all skips every spec that has not opted in', () => {
   assert.equal(specHtml(pre), before, 'and the pre-library spec is byte-identical');
 });
 
+// The exclusion has to hold at creation too, not only in the repo templates: a
+// deck stamped at create time carries the library AND the deck's own 18
+// duplicate definitions, and renders as a mixture of the two.
+test('the deck is excluded from stamping until its duplicates are reconciled', async () => {
+  const { STAMPED_TYPES, STAMPED_TEMPLATES, stampsAtCreate } = await import('../lib/components-build.mjs');
+  const { SPEC_TYPES } = await import('../lib/meta.mjs');
+
+  assert.equal(stampsAtCreate('deck'), false, 'a deck is not stamped');
+  assert.ok(!STAMPED_TEMPLATES.includes('spec-base-deck.html'), 'nor is its template');
+  for (const type of SPEC_TYPES.filter((t) => t !== 'deck')) {
+    assert.equal(stampsAtCreate(type), true, `${type} is stamped`);
+  }
+  // Every type is accounted for, so a type added later cannot silently miss the
+  // library by being forgotten here.
+  assert.deepEqual([...STAMPED_TYPES, 'deck'].sort(), [...SPEC_TYPES].sort());
+});
+
 // ---- the templates ----
 
 test('every stamped template carries the block and the version', async () => {
