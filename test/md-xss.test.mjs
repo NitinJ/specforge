@@ -155,6 +155,31 @@ test('an attribute value cannot break out of its own quotes', () => {
   assert.deepEqual(survived, [], `breakouts that survived:\n${survived.join('\n')}`);
 });
 
+test('input that is inert as written stays inert after a browser re-parses it', () => {
+  // Mutation XSS: the string looks harmless to a sanitizer working on text, and
+  // becomes markup once a parser gets to it. These are checked by parsing the
+  // OUTPUT, which is the only way to tell what a browser would actually build.
+  const vectors = [
+    ['attribute holding a closing tag', '<img src="x.png" alt="</div><script>alert(1)</script>">'],
+    ['attribute holding a tag, single quotes', "<img src='x.png' alt='</div><script>alert(1)</script>'>"],
+    ['unclosed quote', '<img src="x.png alt=y onerror=alert(1)>'],
+    ['comment that reopens', '<!-- --><script>alert(1)</script>'],
+    ['script nested in svg', '<svg><desc><script>alert(1)</script></desc></svg>'],
+    ['cdata', '<svg><![CDATA[<script>alert(1)</script>]]></svg>'],
+    ['split tag name', '<scr ipt>alert(1)</scr ipt>'],
+    ['double-encoded tag', '&lt;script&gt;alert(1)&lt;/script&gt;'],
+    ['tag split over lines', '<img\nsrc=x\nonerror=alert(1)>'],
+    ['uppercase tag and attribute', '<IMG SRC=x ONERROR=alert(1)>'],
+    ['backtick attribute', '<img src=`x` onerror=alert(1)>'],
+    ['unquoted attribute with a slash', '<a href=/x onclick=alert(1)>y</a>'],
+  ];
+  const survived = [];
+  for (const [name, vector] of vectors) {
+    for (const finding of findings(importBody(vector))) survived.push(`${name}: ${finding}`);
+  }
+  assert.deepEqual(survived, [], `mutations that survived:\n${survived.join('\n')}`);
+});
+
 test('an inline markdown image cannot fetch from a remote host', () => {
   // An inline image is not a link the reader chooses: the browser fetches it the
   // moment the spec opens. Block-level image lines go through the asset resolver,
