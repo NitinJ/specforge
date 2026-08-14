@@ -2679,6 +2679,20 @@ test('a mono saved under the old single-dropdown pref becomes the code font', as
     'while the reading font reads as Default');
 });
 
+// The migration must not outlive the choice that replaces it. An upgraded reader
+// who picks Default has a legacy mono still sitting under `font`, and re-reading
+// it would hand the old face back on every load.
+test('choosing Default for the code font sticks, even with a legacy mono still stored', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { font: 'jetbrains-mono', mono: 'default' } });
+  const c = window.document.querySelector('main');
+  assert.equal(c.style.getPropertyValue('--mono'), '', 'the stored Default wins over the migration');
+  assert.equal(c.getAttribute('data-sf-mono'), null);
+
+  window.document.getElementById('sf-launcher').click();
+  assert.equal(window.document.querySelector('select.sf-mono-select').value, 'default',
+    'and the dropdown agrees');
+});
+
 test('the two axes compose and persist independently', async (t) => {
   const { window } = await bootReviewLayer(t, { prefs: { font: 'merriweather', mono: 'fira-code' } });
   const c = window.document.querySelector('main');

@@ -179,8 +179,12 @@
   }
   // A pref saved before the split named a mono in the reading-font slot. Read it
   // as what it always meant: that face, for code.
+  //
+  // A stored 'default' is a choice, not an absence. Without that first test, an
+  // upgraded reader who picks Default gets the legacy value migrated over their
+  // pick on the next load, and the old face comes back every time.
   function initMono() {
-    if (isMono(PREFS.mono)) return PREFS.mono;
+    if (PREFS.mono === 'default' || isMono(PREFS.mono)) return PREFS.mono;
     return isMono(PREFS.font) ? PREFS.font : 'default';
   }
 
