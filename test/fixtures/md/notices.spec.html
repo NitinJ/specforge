@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="draft">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Every notice type</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 8px 24px rgba(0,0,0,.28); --mono:ui-monospace,Menlo,monospace;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#fff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 8px 24px rgba(0,0,0,.06); --mono:ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){ --bg:#fbfaf7; --ink:#222629; }
+  }
+  body{background:var(--bg);color:var(--ink)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Every notice type</h1>
+
+  <section id="tldr" data-sf-section>
+    <h2>TL;DR</h2>
+    <p>One notice of every type in the library, so the round trip has to carry all twelve. Before the exporter derived its list from the definitions, eleven of these came back as a bare callout.</p>
+  </section>
+
+  <section id="notices" data-sf-section>
+    <h2>1 · Notices</h2>
+      <div class="callout note">Note body: Context a reader needs that is not itself a claim about the design.</div>
+      <div class="callout tip">Tip body: Advice that makes something easier and is safe to ignore.</div>
+      <div class="callout success">Success body: A settled good outcome: a check that passed, a target that was met.</div>
+      <div class="callout warning">Warning body: A hazard the reader can avoid by knowing about it.</div>
+      <div class="callout danger">Danger body: An action that breaks something irreversibly.</div>
+      <div class="callout example">Example body: A concrete instance of a rule stated elsewhere.</div>
+      <div class="callout quote">Quote body: Words that are somebody else’s, with attribution.</div>
+      <div class="callout decision">Decision body: A choice made, with the criterion it was made on.</div>
+      <div class="callout assumption">Assumption body: Something believed but not verified.</div>
+      <div class="callout risk">Risk body: A specific way this can fail, named precisely enough to design against.</div>
+      <div class="callout deviation">Deviation body: A departure from a stated principle, house rule, or existing pattern.</div>
+      <div class="callout constraint">Constraint body: A fixed limit the design works within and cannot change.</div>
+  </section>
+
+  <section id="legacy" data-sf-section>
+    <h2>2 · Legacy tones</h2>
+    <p>Markdown written before the library still has to open, so the three tone modifiers stay readable.</p>
+    <div class="callout warn">A pre-library caution.</div>
+    <div class="callout good">A pre-library positive.</div>
+    <div class="callout bad">A pre-library negative.</div>
+    <div class="callout">A pre-library notice with no modifier at all.</div>
+  </section>
+</main>
+</body>
+</html>

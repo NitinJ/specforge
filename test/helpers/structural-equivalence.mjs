@@ -95,6 +95,29 @@ function diagramsOf(body) {
   return out;
 }
 
+/**
+ * Notices in document order, as {type, text}.
+ *
+ * The type is structure, not decoration. A tag's colour class is an accepted
+ * loss (L1) because it restates what the text says; a notice's type is the only
+ * place the block's meaning is recorded, so a round trip that drops it has
+ * changed the document. Before the exporter derived its list from the library,
+ * all 12 types came back as a bare callout and this assertion would not have
+ * noticed.
+ */
+function noticesOf(body) {
+  const out = [];
+  const re = /<div\b([^>]*\bclass\s*=\s*"([^"]*\bcallout\b[^"]*)"[^>]*)>/g;
+  let m;
+  while ((m = re.exec(body))) {
+    const classes = m[2].trim().split(/\s+/);
+    const type = classes.find((c) => c !== 'callout') || '';
+    const { start } = closeOf(body, re.lastIndex, 'div');
+    out.push({ type, text: textOf(body.slice(re.lastIndex, start)) });
+  }
+  return out;
+}
+
 /** The end of the element opened at `from`, counting nested opens of `tag`. */
 function closeOf(html, from, tag) {
   const re = new RegExp(`<(/?)${tag}\\b`, 'gi');
@@ -200,6 +223,7 @@ export function structuralModel(html) {
         tables: tablesOf(body),
         code: codeBlocksOf(body),
         diagrams: diagramsOf(body),
+        notices: noticesOf(body),
         listItems: listItemsOf(body),
       };
     }),
@@ -248,6 +272,7 @@ export function assertStructurallyEquivalent(actual, expected, label = '') {
     }
     assert.deepEqual(as.code, es.code, at(`${where}.code`));
     assert.deepEqual(as.diagrams, es.diagrams, at(`${where}.diagrams`));
+    assert.deepEqual(as.notices, es.notices, at(`${where}.notices (type and text)`));
     assert.deepEqual(as.listItems, es.listItems, at(`${where}.listItems`));
   }
 
