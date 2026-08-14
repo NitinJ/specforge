@@ -6,7 +6,7 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
@@ -248,6 +248,72 @@ test('script and event handlers are stripped from raw HTML', () => {
 test('a script in imported markdown never reaches the served spec', () => {
   const { html } = convert('# Doc\n\n## Body\n\n<div><script>alert(1)</script></div>\n');
   assert.doesNotMatch(sectionBody(html, 'body') || '', /<script/);
+});
+
+test('a javascript: URL is neutralised however it is quoted or escaped', () => {
+  // The daemon serves what is stored with no second sanitization pass, so each
+  // of these executes if it survives. They are the standard evasions, not
+  // hypotheticals: single quotes, no quotes, entity-encoded characters, an
+  // entity-encoded colon, an embedded tab, and mixed case.
+  const vectors = [
+    `<a href='javascript:alert(1)'>x</a>`,
+    '<a href=javascript:alert(1)>x</a>',
+    '<a href="java&#x73;cript:alert(1)">x</a>',
+    '<a href="javascript&colon;alert(1)">x</a>',
+    '<a href="java\tscript:alert(1)">x</a>',
+    '<a href="JaVaScRiPt:alert(1)">x</a>',
+    '<a href="vbscript:msgbox(1)">x</a>',
+    '<a href="data:text/html;base64,PHNjcmlwdD4=">x</a>',
+    '<img src="data:image/svg+xml;base64,PHN2Zz4=">',
+    '<img src="javascript:alert(1)">',
+    '<a formaction="javascript:alert(1)">x</a>',
+  ];
+  for (const v of vectors) {
+    const clean = sanitizeHtml(v);
+    assert.doesNotMatch(clean, /javascript|vbscript|data:text\/html|svg\+xml/i, `not neutralised: ${v}`);
+    assert.match(clean, /#/, `no href left at all: ${v}`);
+  }
+});
+
+test('safe URLs are left exactly as they were', () => {
+  for (const v of [
+    '<a href="https://example.com/x?a=1&amp;b=2">x</a>',
+    '<a href="/relative/path">x</a>',
+    '<a href="#anchor">x</a>',
+    '<a href="mailto:a@b.c">x</a>',
+    '<img src="data:image/png;base64,AAA" alt="a">',
+    '<use xlink:href="#gradient"></use>',
+  ]) {
+    assert.equal(sanitizeHtml(v), v, `rewritten when it should not be: ${v}`);
+  }
+});
+
+test('srcdoc and framing elements do not survive', () => {
+  assert.doesNotMatch(sanitizeHtml('<iframe srcdoc="<script>alert(1)</script>"></iframe>'), /srcdoc|iframe/i);
+  assert.doesNotMatch(sanitizeHtml('<base href="https://evil.test/">'), /<base/i);
+  assert.doesNotMatch(sanitizeHtml('<meta http-equiv="refresh" content="0;url=x">'), /<meta/i);
+});
+
+test('an asset path may not escape the directory the markdown came from', () => {
+  const resolve_ = assetResolver(join(store.dir, 'docs'));
+  mkdirSync(join(store.dir, 'docs'), { recursive: true });
+  writeFileSync(join(store.dir, 'secret.svg'), '<svg>private</svg>');
+
+  assert.equal(resolve_('../secret.svg').kind, 'outside', 'traversal is refused');
+  assert.equal(resolve_('/etc/hostname').kind, 'outside', 'an absolute path is refused');
+  assert.equal(resolve_('sub/../../secret.svg').kind, 'outside', 'and so is a laundered one');
+
+  writeFileSync(join(store.dir, 'docs', 'ok.svg'), '<svg/>');
+  assert.equal(resolve_('ok.svg').kind, 'svg', 'a sibling file is still read');
+});
+
+test('an escaping asset path is reported, and its content never lands in the spec', () => {
+  const { html, report } = convert('# D\n\n## S\n\n![p](../secret.svg)\n', {
+    resolveAsset: () => ({ kind: 'outside', src: '../secret.svg' }),
+  });
+  assert.equal(report.assetsDropped.length, 1);
+  assert.match(report.assetsDropped[0].why, /outside the directory/);
+  assert.doesNotMatch(html, /private/);
 });
 
 // ---------------------------------------------------------------- the store

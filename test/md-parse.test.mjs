@@ -118,6 +118,32 @@ test('a raw HTML block is kept whole', () => {
   assert.match(b.raw, /<div class="panel">[\s\S]*<\/div>/);
 });
 
+test('a void element ends its block on its own line', () => {
+  // <br> has no closing tag. Hunting for one swallowed the rest of the file into
+  // a single raw block, and every heading after it disappeared from the import.
+  for (const tag of ['<br>', '<hr>', '<img src="a.png">', '<input type="text">']) {
+    const b = blocks(`${tag}\n\n## Still here\n\ntext\n`);
+    assert.equal(b[0].type, 'html', tag);
+    assert.equal(b[0].raw, tag, `${tag} kept only its own line`);
+    assert.deepEqual(b[1], { type: 'heading', level: 2, text: 'Still here' }, `${tag} did not eat the heading`);
+  }
+});
+
+test('an unclosed element keeps its line and says so, rather than eating the document', () => {
+  const { blocks: b, unsupported } = parseMarkdown('<div class="oops">\n\n## Still here\n\ntext\n');
+  assert.equal(b[0].type, 'html');
+  assert.equal(b[0].raw, '<div class="oops">');
+  assert.ok(b.some((x) => x.type === 'heading' && x.text === 'Still here'), 'the heading survived');
+  assert.match(unsupported[0].what, /never closed/);
+});
+
+test('a closed element still takes the lines up to its closing tag', () => {
+  const b = blocks('<div>\n  <p>one</p>\n  <p>two</p>\n</div>\n\n## After\n');
+  assert.equal(b[0].type, 'html');
+  assert.match(b[0].raw, /<p>two<\/p>\n<\/div>/);
+  assert.equal(b[1].type, 'heading');
+});
+
 // ---------------------------------------------------------------- lists
 
 test('bullet and ordered lists', () => {
