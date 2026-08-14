@@ -250,6 +250,13 @@ test('the exporter backslash escapes come back off', () => {
   assert.equal(inlineToHtml('\\# not a heading'), '# not a heading');
 });
 
+test('a hard line break comes back as a br', () => {
+  assert.equal(inlineToHtml('first  \nsecond'), 'first<br>\nsecond');
+  assert.equal(inlineToHtml('one line\nstill one line'), 'one line\nstill one line', 'a single newline is not a break');
+  // The trailing spaces have to survive escaping and the inline passes to get here.
+  assert.match(inlineToHtml('**a**  \n`b`'), /<strong>a<\/strong><br>\n<code>b<\/code>/);
+});
+
 test('an autolink is a link, with its quotes escaped', () => {
   assert.equal(
     inlineToHtml('see <https://example.com/a> for more'),

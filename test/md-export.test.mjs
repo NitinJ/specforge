@@ -206,6 +206,52 @@ test('a spec with no diagrams produces no assets', () => {
   }
 });
 
+test('text sitting directly in a container keeps its inline markup', () => {
+  // House markup puts prose straight inside a .callout or .card, with an inline
+  // <code> or <a> in the middle of it. Walking those children as separate blocks
+  // emitted the code as bare text and warned about an unhandled element, which
+  // is how this spec's own export lost its backticks.
+  const html = fixture('design').html().replace(
+    '<div class="callout warn">\n      <p>The dead-letter queue',
+    '<div class="callout warn">\n      Run <code>webhooks replay</code> by hand, see <a href="https://x.y">the runbook</a>.\n      <p>The dead-letter queue'
+  );
+  const { markdown, warnings } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.deepEqual(warnings, []);
+  assert.match(markdown, /> Run `webhooks replay` by hand, see \[the runbook\]\(https:\/\/x\.y\)\./);
+});
+
+test('the space between two adjacent inline elements survives', () => {
+  // The scanner dropped whitespace-only text nodes, which ran
+  // `<code>a</code> <code>b</code>` together into one unreadable token. Seen in
+  // this spec's own export before it was fixed.
+  const html = fixture('design').html().replace(
+    '<p>Only these outcomes retry:</p>',
+    '<p>Only <code>these</code> <code>outcomes</code> <strong>retry</strong>:</p>'
+  );
+  const { markdown } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(markdown, /Only `these` `outcomes` \*\*retry\*\*:/);
+});
+
+test('a line break inside a paragraph stays a line break', () => {
+  const html = fixture('design').html().replace(
+    '<p>Only these outcomes retry:</p>',
+    '<p>first line<br>second line</p>'
+  );
+  const { markdown } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(markdown, /^first line {2}\nsecond line$/m, 'two trailing spaces: a markdown hard break');
+});
+
+test('a line break in container prose stays a line break', () => {
+  // inline() emits a hard break for <br>; the run that gathers container prose
+  // used to collapse all whitespace and rejoin the two lines into one.
+  const html = fixture('design').html().replace(
+    '<div class="callout warn">',
+    '<div class="callout warn">\n      first line<br>second line\n'
+  );
+  const { markdown } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(markdown, /> first line {2}\n> second line/, 'two trailing spaces: a markdown hard break');
+});
+
 test('the corpus exports without warnings', () => {
   for (const f of FIXTURES) {
     assert.deepEqual(exportFixture(f).warnings, [], `${f.name} exports cleanly`);

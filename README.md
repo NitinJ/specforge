@@ -19,7 +19,7 @@
 - **You want a colleague to review, without giving them your repo.** Send a link. They comment in a browser, with no account and no install.
 - **You want review comments to become edits.** Not a summary of what should change: the actual document, changed.
 
-Not for you if you want a hosted wiki, real-time co-editing, or specs that live in your repo as markdown.
+Not for you if you want a hosted wiki or real-time co-editing. Specs are authored and reviewed here rather than as markdown in your repo, but they export to markdown and import from it, so neither direction is a dead end.
 
 ## Getting started
 
@@ -152,12 +152,27 @@ nudge when the code drifts from the plan. Hooks are fail-safe: any error exits
 |---|---|
 | `/specforge:create` | Author a new spec and open it for review |
 | `/specforge:convert <file>` | Bring an existing doc into the store |
+| `/specforge:export-md` | Write a spec out as markdown, diagrams included |
 | `/specforge:list` | Specs attached to this session |
 | `/specforge:listall` | Every spec, with the index URL |
 | `/specforge:start` | Start or reuse the review server, print the index URL |
 
 Reviewing needs no command. Submitted comments reach the session that owns the
 spec on their own.
+
+### Markdown, both ways
+
+A spec goes **out** as GitHub-flavoured markdown, from the action menu in the
+review UI or with `/specforge:export-md`. It renders correctly on GitHub with no
+plugins: headings, tables, fenced code, and the implementation plan as task
+lists you can tick. Diagrams travel beside it as SVG files, because every
+markdown renderer strips inline SVG, so a spec with diagrams downloads as a zip.
+
+Any `.md` comes **in** with `/specforge:convert <file>`. The conversion is
+mechanical first, so the same file always produces the same spec, and the agent
+then improves the result rather than authoring one from a blank scaffold. It
+always creates a **new** spec: a file you edited last week can never overwrite a
+review round that happened since.
 
 Specs live in `~/.specforge`, not in your project repo, so they follow you across
 projects and never show up in a diff.

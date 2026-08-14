@@ -21,8 +21,12 @@ installed plugin directory.
 - The user names a file (`$ARGUMENTS`). Read it and decide:
   - **Already a SpecForge-style HTML spec** (has the section ids / theme contract /
     structured plan) → ingest as-is (step 2A).
-  - **A `.md`, or a freeform `.html`/design doc** → re-author into a house-style
-    spec (step 2B).
+  - **A `.md`** → convert with `import-md`, then edit the result (step 2B). Do not
+    hand-author a markdown source: the CLI does the mechanical part faithfully and
+    reports what it could not read, which is a better starting point than a blank
+    scaffold and your reading of the file.
+  - **A freeform `.html` design doc** → author it into a scaffolded spec by hand
+    (step 2C). There is no deterministic path for arbitrary HTML.
 - **Infer the spec type** from the source — `research` (a findings report),
   `design` (a design doc, no plan), `design-impl` (design + a plan), or `impl` (a
   build plan). When the source is none of those, use `general`: the scaffold plus
@@ -38,21 +42,46 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import "<file>" --title "<tit
 
 Prints `{ id, htmlPath, url, status, type }` — the file is copied into the store,
 attached to this session, daemon ensured. Lint `htmlPath` (step 3). If lint fails
-because it isn't house-style, fall back to 2B (author into the same `htmlPath`).
+because it isn't house-style, fall back to **2C** and author into the `htmlPath`
+you already have; 2C says so too, and running `create` there would leave this
+spec behind and attach a second one. Not 2B: that path runs a markdown parser,
+and handing it HTML would mechanically reconvert the document instead of shaping
+it.
 
-## 2B. Re-author a design doc into a house-style spec
+## 2B. Convert a `.md` — deterministic pass first, then edit
+
+**A markdown source is converted by the CLI, not by hand.** It reads the file,
+maps its headings onto sections, rebuilds any plan into the `data-sf-*` markup,
+inlines the images that sit beside it, and produces a lint-passing spec:
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import-md "<file>" [--title "<title>"] [--type <type>]
+```
+
+It prints `{ id, htmlPath, url, type, status, report }`. **Then edit `htmlPath`**
+— the deterministic pass gives you a valid document to improve, never a blank
+scaffold to fill.
+
+Read the `report` before you touch anything; it is the list of what needs you:
+
+- **`unsupported`** — constructs the parser could not read (setext headings,
+  footnotes, reference links), each with its line number. The content is in the
+  spec as plain text; convert it to house markup by hand.
+- **`assetsDropped`** — images that were not inlined, with the reason (missing,
+  too large, outside the source directory). Say so when you hand off.
+- **`lint`** — `PASS` normally. If it is `FAIL`, `lintFailures` names the checks.
+- **`sections`** — how many the source produced.
+
+Type: omit `--type` and the import is a **`general`** spec, which imposes no
+section set — usually right, because a converted document keeps its own shape.
+Pass `--type` only when the source really is a design / research / impl doc.
+
+Then improve the result:
 
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`, and the
   language contract it points to: `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`.
-  Re-authoring is where an original's essay voice leaks through: convert the
-  content, not the register.
-- Scaffold a fresh store spec from the template:
-
-  ```
-  node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type>
-  ```
-
-  It prints `{ id, htmlPath, url, type }`. **Author into `htmlPath`.**
+  This is where an original's essay voice leaks through: convert the content, not
+  the register.
 - Map the source onto the type's sections exactly as the `create-spec` skill
   describes (design / research / design-impl / impl) — adapt sections to the
   content; keep stable unique ids, the theme, and the floating TOC in sync. For
@@ -62,6 +91,29 @@ because it isn't house-style, fall back to 2B (author into the same `htmlPath`).
   invent scope.
 - Keep every `<section id="…">`, the theme CSS, and the floating `<nav class="toc">`
   (update TOC links to match the sections you keep).
+
+For a spec `general` no longer fits (the source turned out to be a design with a
+build plan), rescaffold with `create --type <type>` and move the content across;
+do not grow a plan inside a general spec and call it typed.
+
+## 2C. Author a freeform HTML doc into a spec
+
+Arbitrary HTML has no deterministic path: it carries someone else's structure and
+styling, and there is nothing to map it onto mechanically. It gets authored.
+
+**Arriving from 2A** (an HTML spec that turned out not to be house-style): you
+already have an `htmlPath` in the store, attached to this session. **Author into
+that file.** Do not run `create` — it would make a second spec and leave the
+malformed one attached, so a later edit or handoff could pick up either.
+
+**Arriving from step 1** with a freeform HTML doc and no spec yet, scaffold one:
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type "<type>"
+```
+
+It prints `{ id, htmlPath, url, type }`. **Author into `htmlPath`**, following the
+same house rules, section mapping and language contract as 2B above.
 
 ## 3. Lint (must pass)
 
