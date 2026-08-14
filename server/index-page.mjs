@@ -157,13 +157,16 @@ function tplCard(m) {
 /**
  * One collection in the rail: the filter button, plus the actions menu.
  *
- * Uncollected gets no menu — it is not a collection anyone named, so there is
- * nothing to rename and nothing to delete.
+ * Named collections are draggable — dragging is how you reorder them, and the
+ * menu's Move up / Move down is the same thing for a keyboard. Uncollected is
+ * neither draggable nor menued: it is not a collection anyone named, so there is
+ * nothing to rename, nothing to delete, and nowhere to put it but last.
  */
 function collRowHtml(key, count) {
   const name = key === '' ? 'Uncollected' : esc(key);
   const acts = key === '' ? '' : kebabHtml(`Actions for ${key}`);
-  return `<div class="crow" data-c="${esc(key)}">
+  const drag = key === '' ? '' : ' draggable="true"';
+  return `<div class="crow" data-c="${esc(key)}"${drag}>
     <button class="cnav" type="button" data-c="${esc(key)}"><span class="cname">${name}</span><span class="nc">${count}</span></button>
     ${acts}
   </div>`;
@@ -259,8 +262,14 @@ export function renderIndex({ shareInfo } = {}) {
   .nav.on .nc,.cnav.on .nc{color:inherit;opacity:.7}
   .cname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  .crow{display:flex;align-items:center;gap:2px}
+  .crow{display:flex;align-items:center;gap:2px;border-radius:7px}
   .crow .cnav{min-width:0}
+  .crow[draggable="true"]{cursor:grab}
+  .crow.dragging{opacity:.4;cursor:grabbing}
+  /* While a drag is in flight the rail is a list you are rearranging, not a set
+     of filters — the hover highlight would read as "click me". */
+  .colls.rearranging .cnav:hover{background:none;color:var(--muted)}
+  .colls.rearranging .crow:not(.dragging){box-shadow:inset 0 0 0 1px transparent}
 
   /* ── sticky top: search + toolbar ─────────────────────────────────── */
   .top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);
@@ -817,34 +826,108 @@ ${strip}
     var n=crow.nextElementSibling;
     return n&&n.getAttribute('data-c')!==''?n:null;
   }
-  // The continuation runs whether or not the write landed, on purpose: a rename
-  // or a delete is the thing that was asked for, and refusing to do it because a
-  // cosmetic order failed to save would be the worse failure. But a silent one is
-  // worse still — a reorder that did not save reverts on the next load with no
-  // explanation — so a failure says so, the same way a partial fan-out does.
-  function putOrder(order,then){
+  /**
+   * @param then runs whether or not the write landed, on purpose: a rename or a
+   *   delete is the thing that was asked for, and refusing to do it because a
+   *   cosmetic order failed to save would be the worse failure.
+   * @param onFail undoes what the write was meant to record, for a reorder,
+   *   which has nothing else to do and must not leave the page showing an order
+   *   the store does not hold.
+   *
+   * A failure always says so. It says so through the carried toast when "then"
+   * is going to reload the page over the top of it, and plainly when nothing is.
+   */
+  function putOrder(order,then,onFail){
     var done=then||function(){};
-    function settle(ok){ if(!ok) warn('The collection order could not be saved.'); done(); }
+    function settle(ok){
+      if(!ok){ (then?warn:showMsg)('The collection order could not be saved.'); if(onFail) onFail(); }
+      done();
+    }
     fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({collectionOrder:order})})
       .then(function(x){settle(!!(x&&x.ok));},function(){settle(false);});
-  }
-  function moveColl(crow,dir){
-    var name=crow.getAttribute('data-c');
-    var sib=dir<0?crow.previousElementSibling:nextNamed(crow);
-    if(!sib) return;
-    if(dir<0) colls.insertBefore(crow,sib); else colls.insertBefore(sib,crow);
-    // The page's group order is the same order; move it in step so the rail and
-    // the list never read differently. Matched by attribute rather than by a
-    // built selector — a collection name is arbitrary text, quotes included.
-    var grp=grpFor(name), sgrp=grpFor(sib.getAttribute('data-c'));
-    if(grp&&sgrp&&grp.parentNode){
-      if(dir<0) grp.parentNode.insertBefore(grp,sgrp); else grp.parentNode.insertBefore(sgrp,grp);
-    }
-    putOrder(collOrder());
   }
   function grpFor(name){
     for(var i=0;i<grps.length;i++){ if(grps[i].getAttribute('data-coll')===name) return grps[i]; }
     return null;
+  }
+  /**
+   * Put the list in the rail's order. The page's groups are the same order and
+   * the two must never read differently, so this runs after every rail change.
+   * Appending in sequence is the whole algorithm; Uncollected goes last because
+   * it is the absence of a collection, not a position anyone chose.
+   */
+  function syncGroups(){
+    var host=document.getElementById('groups');
+    if(!host) return;
+    collOrder().forEach(function(name){ var g=grpFor(name); if(g) host.appendChild(g); });
+    var un=grpFor(''); if(un) host.appendChild(un);
+  }
+  /** Restore an order taken earlier from collOrder() — the undo for a failed write. */
+  function setRail(order){
+    var un=null;
+    order.forEach(function(name){
+      for(var i=0;i<crows.length;i++){ if(crows[i].getAttribute('data-c')===name) colls.appendChild(crows[i]); }
+    });
+    for(var i=0;i<crows.length;i++){ if(crows[i].getAttribute('data-c')==='') un=crows[i]; }
+    if(un) colls.appendChild(un);
+    syncGroups();
+  }
+  /** Persist the rail as it now stands, and put it back if the write does not land. */
+  function commitOrder(before){
+    putOrder(collOrder(),null,function(){setRail(before);});
+  }
+  function moveColl(crow,dir){
+    var sib=dir<0?crow.previousElementSibling:nextNamed(crow);
+    if(!sib) return;
+    var before=collOrder();
+    if(dir<0) colls.insertBefore(crow,sib); else colls.insertBefore(sib,crow);
+    syncGroups();
+    commitOrder(before);
+  }
+
+  // ---- drag to reorder ----
+  // The row moves under the pointer rather than a line being drawn between rows:
+  // the rail is short and the result is the preview, so there is nothing to
+  // interpret about where it will land. Uncollected is not a target and never a
+  // passenger, which is why every lookup here filters it out.
+  var crows=[].slice.call(document.querySelectorAll('.crow'));
+  var dragging=null, dragFrom=null;
+  if(colls){
+    colls.addEventListener('dragstart',function(e){
+      var row=e.target.closest&&e.target.closest('.crow');
+      if(!row||row.getAttribute('data-c')==='') return;
+      dragging=row; dragFrom=collOrder();
+      row.classList.add('dragging');
+      colls.classList.add('rearranging');
+      closePop();
+      if(e.dataTransfer){
+        e.dataTransfer.effectAllowed='move';
+        // Firefox starts no drag at all without something on the transfer.
+        try{e.dataTransfer.setData('text/plain',row.getAttribute('data-c'));}catch(err){}
+      }
+    });
+    colls.addEventListener('dragover',function(e){
+      if(!dragging) return;
+      var over=e.target.closest&&e.target.closest('.crow');
+      if(!over||over===dragging||over.getAttribute('data-c')==='') return;
+      e.preventDefault();
+      if(e.dataTransfer) e.dataTransfer.dropEffect='move';
+      var r=over.getBoundingClientRect();
+      var after=e.clientY>r.top+r.height/2;
+      colls.insertBefore(dragging,after?over.nextSibling:over);
+      syncGroups();
+    });
+    // Dropping is not what commits — dragend fires for a drop and for an abort
+    // alike, and by then the rail already reads the way it will stay.
+    colls.addEventListener('drop',function(e){e.preventDefault();});
+    colls.addEventListener('dragend',function(){
+      if(!dragging) return;
+      dragging.classList.remove('dragging');
+      colls.classList.remove('rearranging');
+      var before=dragFrom;
+      dragging=null; dragFrom=null;
+      if(before.join('\\u0000')!==collOrder().join('\\u0000')) commitOrder(before);
+    });
   }
 
   document.addEventListener('keydown',function(e){

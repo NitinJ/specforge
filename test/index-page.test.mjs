@@ -731,6 +731,30 @@ test('the menu takes arrow keys, and hands focus back to the button that opened 
   assert.equal(railOrder(document)[1], 'Alpha', 'and the row really moved');
 });
 
+// A reorder has nothing else to do, so a failed write leaves the page showing an
+// order the store does not hold — until a reload silently undoes it. Undo it now
+// instead, and say why.
+test('a reorder that fails to save puts the rail back', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  const { window, reloads } = loadIndex(t);
+  const { document } = window;
+  window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+  assert.deepEqual(railOrder(document), ['Alpha', 'Beta']);
+  document.querySelector('.crow[data-c="Beta"] .kebab').click();
+  item(document, 'Move up').click();
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Alpha', 'Beta'], 'the move is undone');
+  assert.deepEqual(groupOrder(document), ['Alpha', 'Beta'], 'and so is the list');
+  const toast = document.querySelector('.toast');
+  assert.match(toast.textContent, /order could not be saved/);
+  assert.equal(window.sessionStorage.getItem('sf-index-msg'), null,
+    'nothing reloads here, so the message is not carried into the next load');
+  assert.equal(reloads.n, 0);
+});
+
 test('an order that fails to save says so, and the rename it carried still happens', async (t) => {
   const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
   setCollection(a, 'Alpha');
@@ -747,6 +771,92 @@ test('an order that fails to save says so, and the rename it carried still happe
   const toast = document.querySelector('.toast');
   assert.ok(toast, 'a failed order write is not swallowed');
   assert.match(toast.textContent, /order could not be saved/);
+});
+
+// Dragging is the primary way to reorder; the menu's Move up / Move down is the
+// same thing for a keyboard. jsdom has no drag machinery, but the handlers only
+// read target/clientY, so a MouseEvent under the drag event's name drives them.
+function drag(window, row, onto, { after = false } = {}) {
+  const { document } = window;
+  const fire = (name, el, extra) => el.dispatchEvent(
+    new window.MouseEvent(name, { bubbles: true, cancelable: true, ...extra }),
+  );
+  fire('dragstart', row);
+  // getBoundingClientRect is all zeros in jsdom, so clientY > 0 reads as the
+  // bottom half of the row and clientY <= 0 as the top half.
+  fire('dragover', onto.querySelector('.cnav'), { clientY: after ? 1 : 0 });
+  fire('dragend', document.querySelector('.crow.dragging') || row);
+}
+
+test('dragging a collection past another reorders the rail and the list, and saves', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
+  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  setCollection(c, 'Gamma');
+  const { window, calls, reloads } = loadIndex(t);
+  const { document } = window;
+  const row = (n) => document.querySelector(`.crow[data-c="${n}"]`);
+  assert.equal(row('Alpha').getAttribute('draggable'), 'true');
+  assert.equal(row('').getAttribute('draggable'), null, 'Uncollected is not draggable');
+
+  drag(window, row('Gamma'), row('Alpha'));
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta', ''], 'dropped above Alpha');
+  assert.deepEqual(groupOrder(document), ['Gamma', 'Alpha', 'Beta', ''], 'the list follows');
+  const put = calls.filter((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT').pop();
+  assert.deepEqual(put.body.collectionOrder, ['Gamma', 'Alpha', 'Beta']);
+  assert.equal(reloads.n, 0);
+
+  drag(window, row('Gamma'), row('Beta'), { after: true });
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Alpha', 'Beta', 'Gamma', ''], 'and below when dropped low');
+});
+
+test('a drag leaves the rail clean, and one that changes nothing writes nothing', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  const alpha = document.querySelector('.crow[data-c="Alpha"]');
+  alpha.dispatchEvent(new window.MouseEvent('dragstart', { bubbles: true }));
+  assert.ok(alpha.classList.contains('dragging'), 'the row being carried is marked');
+  assert.ok(document.getElementById('colls').classList.contains('rearranging'));
+  alpha.dispatchEvent(new window.MouseEvent('dragend', { bubbles: true }));
+  assert.ok(!alpha.classList.contains('dragging'), 'and unmarked when it lands');
+  assert.ok(!document.getElementById('colls').classList.contains('rearranging'));
+  await tick(window);
+  assert.equal(calls.filter((x) => /\/api\/prefs$/.test(x.url)).length, 0,
+    'a drag that ends where it started is not a change');
+});
+
+test('Uncollected cannot be dragged past, and stays last', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
+  setCollection(a, 'Alpha');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  drag(window, document.querySelector('.crow[data-c="Alpha"]'), document.querySelector('.crow[data-c=""]'), { after: true });
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Alpha', ''], 'nothing moved past it');
+});
+
+test('a drag that fails to save puts the rail back', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+  drag(window, document.querySelector('.crow[data-c="Beta"]'), document.querySelector('.crow[data-c="Alpha"]'));
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Alpha', 'Beta'], 'undone');
+  assert.match(document.querySelector('.toast').textContent, /order could not be saved/);
 });
 
 test('the ends of the list offer no move past them, and Uncollected never moves', (t) => {
