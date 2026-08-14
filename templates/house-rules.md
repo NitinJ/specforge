@@ -92,6 +92,41 @@ Use the structured markup so the tracker and enforcement hooks can read it:
 `data-sf-status ∈ { todo, in_progress, done, blocked, deferred, dropped }`.
 One stage = one PR. Write tests first.
 
+## Markdown interop (the SF-MD dialect)
+
+A spec exports to GitHub-flavoured markdown and imports back from it
+(`specforge export-md` / `import-md`, `lib/html-to-md.mjs` / `lib/md-to-html.mjs`).
+The dialect is ordinary GFM: it must render on GitHub with no plugins.
+
+Structure markdown cannot carry rides in YAML frontmatter (`title`, `type`,
+`status`, `specforge_id`, `exported_at`) and in HTML comments, which every
+renderer drops silently. **Markers are written only where they are load-bearing**,
+so most sections carry none:
+
+| Marker | Written when |
+|---|---|
+| `<!-- sf:section id="…" -->` | the heading slug does not reproduce the section id. It sits UNDER its heading and names that section. The comparison ignores a leading display ordinal, so `3 · Design` matches `design` |
+| `<!-- sf:task id="…" status="…" -->` | a task status a checkbox cannot express. `done` and `todo` ARE the checkbox |
+| `<!-- sf:stage id="…" pr="…" -->` | the stage id is not readable from its `Stage N ·` heading |
+| `<!-- sf:svg id="…" -->` | a lifted diagram's identity |
+| `<!-- sf:callout variant="…" -->`, `<!-- sf:box class="…" -->` | a callout variant, a panel or card |
+| `<!-- sf:q state="dropped" -->` | an open question that was dropped (open and resolved are the checkbox) |
+
+Rules that hold in both directions:
+
+- **Diagrams leave as files.** GitHub strips inline SVG, so each one is written
+  to `<name>.assets/<section-id>-<k>.svg` and referenced as an image. On the way
+  back it is inlined again: a spec is a single self-contained file.
+- **An imported spec inlines every asset.** SVG verbatim, rasters as base64 data
+  URIs, capped at 512 KB; anything larger is dropped and named in the report.
+- **Imported markdown is untrusted.** Raw HTML is sanitized and every URL is
+  checked against a scheme allow-list, because the daemon serves the result in a
+  browser with no second pass behind it.
+- **Import always creates a new spec.** A `specforge_id` in frontmatter is
+  provenance (`meta.derivedFrom`), never a write target.
+- **The task tracker is not exported.** It is a projection of the plan and is
+  regenerated on import.
+
 ## Language (contract)
 
 Full contract: `references/spec-language.md`. Read it before writing prose. The

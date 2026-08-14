@@ -206,6 +206,20 @@ test('a spec with no diagrams produces no assets', () => {
   }
 });
 
+test('text sitting directly in a container keeps its inline markup', () => {
+  // House markup puts prose straight inside a .callout or .card, with an inline
+  // <code> or <a> in the middle of it. Walking those children as separate blocks
+  // emitted the code as bare text and warned about an unhandled element, which
+  // is how this spec's own export lost its backticks.
+  const html = fixture('design').html().replace(
+    '<div class="callout warn">\n      <p>The dead-letter queue',
+    '<div class="callout warn">\n      Run <code>webhooks replay</code> by hand, see <a href="https://x.y">the runbook</a>.\n      <p>The dead-letter queue'
+  );
+  const { markdown, warnings } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.deepEqual(warnings, []);
+  assert.match(markdown, /> Run `webhooks replay` by hand, see \[the runbook\]\(https:\/\/x\.y\)\./);
+});
+
 test('the corpus exports without warnings', () => {
   for (const f of FIXTURES) {
     assert.deepEqual(exportFixture(f).warnings, [], `${f.name} exports cleanly`);
