@@ -152,6 +152,26 @@ test('the codemod reports what it changed, with counts', () => {
   assert.ok(!changes.some((c) => c.count === 0), 'a rename that fired nothing is not reported');
 });
 
+// Inside a script, `<div class='callout warn'>` is a string the spec builds, not
+// an element anything renders. Rewriting it edits the spec's own behaviour,
+// which is the one thing a migration must not do.
+test('the codemod does not touch markup inside a script', () => {
+  const html = LEGACY.replace('</body>',
+    `<script>var t = "<div class='callout c-risk'>x</div>";
+     document.querySelector('.grid2').innerHTML = t;</script></body>`);
+  const out = codemod(html).html;
+  assert.match(out, /var t = "<div class='callout c-risk'>x<\/div>";/, 'the string is data');
+  assert.match(out, /querySelector\('\.grid2'\)/, 'and so is the selector it is written with');
+  assert.match(out, /<div class="callout risk">/, 'while the document itself migrated');
+});
+
+test('a callout written inside a script is not in the work list', () => {
+  const html = LEGACY.replace('</body>',
+    `<script>el.innerHTML = "<div class='callout warn'>Never read this</div>";</script></body>`);
+  const blocks = ambiguousBlocks(codemod(html).html);
+  assert.ok(!blocks.some((b) => /Never read this/.test(b.text)), 'it is a string, not a block');
+});
+
 test('the codemod does not touch the stylesheet or a code example', () => {
   const html = `${LEGACY.replace('</section>', '<pre><code>&lt;div class="c-risk"&gt;&lt;/div&gt;</code></pre></section>')}`;
   const out = codemod(html).html;
