@@ -174,16 +174,20 @@
 }
 
 /* reading font (review-layer owned) — review.js sets data-sf-font (the category:
-   sans/serif/mono/presentation) + an inline --sf-reading-font (the chosen font's
+   sans/serif/presentation) + an inline --sf-reading-font (the chosen font's
    stack) on the spec's content container only, so the review chrome (appended to
    <body>, with its own fonts) is never restyled. The container rule wins over the
-   spec's own body/wrapper font (review.css loads after the spec's <style>). Code
-   stays monospace unless the chosen font is itself a mono. */
+   spec's own body/wrapper font (review.css loads after the spec's <style>). */
 [data-sf-font] { font-family: var(--sf-reading-font); }
-[data-sf-font]:not([data-sf-font="mono"]) pre,
-[data-sf-font]:not([data-sf-font="mono"]) code,
-[data-sf-font]:not([data-sf-font="mono"]) kbd,
-[data-sf-font]:not([data-sf-font="mono"]) samp {
+
+/* Code is monospace under EVERY reading font, and which monospace is whatever
+   --mono resolves to: the spec's own token, or the face the Code font picker set
+   over it. There is no category that turns prose monospace — picking JetBrains
+   Mono answers "what does code look like", not "what does the document look
+   like". The data-sf-mono arm is for specs that hardcoded a stack instead of
+   writing var(--mono); it puts them back on the token. */
+[data-sf-font] pre, [data-sf-font] code, [data-sf-font] kbd, [data-sf-font] samp,
+[data-sf-mono] pre, [data-sf-mono] code, [data-sf-mono] kbd, [data-sf-mono] samp {
   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
 }
 
@@ -948,13 +952,15 @@ div.sf-menu-row.sf-menu-ctl:first-of-type::before {
 .sf-row-val { margin-left: auto; color: var(--sf-muted); font-size: 11px; }
 .sf-menu-badge { margin-left: auto; background: var(--sf-accent); color: var(--sf-on-accent); border-radius: 999px; padding: 1px 7px; font: 800 10.5px/1.5 system-ui, sans-serif; }
 .sf-menu-row input[type=range] { width: 100%; margin: 8px 0 2px; height: 4px; accent-color: var(--sf-accent); cursor: pointer; }
-/* Font dropdown — full-width select grouped Sans/Serif/Mono/Presentation. */
-.sf-font-select { width: 100%; margin: 6px 0 2px; box-sizing: border-box;
+/* Font dropdowns — full-width selects. Reading font is grouped
+   Sans/Serif/Presentation; Code font is the monospace faces, and the two are
+   separate controls because they answer separate questions. */
+.sf-font-select, .sf-mono-select { width: 100%; margin: 6px 0 2px; box-sizing: border-box;
   background: var(--sf-panel2); color: var(--sf-ink); border: 1px solid var(--sf-line);
   border-radius: var(--sf-r-sm); padding: 6px 8px; font: 12px/1.4 system-ui, sans-serif; cursor: pointer;
   transition: border-color var(--sf-dur-fast) var(--sf-ease); }
-.sf-font-select:hover { border-color: color-mix(in srgb, var(--sf-accent) 40%, var(--sf-line)); }
-.sf-font-select:focus { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
+.sf-font-select:hover, .sf-mono-select:hover { border-color: color-mix(in srgb, var(--sf-accent) 40%, var(--sf-line)); }
+.sf-font-select:focus, .sf-mono-select:focus { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
 /* Theme swatch picker — 4 columns, so the light family lands on the top row and
    the dark family on the bottom. Each swatch shows the theme bg + an accent dot. */
 .sf-themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; margin: 8px 0 2px; }
