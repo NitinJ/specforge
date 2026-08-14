@@ -112,6 +112,22 @@ test('an opt-in is recognised however the html tag is written', async () => {
   assert.equal(optedIn('<html lang="en"><head></head><body></body></html>'), false);
 });
 
+// Reading a tag loosely is only half the job: writing it back has to survive the
+// same variety. Slicing at a lowercase `html` produced `<htmlML LANG="en">` on an
+// uppercase root tag, corrupting exactly the imported documents the loose
+// matching was added for.
+test('stamping preserves the root tag it found, whatever its case', async () => {
+  const { optedInVersion } = await import('../lib/components-stamp.mjs');
+  for (const tag of ['<HTML LANG="en">', '<Html lang="en">', '<html lang="en">']) {
+    const html = `<!DOCTYPE html>${tag}<head><title>T</title><style>body{}</style></head><body><h1>x</h1></body></html>`;
+    const out = stampHtml(html);
+    const root = out.match(/<[hH][tT][mM][lL][^>]*>/)[0];
+    assert.ok(/^<(html|Html|HTML)\s/.test(root), `root tag intact, got ${root}`);
+    assert.ok(root.includes('LANG="en"') || root.includes('lang="en"'), `attributes intact, got ${root}`);
+    assert.equal(optedInVersion(out), VERSION, `and opted in, got ${root}`);
+  }
+});
+
 test('stamping updates an existing attribute rather than adding a second', async () => {
   const { optedInVersion } = await import('../lib/components-stamp.mjs');
   const html = `<!DOCTYPE html><html ${ATTR}='0'><head><title>T</title><style>body{}</style></head><body></body></html>`;
