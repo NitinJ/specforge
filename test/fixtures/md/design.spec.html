@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="draft">
+<head>
+<meta charset="utf-8">
+<title>Retry policy for webhook delivery — Spec</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 8px 24px rgba(0,0,0,.28); --mono:ui-monospace,Menlo,monospace;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#fff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 8px 24px rgba(0,0,0,.06); --mono:ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){ --bg:#fbfaf7; --ink:#222629; }
+  }
+  body{background:var(--bg);color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <div class="brand"><span>Spec</span>Forge</div>
+  <a href="#tldr">TL;DR</a>
+  <a href="#overview">1 · Overview</a>
+  <a href="#goals">2 · Goals &amp; non-goals</a>
+  <a href="#design">3 · Design</a>
+  <a href="#decisions">4 · Decisions</a>
+  <a href="#open-questions">5 · Open questions</a>
+</nav>
+<main>
+  <h1>Retry policy for webhook delivery</h1>
+  <p class="sub">Spec · 2026-08-14 · status: <span class="tag accent">draft</span> · owner: nitin</p>
+
+  <section id="tldr" data-sf-section>
+    <div class="panel">
+      <h4 style="margin-top:0">TL;DR</h4>
+      <p style="margin-bottom:0">Deliveries retry 5 times on an exponential backoff capped at 15 minutes, then land in a dead-letter queue.</p>
+    </div>
+  </section>
+
+  <section id="overview" data-sf-section>
+    <h2>1 · Overview</h2>
+    <p>A failed webhook is retried immediately and then dropped. Subscribers on flaky hosts lose events with no record, and support has no way to replay them.</p>
+    <p>This spec covers delivery retries only. Subscription management is unchanged.</p>
+  </section>
+
+  <section id="goals" data-sf-section>
+    <h2>2 · Goals &amp; non-goals</h2>
+    <h4>Goals</h4>
+    <ul>
+      <li>No event is dropped without a dead-letter record.</li>
+      <li>A subscriber down for 15 minutes receives every event it missed.</li>
+    </ul>
+    <h4>Non-goals</h4>
+    <ul>
+      <li>Ordering guarantees across retries.</li>
+      <li>Per-subscriber backoff tuning.</li>
+    </ul>
+  </section>
+
+  <section id="design" data-sf-section>
+    <h2>3 · Design</h2>
+    <h3>Backoff schedule</h3>
+    <p>Attempt <em>n</em> waits <code>min(2^n seconds, 900)</code> with full jitter. The schedule is fixed, not per subscriber.</p>
+    <table>
+      <thead><tr><th>Attempt</th><th>Nominal delay</th><th>Cumulative</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>2s</td><td>2s</td></tr>
+        <tr><td>2</td><td>4s</td><td>6s</td></tr>
+        <tr><td>3</td><td>60s</td><td>66s</td></tr>
+        <tr><td>4</td><td>900s</td><td>16m 6s</td></tr>
+        <tr><td>5</td><td>900s</td><td>31m 6s</td></tr>
+      </tbody>
+    </table>
+    <h3>Classification</h3>
+    <p>Only these outcomes retry:</p>
+    <ul>
+      <li>A connection error, which covers:
+        <ul>
+          <li>DNS failure</li>
+          <li>TLS handshake failure</li>
+          <li>Read timeout past 10s</li>
+        </ul>
+      </li>
+      <li>A <code>5xx</code> response.</li>
+      <li>A <code>429</code> response, honouring <code>Retry-After</code> when it is under 900s.</li>
+    </ul>
+    <p>A <code>4xx</code> other than <code>429</code> is terminal: the subscriber rejected the payload and a retry sends the same bytes.</p>
+    <h4>Worker loop</h4>
+    <pre><code class="lang-js">async function deliver(event, attempt = 1) {
+  const res = await post(event.url, event.body);
+  if (res.ok) return mark(event, 'delivered');
+  if (!retryable(res) || attempt === 5) return deadLetter(event, res);
+  return schedule(event, attempt + 1, backoff(attempt));
+}</code></pre>
+    <div class="callout warn">
+      <p>The dead-letter queue has no automatic drain. An operator replays it with <code>webhooks replay &lt;id&gt;</code>, which is deliberate: an automatic drain re-sends events a subscriber already rejected.</p>
+    </div>
+    <div class="callout good">
+      <p>Replay is idempotent. Each delivery carries the original <code>event_id</code>, so a subscriber that already processed it can discard the duplicate.</p>
+    </div>
+    <p>See the <a href="https://example.com/runbook">delivery runbook</a> for the operator side.</p>
+  </section>
+
+  <section id="decisions" data-sf-section>
+    <h2>4 · Decisions</h2>
+    <table>
+      <thead><tr><th>#</th><th>Decision</th><th>Choice</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td>D1</td><td>How many attempts?</td><td>5</td><td>Covers a 30 minute outage; a longer tail holds queue capacity for subscribers that are gone.</td></tr>
+        <tr><td>D2</td><td>Jitter?</td><td>Full jitter</td><td>A fixed schedule synchronises every failed delivery onto the same second.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="open-questions" data-sf-section>
+    <h2>5 · Open questions</h2>
+    <ul>
+      <li data-sf-q="open"><strong>Q1 · <span class="tag warn">open</span></strong> Should the dead-letter queue expire records, and after how long?</li>
+      <li data-sf-q="resolved"><strong>Q2 · <span class="tag good">resolved</span></strong> Does <code>Retry-After</code> override the schedule? Yes, when it is under 900s.</li>
+      <li data-sf-q="dropped"><strong>Q3 · <span class="tag todo">dropped</span></strong> Per-subscriber concurrency limits. Out of scope, tracked separately.</li>
+    </ul>
+  </section>
+</main>
+</div>
+</body>
+</html>
