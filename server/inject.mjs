@@ -125,10 +125,13 @@ function sseWatcher(id) {
  * one section at a time, so they are remembered and taken as a single reload
  * once the round finishes — the same hold the event stream applies.
  */
-function pollWatcher(interval) {
-  return `  var last=null, misses=0, held=false;
+function pollWatcher(api, interval) {
+  // Off the api base, never the origin root: every route a publication has lives
+  // under its token, so a root path is served by nothing and every poll fails.
+  return `  var statePath=${JSON.stringify(`${api}/state`)};
+  var last=null, misses=0, held=false;
   function poll(){
-    fetch('/api/state', { cache: 'no-store' }).then(function(r){
+    fetch(statePath, { cache: 'no-store' }).then(function(r){
       if(!r.ok) throw new Error('state '+r.status);
       return r.json();
     }).then(function(s){
@@ -154,11 +157,12 @@ function reviewSnippet(specId, prefs, transport, api) {
   // omitted from a published copy: a reviewer cannot reconnect someone else's
   // spec, so the button never renders there, and a filesystem path on the
   // author's machine is not something to hand a stranger.
+  const base = api || `/api/spec/${specId}`;
   const cfg = JSON.stringify({
-    specId, prefs: prefs || {}, transport, api: api || `/api/spec/${specId}`,
+    specId, prefs: prefs || {}, transport, api: base,
     ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
   });
-  const watcher = transport === 'poll' ? pollWatcher(POLL_INTERVAL_MS) : sseWatcher(id);
+  const watcher = transport === 'poll' ? pollWatcher(base, POLL_INTERVAL_MS) : sseWatcher(id);
   return `<!-- specforge:review-layer -->
 <div id="sf-live" class="sf-live">● live</div>
 <div id="sf-disconnected" class="sf-disconnected" role="alert" hidden>

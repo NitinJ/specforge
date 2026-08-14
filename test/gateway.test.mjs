@@ -182,12 +182,42 @@ test('the comments API is reachable under a token and writes to that spec', asyn
   assert.equal(other.threads.length, 0, 'the write landed on beta only');
 });
 
+// Neither of the two tests around this one could catch the bug they bracket: one
+// proved the route exists, the other proved the page contains a string, and the
+// bug was that the two were different paths. So take the path the page will
+// actually ask for out of the page, and ask for it.
+test('the path the served page polls is a path this socket answers', async () => {
+  const html = await (await fetch(`${base}/s/${tokAlpha}`)).text();
+  const m = html.match(/statePath="([^"]+)"/);
+  assert.ok(m, 'the page carries the state path it polls');
+  const r = await fetch(`${base}${m[1]}`);
+  assert.equal(r.status, 200, `the page polls ${m[1]}, which must not 404`);
+});
+
 test('the poll endpoint reports this spec mtimes', async () => {
   const r = await fetch(`${base}/s/${tokAlpha}/api/state`);
   assert.equal(r.status, 200);
   const state = await r.json();
   assert.ok(state.spec > 0);
   assert.equal(typeof state.comments, 'number');
+});
+
+// The review layer asks for meta on every load. Without it the page falls back
+// to defaults, so a published spec reads "draft" whatever its real status, and a
+// reviewer who has submitted comments is told "Awaiting response" for as long as
+// the agent works. What it must NOT carry is the half of meta that belongs to the
+// owner: which session holds the spec, where the Google Doc is, what the share URL
+// is. Those drive controls a reader cannot use and this socket does not serve.
+test('the meta route serves what a reader reads by, and withholds the owner half', async () => {
+  const r = await fetch(`${base}/s/${tokAlpha}/api/meta`);
+  assert.equal(r.status, 200);
+  const meta = await r.json();
+  assert.equal(meta.title, 'alpha');
+  assert.equal(meta.status, 'draft');
+  assert.ok('reviewProgress' in meta, 'how far the agent has got is the point of the poll');
+  for (const owned of ['attachedSession', 'sessionLabel', 'connected', 'export', 'share']) {
+    assert.ok(!(owned in meta), `${owned} is the owner's, not the reader's`);
+  }
 });
 
 test('the API is not reachable without a token', async () => {
