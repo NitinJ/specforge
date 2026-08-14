@@ -44,18 +44,41 @@ function relativeTime(ms, now = Date.now()) {
   return mo < 12 ? `${mo}mo ago` : `${Math.floor(mo / 12)}y ago`;
 }
 
-/** Working specs grouped: named collections (alpha), then Uncollected. */
-function groupByCollection(specs) {
+/**
+ * Working specs grouped: named collections, then Uncollected.
+ *
+ * `ranked` is the order the user arranged (Move up / Move down). Anything it does
+ * not name — a collection created since, or one never moved — falls in after,
+ * alphabetically, so a fresh store reads A-Z and stays predictable until someone
+ * takes a position on it. Uncollected is always last: it is the absence of a
+ * collection, not one you can place.
+ */
+function groupByCollection(specs, ranked = []) {
   const groups = new Map();
   for (const m of specs) {
     const key = m.collection || '';
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(m);
   }
+  const rank = new Map(ranked.map((name, i) => [name, i]));
+  const at = (k) => (rank.has(k) ? rank.get(k) : Number.MAX_SAFE_INTEGER);
   const named = [...groups.keys()].filter((k) => k !== '')
-    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    .sort((a, b) => at(a) - at(b) || a.toLowerCase().localeCompare(b.toLowerCase()));
   const order = groups.has('') ? [...named, ''] : named;
   return { order: order.map((k) => ({ key: k, specs: groups.get(k) })), named };
+}
+
+/**
+ * The one actions affordance, on a spec row and on a collection alike.
+ *
+ * Everything it opens used to be a separate glyph that only existed while the
+ * pointer was over its row — three of them on a spec, two on a collection, all at
+ * opacity:0 the rest of the time, and the collection pair display:none below
+ * 900px. A menu button is one target, always in the layout, reachable by tab and
+ * by touch, and it has somewhere to put the next action.
+ */
+function kebabHtml(label) {
+  return `<button class="kebab" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(label)}" title="${esc(label)}">⋯</button>`;
 }
 
 const ICON_COMMENT = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M1.9 2.2h10.2v7H6.6L3.4 11.6V9.2H1.9z"/></svg>';
@@ -107,8 +130,6 @@ function rowHtml(m, sig) {
   <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
     <a class="title" href="/spec/${id}" title="${title}">${title}</a>
-    <button class="rename" type="button" title="Rename" aria-label="Rename">✎</button>
-    <input class="rename-in" type="text" value="${esc(titleRaw)}" aria-label="New name" hidden>
     <span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span>
     <span class="id" title="Spec id">${id}</span>
     <span class="att" hidden>${att}</span>
@@ -119,9 +140,8 @@ function rowHtml(m, sig) {
     <span class="badge t">${esc(rawType)}</span>
     <span class="badge s s-${esc(rawStatus)}"><span class="sdot"></span>${esc(rawStatus)}</span>
     <span class="upd">${esc(relativeTime(m.updated))}</span>
-    <span class="acts"><button class="collbtn" type="button" title="Move to collection" aria-label="Move to collection">▣</button><input class="coll" list="collections" value="${esc(coll)}" placeholder="Uncollected" aria-label="Collection" hidden><button class="del" type="button" title="Delete spec" aria-label="Delete spec">🗑</button></span>
+    <span class="acts">${kebabHtml(`Actions for ${title}`)}</span>
   </div>
-  <div class="delconfirm" hidden><span class="dcmsg">Delete <b>${title}</b>? This can't be undone.</span><button class="dcno" type="button">Cancel</button><button class="dcyes" type="button">Delete</button></div>
 </li>`;
 }
 
@@ -134,12 +154,15 @@ function tplCard(m) {
 </a>`;
 }
 
-/** One collection in the rail: filter button + rename / delete affordances. */
+/**
+ * One collection in the rail: the filter button, plus the actions menu.
+ *
+ * Uncollected gets no menu — it is not a collection anyone named, so there is
+ * nothing to rename and nothing to delete.
+ */
 function collRowHtml(key, count) {
   const name = key === '' ? 'Uncollected' : esc(key);
-  const acts = key === '' ? '' : `<span class="cacts"><button class="cedit" type="button" title="Rename collection" aria-label="Rename collection">✎</button><button class="cdel" type="button" title="Delete collection" aria-label="Delete collection">×</button></span>
-    <input class="cin" type="text" value="${esc(key)}" aria-label="Collection name" hidden>
-    <span class="cconfirm" hidden><span class="ccmsg">Ungroup ${count}?</span><button class="cno" type="button">No</button><button class="cyes" type="button">Yes</button></span>`;
+  const acts = key === '' ? '' : kebabHtml(`Actions for ${key}`);
   return `<div class="crow" data-c="${esc(key)}">
     <button class="cnav" type="button" data-c="${esc(key)}"><span class="cname">${name}</span><span class="nc">${count}</span></button>
     ${acts}
@@ -153,7 +176,8 @@ function collRowHtml(key, count) {
  *   token, so the public URL is composed by whoever knows the current origin.
  */
 export function renderIndex({ shareInfo } = {}) {
-  const theme = readGlobalPrefs().theme === 'dark' ? 'dark' : 'light';
+  const prefs = readGlobalPrefs();
+  const theme = prefs.theme === 'dark' ? 'dark' : 'light';
   const all = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const tpls = all.filter((m) => m.template);
   const specs = all.filter((m) => !m.template);
@@ -161,8 +185,7 @@ export function renderIndex({ shareInfo } = {}) {
   const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, shareInfo, m)]));
   const sigOf = (m) => sigs.get(m.id);
 
-  const { order, named } = groupByCollection(specs);
-  const datalist = `<datalist id="collections">${named.map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist>`;
+  const { order, named } = groupByCollection(specs, prefs.collectionOrder);
 
   const counts = Object.fromEntries(STATUSES.map((s) => [s, specs.filter((m) => (m.status || 'draft') === s).length]));
   const chipsBar = ['all', ...STATUSES].map((s) => {
@@ -236,21 +259,8 @@ export function renderIndex({ shareInfo } = {}) {
   .nav.on .nc,.cnav.on .nc{color:inherit;opacity:.7}
   .cname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  .crow{position:relative;display:flex;align-items:center}
-  .cacts{position:absolute;right:6px;display:flex;gap:2px;opacity:0;transition:opacity .12s}
-  .crow:hover .cacts,.cacts:focus-within{opacity:1}
-  .crow:hover .nc{opacity:0}
-  .cedit,.cdel{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;line-height:1;padding:3px 4px;border-radius:5px}
-  .cedit:hover{color:var(--accent);background:var(--surface2)}
-  .cdel:hover{color:var(--red);background:var(--surface2)}
-  .cin{width:100%;padding:4px 8px;border:1px solid var(--accent);border-radius:7px;background:var(--bg);color:var(--ink);font:inherit;font-size:13px}
-  .cin:focus{outline:none}
-  .cconfirm{display:flex;align-items:center;gap:6px;width:100%;padding:2px 8px;font-size:11.5px;color:var(--muted)}
-  .cconfirm[hidden]{display:none}
-  .ccmsg{margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .cno,.cyes{background:none;border:1px solid var(--line2);border-radius:5px;font-size:11px;padding:1px 7px;cursor:pointer}
-  .cyes{border-color:var(--red);color:var(--red)}
-  .cno:hover{border-color:var(--muted)} .cyes:hover{background:var(--red);color:#fff}
+  .crow{display:flex;align-items:center;gap:2px}
+  .crow .cnav{min-width:0}
 
   /* ── sticky top: search + toolbar ─────────────────────────────────── */
   .top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);
@@ -311,11 +321,6 @@ export function renderIndex({ shareInfo } = {}) {
      the row while the space beside them sat empty. */
   .title{font-weight:540;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;min-width:0}
   .title:hover{color:var(--accent)}
-  .rename{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s;padding:0;flex:none}
-  .row:hover .rename,.rename:focus-visible{opacity:1}
-  .rename:hover{color:var(--accent)}
-  .rename-in{padding:3px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:13.5px;min-width:240px}
-  .rename-in:focus{outline:none}
   .tags{display:inline-flex;gap:4px;align-items:center;min-width:0;overflow:hidden}
   .chip{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;background:var(--surface2);color:var(--muted);border-radius:999px;padding:0 7px;white-space:nowrap}
   .chip .x{background:none;border:none;color:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0}
@@ -352,25 +357,71 @@ export function renderIndex({ shareInfo } = {}) {
   @media(prefers-reduced-motion:reduce){.live .dot{animation:none}}
   .off{font-size:11px;color:var(--faint);white-space:nowrap}
   .upd{font:11px ui-monospace,Menlo,monospace;color:var(--faint);white-space:nowrap;width:58px;text-align:right}
-  .acts{display:inline-flex;align-items:center;gap:2px;width:34px;justify-content:flex-end}
-  .collbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s;padding:0 2px}
-  .row:hover .collbtn,.collbtn:focus-visible{opacity:1}
-  .collbtn:hover{color:var(--accent)}
-  .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;opacity:0;transition:opacity .12s,color .12s;padding:0 2px;filter:grayscale(1)}
-  .row:hover .del,.del:focus-visible{opacity:.75}
-  .del:hover{opacity:1;color:var(--red);filter:none}
-  /* two-step confirm — an overlay bar over the row, so the layout never shifts */
-  .delconfirm{position:absolute;inset:0;display:none;align-items:center;justify-content:flex-end;gap:10px;padding:0 16px;background:color-mix(in srgb,var(--surface) 92%,var(--red));border-left:2px solid var(--red)}
-  .row.confirming .delconfirm{display:flex}
-  .row.confirming .main,.row.confirming .meta,.row.confirming .sel{opacity:.25}
-  .dcmsg{margin-right:auto;font-size:13px;color:var(--ink)}
-  .dcmsg b{font-weight:600}
-  .dcno{background:none;border:1px solid var(--line2);color:var(--muted);border-radius:6px;font-size:12px;padding:3px 12px;cursor:pointer;transition:color .12s,border-color .12s}
-  .dcno:hover{color:var(--ink);border-color:var(--muted)}
-  .dcyes{background:var(--red);border:1px solid var(--red);color:#fff;border-radius:6px;font-size:12px;font-weight:560;padding:3px 12px;cursor:pointer;transition:filter .12s}
-  .dcyes:hover{filter:brightness(1.08)}
-  .coll{width:130px;padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font-size:12px}
-  .coll:focus{outline:none;border-color:var(--accent)}
+  .acts{display:inline-flex;align-items:center;width:26px;justify-content:flex-end}
+
+  /* ── the actions button, on a row and in the rail ─────────────────── */
+  /* Present at all times. Dimmed, not hidden: an action you cannot see is an
+     action nobody finds, and hover is not something a touch screen has. */
+  .kebab{display:inline-flex;align-items:center;justify-content:center;flex:none;width:22px;height:22px;padding:0;
+         background:none;border:none;border-radius:6px;color:var(--faint);font-size:15px;line-height:1;cursor:pointer;
+         transition:background .12s,color .12s}
+  .kebab:hover,.kebab[aria-expanded="true"]{background:var(--surface2);color:var(--ink)}
+  .row:hover .kebab{color:var(--muted)}
+  .crow .kebab{opacity:.75}
+  .crow:hover .kebab,.crow .kebab:focus-visible,.crow .kebab[aria-expanded="true"]{opacity:1}
+
+  /* ── popovers: the actions menu and the collection picker ─────────── */
+  .pop{position:absolute;z-index:60;background:var(--surface);border:1px solid var(--line2);border-radius:10px;
+       box-shadow:0 10px 32px rgba(0,0,0,.18);padding:5px;min-width:200px}
+  .pop[hidden]{display:none}
+  .mitem{display:flex;align-items:center;gap:9px;width:100%;height:30px;padding:0 9px;border:none;border-radius:7px;
+         background:none;color:var(--ink);font-size:13px;text-align:left;cursor:pointer}
+  .mitem:hover{background:var(--surface2)}
+  .mitem.danger{color:var(--red)}
+  .mitem.danger:hover{background:color-mix(in srgb,var(--red) 12%,transparent)}
+  .mic{width:15px;text-align:center;color:var(--faint);flex:none}
+  .mitem.danger .mic{color:inherit}
+  .msep{height:1px;margin:5px 7px;background:var(--line)}
+
+  .pick{width:262px;padding:8px}
+  .pfilter{width:100%;height:30px;padding:0 10px;margin-bottom:6px;border:1px solid var(--line);border-radius:7px;
+           background:var(--bg);color:var(--ink);font:inherit;font-size:13px}
+  .pfilter:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .plist{max-height:236px;overflow-y:auto}
+  .pitem{display:flex;align-items:center;gap:8px;width:100%;height:30px;padding:0 8px;border:none;border-radius:7px;
+         background:none;color:var(--ink);font-size:13px;text-align:left;cursor:pointer}
+  .pitem:hover,.pitem.active{background:var(--surface2)}
+  .pitem.on{color:var(--accent);font-weight:560}
+  .ptick{width:13px;flex:none;color:var(--accent)}
+  .pname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pcount{margin-left:auto;font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .pnone{border-top:1px solid var(--line);margin-top:5px;padding-top:5px;border-radius:0 0 7px 7px}
+  .pnew{display:flex;align-items:center;gap:8px;width:100%;height:30px;margin-top:5px;padding:0 8px;
+        border:none;border-top:1px solid var(--line);border-radius:0;background:none;color:var(--accent);
+        font-size:13px;text-align:left;cursor:pointer}
+  .pnew[hidden]{display:none}
+  .pnew:hover{background:var(--accent-soft)}
+  .pempty{padding:8px;color:var(--faint);font-size:12.5px;text-align:center}
+
+  /* ── dialogs (native <dialog>: Esc, focus trap and backdrop for free) ── */
+  .dlg{width:min(94vw,400px);padding:18px;border:1px solid var(--line2);border-radius:12px;
+       background:var(--surface);color:var(--ink);box-shadow:0 18px 48px rgba(0,0,0,.3)}
+  .dlg::backdrop{background:rgba(12,14,18,.42)}
+  .dlg h3{margin:0 0 12px;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .dlab{display:block;margin-bottom:5px;font-size:12px;color:var(--muted)}
+  .din{width:100%;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;
+       background:var(--bg);color:var(--ink);font:inherit;font-size:13.5px}
+  .din:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .dbody{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .dbody b{color:var(--ink);font-weight:600}
+  .dacts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+  .btn{height:32px;padding:0 14px;border:1px solid var(--line2);border-radius:8px;background:none;color:var(--ink);
+       font-size:13px;cursor:pointer;transition:background .12s,border-color .12s,filter .12s}
+  .btn:hover{background:var(--surface2)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:560}
+  .btn.danger{background:var(--red);border-color:var(--red);color:#fff;font-weight:560}
+  .btn.primary:hover,.btn.danger:hover{filter:brightness(1.08);background:var(--accent)}
+  .btn.danger:hover{background:var(--red)}
 
   /* ── bulk bar ─────────────────────────────────────────────────────── */
   .bulk{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:10px;
@@ -378,10 +429,10 @@ export function renderIndex({ shareInfo } = {}) {
   .bulk[hidden]{display:none}
   .bn{font-size:12.5px;font-weight:560;white-space:nowrap}
   .bsep{width:1px;height:20px;background:var(--line)}
-  .bcoll{width:190px;height:28px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font-size:12.5px}
-  .bcoll:focus{outline:none;border-color:var(--accent)}
   .bbtn{height:28px;padding:0 11px;border:1px solid var(--line);border-radius:7px;background:none;color:var(--muted);font-size:12.5px;cursor:pointer}
   .bbtn:hover{color:var(--ink);border-color:var(--line2)}
+  .bbtn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:560}
+  .bbtn.primary:hover{color:#fff;filter:brightness(1.08)}
 
   /* one-shot warning, carried across the reload a fan-out triggers */
   .toast{position:fixed;left:22px;bottom:22px;z-index:30;display:flex;align-items:center;gap:10px;max-width:460px;
@@ -404,7 +455,7 @@ export function renderIndex({ shareInfo } = {}) {
   #nohits button{background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;padding:0}
   .empty code{background:var(--surface2);border-radius:6px;padding:2px 8px;font-size:12.5px}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .search:focus-visible,.coll:focus-visible,.rename-in:focus-visible,.addtag-in:focus-visible,.cin:focus-visible,.bcoll:focus-visible{outline:none}
+  .search:focus-visible,.addtag-in:focus-visible,.pfilter:focus-visible,.din:focus-visible{outline:none}
 
   @media(max-width:1180px){.badge.t{display:none}}
   @media(max-width:900px){
@@ -414,7 +465,6 @@ export function renderIndex({ shareInfo } = {}) {
     .views,.colls{display:flex;flex-wrap:wrap;gap:4px}
     .nav,.cnav{width:auto}
     .crow{width:auto}
-    .cacts{display:none}
     .tags,.id,.upd{display:none}
   }
 </style></head><body>
@@ -443,7 +493,7 @@ ${n ? `<div class="toolbar">${chipsBar}
 </div>` : ''}
 </div></div>
 <div class="wrap">
-${n ? `${datalist}\n<div id="groups">${groups}</div>\n<div id="nohits">No specs match. <button type="button" id="clearf">Clear filters</button></div>`
+${n ? `<div id="groups">${groups}</div>\n<div id="nohits">No specs match. <button type="button" id="clearf">Clear filters</button></div>`
     : '<p class="empty">No specs yet. Create one with <code>/specforge:create</code>.</p>'}
 ${strip}
 </div>
@@ -451,10 +501,29 @@ ${strip}
 </div>
 <div class="bulk" id="bulk" hidden>
   <span class="bn" id="bn">0 selected</span><span class="bsep"></span>
-  <input class="bcoll" id="bcoll" list="collections" type="text" placeholder="Move to collection…" aria-label="Move to collection">
-  <button class="bbtn" id="bclear" type="button">Ungroup</button>
+  <button class="bbtn primary" id="bmove" type="button" aria-haspopup="dialog" aria-expanded="false">Move to collection…</button>
   <button class="bbtn" id="bcancel" type="button">Cancel</button>
 </div>
+
+<!-- One menu, one picker, two dialogs — reused by every row and every collection,
+     so there is exactly one of each interaction to learn and to maintain. -->
+<div class="pop menu" id="menu" role="menu" hidden></div>
+<div class="pop pick" id="cpick" role="dialog" aria-label="Move to collection" hidden>
+  <input class="pfilter" id="pfilter" type="text" autocomplete="off" placeholder="Filter or new name…" aria-label="Filter collections, or type a new name">
+  <div class="plist" id="plist"></div>
+  <button class="pnew" id="pnew" type="button" hidden></button>
+</div>
+<dialog class="dlg" id="dprompt" aria-labelledby="dp-title">
+  <h3 id="dp-title">Rename</h3>
+  <label class="dlab" id="dp-label" for="dp-input">Name</label>
+  <input class="din" id="dp-input" type="text" autocomplete="off">
+  <div class="dacts"><button class="btn" id="dp-cancel" type="button">Cancel</button><button class="btn primary" id="dp-ok" type="button">Save</button></div>
+</dialog>
+<dialog class="dlg" id="dconfirm" aria-labelledby="dc-title">
+  <h3 id="dc-title">Delete</h3>
+  <p class="dbody" id="dc-body"></p>
+  <div class="dacts"><button class="btn" id="dc-cancel" type="button">Cancel</button><button class="btn danger" id="dc-ok" type="button">Delete</button></div>
+</dialog>
 <script>
 (function(){
   var root=document.documentElement, btn=document.getElementById('theme');
@@ -477,11 +546,152 @@ ${strip}
       row.getAttribute('data-s'),
       row.querySelector('.att').textContent,
       tagsOf(row).join(' '),
-      row.querySelector('.coll').value].join(' ').toLowerCase());
+      row.getAttribute('data-c')].join(' ').toLowerCase());
   }
-  function endRename(row){row.querySelector('.title').hidden=false;row.querySelector('.rename').hidden=false;row.querySelector('.rename-in').hidden=true;}
   function endAddTag(row){row.querySelector('.addtag').hidden=false;row.querySelector('.addtag-in').hidden=true;}
-  function endColl(row){row.querySelector('.collbtn').hidden=false;row.querySelector('.coll').hidden=true;}
+  // ---- one popover at a time: the actions menu and the collection picker ----
+  var pop=null, popOwner=null;
+  function place(el,anchor){
+    // Below the button, right-aligned to it, flipped up when the bottom is close.
+    var r=anchor.getBoundingClientRect(), sx=window.pageXOffset, sy=window.pageYOffset;
+    el.hidden=false;
+    var w=el.offsetWidth||220, h=el.offsetHeight||160;
+    var left=Math.max(8,Math.min(r.right+sx-w, sx+document.documentElement.clientWidth-w-8));
+    var below=r.bottom+sy+6, above=r.top+sy-h-6;
+    el.style.left=left+'px';
+    el.style.top=(r.bottom+h+10>window.innerHeight&&above>sy?above:below)+'px';
+  }
+  function openPop(el,anchor){
+    closePop();
+    pop=el; popOwner=anchor;
+    place(el,anchor);
+    if(anchor) anchor.setAttribute('aria-expanded','true');
+  }
+  function closePop(){
+    if(!pop) return;
+    pop.hidden=true;
+    if(popOwner) popOwner.setAttribute('aria-expanded','false');
+    pop=null; popOwner=null;
+  }
+
+  /** items: {icon,label,run} or {sep:true}. */
+  function openMenu(anchor,items){
+    var m=document.getElementById('menu');
+    m.innerHTML='';
+    items.forEach(function(it){
+      if(it.sep){var s=document.createElement('div');s.className='msep';m.appendChild(s);return;}
+      var b=document.createElement('button');
+      b.type='button'; b.className='mitem'+(it.danger?' danger':''); b.setAttribute('role','menuitem');
+      var ic=document.createElement('span'); ic.className='mic'; ic.textContent=it.icon; ic.setAttribute('aria-hidden','true');
+      var lb=document.createElement('span'); lb.textContent=it.label;
+      b.appendChild(ic); b.appendChild(lb);
+      b.onclick=function(){closePop(); it.run();};
+      m.appendChild(b);
+    });
+    openPop(m,anchor);
+    var first=m.querySelector('.mitem'); if(first) first.focus();
+  }
+
+  // ---- the collection picker: pick a name, never spell one ----
+  // The list is read off the rows, which is where the collections live (they are
+  // derived from spec meta, not stored anywhere of their own).
+  function collections(){
+    var counts={};
+    rows.forEach(function(r){var c=r.getAttribute('data-c'); if(c) counts[c]=(counts[c]||0)+1;});
+    return Object.keys(counts).sort(function(a,b){return a.toLowerCase().localeCompare(b.toLowerCase());})
+      .map(function(k){return {name:k,count:counts[k]};});
+  }
+  function pickItem(value,label,count,current){
+    var b=document.createElement('button');
+    b.type='button'; b.className='pitem'+(value===current?' on':'')+(value===''?' pnone':'');
+    b.setAttribute('data-v',value);
+    var tick=document.createElement('span'); tick.className='ptick'; tick.textContent=value===current?'\\u2713':''; tick.setAttribute('aria-hidden','true');
+    var name=document.createElement('span'); name.className='pname'; name.textContent=label;
+    b.appendChild(tick); b.appendChild(name);
+    if(count!=null){var c=document.createElement('span'); c.className='pcount'; c.textContent=count; b.appendChild(c);}
+    return b;
+  }
+  /**
+   * @param anchor the button it hangs off
+   * @param current the collection the target is in now ('' = uncollected)
+   * @param onPick called with the chosen name ('' to ungroup)
+   */
+  function openPicker(anchor,current,onPick){
+    var pick=document.getElementById('cpick'), list=document.getElementById('plist');
+    var filter=document.getElementById('pfilter'), create=document.getElementById('pnew');
+    var all=collections();
+    filter.value='';
+    function paint(){
+      var q=filter.value.trim(), lq=q.toLowerCase();
+      list.innerHTML='';
+      var hits=all.filter(function(c){return !lq||c.name.toLowerCase().indexOf(lq)!==-1;});
+      hits.forEach(function(c){list.appendChild(pickItem(c.name,c.name,c.count,current));});
+      // Uncollected is a destination, not a collection: it never matches a filter
+      // and never carries a count, it is just "take this out of wherever it is".
+      if(!q) list.appendChild(pickItem('','Uncollected',null,current));
+      else if(!hits.length){var e=document.createElement('div'); e.className='pempty'; e.textContent='No collection matches'; list.appendChild(e);}
+      // Offered only when what you typed is not already a collection — otherwise
+      // "Create" beside the identically named thing invites a duplicate.
+      var exact=all.some(function(c){return c.name.toLowerCase()===lq;});
+      create.hidden=!q||exact;
+      create.textContent='';
+      var plus=document.createElement('span'); plus.className='mic'; plus.textContent='+'; plus.setAttribute('aria-hidden','true');
+      var lbl=document.createElement('span'); lbl.textContent='Create "'+q+'"';
+      create.appendChild(plus); create.appendChild(lbl);
+    }
+    function choose(v){closePop(); onPick(v);}
+    paint();
+    filter.oninput=paint;
+    list.onclick=function(e){var b=e.target.closest('.pitem'); if(b) choose(b.getAttribute('data-v'));};
+    create.onclick=function(){var v=filter.value.trim(); if(v) choose(v);};
+    filter.onkeydown=function(e){
+      if(e.key!=='Enter') return;
+      e.preventDefault();
+      var first=list.querySelector('.pitem');
+      if(!create.hidden){create.onclick();}
+      else if(first){choose(first.getAttribute('data-v'));}
+    };
+    openPop(pick,anchor);
+    filter.focus();
+  }
+
+  // ---- dialogs ----
+  // jsdom has no <dialog> behaviour at all, so both calls are guarded: a real
+  // browser gets showModal (focus trap, Esc, backdrop) and the test DOM gets the
+  // open attribute, which is what showModal reflects anyway.
+  function showDlg(d){ if(d.showModal) d.showModal(); else d.setAttribute('open',''); }
+  function hideDlg(d){ if(d.close) d.close(); else d.removeAttribute('open'); }
+  /** @param o {title,label,value,ok,onOk} */
+  function askName(o){
+    var d=document.getElementById('dprompt'), i=document.getElementById('dp-input');
+    document.getElementById('dp-title').textContent=o.title;
+    document.getElementById('dp-label').textContent=o.label;
+    document.getElementById('dp-ok').textContent=o.ok||'Save';
+    i.value=o.value||'';
+    d.onOk=function(){var v=i.value.trim(); if(v&&v!==o.value) o.onOk(v);};
+    showDlg(d); i.focus(); i.select();
+  }
+  /** @param o {title,body,ok,onOk} */
+  function askConfirm(o){
+    var d=document.getElementById('dconfirm');
+    document.getElementById('dc-title').textContent=o.title;
+    document.getElementById('dc-body').textContent=o.body;
+    document.getElementById('dc-ok').textContent=o.ok||'Delete';
+    d.onOk=o.onOk;
+    showDlg(d);
+    document.getElementById('dc-cancel').focus();
+  }
+  (function wireDialogs(){
+    [['dprompt','dp-ok','dp-cancel'],['dconfirm','dc-ok','dc-cancel']].forEach(function(ids){
+      var d=document.getElementById(ids[0]);
+      document.getElementById(ids[1]).onclick=function(){var f=d.onOk; hideDlg(d); if(f) f();};
+      document.getElementById(ids[2]).onclick=function(){hideDlg(d);};
+    });
+    document.getElementById('dp-input').onkeydown=function(e){
+      if(e.key==='Enter'){e.preventDefault(); document.getElementById('dp-ok').click();}
+    };
+  })();
+
   function paintChips(row,tags){
     var box=row.querySelector('.tags'), add=box.querySelector('.addtag');
     [].slice.call(box.querySelectorAll('.chip')).forEach(function(c){c.remove();});
@@ -494,60 +704,147 @@ ${strip}
 
   document.addEventListener('click',function(e){
     var t=e.target;
-    if(t.classList.contains('rename')){var r=rowOf(t);r.querySelector('.title').hidden=true;t.hidden=true;var i=r.querySelector('.rename-in');i.hidden=false;i.focus();i.select();}
-    else if(t.classList.contains('addtag')){var r2=rowOf(t);t.hidden=true;var a=r2.querySelector('.addtag-in');a.hidden=false;a.value='';a.focus();}
-    else if(t.classList.contains('collbtn')){var r4=rowOf(t);t.hidden=true;var c=r4.querySelector('.coll');c.hidden=false;c.focus();}
+    // Anywhere that is not the open popover or the button that opened it.
+    if(pop&&!t.closest('.pop')&&t!==popOwner&&!(popOwner&&popOwner.contains(t))) closePop();
+    if(t.classList.contains('addtag')){var r2=rowOf(t);t.hidden=true;var a=r2.querySelector('.addtag-in');a.hidden=false;a.value='';a.focus();}
     else if(t.classList.contains('x')){var r3=rowOf(t),chip=t.closest('.chip'),id=r3.getAttribute('data-id');
       var next=tagsOf(r3).filter(function(x){return x!==chip.getAttribute('data-tag');});
       api(id,'/organize','PATCH',{tags:next}).then(function(){chip.remove();updateKey(r3);}).catch(function(){});}
-    else if(t.classList.contains('del')){var rd=rowOf(t);rd.querySelector('.delconfirm').hidden=false;rd.classList.add('confirming');}
-    else if(t.classList.contains('dcno')){var rn=rowOf(t);rn.classList.remove('confirming');rn.querySelector('.delconfirm').hidden=true;}
-    else if(t.classList.contains('dcyes')){var rz=rowOf(t),idz=rz.getAttribute('data-id');t.disabled=true;
-      // Key on the HTTP status: a non-2xx (404/403-template/500) means the spec
-      // was NOT deleted, so keep the row and back out of the confirm.
-      api(idz,'','DELETE').then(function(x){
-        if(!x||!x.ok){throw new Error('delete failed');}
-        rz.remove(); removeRow(idz);
-      }).catch(function(){t.disabled=false;rz.classList.remove('confirming');rz.querySelector('.delconfirm').hidden=true;});}
+    else if(t.classList.contains('kebab')){
+      // The same button in two places; which menu it opens is decided by what it
+      // sits in, so neither the row nor the rail needs its own handler.
+      if(pop===document.getElementById('menu')&&popOwner===t){closePop();return;}
+      var row=rowOf(t);
+      if(row) rowMenu(t,row); else collMenu(t,t.closest('.crow'));
+    }
   });
+
+  function rowMenu(btn,row){
+    var id=row.getAttribute('data-id'), title=row.querySelector('.title').textContent;
+    openMenu(btn,[
+      {icon:'\\u270e',label:'Rename\\u2026',run:function(){
+        askName({title:'Rename spec',label:'Name',value:title,onOk:function(v){
+          api(id,'/rename','POST',{title:v}).then(function(x){return x.ok?x.json():null;}).then(function(d){
+            if(d){row.querySelector('.title').textContent=d.title;updateKey(row);}
+          }).catch(function(){});
+        }});
+      }},
+      {icon:'\\u25a4',label:'Move to collection\\u2026',run:function(){
+        openPicker(btn,row.getAttribute('data-c'),function(v){setColl([row],v);});
+      }},
+      {sep:true},
+      {icon:'\\ud83d\\uddd1',label:'Delete spec\\u2026',danger:true,run:function(){
+        askConfirm({title:'Delete spec',body:'Delete "'+title+'"? This cannot be undone.',onOk:function(){
+          // Key on the HTTP status: a non-2xx (404/403-template/500) means the
+          // spec was NOT deleted, so keep the row.
+          api(id,'','DELETE').then(function(x){
+            if(!x||!x.ok) throw new Error('delete failed');
+            row.remove(); removeRow(id);
+          }).catch(function(){});
+        }});
+      }},
+    ]);
+  }
+
+  function collMenu(btn,crow){
+    var name=crow.getAttribute('data-c');
+    var items=[];
+    if(crow.previousElementSibling) items.push({icon:'\\u2191',label:'Move up',run:function(){moveColl(crow,-1);}});
+    if(nextNamed(crow)) items.push({icon:'\\u2193',label:'Move down',run:function(){moveColl(crow,1);}});
+    if(items.length) items.push({sep:true});
+    openMenu(btn,items.concat([
+      {icon:'\\u270e',label:'Rename\\u2026',run:function(){
+        askName({title:'Rename collection',label:'Collection name',value:name,onOk:function(v){
+          // The order is a list of names, so a rename has to be applied to it too
+          // — and before the reload the move fans out into, or the collection
+          // reappears at the bottom under its new name.
+          putOrder(collOrder().map(function(c){return c===name?v:c;}),function(){
+            setColl(membersOf(name),v,'some are still in "'+name+'"');
+          });
+        }});
+      }},
+      {icon:'\\ud83d\\uddd1',label:'Delete collection\\u2026',danger:true,run:function(){
+        var n=membersOf(name).length;
+        askConfirm({
+          title:'Delete collection',
+          // Says what actually happens, because "delete" next to a count of specs
+          // reads like it takes the specs with it. It does not.
+          body:'Delete "'+name+'"? '+(n===1
+            ?'Its 1 spec is not deleted \\u2014 it becomes uncollected.'
+            :'Its '+n+' specs are not deleted \\u2014 they become uncollected.'),
+          onOk:function(){
+            putOrder(collOrder().filter(function(c){return c!==name;}),function(){
+              setColl(membersOf(name),'','some are still in "'+name+'"');
+            });
+          },
+        });
+      }},
+    ]));
+  }
+
+  // ---- collection order (Move up / Move down) ----
+  // The rail is the order. Reading it back off the DOM means the two can never
+  // disagree, and a move is then a DOM move plus one PUT — no reload, so the
+  // scroll position and any open filter survive it.
+  var colls=document.getElementById('colls');
+  /** The named collections, top to bottom. Uncollected is not one of them. */
+  function collOrder(){
+    return [].slice.call(document.querySelectorAll('.crow')).map(function(c){return c.getAttribute('data-c');})
+      .filter(function(c){return c!=='';});
+  }
+  /** The next collection row that is not Uncollected, which never moves. */
+  function nextNamed(crow){
+    var n=crow.nextElementSibling;
+    return n&&n.getAttribute('data-c')!==''?n:null;
+  }
+  function putOrder(order,then){
+    var done=then||function(){};
+    fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({collectionOrder:order})})
+      .then(done,done);
+  }
+  function moveColl(crow,dir){
+    var name=crow.getAttribute('data-c');
+    var sib=dir<0?crow.previousElementSibling:nextNamed(crow);
+    if(!sib) return;
+    if(dir<0) colls.insertBefore(crow,sib); else colls.insertBefore(sib,crow);
+    // The page's group order is the same order; move it in step so the rail and
+    // the list never read differently. Matched by attribute rather than by a
+    // built selector — a collection name is arbitrary text, quotes included.
+    var grp=grpFor(name), sgrp=grpFor(sib.getAttribute('data-c'));
+    if(grp&&sgrp&&grp.parentNode){
+      if(dir<0) grp.parentNode.insertBefore(grp,sgrp); else grp.parentNode.insertBefore(sgrp,grp);
+    }
+    putOrder(collOrder());
+  }
+  function grpFor(name){
+    for(var i=0;i<grps.length;i++){ if(grps[i].getAttribute('data-coll')===name) return grps[i]; }
+    return null;
+  }
 
   document.addEventListener('keydown',function(e){
     var t=e.target;
     if(e.key==='/'&&!(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'))){
       var s=document.getElementById('search'); if(s){e.preventDefault();s.focus();s.select();} return;
     }
-    if(t.classList&&t.classList.contains('rename-in')){
-      if(e.key==='Enter'){var r=rowOf(t),id=r.getAttribute('data-id'),v=t.value.trim();if(!v){endRename(r);return;}
-        api(id,'/rename','POST',{title:v}).then(function(x){return x.ok?x.json():null;}).then(function(d){if(d){r.querySelector('.title').textContent=d.title;t.value=d.title;updateKey(r);}endRename(r);}).catch(function(){endRename(r);});}
-      else if(e.key==='Escape'){endRename(rowOf(t));}
-    } else if(t.classList&&t.classList.contains('addtag-in')){
+    if(e.key==='Escape'&&pop){var o=popOwner;closePop();if(o&&o.focus)o.focus();return;}
+    // A modal dialog handles its own Escape; the keypress still bubbles to here,
+    // and clearing the selection out from under an open dialog is a surprise.
+    if(e.key==='Escape'&&document.querySelector('.dlg[open]')) return;
+    if(t.classList&&t.classList.contains('addtag-in')){
       if(e.key==='Enter'){var r2=rowOf(t),id2=r2.getAttribute('data-id'),v2=t.value.trim(),cur=tagsOf(r2);
         if(v2 && cur.map(function(x){return x.toLowerCase();}).indexOf(v2.toLowerCase())===-1){
           api(id2,'/organize','PATCH',{tags:cur.concat([v2])}).then(function(x){return x.ok?x.json():null;}).then(function(d){if(d){paintChips(r2,d.tags);updateKey(r2);}endAddTag(r2);}).catch(function(){endAddTag(r2);});
         } else {endAddTag(r2);}}
       else if(e.key==='Escape'){endAddTag(rowOf(t));}
-    } else if(t.classList&&t.classList.contains('coll')){
-      if(e.key==='Escape'){endColl(rowOf(t));}
-    } else if(t.classList&&t.classList.contains('cin')){
-      if(e.key==='Enter'){renameColl(t.closest('.crow'),t.value.trim());}
-      else if(e.key==='Escape'){endCollEdit(t.closest('.crow'));}
-    } else if(t.classList&&t.classList.contains('bcoll')){
-      if(e.key==='Enter'){var bv=t.value.trim(); if(bv) bulkSet(bv);}
-      else if(e.key==='Escape'){clearPick();}
     } else if(t.id==='search'&&e.key==='Escape'){t.value='';t.blur();applyFilters();}
     else if(e.key==='Escape'){clearPick();}
   });
 
   document.addEventListener('change',function(e){
-    if(e.target.classList.contains('coll')){var r=rowOf(e.target),id=r.getAttribute('data-id');
-      api(id,'/organize','PATCH',{collection:e.target.value}).then(function(){location.reload();}).catch(function(){});}
-    else if(e.target.classList.contains('sel')){
+    if(e.target.classList.contains('sel')){
       var rs=rowOf(e.target); if(rs) rs.classList.toggle('picked',e.target.checked);
       paintBulk();
     }
-  });
-  document.addEventListener('focusout',function(e){
-    if(e.target.classList&&e.target.classList.contains('coll')) endColl(rowOf(e.target));
   });
 
   // --- filters: search + view + collection + status + type, all combining ---
@@ -669,7 +966,7 @@ ${strip}
   });
 
   // --- selection + bulk collection moves ---
-  var bulk=document.getElementById('bulk'), bn=document.getElementById('bn'), bcoll=document.getElementById('bcoll');
+  var bulk=document.getElementById('bulk'), bn=document.getElementById('bn');
   function picked(){return rows.filter(function(r){var s=r.querySelector('.sel');return s&&s.checked;});}
   function paintBulk(){
     var p=picked();
@@ -679,8 +976,8 @@ ${strip}
     if(bn) bn.textContent=p.length+' selected';
   }
   function clearPick(){
+    closePop();
     rows.forEach(function(r){var s=r.querySelector('.sel'); if(s&&s.checked){s.checked=false;r.classList.remove('picked');}});
-    if(bcoll) bcoll.value='';
     paintBulk();
   }
   // Every collection move is a fan-out of one PATCH per member, and any of them
@@ -717,37 +1014,18 @@ ${strip}
     try{text=sessionStorage.getItem(MSGKEY); if(text) sessionStorage.removeItem(MSGKEY);}catch(e){}
     if(text) showMsg(text);
   })();
-  function bulkSet(value){setColl(picked(),value);}
-  var bclear=document.getElementById('bclear'), bcancel=document.getElementById('bcancel');
-  if(bclear) bclear.onclick=function(){bulkSet('');};
+  // The selection moves through the same picker a single row does, so there is
+  // one way to name a destination rather than a menu here and a text field there.
+  var bmove=document.getElementById('bmove'), bcancel=document.getElementById('bcancel');
+  if(bmove) bmove.onclick=function(){
+    if(pop===document.getElementById('cpick')&&popOwner===bmove){closePop();return;}
+    // No current collection: the selection may span several.
+    openPicker(bmove,null,function(v){setColl(picked(),v);});
+  };
   if(bcancel) bcancel.onclick=clearPick;
 
-  // --- collection rename / delete (derived from meta: fan out over members) ---
+  /** A collection is derived from meta, so its members are its only definition. */
   function membersOf(c){return rows.filter(function(r){return r.getAttribute('data-c')===c;});}
-  function endCollEdit(crow){
-    crow.querySelector('.cnav').hidden=false;
-    var cin=crow.querySelector('.cin'); if(cin){cin.hidden=true;cin.value=crow.getAttribute('data-c');}
-    var cf=crow.querySelector('.cconfirm'); if(cf) cf.hidden=true;
-  }
-  function renameColl(crow,name){
-    var from=crow.getAttribute('data-c');
-    if(!name||name===from){endCollEdit(crow);return;}
-    setColl(membersOf(from),name,'some are still in "'+from+'"');
-  }
-  document.addEventListener('click',function(e){
-    var t=e.target;
-    if(t.classList.contains('cedit')){
-      var cr=t.closest('.crow'); cr.querySelector('.cnav').hidden=true;
-      var ci=cr.querySelector('.cin'); ci.hidden=false; ci.focus(); ci.select();
-    } else if(t.classList.contains('cdel')){
-      var cr2=t.closest('.crow'); cr2.querySelector('.cnav').hidden=true; cr2.querySelector('.cconfirm').hidden=false;
-    } else if(t.classList.contains('cno')){
-      endCollEdit(t.closest('.crow'));
-    } else if(t.classList.contains('cyes')){
-      var cr3=t.closest('.crow'), from=cr3.getAttribute('data-c');
-      setColl(membersOf(from),'','some are still in "'+from+'"');
-    }
-  });
 })();
 </script>
 </body></html>`;

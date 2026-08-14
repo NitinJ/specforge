@@ -67,8 +67,6 @@ test('specs render grouped under collection headers (+ Uncollected)', () => {
   const html = renderIndex();
   assert.match(html, /<h2>Launch <span class="gcount">1<\/span>/);
   assert.match(html, /<h2>Uncollected <span class="gcount">1<\/span>/);
-  // The collection name is offered in the datalist for reassignment autocomplete.
-  assert.match(html, /<datalist id="collections"><option value="Launch">/);
 });
 
 test('rows show live / disconnected from the owning session heartbeat', () => {
@@ -89,14 +87,25 @@ test('rows show live / disconnected from the owning session heartbeat', () => {
   assert.equal((html.match(/row edge-off/g) || []).length, 1);
 });
 
-test('a tagged spec renders chips + the rename and collection controls', () => {
+test('a tagged spec renders chips + one actions menu', () => {
   const id = createSpec({ title: 'Tagged', html: '<h1>T</h1>' });
   setTags(id, ['api', 'auth']);
   const html = renderIndex();
   assert.match(html, /<span class="chip" data-tag="api">api/);
   assert.match(html, /<span class="chip" data-tag="auth">auth/);
-  assert.match(html, /class="rename"/);
-  assert.match(html, /class="coll"/);
+  assert.match(html, /class="kebab"/, 'every action is behind one menu button');
+});
+
+// The three affordances this replaced were hover-only glyphs — a ✎, a ▣ and a 🗑
+// at opacity:0 until the pointer was over the row, which is no affordance at all
+// on a touch screen and hard to find on any screen.
+test('a row carries no hover-only glyph controls any more', () => {
+  createSpec({ title: 'X', html: '<h1>X</h1>' });
+  const html = renderIndex();
+  for (const gone of ['class="rename"', 'class="collbtn"', 'class="del"', 'class="coll"', 'class="rename-in"']) {
+    assert.ok(!html.includes(gone), `${gone} is gone`);
+  }
+  assert.ok(!html.includes('<datalist'), 'and with them the type-the-exact-name datalist');
 });
 
 test('GET/PUT /api/prefs persists the index theme', async () => {
@@ -184,20 +193,96 @@ test('search updates per-group counts to the visible rows', (t) => {
 
 function enter(window, el) { el.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); }
 
-test('inline rename POSTs /rename and updates the title in place', async (t) => {
+/** The menu item whose label contains `label`, from whichever menu is open. */
+function item(document, label) {
+  return [].slice.call(document.querySelectorAll('#menu .mitem'))
+    .find((b) => b.textContent.indexOf(label) !== -1);
+}
+/** Menu labels without their leading icon span. */
+const labels = (document) => [].slice.call(document.querySelectorAll('#menu .mitem'))
+  .map((b) => b.lastChild.textContent);
+/** Open a row's actions menu and click one of its items. */
+function act(document, row, label) {
+  row.querySelector('.kebab').click();
+  const it = item(document, label);
+  assert.ok(it, `menu offers "${label}"`);
+  it.click();
+}
+
+test('the row menu offers exactly rename, move and delete', (t) => {
+  createSpec({ title: 'X', html: '<h1>X</h1>' });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const menu = document.getElementById('menu');
+  assert.equal(menu.hidden, true, 'nothing is open until asked for');
+  document.querySelector('.row[data-id] .kebab').click();
+  assert.equal(menu.hidden, false, 'the menu opens under the button');
+  assert.deepEqual(labels(document), ['Rename…', 'Move to collection…', 'Delete spec…']);
+  assert.equal(document.querySelector('.row .kebab').getAttribute('aria-expanded'), 'true');
+});
+
+test('an open menu closes on Escape, on a click elsewhere, and when another opens', (t) => {
+  createSpec({ title: 'A', html: '<h1>A</h1>' });
+  createSpec({ title: 'B', html: '<h1>B</h1>' });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const menu = document.getElementById('menu');
+  const [ka, kb] = [].slice.call(document.querySelectorAll('.row .kebab'));
+
+  ka.click();
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(menu.hidden, true, 'Escape closes it');
+  assert.equal(ka.getAttribute('aria-expanded'), 'false');
+
+  ka.click();
+  document.getElementById('search').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert.equal(menu.hidden, true, 'a click outside closes it');
+
+  ka.click();
+  kb.click();
+  assert.equal(menu.hidden, false, 'the other row opens its own');
+  assert.equal(ka.getAttribute('aria-expanded'), 'false', 'and the first is no longer marked open');
+});
+
+test('rename opens a dialog prefilled with the current name and POSTs /rename', async (t) => {
   createSpec({ title: 'Before', html: '<h1>Before</h1>' });
   const { window, calls } = loadIndex(t);
   const { document } = window;
-  document.querySelector('.rename').click();
-  const input = document.querySelector('.rename-in');
-  assert.equal(input.hidden, false, 'rename input revealed');
+  act(document, document.querySelector('.row[data-id]'), 'Rename');
+  const dlg = document.getElementById('dprompt');
+  assert.ok(dlg.hasAttribute('open'), 'a real dialog, not an inline input swap');
+  const input = document.getElementById('dp-input');
+  assert.equal(input.value, 'Before', 'prefilled, so a rename is an edit not a retype');
   input.value = 'After';
-  enter(window, input);
+  document.getElementById('dp-ok').click();
   await tick(window);
   const c = calls.find((x) => /\/rename$/.test(x.url));
   assert.ok(c && c.method === 'POST' && c.body.title === 'After', 'POST /rename {title:After}');
   assert.equal(document.querySelector('.title').textContent, 'After', 'title updated in place');
-  assert.match(document.querySelector('.row[data-id]').getAttribute('data-k'), /after/, 'search key refreshed after rename');
+  assert.match(document.querySelector('.row[data-id]').getAttribute('data-k'), /after/, 'search key refreshed');
+  assert.ok(!dlg.hasAttribute('open'), 'and the dialog closes');
+});
+
+test('Escape while a dialog is open does not clear the selection behind it', (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  pick(window, a);
+  act(document, document.querySelector(`.row[data-id="${a}"]`), 'Rename');
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(document.querySelector(`.row[data-id="${a}"] .sel`).checked, true, 'the selection survives');
+});
+
+test('Cancel in the rename dialog changes nothing', async (t) => {
+  createSpec({ title: 'Before', html: '<h1>Before</h1>' });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  act(document, document.querySelector('.row[data-id]'), 'Rename');
+  document.getElementById('dp-input').value = 'After';
+  document.getElementById('dp-cancel').click();
+  await tick(window);
+  assert.equal(calls.filter((x) => /\/rename$/.test(x.url)).length, 0, 'nothing sent');
+  assert.equal(document.querySelector('.title').textContent, 'Before');
 });
 
 test('adding a tag PATCHes /organize and shows a chip', async (t) => {
@@ -306,31 +391,107 @@ test('template specs render as a bottom strip, excluded from rows and filters', 
   assert.equal(document.querySelector('.tpls').style.display, '', 'strip back when the filter clears');
 });
 
-test('changing the collection input PATCHes /organize', async (t) => {
-  createSpec({ title: 'X', html: '<h1>X</h1>' });
-  const { window, calls } = loadIndex(t);
+// ---- move to a collection (the picker) ----
+
+/** Open a row's collection picker and return its items. */
+function pickerFor(document, row) {
+  act(document, row, 'Move to collection');
+  const pick = document.getElementById('cpick');
+  assert.equal(pick.hidden, false, 'the picker opens');
+  return pick;
+}
+const items = (pick) => [].slice.call(pick.querySelectorAll('.pitem'))
+  .filter((b) => b.style.display !== 'none');
+
+// The whole point: every collection that exists is on the list, so moving a spec
+// into one is picking, never spelling. The old control was a text input whose
+// datalist most browsers only reveal on a caret keypress — miss the spelling by a
+// character and you silently created a second collection beside the one you meant.
+test('the picker lists every collection with its count and marks the current one', (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'Beta', html: '<h1>B</h1>' });
+  const c = createSpec({ title: 'Gamma', html: '<h1>G</h1>' });
+  setCollection(a, 'Launch');
+  setCollection(b, 'Launch');
+  setCollection(c, 'Platform work');
+  const { window } = loadIndex(t);
   const { document } = window;
-  const coll = document.querySelector('.coll');
-  coll.value = 'Backlog';
-  coll.dispatchEvent(new window.Event('change', { bubbles: true }));
-  await tick(window);
-  const c = calls.find((x) => /\/organize$/.test(x.url));
-  assert.ok(c && c.method === 'PATCH' && c.body.collection === 'Backlog', 'PATCH /organize {collection:Backlog}');
+  const pick = pickerFor(document, document.querySelector(`.row[data-id="${a}"]`));
+  const labels = items(pick).map((b2) => b2.getAttribute('data-v'));
+  assert.deepEqual(labels, ['Launch', 'Platform work', ''], 'both collections, then Uncollected');
+  assert.match(items(pick)[0].textContent, /2/, 'with its member count');
+  assert.ok(items(pick)[0].classList.contains('on'), "the spec's current collection is marked");
+  assert.ok(!items(pick)[1].classList.contains('on'));
 });
 
-// ---- delete a spec (two-step confirm) ----
-test('delete needs confirmation: the trash button reveals a confirm, Cancel aborts', async (t) => {
+test('picking a collection PATCHes /organize with that exact name', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'Beta', html: '<h1>B</h1>' });
+  setCollection(b, 'Platform work');
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  const pick = pickerFor(document, document.querySelector(`.row[data-id="${a}"]`));
+  items(pick).find((x) => x.getAttribute('data-v') === 'Platform work').click();
+  await tick(window);
+  const c = calls.find((x) => /\/organize$/.test(x.url));
+  assert.ok(c && c.method === 'PATCH' && c.body.collection === 'Platform work', 'exact name, no typing');
+  assert.ok(new RegExp(`/api/spec/${a}/organize`).test(c.url), 'on the row it was opened from');
+});
+
+test('the filter narrows the list, and offers to create only what does not exist', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'Beta', html: '<h1>B</h1>' });
+  setCollection(b, 'Platform work');
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  const pick = pickerFor(document, document.querySelector(`.row[data-id="${a}"]`));
+  const filter = document.getElementById('pfilter');
+
+  filter.value = 'plat';
+  filter.dispatchEvent(new window.Event('input'));
+  assert.deepEqual(items(pick).map((x) => x.getAttribute('data-v')), ['Platform work'], 'narrowed to the match');
+  const create = pick.querySelector('.pnew');
+  assert.equal(create.hidden, false, 'and offers the new name it does not have');
+  assert.match(create.textContent, /Create "plat"/);
+
+  filter.value = 'Platform work';
+  filter.dispatchEvent(new window.Event('input'));
+  assert.equal(pick.querySelector('.pnew').hidden, true, 'an exact match is not offered as a new collection');
+
+  filter.value = 'Backlog';
+  filter.dispatchEvent(new window.Event('input'));
+  pick.querySelector('.pnew').click();
+  await tick(window);
+  const c = calls.find((x) => /\/organize$/.test(x.url));
+  assert.ok(c && c.body.collection === 'Backlog', 'creating one is one click, not a second dialog');
+});
+
+test('the picker takes a spec out of every collection', async (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  setCollection(a, 'Launch');
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  const pick = pickerFor(document, document.querySelector(`.row[data-id="${a}"]`));
+  const none = items(pick).find((x) => x.getAttribute('data-v') === '');
+  assert.match(none.textContent, /Uncollected/);
+  none.click();
+  await tick(window);
+  const c = calls.find((x) => /\/organize$/.test(x.url));
+  assert.ok(c && c.body.collection === '', 'ungrouped');
+});
+
+// ---- delete a spec (dialog confirm) ----
+test('delete asks in a dialog that names the spec, and Cancel aborts', async (t) => {
   const a = createSpec({ title: 'Keep', html: '<h1>K</h1>' });
   const del = createSpec({ title: 'Zap', html: '<h1>Z</h1>' });
   const { window, calls } = loadIndex(t);
   const { document } = window;
-  const row = document.querySelector(`.row[data-id="${del}"]`);
-  row.querySelector('.del').click();
-  assert.ok(row.classList.contains('confirming'), 'the row enters a confirming state');
-  assert.equal(row.querySelector('.delconfirm').hidden, false, 'the confirm strip is shown');
-  // Cancel: no request, row stays, confirm hidden.
-  row.querySelector('.dcno').click();
-  assert.ok(!row.classList.contains('confirming'), 'Cancel exits the confirm');
+  act(document, document.querySelector(`.row[data-id="${del}"]`), 'Delete spec');
+  const dlg = document.getElementById('dconfirm');
+  assert.ok(dlg.hasAttribute('open'), 'a confirm dialog, not a hover overlay');
+  assert.match(document.getElementById('dc-body').textContent, /Zap/, 'it names what it will delete');
+  document.getElementById('dc-cancel').click();
+  assert.ok(!dlg.hasAttribute('open'), 'Cancel closes it');
   assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0, 'nothing deleted on cancel');
   assert.ok(document.querySelector(`.row[data-id="${del}"]`), 'the row is still present');
   assert.ok(document.querySelector(`.row[data-id="${a}"]`), 'the other row untouched');
@@ -342,9 +503,8 @@ test('confirming a delete DELETEs the spec, removes the row, and updates the cou
   const { window, calls } = loadIndex(t);
   const { document } = window;
   assert.match(document.getElementById('count').textContent, /2 specs/);
-  const row = document.querySelector(`.row[data-id="${del}"]`);
-  row.querySelector('.del').click();
-  row.querySelector('.dcyes').click();
+  act(document, document.querySelector(`.row[data-id="${del}"]`), 'Delete spec');
+  document.getElementById('dc-ok').click();
   await tick(window);
   const c = calls.find((x) => x.method === 'DELETE');
   assert.ok(c && new RegExp(`/api/spec/${del}$`).test(c.url), 'DELETE /api/spec/:id fired');
@@ -352,27 +512,26 @@ test('confirming a delete DELETEs the spec, removes the row, and updates the cou
   assert.match(document.getElementById('count').textContent, /1 spec/, 'the total count drops');
 });
 
-test('a failed delete (non-2xx) keeps the row and backs out of the confirm', async (t) => {
+test('a failed delete (non-2xx) keeps the row and closes the dialog', async (t) => {
   const del = createSpec({ title: 'Guarded', html: '<h1>G</h1>' });
   const { window } = loadIndex(t);
   const { document } = window;
   window.fetch = () => Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ error: 'nope' }) });
-  const row = document.querySelector(`.row[data-id="${del}"]`);
-  row.querySelector('.del').click();
-  row.querySelector('.dcyes').click();
+  act(document, document.querySelector(`.row[data-id="${del}"]`), 'Delete spec');
+  document.getElementById('dc-ok').click();
   await tick(window);
   assert.ok(document.querySelector(`.row[data-id="${del}"]`), 'the row survives a rejected delete');
-  assert.ok(!row.classList.contains('confirming'), 'the confirm is dismissed');
+  assert.ok(!document.getElementById('dconfirm').hasAttribute('open'), 'the dialog is dismissed');
 });
 
-test('template cards have no delete affordance', async (t) => {
+test('template cards have no actions menu', async (t) => {
   const { ensureTemplates } = await import('../lib/store-templates.mjs');
   createSpec({ title: 'Real', html: '<h1>R</h1>' });
   ensureTemplates();
   const { window } = loadIndex(t);
   const { document } = window;
-  assert.equal(document.querySelector('.tcard .del'), null, 'no delete button on template cards');
-  assert.equal(document.querySelectorAll('.row .del').length, 1, 'only the real spec row has delete');
+  assert.equal(document.querySelector('.tcard .kebab'), null, 'no actions on template cards');
+  assert.equal(document.querySelectorAll('.row .kebab').length, 1, 'only the real spec row has them');
 });
 
 // ---- at-a-glance signals: comments and shares, per row ----
@@ -463,6 +622,144 @@ test('the rail lists every collection with its count and filters on click', (t) 
   assert.equal([].slice.call(document.querySelectorAll('.row[data-id]')).filter((r) => r.style.display !== 'none').length, 3);
 });
 
+// A collection in the rail gets the same menu a row does, from the same markup —
+// so the answer to "how do I rename this?" is the same wherever you are looking.
+// It is a real button in the layout, not a ✎ that appears on hover and vanishes
+// below 900px, which is what it replaced.
+test('a named collection carries an actions menu; Uncollected does not', (t) => {
+  const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
+  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
+  setCollection(a, 'Launch');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const crow = document.querySelector('.crow[data-c="Launch"]');
+  const kebab = crow.querySelector('.kebab');
+  assert.ok(kebab, 'the rail row has the menu button');
+  assert.match(kebab.getAttribute('aria-label'), /Launch/, 'and says which collection it acts on');
+  assert.equal(document.querySelector('.crow[data-c=""] .kebab'), null, 'Uncollected is not a collection to rename');
+  kebab.click();
+  assert.deepEqual(labels(document), ['Rename…', 'Delete collection…']);
+});
+
+// ---- collection order ----
+
+const railOrder = (document) => [].slice.call(document.querySelectorAll('.crow'))
+  .map((c) => c.getAttribute('data-c'));
+const groupOrder = (document) => [].slice.call(document.querySelectorAll('.grp'))
+  .map((g) => g.getAttribute('data-coll'));
+
+test('collections read A–Z until someone arranges them, then in the stored order', () => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
+  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  setCollection(c, 'Gamma');
+  assert.deepEqual(
+    renderIndex().match(/<div class="crow" data-c="([^"]*)"/g).map((s) => s.split('"')[3]),
+    ['Alpha', 'Beta', 'Gamma', ''],
+    'alphabetical by default, Uncollected last',
+  );
+  writeGlobalPrefs({ collectionOrder: ['Gamma', 'Alpha'] });
+  assert.deepEqual(
+    renderIndex().match(/<div class="crow" data-c="([^"]*)"/g).map((s) => s.split('"')[3]),
+    ['Gamma', 'Alpha', 'Beta', ''],
+    'arranged first, then whatever was never placed, then Uncollected',
+  );
+});
+
+test('Move up and Move down reorder the rail and the list together, and persist', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
+  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  setCollection(c, 'Gamma');
+  const { window, calls, reloads } = loadIndex(t);
+  const { document } = window;
+  assert.deepEqual(railOrder(document), ['Alpha', 'Beta', 'Gamma', '']);
+
+  document.querySelector('.crow[data-c="Gamma"] .kebab').click();
+  item(document, 'Move up').click();
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Alpha', 'Gamma', 'Beta', ''], 'the rail moved');
+  assert.deepEqual(groupOrder(document), ['Alpha', 'Gamma', 'Beta', ''], 'and the list moved with it');
+  const put = calls.filter((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT').pop();
+  assert.deepEqual(put.body.collectionOrder, ['Alpha', 'Gamma', 'Beta'], 'the new order is stored');
+  assert.equal(reloads.n, 0, 'no reload — the scroll position and filters survive');
+
+  document.querySelector('.crow[data-c="Alpha"] .kebab').click();
+  item(document, 'Move down').click();
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta', '']);
+});
+
+test('the ends of the list offer no move past them, and Uncollected never moves', (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  document.querySelector('.crow[data-c="Alpha"] .kebab').click();
+  assert.deepEqual(labels(document), ['Move down', 'Rename…', 'Delete collection…'], 'the first cannot go up');
+  document.querySelector('.crow[data-c="Beta"] .kebab').click();
+  assert.deepEqual(labels(document), ['Move up', 'Rename…', 'Delete collection…'],
+    'the last cannot go down — Uncollected sits below it but is not a place');
+});
+
+test('renaming a collection carries its place in the order', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  writeGlobalPrefs({ collectionOrder: ['Beta', 'Alpha'] });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  document.querySelector('.crow[data-c="Beta"] .kebab').click();
+  item(document, 'Rename').click();
+  document.getElementById('dp-input').value = 'Release';
+  document.getElementById('dp-ok').click();
+  await tick(window);
+  const put = calls.find((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT');
+  assert.deepEqual(put.body.collectionOrder, ['Release', 'Alpha'], 'renamed in place, not appended');
+  assert.ok(calls.some((x) => /\/organize$/.test(x.url)), 'and the members still move');
+});
+
+test('deleting a collection drops it from the order', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  writeGlobalPrefs({ collectionOrder: ['Beta', 'Alpha'] });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  document.querySelector('.crow[data-c="Beta"] .kebab').click();
+  item(document, 'Delete collection').click();
+  document.getElementById('dc-ok').click();
+  await tick(window);
+  const put = calls.find((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT');
+  assert.deepEqual(put.body.collectionOrder, ['Alpha']);
+});
+
+test('the stored order is validated, and a spec page is never told about it', async () => {
+  writeGlobalPrefs({ theme: 'dark', collectionOrder: ['  Keep  ', '', 'Keep', 42, 'Other'] });
+  const { readGlobalPrefs } = await import('../lib/global-prefs.mjs');
+  assert.deepEqual(readGlobalPrefs().collectionOrder, ['Keep', 'Other'],
+    'trimmed, deduped, non-strings dropped');
+
+  // The review layer is served to published readers too, so it takes theme and
+  // font by name rather than spreading whatever ui.json happens to hold.
+  const { injectReviewLayer } = await import('../server/inject.mjs');
+  const id = createSpec({ title: 'S', html: '<h1>S</h1>' });
+  const out = injectReviewLayer('<html><head></head><body><h1>S</h1></body></html>', { specId: id });
+  assert.match(out, /"theme":"dark"/, 'the theme still reaches the page');
+  assert.ok(!out.includes('collectionOrder'), 'the collection names do not');
+});
+
 test('renaming a collection re-files every member spec', async (t) => {
   const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
   const b = createSpec({ title: 'Beta', html: '<h1>B</h1>' });
@@ -472,11 +769,12 @@ test('renaming a collection re-files every member spec', async (t) => {
   const { window, calls } = loadIndex(t);
   const { document } = window;
   const crow = document.querySelector('.crow[data-c="Launch"]');
-  crow.querySelector('.cedit').click();
-  const input = crow.querySelector('.cin');
-  assert.equal(input.hidden, false, 'the rename input is revealed');
+  crow.querySelector('.kebab').click();
+  item(document, 'Rename').click();
+  const input = document.getElementById('dp-input');
+  assert.equal(input.value, 'Launch', 'prefilled with the name being changed');
   input.value = 'GA';
-  enter(window, input);
+  document.getElementById('dp-ok').click();
   await tick(window);
   const moves = calls.filter((c) => /\/organize$/.test(c.url));
   assert.equal(moves.length, 2, 'one PATCH per member, none for the uncollected spec');
@@ -484,18 +782,23 @@ test('renaming a collection re-files every member spec', async (t) => {
   assert.ok(moves.every((c) => new RegExp(`/api/spec/(${a}|${b})/organize`).test(c.url)));
 });
 
-test('deleting a collection asks first, then ungroups its specs', async (t) => {
+test('deleting a collection asks first, says what happens, then ungroups its specs', async (t) => {
   const a = createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
   setCollection(a, 'Launch');
   const { window, calls } = loadIndex(t);
   const { document } = window;
   const crow = document.querySelector('.crow[data-c="Launch"]');
-  crow.querySelector('.cdel').click();
-  assert.equal(crow.querySelector('.cconfirm').hidden, false, 'a confirm appears before anything moves');
-  crow.querySelector('.cno').click();
-  assert.equal(calls.filter((c) => /\/organize$/.test(c.url)).length, 0, 'No leaves the specs alone');
-  crow.querySelector('.cdel').click();
-  crow.querySelector('.cyes').click();
+  crow.querySelector('.kebab').click();
+  item(document, 'Delete collection').click();
+  const body = document.getElementById('dc-body').textContent;
+  assert.match(body, /Launch/, 'names the collection');
+  assert.match(body, /Its 1 spec is not deleted/, 'how many specs it holds, and that they survive');
+  assert.match(body, /uncollected/i, 'and where they end up');
+  document.getElementById('dc-cancel').click();
+  assert.equal(calls.filter((c) => /\/organize$/.test(c.url)).length, 0, 'Cancel leaves the specs alone');
+  crow.querySelector('.kebab').click();
+  item(document, 'Delete collection').click();
+  document.getElementById('dc-ok').click();
   await tick(window);
   const moves = calls.filter((c) => /\/organize$/.test(c.url));
   assert.equal(moves.length, 1);
@@ -521,9 +824,14 @@ test('selecting rows opens a bulk bar that moves them into one collection', asyn
   pick(window, b);
   assert.equal(document.getElementById('bulk').hidden, false);
   assert.equal(document.getElementById('bn').textContent, '2 selected');
-  const bcoll = document.getElementById('bcoll');
-  bcoll.value = 'Launch';
-  enter(window, bcoll);
+  // The same picker the row menu opens — one way to choose a collection, not two.
+  document.getElementById('bmove').click();
+  const picker = document.getElementById('cpick');
+  assert.equal(picker.hidden, false);
+  const filter = document.getElementById('pfilter');
+  filter.value = 'Launch';
+  filter.dispatchEvent(new window.Event('input'));
+  picker.querySelector('.pnew').click();
   await tick(window);
   const moves = calls.filter((c) => /\/organize$/.test(c.url));
   assert.equal(moves.length, 2, 'one PATCH per selected spec');
@@ -540,13 +848,17 @@ test('a collection move that only partly succeeds says so', async (t) => {
   const { window, reloads } = loadIndex(t);
   const { document } = window;
   let nth = 0;
-  window.fetch = () => {
+  window.fetch = (url) => {
+    // Only the fan-out is made to fail — the prefs PUT that drops the collection
+    // from the stored order rides along on the same channel.
+    if (!/\/organize$/.test(url)) return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     nth += 1;
     return Promise.resolve({ ok: nth > 1, status: nth > 1 ? 200 : 500, json: () => Promise.resolve({}) });
   };
   const crow = document.querySelector('.crow[data-c="Launch"]');
-  crow.querySelector('.cdel').click();
-  crow.querySelector('.cyes').click();
+  crow.querySelector('.kebab').click();
+  item(document, 'Delete collection').click();
+  document.getElementById('dc-ok').click();
   await tick(window);
   const toast = document.querySelector('.toast');
   assert.ok(toast, 'the failure is surfaced, not swallowed');
@@ -562,8 +874,9 @@ test('a collection move that fully succeeds says nothing', async (t) => {
   const { window } = loadIndex(t);
   const { document } = window;
   const crow = document.querySelector('.crow[data-c="Launch"]');
-  crow.querySelector('.cdel').click();
-  crow.querySelector('.cyes').click();
+  crow.querySelector('.kebab').click();
+  item(document, 'Delete collection').click();
+  document.getElementById('dc-ok').click();
   await tick(window);
   assert.equal(document.querySelector('.toast'), null);
   assert.equal(window.sessionStorage.getItem('sf-index-msg'), null);

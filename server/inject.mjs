@@ -30,8 +30,11 @@ export function injectReviewLayer(html, { specId, transport = 'sse', api } = {})
   if (out.includes('</head>')) out = out.replace('</head>', `${head}\n</head>`);
 
   // theme + font are store-wide (global-prefs); width/filter/fit/toc are per-spec.
-  // Merge so the client boots with one flat prefs object as before.
-  const layer = reviewSnippet(specId, { ...readGlobalPrefs(), ...readPrefs(specId) }, transport, api);
+  // Merge so the client boots with one flat prefs object as before. Named rather
+  // than spread: ui.json also holds the index page's collection order, and this
+  // same layer is what a published spec serves to a stranger.
+  const { theme, font } = readGlobalPrefs();
+  const layer = reviewSnippet(specId, { ...(theme ? { theme } : {}), ...(font ? { font } : {}), ...readPrefs(specId) }, transport, api);
   if (out.includes('</body>')) {
     out = out.replace('</body>', `${layer}\n</body>`);
   } else {
