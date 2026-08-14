@@ -787,7 +787,7 @@ ${strip}
           // The order is a list of names, so a rename has to be applied to it too
           // — and before the reload the move fans out into, or the collection
           // reappears at the bottom under its new name.
-          putOrder(collOrder().map(function(c){return c===name?v:c;}),function(){
+          putOrderThen(collOrder().map(function(c){return c===name?v:c;}),function(){
             setColl(membersOf(name),v,'some are still in "'+name+'"');
           });
         }});
@@ -802,7 +802,7 @@ ${strip}
             ?'Its 1 spec is not deleted \\u2014 it becomes uncollected.'
             :'Its '+n+' specs are not deleted \\u2014 they become uncollected.'),
           onOk:function(){
-            putOrder(collOrder().filter(function(c){return c!==name;}),function(){
+            putOrderThen(collOrder().filter(function(c){return c!==name;}),function(){
               setColl(membersOf(name),'','some are still in "'+name+'"');
             });
           },
@@ -826,25 +826,20 @@ ${strip}
     var n=crow.nextElementSibling;
     return n&&n.getAttribute('data-c')!==''?n:null;
   }
-  /**
-   * @param then runs whether or not the write landed, on purpose: a rename or a
-   *   delete is the thing that was asked for, and refusing to do it because a
-   *   cosmetic order failed to save would be the worse failure.
-   * @param onFail undoes what the write was meant to record, for a reorder,
-   *   which has nothing else to do and must not leave the page showing an order
-   *   the store does not hold.
-   *
-   * A failure always says so. It says so through the carried toast when "then"
-   * is going to reload the page over the top of it, and plainly when nothing is.
-   */
-  function putOrder(order,then,onFail){
-    var done=then||function(){};
-    function settle(ok){
-      if(!ok){ (then?warn:showMsg)('The collection order could not be saved.'); if(onFail) onFail(); }
-      done();
-    }
+  var ORDER_FAILED='The collection order could not be saved.';
+  /** Store the order. @param done called with whether it landed. */
+  function putOrder(order,done){
     fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({collectionOrder:order})})
-      .then(function(x){settle(!!(x&&x.ok));},function(){settle(false);});
+      .then(function(x){done(!!(x&&x.ok));},function(){done(false);});
+  }
+  /**
+   * Write the order a rename or a delete implies, then do the thing itself —
+   * whether or not the write landed. Refusing to rename a collection because a
+   * cosmetic order failed to save would be the worse failure. The message is the
+   * carried one, since what follows reloads the page over the top of it.
+   */
+  function putOrderThen(order,then){
+    putOrder(order,function(ok){ if(!ok) warn(ORDER_FAILED); then(); });
   }
   function grpFor(name){
     for(var i=0;i<grps.length;i++){ if(grps[i].getAttribute('data-coll')===name) return grps[i]; }
@@ -872,17 +867,38 @@ ${strip}
     if(un) colls.appendChild(un);
     syncGroups();
   }
-  /** Persist the rail as it now stands, and put it back if the write does not land. */
-  function commitOrder(before){
-    putOrder(collOrder(),null,function(){setRail(before);});
+  /**
+   * Persist the rail as it now stands, and put it back if the write does not
+   * land.
+   *
+   * One write is in flight at a time and a move made during one is coalesced
+   * into a single write after it, because the rail IS the desired state — there
+   * is nothing to queue but "send it again". Letting them overlap would let two
+   * settle out of order, and an older failure would then roll back over a newer
+   * order that did save.
+   *
+   * The rollback target is the last order the store is KNOWN to hold, not the
+   * one this move started from: after a coalesced write, "before" is a position
+   * halfway through a gesture that was never stored.
+   */
+  var savedOrder=null, writing=false, pendingWrite=false;
+  function commitOrder(){
+    if(writing){ pendingWrite=true; return; }
+    writing=true;
+    var sending=collOrder();
+    putOrder(sending,function(ok){
+      writing=false;
+      if(ok) savedOrder=sending;
+      else { showMsg(ORDER_FAILED); setRail(savedOrder||sending); }
+      if(pendingWrite){ pendingWrite=false; commitOrder(); }
+    });
   }
   function moveColl(crow,dir){
     var sib=dir<0?crow.previousElementSibling:nextNamed(crow);
     if(!sib) return;
-    var before=collOrder();
     if(dir<0) colls.insertBefore(crow,sib); else colls.insertBefore(sib,crow);
     syncGroups();
-    commitOrder(before);
+    commitOrder();
   }
 
   // ---- drag to reorder ----
@@ -891,6 +907,8 @@ ${strip}
   // interpret about where it will land. Uncollected is not a target and never a
   // passenger, which is why every lookup here filters it out.
   var crows=[].slice.call(document.querySelectorAll('.crow'));
+  // What the store holds right now: the page was rendered from it.
+  savedOrder=collOrder();
   var dragging=null, dragFrom=null;
   if(colls){
     colls.addEventListener('dragstart',function(e){
@@ -926,7 +944,7 @@ ${strip}
       colls.classList.remove('rearranging');
       var before=dragFrom;
       dragging=null; dragFrom=null;
-      if(before.join('\\u0000')!==collOrder().join('\\u0000')) commitOrder(before);
+      if(before.join('\\u0000')!==collOrder().join('\\u0000')) commitOrder();
     });
   }
 

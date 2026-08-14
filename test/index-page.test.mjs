@@ -755,6 +755,69 @@ test('a reorder that fails to save puts the rail back', async (t) => {
   assert.equal(reloads.n, 0);
 });
 
+// Two moves in quick succession used to be two writes in flight. If the first
+// failed and the second landed, the first's rollback restored its own stale
+// snapshot over an order that had actually saved. One write at a time, and the
+// move made during it coalesced into a single write after it.
+test('a second move during a save does not race it', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  setCollection(c, 'Gamma');
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+  const sent = [];
+  let release;
+  const held = new Promise((r) => { release = r; });
+  window.fetch = (url, init) => {
+    sent.push(JSON.parse(init.body).collectionOrder);
+    calls.push({ method: init.method, url, body: JSON.parse(init.body) });
+    return held.then(() => ({ ok: true, json: () => Promise.resolve({}) }));
+  };
+
+  const up = (name) => {
+    document.querySelector(`.crow[data-c="${name}"] .kebab`).click();
+    item(document, 'Move up').click();
+  };
+  up('Gamma'); // Alpha, Gamma, Beta — the write for this is in flight
+  up('Gamma'); // Gamma, Alpha, Beta — must not start a second write yet
+  assert.equal(sent.length, 1, 'only one write in flight');
+  assert.deepEqual(sent[0], ['Alpha', 'Gamma', 'Beta']);
+
+  release();
+  await tick(window);
+  await tick(window);
+  assert.equal(sent.length, 2, 'the move made during the write follows it');
+  assert.deepEqual(sent[1], ['Gamma', 'Alpha', 'Beta'], 'and sends the rail as it now stands');
+  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta'], 'which is what is on screen');
+});
+
+test('a rollback goes to the last order that saved, not to where the move began', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  let ok = true;
+  window.fetch = () => Promise.resolve({ ok, status: ok ? 200 : 500, json: () => Promise.resolve({}) });
+
+  const up = (name) => {
+    document.querySelector(`.crow[data-c="${name}"] .kebab`).click();
+    item(document, 'Move up').click();
+  };
+  up('Beta');
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Beta', 'Alpha'], 'saved');
+
+  ok = false;
+  up('Alpha');
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Beta', 'Alpha'], 'back to the saved order, not the original');
+});
+
 test('an order that fails to save says so, and the rename it carried still happens', async (t) => {
   const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
   setCollection(a, 'Alpha');
