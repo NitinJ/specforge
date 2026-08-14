@@ -1,0 +1,152 @@
+/* SpecForge shared UI: the snackbar and the two dialogs.
+ *
+ * Loaded by BOTH surfaces — the home page and the review layer injected onto
+ * every served spec — so that "something happened" looks the same wherever you
+ * are, and so does "are you sure". Before this there were two of each: a
+ * bottom-left toast with a manual dismiss on the home page, a bottom-right box
+ * that vanished after three seconds on a spec, and no confirmation at all in
+ * front of the review layer's destructive actions.
+ *
+ * The --sf-* mapping is repeated from review.css rather than shared, because
+ * this sheet has to stand on its own on the home page, which does not load
+ * review.css. Both map to the same generic names, so a page that loads both gets
+ * one value, not a fight. */
+
+:root {
+  --sfui-panel: var(--panel, #171a21);
+  --sfui-ink: var(--ink, #e6e8ee);
+  --sfui-muted: var(--muted, #9aa3b2);
+  --sfui-line: var(--line, #2a2f3a);
+  --sfui-accent: var(--accent, #6ea8fe);
+  --sfui-red: var(--red, #f85149);
+}
+/* The fallbacks only apply on a spec that declares no palette of its own — a
+   plain HTML document. Those are white, so a dark card would be pasted onto a
+   light page. Follow the OS, as review.css does for the same reason. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --sfui-panel: var(--panel, #ffffff);
+    --sfui-ink: var(--ink, #1f2329);
+    --sfui-muted: var(--muted, #5c6470);
+    --sfui-line: var(--line, #d8dce2);
+    --sfui-accent: var(--accent, #2f6feb);
+    --sfui-red: var(--red, #cf222e);
+  }
+}
+
+/* ── snackbar ──────────────────────────────────────────────────────────── */
+/* Bottom centre, stacked, newest nearest the edge. Centre because the two
+   surfaces disagreed on a corner and both corners are spoken for: the home
+   page's selection bar sits bottom-centre only while selecting, and a spec's
+   launcher owns the bottom right. */
+.sfui-snacks {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.sfui-snack {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(90vw, 460px);
+  padding: 9px 10px 9px 14px;
+  border: 1px solid var(--sfui-line);
+  border-radius: 10px;
+  background: var(--sfui-panel);
+  color: var(--sfui-ink);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
+  pointer-events: auto;
+  animation: sfui-rise 160ms cubic-bezier(.16, 1, .3, 1);
+}
+/* A failure is marked, not shouted: a red edge and nothing else, since the text
+   is already doing the work. The rail sits flush inside the border rather than
+   floating off it. */
+.sfui-snack.err { border-color: var(--sfui-red); padding-left: 0; }
+.sfui-snack.err::before {
+  content: "";
+  flex: none;
+  width: 3px;
+  align-self: stretch;
+  margin: -9px 10px -9px 0;
+  border-radius: 9px 0 0 9px;
+  background: var(--sfui-red);
+}
+.sfui-snack-msg { flex: 1; min-width: 0; }
+.sfui-snack-act {
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid var(--sfui-line);
+  border-radius: 7px;
+  background: none;
+  color: var(--sfui-accent);
+  font: inherit;
+  font-weight: 560;
+  cursor: pointer;
+}
+.sfui-snack-act:hover { border-color: var(--sfui-accent); }
+.sfui-snack-x {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--sfui-muted);
+  font: 15px/1 -apple-system, system-ui, sans-serif;
+  cursor: pointer;
+}
+.sfui-snack-x:hover { color: var(--sfui-ink); }
+@keyframes sfui-rise { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .sfui-snack { animation: none; } }
+
+/* ── dialogs ───────────────────────────────────────────────────────────── */
+.sfui-dlg {
+  width: min(94vw, 400px);
+  padding: 18px;
+  border: 1px solid var(--sfui-line);
+  border-radius: 12px;
+  background: var(--sfui-panel);
+  color: var(--sfui-ink);
+  font: 13.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .3);
+}
+.sfui-dlg::backdrop { background: rgba(12, 14, 18, .42); }
+.sfui-dlg h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.sfui-lab { display: block; margin-bottom: 5px; font-size: 12px; color: var(--sfui-muted); }
+.sfui-in {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--sfui-line);
+  border-radius: 8px;
+  background: var(--bg, var(--sfui-panel));
+  color: var(--sfui-ink);
+  font: inherit;
+}
+.sfui-in:focus { outline: none; border-color: var(--sfui-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sfui-accent) 28%, transparent); }
+.sfui-body { margin: 0; color: var(--sfui-muted); }
+.sfui-body b { color: var(--sfui-ink); font-weight: 600; }
+.sfui-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.sfui-btn {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--sfui-line);
+  border-radius: 8px;
+  background: none;
+  color: var(--sfui-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.sfui-btn:hover { border-color: var(--sfui-muted); }
+.sfui-btn.primary { background: var(--sfui-accent); border-color: var(--sfui-accent); color: #fff; font-weight: 560; }
+.sfui-btn.danger { background: var(--sfui-red); border-color: var(--sfui-red); color: #fff; font-weight: 560; }
+.sfui-btn.primary:hover, .sfui-btn.danger:hover { filter: brightness(1.08); }
