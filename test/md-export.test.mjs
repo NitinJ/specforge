@@ -220,6 +220,17 @@ test('text sitting directly in a container keeps its inline markup', () => {
   assert.match(markdown, /> Run `webhooks replay` by hand, see \[the runbook\]\(https:\/\/x\.y\)\./);
 });
 
+test('a line break in container prose stays a line break', () => {
+  // inline() emits a hard break for <br>; the run that gathers container prose
+  // used to collapse all whitespace and rejoin the two lines into one.
+  const html = fixture('design').html().replace(
+    '<div class="callout warn">',
+    '<div class="callout warn">\n      first line<br>second line\n'
+  );
+  const { markdown } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(markdown, /> first line {2}\n> second line/, 'two trailing spaces: a markdown hard break');
+});
+
 test('the corpus exports without warnings', () => {
   for (const f of FIXTURES) {
     assert.deepEqual(exportFixture(f).warnings, [], `${f.name} exports cleanly`);

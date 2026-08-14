@@ -42,7 +42,9 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import "<file>" --title "<tit
 
 Prints `{ id, htmlPath, url, status, type }` — the file is copied into the store,
 attached to this session, daemon ensured. Lint `htmlPath` (step 3). If lint fails
-because it isn't house-style, fall back to 2B (author into the same `htmlPath`).
+because it isn't house-style, fall back to **2C** and author into the same
+`htmlPath`. Not 2B: that path runs a markdown parser, and handing it HTML would
+mechanically reconvert the document instead of shaping it.
 
 ## 2B. Convert a `.md` — deterministic pass first, then edit
 

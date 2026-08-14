@@ -28,11 +28,13 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list
 ## 2. Export
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-md <id> [--out <dir|file.md>]
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-md <id> [--out "<dir|file.md>"]
 ```
 
 `--out` takes a directory (the file is named from the spec title) or a path
-ending in `.md`. Omitted, it writes into the current directory.
+ending in `.md`. Omitted, it writes into the current directory. Quote it: a
+destination with a space in it otherwise arrives as two arguments and the export
+lands somewhere else.
 
 It prints `{ id, mdPath, assetsDir, assets, warnings }`:
 
