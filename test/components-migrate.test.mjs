@@ -164,6 +164,26 @@ test('running the codemod twice changes nothing the second time', () => {
   assert.equal(codemod(once).html, once);
 });
 
+// An imported spec is written by whatever produced it. The lint already reads
+// both quote styles, so a migration that read one would report success over
+// callouts it had left on the legacy vocabulary.
+test('a single-quoted class attribute migrates, and keeps its quotes', () => {
+  const html = LEGACY
+    .replace('<div class="callout c-risk">', "<div class='callout c-risk'>")
+    .replace('<div class="callout warn">', "<div class='callout warn'>");
+  const out = codemod(html).html;
+  assert.match(out, /<div class='callout risk'>/, 'renamed, and still single-quoted');
+  assert.doesNotMatch(out, /c-risk">/, 'and the double-quoted ones are untouched by it');
+});
+
+test('a single-quoted callout reaches the work list and takes a type', () => {
+  const html = LEGACY.replace('<div class="callout caut">Watch the density rule.</div>',
+    "<div class='callout warn'>Nothing here decides it.</div>");
+  const blocks = ambiguousBlocks(codemod(html).html);
+  assert.ok(blocks.some((b) => b.source === 'warn' && /Nothing here decides it/.test(b.text)),
+    'the migration sees it');
+});
+
 // ---- the classifier ----
 
 test('warn: a trigger and a consequence is a risk', () => {
