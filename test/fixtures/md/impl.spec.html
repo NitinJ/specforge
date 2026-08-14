@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="draft">
+<head>
+<meta charset="utf-8">
+<title>Rotate the signing key — Spec</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 8px 24px rgba(0,0,0,.28); --mono:ui-monospace,Menlo,monospace;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#fff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 8px 24px rgba(0,0,0,.06); --mono:ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){ --bg:#fbfaf7; --ink:#222629; }
+  }
+  body{background:var(--bg);color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <div class="brand"><span>Spec</span>Forge</div>
+  <a href="#tldr">TL;DR</a>
+  <a href="#overview">1 · Overview</a>
+  <a href="#impl-plan">2 · Implementation plan</a>
+  <a href="#task-tracker">3 · Task tracker</a>
+</nav>
+<main>
+  <h1>Rotate the signing key</h1>
+  <p class="sub">Spec · 2026-08-14 · status: <span class="tag accent">draft</span> · owner: nitin</p>
+
+  <section id="tldr" data-sf-section>
+    <div class="panel">
+      <h4 style="margin-top:0">TL;DR</h4>
+      <p style="margin-bottom:0">Dual-publish both keys for one token lifetime (14 days), cut signing to the new key, then retire the old one.</p>
+    </div>
+  </section>
+
+  <section id="overview" data-sf-section>
+    <h2>1 · Overview</h2>
+    <p>Design is settled in spec <code>a91f0c2b44</code>. This is the build plan only. The constraint that shapes every stage: a token signed with the old key must stay verifiable until it expires, so the two keys overlap for a full 14-day lifetime.</p>
+  </section>
+
+  <section id="impl-plan" data-sf-section>
+    <h2>2 · Implementation plan</h2>
+    <ol class="sf-stages">
+      <li data-sf-stage="1" data-sf-pr="">
+        <div class="sh"><h3>Stage 1 · Publish both keys</h3><span class="tag todo">todo</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="1.1" data-sf-status="todo">Serve both keys from the JWKS endpoint, new key first.<span class="verify">verify: the endpoint returns two keys and a client picks by <code>kid</code></span></li>
+          <li data-sf-task="1.2" data-sf-status="todo">Verify against either key.<span class="verify">verify: tokens signed with both keys validate</span></li>
+        </ul>
+        <p class="sub"><strong>Verifiable output:</strong> a JWKS response with two entries</p>
+      </li>
+      <li data-sf-stage="2" data-sf-pr="">
+        <div class="sh"><h3>Stage 2 · Cut over and retire</h3><span class="tag todo">todo</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="2.1" data-sf-status="todo">Sign with the new key.<span class="verify">verify: a fresh token carries the new <code>kid</code></span></li>
+          <li data-sf-task="2.2" data-sf-status="todo">Drop the old key 14 days after cutover.<span class="verify">verify: JWKS returns one key; old tokens are rejected</span></li>
+        </ul>
+        <p class="sub"><strong>Verifiable output:</strong> a single-key JWKS response</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="task-tracker" data-sf-section>
+    <h2>3 · Task tracker</h2>
+    <table>
+      <thead><tr><th>Stage</th><th>PR</th><th>Task</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>1 · Publish both keys</td><td>n/a</td><td>1.1 JWKS</td><td><span class="tag todo">todo</span></td></tr>
+        <tr><td>2 · Cut over and retire</td><td>n/a</td><td>2.1 sign with new key</td><td><span class="tag todo">todo</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+</div>
+</body>
+</html>

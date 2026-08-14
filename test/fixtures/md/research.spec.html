@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="approved">
+<head>
+<meta charset="utf-8">
+<title>On-device vs server inference for pose estimation — Spec</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 8px 24px rgba(0,0,0,.28); --mono:ui-monospace,Menlo,monospace;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#fff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 8px 24px rgba(0,0,0,.06); --mono:ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){ --bg:#fbfaf7; --ink:#222629; }
+  }
+  body{background:var(--bg);color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <div class="brand"><span>Spec</span>Forge</div>
+  <a href="#tldr">TL;DR</a>
+  <a href="#question">1 · Question</a>
+  <a href="#method">2 · Method</a>
+  <a href="#findings">3 · Findings</a>
+  <a href="#recommendations">4 · Recommendations</a>
+  <a href="#sources">Sources</a>
+</nav>
+<main>
+  <h1>On-device vs server inference for pose estimation</h1>
+  <p class="sub">Spec · 2026-08-14 · status: <span class="tag accent">approved</span> · owner: nitin</p>
+
+  <section id="tldr" data-sf-section>
+    <div class="panel">
+      <h4 style="margin-top:0">TL;DR</h4>
+      <p style="margin-bottom:0">On-device inference costs 340ms median on a 2021 mid-range Android and 0 cents per call. Server inference costs 95ms median plus 180ms round trip and $0.0004 per call. On-device wins below 2.1M monthly calls.</p>
+    </div>
+  </section>
+
+  <section id="question" data-sf-section>
+    <h2>1 · Question</h2>
+    <p>At what monthly call volume does server-side pose estimation cost less than shipping the model to the device, counting latency and support burden as well as cents?</p>
+  </section>
+
+  <section id="method" data-sf-section>
+    <h2>2 · Method</h2>
+    <ul>
+      <li>Benchmarked <strong>MoveNet Lightning</strong> on four Android devices and two iPhones, 500 frames each, measured 2026-07-28.</li>
+      <li>Priced server inference against the published rate card, retrieved 2026-07-30.</li>
+      <li>Excluded cold-start cost on the server path; measured warm only.</li>
+    </ul>
+  </section>
+
+  <section id="findings" data-sf-section>
+    <h2>3 · Findings</h2>
+    <h3>Latency</h3>
+    <table>
+      <thead><tr><th>Path</th><th>Device</th><th>Median</th><th>p95</th></tr></thead>
+      <tbody>
+        <tr><td>On-device</td><td>Pixel 6a</td><td>340ms</td><td>510ms</td></tr>
+        <tr><td>On-device</td><td>iPhone 13</td><td>120ms</td><td>180ms</td></tr>
+        <tr><td>Server</td><td>any</td><td>275ms</td><td>640ms</td></tr>
+      </tbody>
+    </table>
+    <h3>Cost</h3>
+    <p>Server inference is <code>$0.0004</code> per call. On-device adds 14MB to the bundle, which raises install abandonment by 0.3 percentage points at the 95% confidence interval measured in the 2026-06 install experiment.</p>
+    <div class="callout">
+      <p>The p95 crossover matters more than the median: the server path's tail is dominated by mobile network variance, not by inference.</p>
+    </div>
+  </section>
+
+  <section id="recommendations" data-sf-section>
+    <h2>4 · Recommendations</h2>
+    <ol>
+      <li>Ship on-device for iOS, where the median is 120ms.</li>
+      <li>Keep Android on the server path until the mid-range median drops under 200ms.</li>
+      <li>Revisit when call volume passes 2M per month.</li>
+    </ol>
+  </section>
+
+  <section id="sources" data-sf-section>
+    <h2>Sources</h2>
+    <ul>
+      <li><a href="https://example.com/movenet">MoveNet model card</a>, retrieved 2026-07-28.</li>
+      <li>Internal benchmark run <code>bench-2026-07-28-pose</code>.</li>
+    </ul>
+  </section>
+</main>
+</div>
+</body>
+</html>

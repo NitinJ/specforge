@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="draft">
+<head>
+<meta charset="utf-8">
+<title>Bulk export for saved searches — Spec</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 8px 24px rgba(0,0,0,.28); --mono:ui-monospace,Menlo,monospace;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#fff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 8px 24px rgba(0,0,0,.06); --mono:ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){ --bg:#fbfaf7; --ink:#222629; }
+  }
+  body{background:var(--bg);color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <div class="brand"><span>Spec</span>Forge</div>
+  <a href="#tldr">TL;DR</a>
+  <a href="#overview">1 · Overview</a>
+  <a href="#goals">2 · Goals &amp; non-goals</a>
+  <a href="#design">3 · Design</a>
+  <a href="#decisions">4 · Decisions</a>
+  <a href="#impl-plan">5 · Implementation plan</a>
+  <a href="#task-tracker">6 · Task tracker</a>
+  <a href="#runtime">7 · Runtime</a>
+</nav>
+<main>
+  <h1>Bulk export for saved searches</h1>
+  <p class="sub">Spec · 2026-08-14 · status: <span class="tag accent">draft</span> · owner: nitin</p>
+
+  <section id="tldr" data-sf-section>
+    <div class="panel">
+      <h4 style="margin-top:0">TL;DR</h4>
+      <p style="margin-bottom:0">A saved search exports to CSV through a queued job, capped at 50,000 rows, delivered as a signed link that expires in 24 hours.</p>
+    </div>
+  </section>
+
+  <section id="overview" data-sf-section>
+    <h2>1 · Overview</h2>
+    <p>Export runs inline today and times out past roughly 8,000 rows. The request holds a web worker for the whole render, so two concurrent exports degrade search for everyone.</p>
+  </section>
+
+  <section id="goals" data-sf-section>
+    <h2>2 · Goals &amp; non-goals</h2>
+    <h4>Goals</h4>
+    <ul>
+      <li>50,000 rows export without holding a web worker.</li>
+      <li>A user sees progress and a failure reason.</li>
+    </ul>
+    <h4>Non-goals</h4>
+    <ul>
+      <li>XLSX output.</li>
+      <li>Scheduled recurring exports.</li>
+    </ul>
+  </section>
+
+  <section id="design" data-sf-section>
+    <h2>3 · Design</h2>
+    <p>The request enqueues a job and returns <code>202</code> with a job id. A worker streams rows to object storage in 1,000-row pages, then writes a signed URL onto the job record.</p>
+    <table>
+      <thead><tr><th>Component</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>SearchController</code></td><td>Enqueue instead of render; return the job id.</td></tr>
+        <tr><td><code>ExportWorker</code></td><td>New. Pages the query, streams CSV, uploads.</td></tr>
+        <tr><td><code>jobs</code> table</td><td>New columns: <code>row_count</code>, <code>signed_url</code>, <code>expires_at</code>.</td></tr>
+      </tbody>
+    </table>
+    <pre><code class="lang-sql">ALTER TABLE jobs
+  ADD COLUMN row_count integer,
+  ADD COLUMN signed_url text,
+  ADD COLUMN expires_at timestamptz;</code></pre>
+    <div class="callout warn">
+      <p>The 50,000 row cap is enforced in the worker, not the query. A query returning more rows exports the first 50,000 and marks the job <code>truncated</code>.</p>
+    </div>
+  </section>
+
+  <section id="decisions" data-sf-section>
+    <h2>4 · Decisions</h2>
+    <table>
+      <thead><tr><th>#</th><th>Decision</th><th>Choice</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td>D1</td><td>Delivery</td><td>Signed URL, 24h expiry</td><td>Email attachments hit size limits past roughly 8MB.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="impl-plan" data-sf-section>
+    <h2>5 · Implementation plan</h2>
+    <p class="sub">Stages and tasks. One stage is one PR.</p>
+    <ol class="sf-stages">
+      <li data-sf-stage="0" data-sf-pr="311">
+        <div class="sh"><h3>Stage 0 · Job scaffolding</h3><span class="tag done">done</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="0.1" data-sf-status="done">Add the three <code>jobs</code> columns and the migration.<span class="verify">verify: migration applies and rolls back on a scratch database</span></li>
+          <li data-sf-task="0.2" data-sf-status="done">Job fixture factory for tests.<span class="verify">verify: a test creates a queued job and reads it back</span></li>
+        </ul>
+        <p class="sub"><strong>Verifiable output:</strong> a queued job row an agent can inspect</p>
+      </li>
+      <li data-sf-stage="1" data-sf-pr="">
+        <div class="sh"><h3>Stage 1 · Worker</h3><span class="tag warn">in_progress</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="1.1" data-sf-status="done">Page the query in 1,000-row batches.<span class="verify">verify: a 3,500-row fixture produces 4 batches</span></li>
+          <li data-sf-task="1.2" data-sf-status="in_progress">Stream CSV to object storage.<span class="verify">verify: the uploaded object matches the fixture byte for byte</span></li>
+          <li data-sf-task="1.3" data-sf-status="blocked">Signed URL generation.<span class="verify">verify: the URL 403s after expiry</span></li>
+          <li data-sf-task="1.4" data-sf-status="deferred">Progress percentage on the job record.<span class="verify">verify: the UI shows a moving bar</span></li>
+        </ul>
+        <p class="sub"><strong>Verifiable output:</strong> a CSV in the bucket for a seeded search</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="task-tracker" data-sf-section>
+    <h2>6 · Task tracker</h2>
+    <table>
+      <thead><tr><th>Stage</th><th>PR</th><th>Task</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>0 · Job scaffolding</td><td>311</td><td>0.1 migration</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>1 · Worker</td><td>n/a</td><td>1.2 stream CSV</td><td><span class="tag warn">in_progress</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="runtime" data-sf-section>
+    <h2>7 · Runtime</h2>
+    <h4>Design decisions (implementation time)</h4>
+    <ul><li class="footnote">none yet</li></ul>
+    <h4>Deviations</h4>
+    <ul><li class="footnote">none yet</li></ul>
+    <h4>Tradeoffs</h4>
+    <ul><li class="footnote">none yet</li></ul>
+  </section>
+</main>
+</div>
+</body>
+</html>
