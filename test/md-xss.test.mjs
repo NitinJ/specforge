@@ -138,6 +138,35 @@ test('an attribute value cannot break out of its own quotes', () => {
   assert.deepEqual(survived, [], `breakouts that survived:\n${survived.join('\n')}`);
 });
 
+test('an inline markdown image cannot fetch from a remote host', () => {
+  // An inline image is not a link the reader chooses: the browser fetches it the
+  // moment the spec opens. Block-level image lines go through the asset resolver,
+  // which reports what it refused; an inline one has nowhere to report from, so
+  // the alt text is kept as text and no element is emitted.
+  const body = importBody('text with ![a tracker](https://evil.test/t.png?u=1) inline');
+  assert.deepEqual(findings(body), []);
+  assert.doesNotMatch(body, /evil\.test/, 'not even as a dead attribute');
+  assert.match(body, /a tracker/, 'the alt text survives as the text it described');
+
+  // A local reference is still an image.
+  assert.match(importBody('text ![d](d.svg) inline'), /<img src="d\.svg" alt="d">/);
+});
+
+test('SVG2 href on <image> is a load, not a link', () => {
+  // <image href="…"> is the SVG2 spelling of xlink:href, and it fetches. Treating
+  // href as navigational everywhere let it through.
+  for (const vector of [
+    '<svg><image href="https://evil.test/t.png"/></svg>',
+    '<svg><use href="https://evil.test/x.svg#g"/></svg>',
+    '<svg><image href="javascript:alert(1)"/></svg>',
+  ]) {
+    assert.deepEqual(findings(importBody(vector)), [], vector);
+  }
+
+  // An anchor's href is still a link the reader may follow.
+  assert.match(importBody('<p><a href="https://example.com">x</a></p>'), /href="https:\/\/example\.com"/);
+});
+
 test('a remote image in raw HTML does not become a request', () => {
   // A spec is self-contained and can be published: a remote src is a beacon that
   // fires for every reviewer who opens the page and hands the author their IP.
