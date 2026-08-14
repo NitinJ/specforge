@@ -71,8 +71,8 @@ test('createSpec honours an explicit title over the HTML', () => {
   assert.equal(readMeta(id).title, 'Explicit');
 });
 
-test('createSpec stores the spec type (default design-impl, honours explicit)', () => {
-  assert.equal(readMeta(createSpec({ html: '<h1>A</h1>' })).type, 'design-impl');
+test('createSpec stores the spec type (default general, honours explicit)', () => {
+  assert.equal(readMeta(createSpec({ html: '<h1>A</h1>' })).type, 'general');
   assert.equal(readMeta(createSpec({ html: '<h1>B</h1>', type: 'research' })).type, 'research');
 });
 

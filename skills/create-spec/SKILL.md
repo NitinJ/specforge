@@ -5,9 +5,11 @@ description: |
   Author a new house-style spec into the SpecForge store. Use when the user asks to
   "write a spec", "create a design doc", "draft a spec for <x>", "research <x>", or
   "plan to implement <x>". Picks the spec type (design | research | design-impl |
-  impl), scaffolds the right shell, and authors the type's sections — light/dark
-  HTML, stable section ids, a floating TOC; impl types also get a Stages/Tasks plan,
-  a live task tracker, and impl-time stubs. Lints the universal basics before done.
+  impl | general), scaffolds the right shell, and authors the type's sections —
+  light/dark HTML, stable section ids, a floating TOC; impl types also get a
+  Stages/Tasks plan, a live task tracker, and impl-time stubs; general is the
+  fallback when no type fits and the sections come from the use case. Lints the
+  universal basics before done.
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
@@ -28,10 +30,16 @@ injects the review layer at serve time.
   - **research** — "research / investigate / explore / compare / evaluate / survey
     <X>". A findings report, not a build.
   - **design** — "design / architect / how should we <X>": a decision doc, no plan.
-  - **design-impl** (default) — "design and build / spec + plan for <X>": a design
-    plus an implementation plan. Use this when unsure.
+  - **design-impl** — "design and build / spec + plan for <X>": a design plus an
+    implementation plan. Pick this whenever the request is a design that will be
+    built, which is most of them.
   - **impl** — "plan to implement <existing design> / just the build plan": light
     design prose, heavy on stages/tasks.
+  - **general** (the fallback, and the CLI default) — the request is a document
+    that is none of the above: a proposal, a policy, a postmortem, a runbook, a
+    comparison, a brief. It scaffolds the chrome and one TL;DR section; you decide
+    every section from the use case. Reach for it only when no other type fits,
+    never to avoid choosing.
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
 
 ## 2. Scaffold into the store
@@ -42,8 +50,9 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --ty
 
 Prints `{ id, htmlPath, url, status, type }`. It has started/reused the daemon,
 copied the right shell to `htmlPath` (impl types → the full Stages/tracker/Runtime
-shell; design/research → a chrome-only doc shell), and attached the spec to this
-session. **Author into `htmlPath`** — that file IS the spec.
+shell; design/research → a chrome-only doc shell; general → the scaffold and a
+TL;DR, nothing else), and attached the spec to this session. **Author into
+`htmlPath`** — that file IS the spec.
 
 The shell comes from the store's per-type **template spec** (`template-<type>`,
 listed under Templates on the index) when one exists, else the bundled file. To
@@ -67,6 +76,15 @@ topic calls for). Whatever sections you keep:
   with `color-mix(... var(--token) …)`. See `templates/house-rules.md` → Palette tokens.
 - **Keep `<nav class="toc">` as the floating left sidebar** and keep its
   `<a href="#…">` entries in sync with the sections you end up with.
+
+**general** — the shell ships `tldr` and nothing else, because the sections are
+the use case's to decide. Work out what this document needs before you write it
+(a proposal wants context / proposal / impact / decision; a postmortem wants
+timeline / impact / root cause / actions; a runbook wants preconditions / steps /
+rollback), then author those sections with stable kebab-case ids, add one TOC link
+per section in document order, and stop. Do not import another type's skeleton
+wholesale. If the document turns out to need stages and tasks, it is a
+design-impl or impl spec: say so and rescaffold rather than growing a plan here.
 
 **design** — `tldr` · `overview` (problem / motivation) · `goals` (goals &
 non-goals) · `design` (the core: architecture, components, alternatives,

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="draft">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — Spec</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 1px 0 rgba(255,255,255,.02), 0 8px 24px rgba(0,0,0,.28);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#ffffff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#fbfaf7; --panel:#ffffff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+      --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+      --code:#f1efe9; --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,kbd{font-family:var(--mono);font-size:.88em;background:var(--code);
+    border:1px solid var(--line);border-radius:5px;padding:.08em .38em}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:13px;line-height:1.55}
+  pre code{background:none;border:none;padding:0}
+
+  .layout{display:grid;grid-template-columns:264px minmax(0,1fr);gap:0;max-width:var(--maxw,1280px);margin:0 auto}
+  /* Floating left TOC: pinned to the top of the viewport, scrolls independently,
+     stays in view for the whole page scroll (never scrolls up with the content). */
+  nav.toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;z-index:5;
+    padding:28px 16px 60px 24px;border-right:1px solid var(--line);font-size:13.5px}
+  nav.toc .brand{font-weight:700;font-size:15px;letter-spacing:.2px;margin-bottom:4px}
+  nav.toc .brand span{color:var(--accent)}
+  nav.toc .tag-mini{color:var(--muted);font-size:11.5px;margin-bottom:18px;display:block}
+  nav.toc a{display:block;color:var(--muted);padding:4px 8px;border-radius:6px;border-left:2px solid transparent}
+  nav.toc a:hover{color:var(--ink);text-decoration:none;background:var(--panel)}
+  nav.toc a.active{color:var(--ink);border-left-color:var(--accent);background:var(--panel)}
+  /* On narrow viewports the sticky sidebar would crowd the content — collapse it
+     to a static strip above the body so nothing overlaps. */
+  @media (max-width:860px){
+    .layout{grid-template-columns:1fr}
+    nav.toc{position:static;max-height:none;overflow:visible;
+      border-right:none;border-bottom:1px solid var(--line)}
+  }
+
+  main{padding:40px 48px 120px;min-width:0}
+  h1{font-size:30px;line-height:1.25;margin:0 0 10px}
+  h2{font-size:21px;margin:48px 0 14px;padding-top:10px;border-top:1px solid var(--line)}
+  h2:first-of-type{border-top:none;margin-top:18px}
+  h3{font-size:16.5px;margin:26px 0 8px}
+  h4{font-size:14px;margin:18px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  .sub{color:var(--muted);font-size:14px}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px;margin:16px 0;box-shadow:var(--shadow)}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+
+  .tag{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel);vertical-align:middle;line-height:1.5}
+  .tag.accent{color:var(--accent)} .tag.good{color:var(--green)} .tag.warn{color:var(--amber)}
+  .tag.bad{color:var(--red)} .tag.todo{color:var(--muted)} .tag.done{color:var(--green)}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 12px;border:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);font-weight:600}
+
+  .callout{border-left:3px solid var(--accent);background:var(--panel);border-radius:0 10px 10px 0;
+    padding:12px 16px;margin:16px 0}
+  .callout.warn{border-left-color:var(--amber)} .callout.good{border-left-color:var(--green)}
+
+  figure{margin:18px 0}
+  figure svg{max-width:100%;height:auto;display:block}
+  figcaption{color:var(--muted);font-size:12.5px;margin-top:6px}
+
+  /* Plan styling ships even though no plan is scaffolded: a general spec that
+     turns out to need stages gets a section id="impl-plan" added by hand, and
+     parsePlan() + the tracker injection key off the ids and data-sf-* attributes,
+     not off the spec type. Without these rules that added plan renders unstyled. */
+  ol.sf-stages{list-style:none;padding-left:0}
+  li[data-sf-stage]{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;margin:12px 0;box-shadow:var(--shadow)}
+  li[data-sf-stage]>.sh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  li[data-sf-stage]>.sh h3{margin:0;font-size:15.5px}
+  ul.sf-tasks{list-style:none;padding-left:4px;margin:10px 0 2px}
+  li[data-sf-task]{margin:6px 0;font-size:14px}
+  li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margin:2px 0 0 20px}
+
+  .footnote{color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc">
+  <div class="brand"><span>Spec</span>Forge</div>
+  <span class="tag-mini">{{STATUS}}</span>
+  <a href="#tldr">TL;DR</a>
+  <!-- One link per section you add, in document order, pointing at its id. -->
+</nav>
+
+<main>
+  <h1>{{TITLE}}</h1>
+  <p class="sub">Spec · {{DATE}} · status: <span class="tag accent">{{STATUS}}</span> · owner: {{OWNER}}</p>
+
+  <section id="tldr" data-sf-section>
+    <div class="panel">
+      <h4 style="margin-top:0">TL;DR</h4>
+      <p style="margin-bottom:0">{{ Three-to-five lines: what this document is and what it concludes or proposes. }}</p>
+    </div>
+  </section>
+
+  <!--
+    This is the general shell: the SpecForge scaffold with no opinion about
+    sections. Use it when no other type fits (design, research, design-impl,
+    impl, deck), including when the source is a markdown file whose headings
+    are its own.
+
+    Add sections here. Each one is a section element carrying a stable kebab-case
+    id and the data-sf-section attribute, opening with an h2 whose text matches
+    its TOC link, then content in p / ul / table / .panel / .card / .callout.
+    Copy the shape from the tldr section above, and add one TOC link per section
+    in the same order.
+
+    (No example markup in this comment on purpose: the store parses specs with
+    regexes that do not skip comments, so a sample section element here would be
+    counted as a real one.)
+
+    Rules that still apply, because they are the house contract and the lint:
+      - ids are unique and stable; comments anchor to them.
+      - every section carries data-sf-section.
+      - color only through the palette tokens defined above.
+      - the theme block, the TOC, and the scroll-spy script stay.
+    If the document grows stages and tasks, add a section with the id impl-plan
+    using the data-sf-stage / data-sf-task / data-sf-status markup, and one with
+    the id task-tracker; the tracker renders itself from the plan.
+  -->
+
+  <p class="footnote" style="margin-top:40px">Authored with SpecForge · {{DATE}}</p>
+</main>
+</div>
+
+<script>
+  // TOC scroll-spy.
+  (function(){
+    var links=[].slice.call(document.querySelectorAll("nav.toc a"));
+    var map={};links.forEach(function(a){map[a.getAttribute("href").slice(1)]=a;});
+    var obs=new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(e.isIntersecting){
+          links.forEach(function(l){l.classList.remove("active");});
+          var a=map[e.target.id];if(a)a.classList.add("active");
+        }
+      });
+    },{rootMargin:"-10% 0px -80% 0px",threshold:0});
+    Object.keys(map).forEach(function(id){var el=document.getElementById(id);if(el)obs.observe(el);});
+  })();
+</script>
+</body>
+</html>

@@ -60,8 +60,9 @@ light and dark themes, a floating table of contents, and stable anchors.
 |---|---|---|
 | `design` | a decision or architecture doc | problem, goals, design, alternatives, decisions, open questions |
 | `research` | a findings report | question, method, findings, analysis, recommendations, sources |
-| `design-impl` *(default)* | design **and** build it | the design sections, plus a Stages/Tasks plan and a live tracker |
+| `design-impl` | design **and** build it | the design sections, plus a Stages/Tasks plan and a live tracker |
 | `impl` | build an existing design | light scope, plus a Stages/Tasks plan and a live tracker |
+| `general` *(fallback)* | anything the others do not cover | the scaffold and a TL;DR: theme, TOC, anchors, review layer. Sections are yours |
 
 Already have a doc? `/specforge:convert <file>` brings a `.md` or `.html` into
 the store, either as-is or re-authored into house style.

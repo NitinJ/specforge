@@ -25,7 +25,10 @@ installed plugin directory.
     spec (step 2B).
 - **Infer the spec type** from the source — `research` (a findings report),
   `design` (a design doc, no plan), `design-impl` (design + a plan), or `impl` (a
-  build plan). Default to `design-impl` when unsure. Pass it as `--type` below.
+  build plan). When the source is none of those, use `general`: the scaffold plus
+  a TL;DR, sections taken from the source's own headings. Pass it as `--type`
+  below. A converted document keeps its own shape, so `general` is the right
+  answer more often here than when authoring from scratch.
 
 ## 2A. Ingest an existing HTML spec
 
