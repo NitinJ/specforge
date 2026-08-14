@@ -15,9 +15,12 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 # tune-templates
 
 Turn the review-comment history into better templates. The templates are the
-per-type spec shells (`template-general`, `template-design`, `template-research`,
-`template-design-impl`, `template-impl`), stored — and edited — as ordinary specs.
-Editing a template spec changes what every future spec of that type scaffolds from.
+per-type spec shells, one `template-<type>` per entry in `SPEC_TYPES`
+(`lib/meta.mjs`), stored — and edited — as ordinary specs. Editing a template spec
+changes what every future spec of that type scaffolds from. Read the list from
+`SPEC_TYPES` at run time rather than from memory; enumerating it here is how a
+type gets silently skipped.
+
 `template-general` is deliberately section-free: tune its chrome and its authoring
 comment, never add sections to it.
 
