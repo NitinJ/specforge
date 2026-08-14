@@ -921,6 +921,12 @@
     // Drive MCP); the row reflects meta.export and updates live on the poll.
     els.menu.appendChild(exportRow());
 
+    // Download as markdown. Unlike the two rows above this needs no relay and no
+    // state: the daemon renders it per request and the browser saves what comes
+    // back. Loopback only — the route lives on the daemon, not on the gateway a
+    // published page is served from, so offering it there would 404.
+    if ((window.SPECFORGE || {}).transport !== 'poll') els.menu.appendChild(downloadMdRow());
+
     // Share — publish this spec on a public URL. Only offered on the loopback
     // copy: a published page has no share route behind it, and offering a
     // reviewer a button to re-publish what they are already reading is noise.
@@ -1052,6 +1058,20 @@
           .catch(function () { flashErr('Could not detach.'); });
       },
     });
+  }
+
+  // Download-as-markdown row. A plain anchor: the response carries
+  // Content-Disposition, so the browser saves it with the right name and no
+  // script has to fetch, blob and revoke anything. The server decides whether
+  // that is a .md or a .zip, which depends on whether the spec has diagrams —
+  // inline SVG does not survive a markdown renderer, so those travel as files.
+  function downloadMdRow() {
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    var link = create('a', { class: 'sf-row-main sf-doc-link', href: SPEC_API + '/md', download: '' });
+    link.innerHTML = '<span class="sf-row-ic">⤓</span><span>Download markdown</span>';
+    link.onclick = function () { closeMenu(); };
+    row.appendChild(link);
+    return row;
   }
 
   // Export-to-Google-Docs row — reflects meta.export. The browser can't run the

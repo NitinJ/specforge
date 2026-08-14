@@ -53,6 +53,14 @@ test('the display ordinal is not part of the slug', () => {
   assert.equal(slugify('Goals & non-goals'), 'goals-non-goals');
 });
 
+test('a marker cannot set an id that is not a valid anchor', () => {
+  // An id is what the TOC links to and what comments hang off. One with slashes
+  // or spaces breaks its own link, and nothing downstream should have to wonder
+  // whether an id is also a path.
+  const md = '# Doc\n\n## One\n<!-- sf:section id="../../escape" -->\n\na\n\n## Two\n<!-- sf:section id="has spaces" -->\n\nb\n';
+  assert.deepEqual(getSectionIds(convert(md).html), ['escape', 'has-spaces']);
+});
+
 test('duplicate headings get suffixed ids so the lint stays green', () => {
   const { html } = convert('# Doc\n\n## Notes\n\na\n\n## Notes\n\nb\n\n## Notes\n\nc\n');
   assert.deepEqual(getSectionIds(html), ['notes', 'notes-2', 'notes-3']);

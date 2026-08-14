@@ -7,6 +7,8 @@
 //   GET  /healthz                              → 200 {"service":"specforge","pid":N}
 //   GET  /                                      → index: a table of all store specs
 //   GET  /spec/<id>                             → spec.html with the review layer injected
+//   GET  /api/spec/<id>/md                      → the spec as markdown: a .md, or a
+//                                                 .zip when it has diagrams to carry
 //   GET  /events?spec=<id>                      → SSE live-reload for a spec
 //   GET  /public/*                              → review-layer client assets
 //   GET/POST /api/spec/<id>/comments            → list / create threads
@@ -43,6 +45,8 @@ import {
 } from '../lib/store-api.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
+import { renderMd } from '../lib/store-md.mjs';
+import { zip } from '../lib/zip.mjs';
 
 // Publications live for the daemon's lifetime, which is what lets a share
 // outlive the terminal that made it. One registry per process.
@@ -56,6 +60,53 @@ export { renderIndex };
 function send(res, status, type, body) {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
   res.end(body);
+}
+
+/**
+ * Hand the spec over as markdown.
+ *
+ * A plain .md when the spec has no diagrams, a zip when it does: a browser
+ * download is one file, and inline SVG does not survive a markdown renderer, so
+ * the diagrams have to travel as sidecar files.
+ *
+ * Rendered per request and never stored. Unlike the Google Docs export this
+ * needs no session relay, because nothing outside the process has to run.
+ *
+ * Daemon-only by construction: the gateway (lib/gateway.mjs) serves nothing but
+ * /public/* and /s/<token>/*, so no share link can reach this.
+ */
+function serveMarkdown(id, res) {
+  let rendered;
+  try {
+    rendered = renderMd(id);
+  } catch (err) {
+    return sendJson(res, 404, { error: err.message });
+  }
+  // The slug is already [a-z0-9-]; the guard is for a title that slugged to
+  // nothing and fell back to the id, and for anything a future slug lets past.
+  // Leading dots go too, so the name can never be `..` or a dotfile.
+  const base = (rendered.slug || id).replace(/[^\w.-]/g, '').replace(/^\.+/, '') || 'spec';
+
+  if (!rendered.assets.length) {
+    res.writeHead(200, {
+      'Content-Type': 'text/markdown; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${base}.md"`,
+      'Cache-Control': 'no-store',
+    });
+    return res.end(rendered.markdown);
+  }
+
+  const archive = zip([
+    { name: `${base}.md`, data: rendered.markdown },
+    ...rendered.assets.map((a) => ({ name: `${base}.assets/${a.name}`, data: a.svg })),
+  ]);
+  res.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Disposition': `attachment; filename="${base}.zip"`,
+    'Content-Length': archive.length,
+    'Cache-Control': 'no-store',
+  });
+  return res.end(archive);
 }
 
 function serveSpec(id, res) {
@@ -332,6 +383,8 @@ export function createDaemon() {
       // the document moved while it was not listening.
       const st = path.match(/^\/api\/spec\/([\w-]+)\/state$/);
       if (st) return sendJson(res, 200, readPublicationState(st[1]));
+      const md = path.match(/^\/api\/spec\/([\w-]+)\/md$/);
+      if (md) return serveMarkdown(md[1], res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
       if (sm) return serveSpec(sm[1], res);
       const pub = path.match(/^\/public\/([\w.-]+)$/);

@@ -187,6 +187,19 @@ test('diagram files are numbered within their section', () => {
   assert.deepEqual(assets.map((a) => a.name), ['architecture-1.svg', 'flow-1.svg']);
 });
 
+test('a section id becomes a file name, so it is reduced to a safe token', () => {
+  // House ids are kebab-case, but a hand-authored spec can carry anything, and
+  // the id ends up as a path inside the assets directory and inside a zip.
+  const html = fixture('diagrams').html().replace('id="architecture"', 'id="../../escape"');
+  const { assets, markdown } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.deepEqual(assets.map((a) => a.name), ['escape-1.svg', 'flow-1.svg']);
+  assert.doesNotMatch(
+    markdown.match(/!\[[^\]]*\]\([^)]*\)/g).join('\n'),
+    /\.\.\//,
+    'no traversal survives into the image link'
+  );
+});
+
 test('a spec with no diagrams produces no assets', () => {
   for (const name of ['design', 'research', 'design-impl', 'impl']) {
     assert.equal(exportFixture(fixture(name)).assets.length, 0, `${name} has no diagrams`);
@@ -255,6 +268,29 @@ test('image references follow the file name when --out renames the export', () =
   const md = readFileSync(out, 'utf8');
   assert.match(md, /\(notes\.assets\/architecture-1\.svg\)/);
   assert.doesNotMatch(md, /topology\.assets/, 'no link left pointing at the old name');
+});
+
+test('--zip writes one archive instead of a file and a folder', () => {
+  const id = createSpec({ html: fixture('diagrams').html(), title: 'Topology', type: 'design' });
+  const r = exportMd(id, { out: store.dir, exportedAt: EXPORTED_AT, zip: true });
+
+  assert.equal(r.mdPath, null, 'nothing loose is written');
+  assert.equal(r.assetsDir, null);
+  assert.match(r.zipPath, /topology\.zip$/);
+  assert.deepEqual(readdirSync(store.dir).filter((f) => f !== 'specs'), ['topology.zip']);
+
+  const buf = readFileSync(r.zipPath);
+  assert.equal(buf.readUInt32LE(0), 0x04034b50);
+  assert.ok(buf.includes(Buffer.from('topology.md')));
+  assert.ok(buf.includes(Buffer.from('topology.assets/architecture-1.svg')));
+});
+
+test('--zip on a spec with no diagrams is still one archive holding the .md', () => {
+  const id = createSpec({ html: fixture('design').html(), title: 'Retry policy', type: 'design' });
+  const r = exportMd(id, { out: store.dir, exportedAt: EXPORTED_AT, zip: true });
+  assert.match(r.zipPath, /retry-policy\.zip$/);
+  assert.equal(r.assets, 0);
+  assert.ok(readFileSync(r.zipPath).includes(Buffer.from('retry-policy.md')));
 });
 
 test('resolveOut treats a .md path as the file and anything else as a directory', () => {
