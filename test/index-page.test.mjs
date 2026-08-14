@@ -4,8 +4,9 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { JSDOM, VirtualConsole } from 'jsdom';
 
@@ -14,6 +15,9 @@ import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
 import { attach, STALE_MS } from '../lib/attach.mjs';
 import { writeGlobalPrefs } from '../lib/global-prefs.mjs';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const UI_JS = readFileSync(join(ROOT, 'server', 'public', 'ui.js'), 'utf8');
 
 const setCollection = (id, c) => { const m = readMeta(id); m.collection = c; writeMeta(id, m); };
 const setTags = (id, tags) => { const m = readMeta(id); m.tags = tags; writeMeta(id, m); };
@@ -138,7 +142,13 @@ function loadIndex(t, opts) {
     if (/navigation to another Document/i.test(e.message)) reloads.n += 1;
     else throw e;
   });
-  const dom = new JSDOM(renderIndex(opts), { runScripts: 'dangerously', url: 'http://localhost/', virtualConsole });
+  // jsdom does not fetch external scripts, so the shared UI is inlined where the
+  // page asks for it. Same file, same order relative to the page's own script.
+  const html = renderIndex(opts).replace(
+    '<script src="/public/ui.js" defer></script>',
+    `<script>${UI_JS}</script>`,
+  );
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'http://localhost/', virtualConsole });
   const { window } = dom;
   t.after(() => window.close());
   const calls = [];
@@ -249,12 +259,12 @@ test('rename opens a dialog prefilled with the current name and POSTs /rename', 
   const { window, calls } = loadIndex(t);
   const { document } = window;
   act(document, document.querySelector('.row[data-id]'), 'Rename');
-  const dlg = document.getElementById('dprompt');
+  const dlg = document.getElementById('sf-dp');
   assert.ok(dlg.hasAttribute('open'), 'a real dialog, not an inline input swap');
-  const input = document.getElementById('dp-input');
+  const input = document.getElementById('sf-dp-input');
   assert.equal(input.value, 'Before', 'prefilled, so a rename is an edit not a retype');
   input.value = 'After';
-  document.getElementById('dp-ok').click();
+  document.getElementById('sf-dp-ok').click();
   await tick(window);
   const c = calls.find((x) => /\/rename$/.test(x.url));
   assert.ok(c && c.method === 'POST' && c.body.title === 'After', 'POST /rename {title:After}');
@@ -278,8 +288,8 @@ test('Cancel in the rename dialog changes nothing', async (t) => {
   const { window, calls } = loadIndex(t);
   const { document } = window;
   act(document, document.querySelector('.row[data-id]'), 'Rename');
-  document.getElementById('dp-input').value = 'After';
-  document.getElementById('dp-cancel').click();
+  document.getElementById('sf-dp-input').value = 'After';
+  document.getElementById('sf-dp-cancel').click();
   await tick(window);
   assert.equal(calls.filter((x) => /\/rename$/.test(x.url)).length, 0, 'nothing sent');
   assert.equal(document.querySelector('.title').textContent, 'Before');
@@ -487,10 +497,10 @@ test('delete asks in a dialog that names the spec, and Cancel aborts', async (t)
   const { window, calls } = loadIndex(t);
   const { document } = window;
   act(document, document.querySelector(`.row[data-id="${del}"]`), 'Delete spec');
-  const dlg = document.getElementById('dconfirm');
+  const dlg = document.getElementById('sf-dc');
   assert.ok(dlg.hasAttribute('open'), 'a confirm dialog, not a hover overlay');
-  assert.match(document.getElementById('dc-body').textContent, /Zap/, 'it names what it will delete');
-  document.getElementById('dc-cancel').click();
+  assert.match(document.getElementById('sf-dc-body').textContent, /Zap/, 'it names what it will delete');
+  document.getElementById('sf-dc-cancel').click();
   assert.ok(!dlg.hasAttribute('open'), 'Cancel closes it');
   assert.equal(calls.filter((c) => c.method === 'DELETE').length, 0, 'nothing deleted on cancel');
   assert.ok(document.querySelector(`.row[data-id="${del}"]`), 'the row is still present');
@@ -504,7 +514,7 @@ test('confirming a delete DELETEs the spec, removes the row, and updates the cou
   const { document } = window;
   assert.match(document.getElementById('count').textContent, /2 specs/);
   act(document, document.querySelector(`.row[data-id="${del}"]`), 'Delete spec');
-  document.getElementById('dc-ok').click();
+  document.getElementById('sf-dc-ok').click();
   await tick(window);
   const c = calls.find((x) => x.method === 'DELETE');
   assert.ok(c && new RegExp(`/api/spec/${del}$`).test(c.url), 'DELETE /api/spec/:id fired');
@@ -518,10 +528,10 @@ test('a failed delete (non-2xx) keeps the row and closes the dialog', async (t) 
   const { document } = window;
   window.fetch = () => Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ error: 'nope' }) });
   act(document, document.querySelector(`.row[data-id="${del}"]`), 'Delete spec');
-  document.getElementById('dc-ok').click();
+  document.getElementById('sf-dc-ok').click();
   await tick(window);
   assert.ok(document.querySelector(`.row[data-id="${del}"]`), 'the row survives a rejected delete');
-  assert.ok(!document.getElementById('dconfirm').hasAttribute('open'), 'the dialog is dismissed');
+  assert.ok(!document.getElementById('sf-dc').hasAttribute('open'), 'the dialog is dismissed');
 });
 
 test('template cards have no actions menu', async (t) => {
@@ -748,7 +758,7 @@ test('a reorder that fails to save puts the rail back', async (t) => {
   await tick(window);
   assert.deepEqual(railOrder(document), ['Alpha', 'Beta'], 'the move is undone');
   assert.deepEqual(groupOrder(document), ['Alpha', 'Beta'], 'and so is the list');
-  const toast = document.querySelector('.toast');
+  const toast = document.querySelector('.sfui-snack');
   assert.match(toast.textContent, /order could not be saved/);
   assert.equal(window.sessionStorage.getItem('sf-index-msg'), null,
     'nothing reloads here, so the message is not carried into the next load');
@@ -826,7 +836,7 @@ test('a move made during a failing write survives it', async (t) => {
   await tick(window);
   assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta'], 'the newer move is still on screen');
   assert.deepEqual(sent[sent.length - 1], ['Gamma', 'Alpha', 'Beta'], 'and is what got stored');
-  assert.equal(document.querySelector('.toast'), null, 'a failure the retry recovered from is not reported');
+  assert.equal(document.querySelector('.sfui-snack'), null, 'a failure the retry recovered from is not reported');
 });
 
 test('a rollback goes to the last order that saved, not to where the move began', async (t) => {
@@ -863,10 +873,10 @@ test('an order that fails to save says so, and the rename it carried still happe
     : Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
   document.querySelector('.crow[data-c="Alpha"] .kebab').click();
   item(document, 'Rename').click();
-  document.getElementById('dp-input').value = 'Release';
-  document.getElementById('dp-ok').click();
+  document.getElementById('sf-dp-input').value = 'Release';
+  document.getElementById('sf-dp-ok').click();
   await tick(window);
-  const toast = document.querySelector('.toast');
+  const toast = document.querySelector('.sfui-snack');
   assert.ok(toast, 'a failed order write is not swallowed');
   assert.match(toast.textContent, /order could not be saved/);
 });
@@ -954,7 +964,7 @@ test('a drag that fails to save puts the rail back', async (t) => {
   drag(window, document.querySelector('.crow[data-c="Beta"]'), document.querySelector('.crow[data-c="Alpha"]'));
   await tick(window);
   assert.deepEqual(railOrder(document), ['Alpha', 'Beta'], 'undone');
-  assert.match(document.querySelector('.toast').textContent, /order could not be saved/);
+  assert.match(document.querySelector('.sfui-snack').textContent, /order could not be saved/);
 });
 
 test('the ends of the list offer no move past them, and Uncollected never moves', (t) => {
@@ -982,8 +992,8 @@ test('renaming a collection carries its place in the order', async (t) => {
   const { document } = window;
   document.querySelector('.crow[data-c="Beta"] .kebab').click();
   item(document, 'Rename').click();
-  document.getElementById('dp-input').value = 'Release';
-  document.getElementById('dp-ok').click();
+  document.getElementById('sf-dp-input').value = 'Release';
+  document.getElementById('sf-dp-ok').click();
   await tick(window);
   const put = calls.find((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT');
   assert.deepEqual(put.body.collectionOrder, ['Release', 'Alpha'], 'renamed in place, not appended');
@@ -1000,7 +1010,7 @@ test('deleting a collection drops it from the order', async (t) => {
   const { document } = window;
   document.querySelector('.crow[data-c="Beta"] .kebab').click();
   item(document, 'Delete collection').click();
-  document.getElementById('dc-ok').click();
+  document.getElementById('sf-dc-ok').click();
   await tick(window);
   const put = calls.find((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT');
   assert.deepEqual(put.body.collectionOrder, ['Alpha']);
@@ -1032,10 +1042,10 @@ test('renaming a collection re-files every member spec', async (t) => {
   const crow = document.querySelector('.crow[data-c="Launch"]');
   crow.querySelector('.kebab').click();
   item(document, 'Rename').click();
-  const input = document.getElementById('dp-input');
+  const input = document.getElementById('sf-dp-input');
   assert.equal(input.value, 'Launch', 'prefilled with the name being changed');
   input.value = 'GA';
-  document.getElementById('dp-ok').click();
+  document.getElementById('sf-dp-ok').click();
   await tick(window);
   const moves = calls.filter((c) => /\/organize$/.test(c.url));
   assert.equal(moves.length, 2, 'one PATCH per member, none for the uncollected spec');
@@ -1051,15 +1061,15 @@ test('deleting a collection asks first, says what happens, then ungroups its spe
   const crow = document.querySelector('.crow[data-c="Launch"]');
   crow.querySelector('.kebab').click();
   item(document, 'Delete collection').click();
-  const body = document.getElementById('dc-body').textContent;
+  const body = document.getElementById('sf-dc-body').textContent;
   assert.match(body, /Launch/, 'names the collection');
   assert.match(body, /Its 1 spec is not deleted/, 'how many specs it holds, and that they survive');
   assert.match(body, /uncollected/i, 'and where they end up');
-  document.getElementById('dc-cancel').click();
+  document.getElementById('sf-dc-cancel').click();
   assert.equal(calls.filter((c) => /\/organize$/.test(c.url)).length, 0, 'Cancel leaves the specs alone');
   crow.querySelector('.kebab').click();
   item(document, 'Delete collection').click();
-  document.getElementById('dc-ok').click();
+  document.getElementById('sf-dc-ok').click();
   await tick(window);
   const moves = calls.filter((c) => /\/organize$/.test(c.url));
   assert.equal(moves.length, 1);
@@ -1119,9 +1129,9 @@ test('a collection move that only partly succeeds says so', async (t) => {
   const crow = document.querySelector('.crow[data-c="Launch"]');
   crow.querySelector('.kebab').click();
   item(document, 'Delete collection').click();
-  document.getElementById('dc-ok').click();
+  document.getElementById('sf-dc-ok').click();
   await tick(window);
-  const toast = document.querySelector('.toast');
+  const toast = document.querySelector('.sfui-snack');
   assert.ok(toast, 'the failure is surfaced, not swallowed');
   assert.match(toast.textContent, /1 of 2 specs moved/);
   assert.match(toast.textContent, /still in "Launch"/, 'it names where the stragglers are');
@@ -1137,9 +1147,9 @@ test('a collection move that fully succeeds says nothing', async (t) => {
   const crow = document.querySelector('.crow[data-c="Launch"]');
   crow.querySelector('.kebab').click();
   item(document, 'Delete collection').click();
-  document.getElementById('dc-ok').click();
+  document.getElementById('sf-dc-ok').click();
   await tick(window);
-  assert.equal(document.querySelector('.toast'), null);
+  assert.equal(document.querySelector('.sfui-snack'), null);
   assert.equal(window.sessionStorage.getItem('sf-index-msg'), null);
 });
 

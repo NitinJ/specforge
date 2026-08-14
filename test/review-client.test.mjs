@@ -21,6 +21,9 @@ const REVIEW_JS = readFileSync(join(ROOT, 'server', 'public', 'review.js'), 'utf
 // reconcile.js is injected before review.js and defines window.SFReconcile —
 // the block registry the client resolves anchors against.
 const RECONCILE_JS = readFileSync(join(ROOT, 'server', 'public', 'reconcile.js'), 'utf8');
+// ui.js is injected ahead of both and defines window.SFUI — the snackbar and the
+// confirm dialog, shared with the home page.
+const UI_JS = readFileSync(join(ROOT, 'server', 'public', 'ui.js'), 'utf8');
 
 const SPEC_BODY = `
   <main>
@@ -99,6 +102,7 @@ async function bootReviewLayer(t, opts = {}) {
   // Last hook before the client boots — for stubbing browser APIs jsdom lacks
   // (e.g. ResizeObserver) that the client feature-detects at build time.
   if (opts.preBoot) opts.preBoot(window);
+  if (!opts.noUi) window.eval(UI_JS); // injected ahead of review.js in production
   if (!opts.noReconcile) window.eval(RECONCILE_JS); // injected ahead of review.js in production
   window.eval(REVIEW_JS); // deferred-script execution → boot() via the readyState check
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
@@ -1048,6 +1052,30 @@ test('Escape dismisses the composer without creating a thread', async (t) => {
   assert.equal(posts.filter((x) => /\/comments$/.test(x.url)).length, 0, 'nothing was created');
 });
 
+// Escape closing a confirmation must not also reach the layer behind it: the
+// same keypress would cancel the composer and take an unposted draft with it.
+test('Escape aimed at a dialog does not reach the composer behind it', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  mouse(window, document.querySelector('p.a'), 'click');
+  await tick(window);
+  const box = document.querySelector('.sf-bub-compose textarea');
+  box.value = 'half a thought';
+
+  window.SFUI.confirm({ title: 'Detach', body: 'y', onOk: function () {} });
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await tick(window);
+  assert.ok(document.querySelector('.sf-bub-compose'), 'the composer is still open');
+  assert.equal(document.querySelector('.sf-bub-compose textarea').value, 'half a thought',
+    'and the draft is still in it');
+
+  // With nothing modal up, Escape means what it always meant.
+  document.getElementById('sf-dc-cancel').click();
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await tick(window);
+  assert.ok(!document.querySelector('.sf-bub-compose'), 'dismissed');
+});
+
 test('expanding a thread closes an open composer — only one focused card', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
   const { document } = window;
@@ -1898,9 +1926,10 @@ test('pressing it with only discussion open says why nothing was sent', async (t
   const { window } = await bootReviewLayer(t, { threads: DISCUSSION_THREAD, meta: { status: 'draft' } });
   saveKey(window);
   await tick(window);
-  const flash = window.document.querySelector('.sf-flash, .sf-toast, #sf-flash');
+  const flash = window.document.querySelector('.sfui-snack');
   assert.ok(flash, 'something was said');
   assert.match(flash.textContent, /@agent/);
+  assert.ok(flash.classList.contains('err'), 'and marked as a refusal, not a note');
 });
 
 // Submitting reloads the comment layer, which rebuilds every card from the
@@ -1919,7 +1948,7 @@ test('it will not submit over a comment you are still typing', async (t) => {
   assert.equal(posts.filter((p) => /\/comments\/submit$/.test(p.url)).length, 0, 'nothing was sent');
   assert.equal(document.querySelector('#sf-rail .sf-bub-compose textarea').value, 'half a thought',
     'and the draft is still there');
-  assert.match(document.querySelector('.sf-flash').textContent, /Post your comment first/);
+  assert.match(document.querySelector('.sfui-snack').textContent, /Post your comment first/);
 });
 
 test('the same guard covers the button, which could always discard a draft', async (t) => {
@@ -2147,7 +2176,27 @@ test('the footer shows the attached session id + Detach (posts /detach), alongsi
   assert.ok(detach, 'Detach present when attached');
   detach.click();
   await tick(window);
-  assert.ok(posts.some((p) => /\/detach$/.test(p.url)), 'Detach posts /detach');
+  // Detaching is not destructive but it is consequential: comments submitted
+  // afterwards reach nobody. It asks, like every other action of that weight.
+  assert.equal(posts.filter((p) => /\/detach$/.test(p.url)).length, 0, 'nothing sent before the confirm');
+  const dlg = document.getElementById('sf-dc');
+  assert.ok(dlg.hasAttribute('open'), 'a confirm dialog');
+  assert.match(document.getElementById('sf-dc-body').textContent, /sit unread/, 'it says what stops working');
+  document.getElementById('sf-dc-ok').click();
+  await tick(window);
+  assert.ok(posts.some((p) => /\/detach$/.test(p.url)), 'confirming posts /detach');
+});
+
+test('Cancel on the detach confirm leaves the spec attached', async (t) => {
+  const { window, posts } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678' } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  document.querySelector('#sf-menu .sf-detach').click();
+  await tick(window);
+  document.getElementById('sf-dc-cancel').click();
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/detach$/.test(p.url)).length, 0, 'nothing sent');
+  assert.ok(!document.getElementById('sf-dc').hasAttribute('open'), 'and the dialog closes');
 });
 
 // ---------- per-spec UI prefs (theme · width · filter) ----------
@@ -2963,9 +3012,38 @@ test('Unshare DELETEs the share', async (t) => {
       };
     },
   });
-  window.document.getElementById('sf-launcher').click();
-  window.document.querySelector('#sf-menu .sf-share-off').click();
-  assert.ok(deletes.some((u) => /\/share$/.test(u)), 'it DELETEs the share');
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  document.querySelector('#sf-menu .sf-share-off').click();
+  // The link is already out there and stopping the share breaks it for everyone
+  // with no undo — publishing again mints a new token on a new URL.
+  assert.equal(deletes.length, 0, 'nothing is revoked before the confirm');
+  assert.ok(document.getElementById('sf-dc').hasAttribute('open'), 'a confirm dialog');
+  assert.match(document.getElementById('sf-dc-body').textContent, /new link/,
+    'it says the old link will not come back');
+  document.getElementById('sf-dc-ok').click();
+  await tick(window);
+  assert.ok(deletes.some((u) => /\/share$/.test(u)), 'confirming DELETEs the share');
+});
+
+test('Cancel on the unshare confirm leaves the link live', async (t) => {
+  const deletes = [];
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', status: 'draft', share: { url: 'https://calm-fox-1234.trycloudflare.com' } },
+    preBoot: (w) => {
+      const orig = w.fetch;
+      w.fetch = (url, init) => {
+        if (init && init.method === 'DELETE') { deletes.push(url); return Promise.resolve({ ok: true }); }
+        return orig(url, init);
+      };
+    },
+  });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  document.querySelector('#sf-menu .sf-share-off').click();
+  document.getElementById('sf-dc-cancel').click();
+  await tick(window);
+  assert.equal(deletes.length, 0, 'the link is untouched');
 });
 
 test('Copy puts the link on the clipboard', async (t) => {

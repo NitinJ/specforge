@@ -491,7 +491,7 @@
     els.sidebar.querySelector('.sf-side-close').onclick = function () { setSidebar(false); };
     els.resolveAll.onclick = function () {
       if (!unresolvedCount()) return;
-      postJSON(API + '/resolve-all').then(load).catch(function () { flash('Could not resolve threads.'); });
+      postJSON(API + '/resolve-all').then(load).catch(function () { flashErr('Could not resolve threads.'); });
     };
     Array.prototype.forEach.call(els.sidebar.querySelectorAll('.sf-filter button'), function (b) {
       // Reflect the persisted filter (the markup defaults "Open" to on).
@@ -521,6 +521,11 @@
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
     document.addEventListener('keydown', function (e) {
+      // A modal dialog answers Escape itself, and the keypress still bubbles to
+      // here. Acting on it a second time would collapse the thread and cancel
+      // the composer behind the dialog — losing an unposted draft to a keypress
+      // that was meant to close a confirmation.
+      if (window.SFUI && window.SFUI.dialogOpen()) return;
       if (e.key === 'Escape') { clearHover(); closeMenu(); collapseThread(); cancelCompose(); }
       if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) onSaveKey(e);
     });
@@ -817,8 +822,8 @@
     if (s.act === 'submit') return submitBatch();
     if (s.act === 'review') return setSidebar(true); // open the sidebar to read the agent's replies
     postJSON(SPEC_API + '/status', { status: 'approved' }).then(function (r) {
-      if (r.ok) load(); else flash('Could not update status.');
-    }).catch(function () { flash('Could not update status.'); });
+      if (r.ok) load(); else flashErr('Could not update status.');
+    }).catch(function () { flashErr('Could not update status.'); });
   }
   function unresolvedCount() {
     return state.threads.filter(function (t) { return t.state !== 'resolved'; }).length;
@@ -1032,9 +1037,21 @@
     row.appendChild(sel);
     return row;
   }
+  // Asks first. Nothing is lost, but the spec stops reaching anyone: comments
+  // submitted after this sit unread until a session takes it, and the session
+  // that had it is not necessarily one you can get back to.
   function detachSpec() {
-    postJSON(SPEC_API + '/detach').then(function () { closeMenu(); load(); })
-      .catch(function () { flash('Could not detach.'); });
+    var who = (state.meta && state.meta.sessionLabel) || 'the session that owns it';
+    confirmThen({
+      title: 'Detach this spec',
+      body: 'It stops reaching ' + who + '. Comments you submit will sit unread '
+        + 'until a session picks this spec up.',
+      ok: 'Detach',
+      onOk: function () {
+        postJSON(SPEC_API + '/detach').then(function () { closeMenu(); load(); })
+          .catch(function () { flashErr('Could not detach.'); });
+      },
+    });
   }
 
   // Export-to-Google-Docs row — reflects meta.export. The browser can't run the
@@ -1137,17 +1154,29 @@
     var finish = function () { state.sharing = false; load(); renderLauncher(); renderShared(); };
     postJSON(SPEC_API + '/share').then(function (r) {
       if (r.ok) return finish();
-      r.json().then(function (b) { finish(); flash((b && b.error) || 'Could not publish this spec.'); })
-        .catch(function () { finish(); flash('Could not publish this spec.'); });
-    }).catch(function () { finish(); flash('Could not publish this spec.'); });
+      r.json().then(function (b) { finish(); flashErr((b && b.error) || 'Could not publish this spec.'); })
+        .catch(function () { finish(); flashErr('Could not publish this spec.'); });
+    }).catch(function () { finish(); flashErr('Could not publish this spec.'); });
   }
 
+  // Asks first. The link is already out there — in someone's tab, in a message —
+  // and stopping the share breaks it for everyone at once, with no undo: the next
+  // publish is a new token on a new URL, so the old link never comes back.
   function doUnshare() {
-    fetch(SPEC_API + '/share', { method: 'DELETE' }).then(function (r) {
-      if (!r.ok) return flash('Could not stop sharing.');
-      load();
-      renderLauncher();
-    }).catch(function () { flash('Could not stop sharing.'); });
+    confirmThen({
+      title: 'Stop sharing',
+      body: 'Anyone with the link loses access immediately, and publishing again '
+        + 'gives a new link — this one will not work.',
+      ok: 'Stop sharing',
+      onOk: function () {
+        fetch(SPEC_API + '/share', { method: 'DELETE' }).then(function (r) {
+          if (!r.ok) return flashErr('Could not stop sharing.');
+          load();
+          renderLauncher();
+          flash('Sharing stopped.');
+        }).catch(function () { flashErr('Could not stop sharing.'); });
+      },
+    });
   }
 
   // Queue the export, then refresh — the row flips to "Exporting…" (menu stays open
@@ -1156,9 +1185,9 @@
   function doExport() {
     postJSON(SPEC_API + '/export').then(function (r) {
       if (r.ok) return load();
-      r.json().then(function (b) { flash((b && b.error) || 'Could not start the export.'); })
-        .catch(function () { flash('Could not start the export.'); });
-    }).catch(function () { flash('Could not start the export.'); });
+      r.json().then(function (b) { flashErr((b && b.error) || 'Could not start the export.'); })
+        .catch(function () { flashErr('Could not start the export.'); });
+    }).catch(function () { flashErr('Could not start the export.'); });
   }
 
   // ---------- block targeting ----------
@@ -1542,8 +1571,8 @@
         // on the comment, so a browser writing as `lavee` and editing as nobody
         // cannot edit what it just wrote.
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withAuthor({ body: v })),
-      }).then(function (r) { if (r.ok) load(); else flash('Could not save the edit.'); })
-        .catch(function () { flash('Could not save the edit.'); });
+      }).then(function (r) { if (r.ok) load(); else flashErr('Could not save the edit.'); })
+        .catch(function () { flashErr('Could not save the edit.'); });
     }
     save.onclick = submit;
     cancel.onclick = close;
@@ -1867,10 +1896,10 @@
       if (!body) return;
       postJSON(API, withAuthor({ anchor: anchor, body: body }))
         .then(function (r) {
-          if (!r.ok) return flash('Could not add the comment.');
+          if (!r.ok) return flashErr('Could not add the comment.');
           state.composeEl = null;
           load();
-        }).catch(function () { flash('Could not add the comment.'); });
+        }).catch(function () { flashErr('Could not add the comment.'); });
     }
     save.onclick = function (e) { e.stopPropagation(); submit(); };
     row.appendChild(create('span', { class: 'sf-hint' }, MOD_HINT + ' to comment'));
@@ -1952,10 +1981,10 @@
     res.onclick = function (e) {
       e.stopPropagation();
       postJSON(API + '/' + t.id + '/resolve').then(function (r) {
-        if (!r.ok) return flash('Could not resolve the thread.');
+        if (!r.ok) return flashErr('Could not resolve the thread.');
         state.active = null;
         load();
-      }).catch(function () { flash('Could not resolve the thread.'); });
+      }).catch(function () { flashErr('Could not resolve the thread.'); });
     };
     row.appendChild(res); row.appendChild(send);
     b.appendChild(ta); b.appendChild(aud.el); b.appendChild(row);
@@ -2348,8 +2377,8 @@
     // Pressed with nothing to send. Say which, rather than appearing to be a
     // dead key — the counts are already in the footer but the drawer may be shut.
     var d = discussionCount();
-    if (d) return flash(d + (d === 1 ? ' open thread is' : ' open threads are') + ' discussion — add @agent to send one.');
-    flash('Nothing to submit.');
+    if (d) return flashErr(d + (d === 1 ? ' open thread is' : ' open threads are') + ' discussion — add @agent to send one.');
+    flashErr('Nothing to submit.');
   }
 
   /**
@@ -2371,11 +2400,11 @@
 
   function submitBatch() {
     // Never at the cost of something written and not yet posted.
-    if (draftText()) return flash('Post your comment first (' + MOD_HINT + '), then submit.');
+    if (draftText()) return flashErr('Post your comment first (' + MOD_HINT + '), then submit.');
     postJSON(API + '/submit', {}).then(function (r) {
       if (r.ok) load();
       else flash('Batch submit activates in the review-loop stage.');
-    }).catch(function () { flash('Could not submit batch.'); });
+    }).catch(function () { flashErr('Could not submit batch.'); });
   }
 
   // ---------- activate ----------
@@ -2469,11 +2498,34 @@
     flushPara(); flushList();
     return out.join('');
   }
-  function flash(msg) {
+  /**
+   * Every message this layer shows, through the one snackbar the home page uses
+   * too (server/public/ui.js). It used to be a box of its own in the opposite
+   * corner that always faded after three seconds, which meant a failure and a
+   * copied link looked and behaved identically.
+   *
+   * `tone` is 'err' for anything reporting that something did not happen; those
+   * stay up longer, because a failure is read rather than glimpsed.
+   */
+  function flash(msg, tone) {
+    if (window.SFUI) return window.SFUI.snack(msg, { tone: tone });
+    // ui.js is a separate <script>; if it did not load, saying nothing would be
+    // worse than saying it plainly.
     var n = create('div', { class: 'sf-flash', role: 'status' }, msg);
-    n.style.cssText = 'position:fixed;bottom:60px;right:16px;z-index:60;background:var(--sf-panel);border:1px solid var(--sf-line);color:var(--sf-ink);border-radius:8px;padding:10px 14px;font:13px system-ui';
+    n.style.cssText = 'position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:2147483000;background:var(--sf-panel);border:1px solid var(--sf-line);color:var(--sf-ink);border-radius:10px;padding:10px 14px;font:13px system-ui';
     document.body.appendChild(n);
-    setTimeout(function () { n.remove(); }, 3000);
+    setTimeout(function () { n.remove(); }, 4000);
+    return { dismiss: function () { n.remove(); } };
+  }
+  /** The failing half of flash — everything that reports something did not happen. */
+  function flashErr(msg) { return flash(msg, 'err'); }
+  /**
+   * Ask first. Falls through to doing it when ui.js is absent, because a missing
+   * script must not silently disable a control the page still shows.
+   */
+  function confirmThen(o) {
+    if (window.SFUI) return window.SFUI.confirm(o);
+    o.onOk();
   }
 })();
 

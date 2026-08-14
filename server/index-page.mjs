@@ -220,6 +220,8 @@ export function renderIndex({ shareInfo } = {}) {
 
   return `<!DOCTYPE html><html lang="en" data-theme="${theme}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>SpecForge</title>
+<link rel="stylesheet" href="/public/ui.css">
+<script src="/public/ui.js" defer></script>
 <style>
   :root[data-theme="light"]{
     --bg:#faf9f6;--surface:#ffffff;--surface2:#f3f1ec;--ink:#1c2024;--muted:#6b7280;--faint:#9aa1ab;
@@ -412,25 +414,8 @@ export function renderIndex({ shareInfo } = {}) {
   .pnew:hover{background:var(--accent-soft)}
   .pempty{padding:8px;color:var(--faint);font-size:12.5px;text-align:center}
 
-  /* ── dialogs (native <dialog>: Esc, focus trap and backdrop for free) ── */
-  .dlg{width:min(94vw,400px);padding:18px;border:1px solid var(--line2);border-radius:12px;
-       background:var(--surface);color:var(--ink);box-shadow:0 18px 48px rgba(0,0,0,.3)}
-  .dlg::backdrop{background:rgba(12,14,18,.42)}
-  .dlg h3{margin:0 0 12px;font-size:15px;font-weight:600;letter-spacing:-.01em}
-  .dlab{display:block;margin-bottom:5px;font-size:12px;color:var(--muted)}
-  .din{width:100%;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;
-       background:var(--bg);color:var(--ink);font:inherit;font-size:13.5px}
-  .din:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-  .dbody{margin:0;font-size:13.5px;color:var(--muted);line-height:1.55}
-  .dbody b{color:var(--ink);font-weight:600}
-  .dacts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
-  .btn{height:32px;padding:0 14px;border:1px solid var(--line2);border-radius:8px;background:none;color:var(--ink);
-       font-size:13px;cursor:pointer;transition:background .12s,border-color .12s,filter .12s}
-  .btn:hover{background:var(--surface2)}
-  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:560}
-  .btn.danger{background:var(--red);border-color:var(--red);color:#fff;font-weight:560}
-  .btn.primary:hover,.btn.danger:hover{filter:brightness(1.08);background:var(--accent)}
-  .btn.danger:hover{background:var(--red)}
+  /* The snackbar and both dialogs are styled by /public/ui.css, off the generic
+     palette names this page already declares for the review layer. */
 
   /* ── bulk bar ─────────────────────────────────────────────────────── */
   .bulk{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:10px;
@@ -442,13 +427,6 @@ export function renderIndex({ shareInfo } = {}) {
   .bbtn:hover{color:var(--ink);border-color:var(--line2)}
   .bbtn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:560}
   .bbtn.primary:hover{color:#fff;filter:brightness(1.08)}
-
-  /* one-shot warning, carried across the reload a fan-out triggers */
-  .toast{position:fixed;left:22px;bottom:22px;z-index:30;display:flex;align-items:center;gap:10px;max-width:460px;
-         padding:9px 12px;border:1px solid var(--red);border-radius:10px;font-size:12.5px;color:var(--ink);
-         background:color-mix(in srgb,var(--surface) 88%,var(--red));box-shadow:0 8px 28px rgba(0,0,0,.16)}
-  .tx{background:none;border:none;color:var(--muted);font-size:14px;line-height:1;cursor:pointer;padding:0}
-  .tx:hover{color:var(--ink)}
 
   /* ── templates strip ──────────────────────────────────────────────── */
   .tpls{margin:40px 0 0}
@@ -522,17 +500,9 @@ ${strip}
   <div class="plist" id="plist"></div>
   <button class="pnew" id="pnew" type="button" hidden></button>
 </div>
-<dialog class="dlg" id="dprompt" aria-labelledby="dp-title">
-  <h3 id="dp-title">Rename</h3>
-  <label class="dlab" id="dp-label" for="dp-input">Name</label>
-  <input class="din" id="dp-input" type="text" autocomplete="off">
-  <div class="dacts"><button class="btn" id="dp-cancel" type="button">Cancel</button><button class="btn primary" id="dp-ok" type="button">Save</button></div>
-</dialog>
-<dialog class="dlg" id="dconfirm" aria-labelledby="dc-title">
-  <h3 id="dc-title">Delete</h3>
-  <p class="dbody" id="dc-body"></p>
-  <div class="dacts"><button class="btn" id="dc-cancel" type="button">Cancel</button><button class="btn danger" id="dc-ok" type="button">Delete</button></div>
-</dialog>
+<!-- The snackbar and both dialogs come from /public/ui.js, which builds them on
+     demand — the same ones a spec page gets, so a message and a confirmation
+     look and behave the same wherever you meet them. -->
 <script>
 (function(){
   var root=document.documentElement, btn=document.getElementById('theme');
@@ -684,42 +654,12 @@ ${strip}
     filter.focus();
   }
 
-  // ---- dialogs ----
-  // jsdom has no <dialog> behaviour at all, so both calls are guarded: a real
-  // browser gets showModal (focus trap, Esc, backdrop) and the test DOM gets the
-  // open attribute, which is what showModal reflects anyway.
-  function showDlg(d){ if(d.showModal) d.showModal(); else d.setAttribute('open',''); }
-  function hideDlg(d){ if(d.close) d.close(); else d.removeAttribute('open'); }
-  /** @param o {title,label,value,ok,onOk} */
-  function askName(o){
-    var d=document.getElementById('dprompt'), i=document.getElementById('dp-input');
-    document.getElementById('dp-title').textContent=o.title;
-    document.getElementById('dp-label').textContent=o.label;
-    document.getElementById('dp-ok').textContent=o.ok||'Save';
-    i.value=o.value||'';
-    d.onOk=function(){var v=i.value.trim(); if(v&&v!==o.value) o.onOk(v);};
-    showDlg(d); i.focus(); i.select();
-  }
-  /** @param o {title,body,ok,onOk} */
-  function askConfirm(o){
-    var d=document.getElementById('dconfirm');
-    document.getElementById('dc-title').textContent=o.title;
-    document.getElementById('dc-body').textContent=o.body;
-    document.getElementById('dc-ok').textContent=o.ok||'Delete';
-    d.onOk=o.onOk;
-    showDlg(d);
-    document.getElementById('dc-cancel').focus();
-  }
-  (function wireDialogs(){
-    [['dprompt','dp-ok','dp-cancel'],['dconfirm','dc-ok','dc-cancel']].forEach(function(ids){
-      var d=document.getElementById(ids[0]);
-      document.getElementById(ids[1]).onclick=function(){var f=d.onOk; hideDlg(d); if(f) f();};
-      document.getElementById(ids[2]).onclick=function(){hideDlg(d);};
-    });
-    document.getElementById('dp-input').onkeydown=function(e){
-      if(e.key==='Enter'){e.preventDefault(); document.getElementById('dp-ok').click();}
-    };
-  })();
+  // ---- dialogs + messages ----
+  // All four live in /public/ui.js, which a spec page loads too. This page used
+  // to carry its own of each, and the two disagreed on where a message appears
+  // and whether it ever goes away.
+  function askName(o){ SFUI.prompt(o); }
+  function askConfirm(o){ SFUI.confirm(o); }
 
   function paintChips(row,tags){
     var box=row.querySelector('.tags'), add=box.querySelector('.addtag');
@@ -960,7 +900,7 @@ ${strip}
     if(e.key==='Escape'&&pop){var o=popOwner;closePop();if(o&&o.focus)o.focus();return;}
     // A modal dialog handles its own Escape; the keypress still bubbles to here,
     // and clearing the selection out from under an open dialog is a surprise.
-    if(e.key==='Escape'&&document.querySelector('.dlg[open]')) return;
+    if(e.key==='Escape'&&window.SFUI&&SFUI.dialogOpen()) return;
     if(t.classList&&t.classList.contains('addtag-in')){
       if(e.key==='Enter'){var r2=rowOf(t),id2=r2.getAttribute('data-id'),v2=t.value.trim(),cur=tagsOf(r2);
         if(v2 && cur.map(function(x){return x.toLowerCase();}).indexOf(v2.toLowerCase())===-1){
@@ -1134,16 +1074,18 @@ ${strip}
   // replaces the page the first one is painted on.
   var MSGKEY='sf-index-msg';
   function warn(text){try{sessionStorage.setItem(MSGKEY,text);}catch(e){} showMsg(text);}
-  function showMsg(text){
-    var el=document.createElement('div'); el.className='toast'; el.setAttribute('role','status'); el.textContent=text;
-    var x=document.createElement('button'); x.type='button'; x.className='tx'; x.setAttribute('aria-label','Dismiss'); x.textContent='\\u00d7';
-    x.onclick=function(){el.remove();};
-    el.appendChild(x); document.body.appendChild(el);
-  }
-  (function showCarriedMsg(){
-    var text=null;
-    try{text=sessionStorage.getItem(MSGKEY); if(text) sessionStorage.removeItem(MSGKEY);}catch(e){}
-    if(text) showMsg(text);
+  function showMsg(text){ return SFUI.snack(text,{tone:'err'}); }
+  // ui.js is a deferred script, so it has not run while this one is parsing.
+  // Everything else here is reached from an event; this is the one thing that
+  // would fire at parse time.
+  (function carriedMsg(){
+    function show(){
+      var text=null;
+      try{text=sessionStorage.getItem(MSGKEY); if(text) sessionStorage.removeItem(MSGKEY);}catch(e){}
+      if(text) showMsg(text);
+    }
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',show);
+    else show();
   })();
   // The selection moves through the same picker a single row does, so there is
   // one way to name a destination rather than a menu here and a text field there.

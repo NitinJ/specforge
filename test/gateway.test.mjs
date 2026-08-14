@@ -156,10 +156,17 @@ test('a path that normalises onto another token needs that token anyway', async 
   assert.equal(escape.status, 404, 'and it grants nothing the caller did not already hold');
 });
 
+// Every asset the injected layer names, including the shared UI — a published
+// page that cannot load ui.js has no confirm dialog in front of its actions.
 test('the review-layer assets are served at the root', async () => {
-  const r = await fetch(`${base}/public/review.js`);
-  assert.equal(r.status, 200);
-  assert.match(r.headers.get('content-type') || '', /javascript/);
+  for (const [name, type] of [
+    ['review.js', /javascript/], ['review.css', /css/],
+    ['ui.js', /javascript/], ['ui.css', /css/],
+  ]) {
+    const r = await fetch(`${base}/public/${name}`);
+    assert.equal(r.status, 200, `${name} is served`);
+    assert.match(r.headers.get('content-type') || '', type);
+  }
 });
 
 test('the comments API is reachable under a token and writes to that spec', async () => {

@@ -26,7 +26,9 @@ const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'spe
 export function injectReviewLayer(html, { specId, transport = 'sse', api } = {}) {
   let out = renderLiveTracker(html);
 
-  const head = `<link rel="stylesheet" href="/public/review.css">`;
+  // ui.css first: review.css is the layer's own chrome, and where the two speak
+  // about the same thing (a dialog, a message) the layer's sheet should win.
+  const head = `<link rel="stylesheet" href="/public/ui.css">\n<link rel="stylesheet" href="/public/review.css">`;
   if (out.includes('</head>')) out = out.replace('</head>', `${head}\n</head>`);
 
   // theme + font are store-wide (global-prefs); width/filter/fit/toc are per-spec.
@@ -191,6 +193,7 @@ function reviewSnippet(specId, prefs, transport, api) {
 ${watcher}
 })();
 </script>
+<script src="/public/ui.js" defer></script>
 <script src="/public/reconcile.js" defer></script>
 <script src="/public/review.js" defer></script>`;
 }

@@ -28,6 +28,16 @@ test('inject adds a disconnection banner, hidden by default', () => {
   assert.match(out, /sf-dc-reload/, 'has a reload affordance');
 });
 
+// The snackbar and the confirm dialog are shared with the home page, so they
+// arrive as their own asset rather than being built into the layer. Order is the
+// contract: review.js calls SFUI, and defer keeps scripts in document order.
+test('inject loads the shared UI ahead of the review client', () => {
+  const out = injectReviewLayer(HTML, { specId: 'abc123' });
+  assert.match(out, /<link rel="stylesheet" href="\/public\/ui\.css">/);
+  assert.ok(out.indexOf('/public/ui.js') < out.indexOf('/public/review.js'), 'ui.js first');
+  assert.match(out, /<script src="\/public\/ui\.js" defer><\/script>/);
+});
+
 test('inject wires the SSE connection to the banner with a grace debounce', () => {
   const out = injectReviewLayer(HTML, { specId: 'abc123' });
   assert.match(out, /es\.onopen\s*=\s*connected/, 'open hides the banner');
