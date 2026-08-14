@@ -165,6 +165,18 @@ test('the codemod does not touch markup inside a script', () => {
   assert.match(out, /<div class="callout risk">/, 'while the document itself migrated');
 });
 
+// Whatever case the tag was written in, and whether or not the closing tag
+// matches the opening one. The protection rests on a backreference under /i,
+// which JavaScript canonicalizes, and that is subtle enough to pin.
+test('raw text is protected in any casing', () => {
+  for (const [open, close] of [['SCRIPT', 'SCRIPT'], ['SCRIPT', 'script'], ['ScRiPt', 'sCrIpT']]) {
+    const html = `<${open}>var t = "<div class='callout c-risk'>x</div>";</${close}>`;
+    assert.match(codemod(html).html, /callout c-risk/, `<${open}>…</${close}> is raw text`);
+  }
+  const upper = `<SCRIPT>el.innerHTML = "<div class='callout warn'>Never read this</div>";</SCRIPT>`;
+  assert.equal(ambiguousBlocks(codemod(upper).html).length, 0, 'and it offers no blocks');
+});
+
 test('a callout written inside a script is not in the work list', () => {
   const html = LEGACY.replace('</body>',
     `<script>el.innerHTML = "<div class='callout warn'>Never read this</div>";</script></body>`);
