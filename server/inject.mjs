@@ -5,6 +5,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { renderLiveTracker } from '../lib/tracker.mjs';
+import { blockComponents } from '../components/index.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 
@@ -165,6 +166,11 @@ function reviewSnippet(specId, prefs, transport, api) {
   const base = api || `/api/spec/${specId}`;
   const cfg = JSON.stringify({
     specId, prefs: prefs || {}, transport, api: base,
+    // The library's block components, so the review client can anchor a comment
+    // to every one of them. Without this the client's selector list and the
+    // lint's idea of what is commentable drift apart, and the lint silences a
+    // warning about text nobody can actually comment on.
+    blocks: blockComponents(),
     ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
   });
   const watcher = transport === 'poll' ? pollWatcher(base, POLL_INTERVAL_MS) : sseWatcher(id);

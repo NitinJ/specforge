@@ -122,3 +122,32 @@ test('the check keys on the attribute, not on the presence of a block', () => {
   const c = check(spec('<div class="callout">x</div>', { attr: '' }));
   assert.ok(!c || c.ok === true);
 });
+
+// The same defect that let `sync --all` rewrite the design spec: a document-wide
+// match reads a spec writing ABOUT the attribute as a spec carrying it.
+test('a pre-library spec that writes about the attribute in prose stays exempt', () => {
+  const html = spec(
+    `<p>The &lt;html&gt; element carries <code>${ATTR}="1"</code>.</p><div class="callout">x</div>`,
+    { attr: '', css: '' },
+  );
+  const c = check(html);
+  assert.ok(!c || c.ok === true, 'prose is not consent');
+});
+
+// The lint tells an author a block component is commentable. If the review
+// client's anchor list did not follow, that is a promise the page cannot keep:
+// text inside a .diff or a .flow would be uncommentable while the lint called it
+// fine. Both derive from the definitions now.
+test('every block component the lint accepts is one the review client can anchor', async () => {
+  const { blockComponents } = await import('../components/index.mjs');
+  const { injectReviewLayer } = await import('../server/inject.mjs');
+  const { readFileSync } = await import('node:fs');
+
+  const out = injectReviewLayer('<html><head></head><body><h1>x</h1></body></html>', { specId: 'abc' });
+  const cfg = JSON.parse(out.match(/window\.SPECFORGE = (\{[\s\S]*?\});/)[1]);
+  assert.deepEqual(cfg.blocks, blockComponents(), 'the client is handed the library list');
+
+  const client = readFileSync(new URL('../server/public/review.js', import.meta.url), 'utf8');
+  assert.match(client, /BLOCK_SEL[\s\S]{0,400}SPECFORGE \|\| \{\}\)\.blocks/,
+    'and appends it to its anchor selector');
+});

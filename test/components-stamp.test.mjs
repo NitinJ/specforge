@@ -77,6 +77,21 @@ test('a spec with no style element is refused rather than guessed at', () => {
   assert.throws(() => stampHtml('<html><head></head><body></body></html>'), /style/i);
 });
 
+// An imported spec does not have to use the bare tag the templates happen to
+// use, and refusing to stamp it would be a refusal nobody could act on.
+test('any valid style tag is stamped, not only the bare one', () => {
+  for (const tag of ['<style type="text/css">', '<style media="screen">', '<STYLE>']) {
+    const html = `<!DOCTYPE html><html data-sf-spec-status="draft"><head><title>T</title>
+${tag}
+  body{margin:0}
+</${tag.slice(1, 6).toLowerCase()}>
+</head><body><main><h1>T</h1></main></body></html>`;
+    const out = stampHtml(html);
+    assert.ok(out.includes(START), `${tag} is stamped`);
+    assert.equal(readBlock(out).present, true, `${tag} block reads back`);
+  }
+});
+
 // ---- reading a block back ----
 
 test('readBlock reports the version and whether the body is untouched', () => {
