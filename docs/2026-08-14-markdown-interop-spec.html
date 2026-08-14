@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="draft">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpecForge markdown interop — Spec</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 1px 0 rgba(255,255,255,.02), 0 8px 24px rgba(0,0,0,.28);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#ffffff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#fbfaf7; --panel:#ffffff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+      --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+      --code:#f1efe9; --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,kbd{font-family:var(--mono);font-size:.88em;background:var(--code);
+    border:1px solid var(--line);border-radius:5px;padding:.08em .38em}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:13px;line-height:1.55}
+  pre code{background:none;border:none;padding:0}
+
+  .layout{display:grid;grid-template-columns:264px minmax(0,1fr);gap:0;max-width:var(--maxw,1280px);margin:0 auto}
+  /* Floating left TOC: pinned to the top of the viewport, scrolls independently,
+     stays in view for the whole page scroll (never scrolls up with the content). */
+  nav.toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;z-index:5;
+    padding:28px 16px 60px 24px;border-right:1px solid var(--line);font-size:13.5px}
+  nav.toc .brand{font-weight:700;font-size:15px;letter-spacing:.2px;margin-bottom:4px}
+  nav.toc .brand span{color:var(--accent)}
+  nav.toc .tag-mini{color:var(--muted);font-size:11.5px;margin-bottom:18px;display:block}
+  nav.toc a{display:block;color:var(--muted);padding:4px 8px;border-radius:6px;border-left:2px solid transparent}
+  nav.toc a:hover{color:var(--ink);text-decoration:none;background:var(--panel)}
+  nav.toc a.active{color:var(--ink);border-left-color:var(--accent);background:var(--panel)}
+  /* On narrow viewports the sticky sidebar would crowd the content — collapse it
+     to a static strip above the body so nothing overlaps. */
+  @media (max-width:860px){
+    .layout{grid-template-columns:1fr}
+    nav.toc{position:static;max-height:none;overflow:visible;
+      border-right:none;border-bottom:1px solid var(--line)}
+  }
+
+  main{padding:40px 48px 120px;min-width:0}
+  h1{font-size:30px;line-height:1.25;margin:0 0 10px}
+  h2{font-size:21px;margin:48px 0 14px;padding-top:10px;border-top:1px solid var(--line)}
+  h2:first-of-type{border-top:none;margin-top:18px}
+  h3{font-size:16.5px;margin:26px 0 8px}
+  h4{font-size:14px;margin:18px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  .sub{color:var(--muted);font-size:14px}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px;margin:16px 0;box-shadow:var(--shadow)}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+
+  .tag{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel);vertical-align:middle;line-height:1.5}
+  .tag.accent{color:var(--accent)} .tag.good{color:var(--green)} .tag.warn{color:var(--amber)}
+  .tag.bad{color:var(--red)} .tag.todo{color:var(--muted)} .tag.done{color:var(--green)}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 12px;border:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);font-weight:600}
+
+  .callout{border-left:3px solid var(--accent);background:var(--panel);border-radius:0 10px 10px 0;
+    padding:12px 16px;margin:16px 0}
+  .callout.warn{border-left-color:var(--amber)} .callout.good{border-left-color:var(--green)}
+
+  ol.sf-stages{list-style:none;padding-left:0}
+  li[data-sf-stage]{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;margin:12px 0;box-shadow:var(--shadow)}
+  li[data-sf-stage]>.sh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  li[data-sf-stage]>.sh h3{margin:0;font-size:15.5px}
+  ul.sf-tasks{list-style:none;padding-left:4px;margin:10px 0 2px}
+  li[data-sf-task]{margin:6px 0;font-size:14px}
+  li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margin:2px 0 0 20px}
+  .footnote{color:var(--muted);font-size:12.5px}
+  figure{margin:18px 0}
+  figure svg{max-width:100%;height:auto;display:block}
+  figcaption{color:var(--muted);font-size:12.5px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc">
+  <div class="brand"><span>Spec</span>Forge</div>
+  <span class="tag-mini">draft</span>
+  <a href="#tldr">TL;DR</a>
+  <a href="#overview">1 · Overview</a>
+  <a href="#requirements">2 · Requirements</a>
+  <a href="#goals">3 · Goals &amp; non-goals</a>
+  <a href="#design">4 · Design</a>
+  <a href="#dialect">5 · The dialect</a>
+  <a href="#testing">6 · Testing</a>
+  <a href="#decisions">7 · Decisions</a>
+  <a href="#open-questions">8 · Open questions</a>
+  <a href="#design-alignment">9 · Design alignment</a>
+  <a href="#invariants">10 · Invariants</a>
+  <a href="#impl-plan">11 · Implementation plan</a>
+  <a href="#task-tracker">12 · Task tracker</a>
+  <a href="#runtime">13 · Runtime</a>
+  <a href="#doc-updates">14 · Documentation updates</a>
+  <a href="#test-journeys">15 · Testing journeys</a>
+  <a href="#appendix">Appendix</a>
+</nav>
+
+<main>
+  <h1>SpecForge markdown interop</h1>
+  <p class="sub">Spec · 2026-08-14 · status: <span class="tag accent">draft</span> · owner: nitin</p>
+
+  <section id="tldr" data-sf-section>
+    <div class="panel">
+      <h4 style="margin-top:0">TL;DR</h4>
+      <p>Two new paths in the SpecForge plugin. <code>specforge export-md &lt;id&gt;</code> renders a store spec as a GFM markdown file plus a sidecar assets directory holding its SVG diagrams. <code>specforge import-md &lt;file&gt;</code> converts any markdown file into a new house-style spec in the store, deterministically, with no model in the loop; the <code>convert-spec</code> skill then runs an agent pass over the result.</p>
+      <p>The markdown is ordinary GFM: it renders on GitHub with no plugins. Structure that markdown cannot express (section ids that differ from their heading slug, task statuses outside done/todo, diagram identity) rides in YAML frontmatter and sparse HTML comments, both invisible in every renderer.</p>
+      <p style="margin-bottom:0">Import always creates a new spec. No import path writes over an existing one, so there is no clobber guard, no content hash, and no merge.</p>
+    </div>
+  </section>
+
+  <section id="overview" data-sf-section>
+    <h2>1 · Overview</h2>
+    <p>A SpecForge spec exists only as a single self-contained HTML file in the global store (<code>~/.specforge/specs/&lt;id&gt;/spec.html</code>, <code>lib/store-paths.mjs</code>). Every consumer outside SpecForge reads markdown: GitHub renders it, agents in other harnesses read it, other repositories check it in, and a diff of an HTML spec is unreadable in review tools.</p>
+    <p>Two conversions are missing. Out: no way to take a spec to a surface that speaks markdown. In: <code>lib/specforge-cli.mjs</code> <code>import</code> copies an HTML file into the store unchanged, and the only route for a <code>.md</code> file is the <code>convert-spec</code> skill re-authoring it by hand, which produces a different document on every run and cannot run headless or in CI.</p>
+    <p>This spec adds a deterministic converter in both directions, exposes it on the CLI, the review UI, and the skills layer, and leaves the existing agent re-author as a second pass on top of the deterministic result rather than as the only mechanism.</p>
+  </section>
+
+  <section id="requirements" data-sf-section>
+    <h2>2 · Requirements</h2>
+    <h4>Problem</h4>
+    <p>A spec is unreadable outside SpecForge, and a markdown design doc cannot enter SpecForge without an agent rewriting it. The first blocks sharing a spec into any markdown-native surface. The second makes ingestion non-reproducible: the same input file produces a different spec on each run, so no test can assert what conversion does.</p>
+    <h4>Product requirements</h4>
+    <ul>
+      <li>An exported <code>.md</code> renders correctly on GitHub with no extensions beyond GFM tables and task lists.</li>
+      <li>An exported <code>.md</code> carries the spec's diagrams as viewable images, not as dropped content.</li>
+      <li>Any <code>.md</code> file converts into a spec that opens in the review UI and passes <code>lib/lint-spec.mjs</code>.</li>
+      <li>Import creates a new spec and never modifies an existing spec's HTML, meta, or comment threads.</li>
+      <li>Export is reachable from the CLI, from the spec action menu in the review UI, and from a slash command.</li>
+    </ul>
+    <h4>Engineering requirements</h4>
+    <ul>
+      <li>Zero runtime dependencies. The package declares none (<code>package.json</code>, runtime-deps badge in <code>README.md</code>); the markdown parser, the HTML walker, and the zip writer are in-house and use only <code>node:</code> built-ins. <code>jsdom</code> stays a devDependency.</li>
+      <li>Node 18 or newer, ESM <code>.mjs</code>, matching the tolerant-regex parsing style of <code>lib/spec.mjs</code>.</li>
+      <li>The deterministic converter runs headless: no model call, no network, no daemon required. The agent pass is layered above it by the skill.</li>
+      <li>Structural round-trip: <code>html → md → html'</code> preserves section ids and order, heading text, plan task ids and statuses, table cell text, code block content and language, and diagram references.</li>
+      <li>Imported HTML is sanitized: <code>&lt;script&gt;</code>, <code>&lt;iframe&gt;</code>, <code>&lt;object&gt;</code>, <code>&lt;embed&gt;</code>, and <code>on*</code> attributes are stripped, because the review layer serves imported specs in the browser.</li>
+    </ul>
+  </section>
+
+  <section id="goals" data-sf-section>
+    <h2>3 · Goals &amp; non-goals</h2>
+    <h4>Goals</h4>
+    <ul>
+      <li><code>export-md</code> emits GFM that passes a CommonMark + GFM parse and renders on GitHub.</li>
+      <li><code>import-md</code> emits a spec whose <code>lintSpec()</code> blocking checks all pass, for every fixture in the corpus.</li>
+      <li>The round-trip fixture suite asserts structural equivalence on one spec of each doc type (design, research, design-impl, impl).</li>
+      <li>Both directions are unit-testable with <code>node --test</code> and require no browser.</li>
+    </ul>
+    <h4>Non-goals</h4>
+    <ul>
+      <li>Deck specs (<code>templates/spec-base-deck.html</code>). <code>export-md</code> on a deck exits non-zero with a message naming the limitation.</li>
+      <li>Updating an existing spec from a markdown file. Import creates a new spec; there is no <code>--into</code>.</li>
+      <li>Exporting comment threads. They live in <code>comments.json</code> and stay there.</li>
+      <li>Storing the generated <code>.md</code> in the spec directory. It is derived on demand.</li>
+      <li>Markdown as the authoring source of truth. The spec HTML remains the document; markdown is a projection and an entry point.</li>
+      <li>A published or tunnel-exposed markdown endpoint. The download route is local-daemon only (see Q1).</li>
+    </ul>
+  </section>
+
+  <section id="design" data-sf-section>
+    <h2>4 · Design</h2>
+
+    <h4>Summary</h4>
+    <p>Four new library modules and one orchestration module, all under <code>lib/</code>. <code>html-to-md.mjs</code> walks spec HTML and returns markdown plus an asset list. <code>md-parse.mjs</code> turns markdown into a block AST covering the house subset. <code>md-to-html.mjs</code> turns that AST into section HTML and composes it into the per-type template shell. <code>store-md.mjs</code> is the only module the CLI, the daemon, and the skills call. <code>zip.mjs</code> writes a zip using <code>node:zlib</code> so the review UI can hand over a markdown file and its assets in one download.</p>
+
+    <h4>Concepts</h4>
+    <table>
+      <thead><tr><th>Concept</th><th>What it is (plain words)</th><th>Inputs</th><th>Outputs</th></tr></thead>
+      <tbody>
+        <tr><td>SF-MD</td><td>The markdown dialect specs export to and import from: GFM plus YAML frontmatter plus sparse HTML-comment markers.</td><td>n/a (a format)</td><td>n/a (a format)</td></tr>
+        <tr><td>Exporter</td><td>Walks spec HTML in document order and emits SF-MD, lifting each <code>&lt;svg&gt;</code> out to a file.</td><td>spec HTML string</td><td><code>{ markdown, assets[], warnings[] }</code></td></tr>
+        <tr><td>Parser</td><td>Reads SF-MD into a block AST. Knows the house subset only; anything else is reported, never silently dropped.</td><td>markdown string</td><td><code>{ frontmatter, blocks[], unsupported[] }</code></td></tr>
+        <tr><td>Importer</td><td>Renders the AST into <code>&lt;section&gt;</code> fragments and composes them into the type's template shell.</td><td>AST, type, asset files</td><td>spec HTML string</td></tr>
+        <tr><td>Agent pass</td><td>The <code>convert-spec</code> skill rewriting the imported spec into house sections and house register.</td><td>the imported spec HTML</td><td>the same file, edited</td></tr>
+        <tr><td>Loss ledger</td><td>The enumerated list of what a round trip does not preserve. §5 holds it.</td><td>n/a</td><td>n/a</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Architecture</h4>
+    <figure>
+      <svg viewBox="0 0 980 470" role="img" aria-label="Architecture: new markdown modules between the existing CLI, daemon, and skills layers and the spec store">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+          <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--green)"/>
+          </marker>
+        </defs>
+        <g font-family="var(--mono)" font-size="12.5">
+          <text x="20" y="26" fill="var(--muted)" font-size="12" font-weight="700">SURFACES</text>
+          <rect x="20" y="38" width="200" height="46" rx="9" fill="var(--panel)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="34" y="60" fill="var(--ink)">specforge-cli.mjs</text>
+          <text x="34" y="76" fill="var(--muted)" font-size="11">+ export-md, import-md</text>
+
+          <rect x="240" y="38" width="200" height="46" rx="9" fill="var(--panel)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="254" y="60" fill="var(--ink)">daemon.mjs · review.js</text>
+          <text x="254" y="76" fill="var(--muted)" font-size="11">+ /api/spec/:id/md, menu row</text>
+
+          <rect x="460" y="38" width="200" height="46" rx="9" fill="var(--panel)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="474" y="60" fill="var(--ink)">skills/convert-spec</text>
+          <text x="474" y="76" fill="var(--muted)" font-size="11">deterministic first, then agent</text>
+
+          <rect x="680" y="38" width="200" height="46" rx="9" fill="var(--panel)" stroke="var(--green)" stroke-width="2"/>
+          <text x="694" y="60" fill="var(--ink)">skills/export-md</text>
+          <text x="694" y="76" fill="var(--muted)" font-size="11">new slash command</text>
+
+          <text x="20" y="140" fill="var(--muted)" font-size="12" font-weight="700">ORCHESTRATION</text>
+          <rect x="20" y="152" width="300" height="46" rx="9" fill="var(--panel)" stroke="var(--green)" stroke-width="2"/>
+          <text x="34" y="174" fill="var(--ink)">lib/store-md.mjs</text>
+          <text x="34" y="190" fill="var(--muted)" font-size="11">exportMd(id, dest) · importMd(file, opts)</text>
+
+          <text x="20" y="252" fill="var(--muted)" font-size="12" font-weight="700">CONVERSION</text>
+          <rect x="20" y="264" width="190" height="60" rx="9" fill="var(--panel)" stroke="var(--green)" stroke-width="2"/>
+          <text x="34" y="286" fill="var(--ink)">lib/html-to-md.mjs</text>
+          <text x="34" y="303" fill="var(--muted)" font-size="11">HTML walker,</text>
+          <text x="34" y="317" fill="var(--muted)" font-size="11">SVG extraction</text>
+
+          <rect x="230" y="264" width="190" height="60" rx="9" fill="var(--panel)" stroke="var(--green)" stroke-width="2"/>
+          <text x="244" y="286" fill="var(--ink)">lib/md-parse.mjs</text>
+          <text x="244" y="303" fill="var(--muted)" font-size="11">block + inline</text>
+          <text x="244" y="317" fill="var(--muted)" font-size="11">grammar (house subset)</text>
+
+          <rect x="440" y="264" width="190" height="60" rx="9" fill="var(--panel)" stroke="var(--green)" stroke-width="2"/>
+          <text x="454" y="286" fill="var(--ink)">lib/md-to-html.mjs</text>
+          <text x="454" y="303" fill="var(--muted)" font-size="11">sections, plan,</text>
+          <text x="454" y="317" fill="var(--muted)" font-size="11">shell composition</text>
+
+          <rect x="650" y="264" width="150" height="60" rx="9" fill="var(--panel)" stroke="var(--green)" stroke-width="2"/>
+          <text x="664" y="286" fill="var(--ink)">lib/zip.mjs</text>
+          <text x="664" y="303" fill="var(--muted)" font-size="11">node:zlib</text>
+          <text x="664" y="317" fill="var(--muted)" font-size="11">deflateRaw</text>
+
+          <text x="20" y="382" fill="var(--muted)" font-size="12" font-weight="700">REUSED, UNCHANGED</text>
+          <rect x="20" y="394" width="140" height="40" rx="9" fill="var(--panel2)" stroke="var(--line)"/>
+          <text x="34" y="419" fill="var(--muted)">spec.mjs</text>
+          <rect x="176" y="394" width="140" height="40" rx="9" fill="var(--panel2)" stroke="var(--line)"/>
+          <text x="190" y="419" fill="var(--muted)">tracker.mjs</text>
+          <rect x="332" y="394" width="150" height="40" rx="9" fill="var(--panel2)" stroke="var(--line)"/>
+          <text x="346" y="419" fill="var(--muted)">lint-spec.mjs</text>
+          <rect x="498" y="394" width="170" height="40" rx="9" fill="var(--panel2)" stroke="var(--line)"/>
+          <text x="512" y="419" fill="var(--muted)">store-templates.mjs</text>
+          <rect x="684" y="394" width="150" height="40" rx="9" fill="var(--panel2)" stroke="var(--line)"/>
+          <text x="698" y="419" fill="var(--muted)">store.mjs</text>
+
+          <path d="M120,84 L120,152" stroke="var(--muted)" stroke-width="1.5" fill="none" marker-end="url(#ah)"/>
+          <path d="M340,84 L200,152" stroke="var(--muted)" stroke-width="1.5" fill="none" marker-end="url(#ah)"/>
+          <path d="M560,84 L260,152" stroke="var(--muted)" stroke-width="1.5" fill="none" marker-end="url(#ah)"/>
+          <path d="M780,84 L310,152" stroke="var(--muted)" stroke-width="1.5" fill="none" marker-end="url(#ah)"/>
+          <path d="M90,198 L110,264" stroke="var(--green)" stroke-width="1.5" fill="none" marker-end="url(#ahg)"/>
+          <path d="M180,198 L310,264" stroke="var(--green)" stroke-width="1.5" fill="none" marker-end="url(#ahg)"/>
+          <path d="M250,198 L520,264" stroke="var(--green)" stroke-width="1.5" fill="none" marker-end="url(#ahg)"/>
+          <path d="M300,198 L710,264" stroke="var(--green)" stroke-width="1.5" fill="none" marker-end="url(#ahg)"/>
+          <path d="M110,324 L85,394" stroke="var(--muted)" stroke-width="1.2" fill="none" marker-end="url(#ah)"/>
+          <path d="M520,324 L250,394" stroke="var(--muted)" stroke-width="1.2" fill="none" marker-end="url(#ah)"/>
+          <path d="M540,324 L410,394" stroke="var(--muted)" stroke-width="1.2" fill="none" marker-end="url(#ah)"/>
+          <path d="M560,324 L580,394" stroke="var(--muted)" stroke-width="1.2" fill="none" marker-end="url(#ah)"/>
+          <path d="M200,198 L740,394" stroke="var(--muted)" stroke-width="1.2" fill="none" marker-end="url(#ah)"/>
+        </g>
+      </svg>
+      <figcaption>Components this design touches. Blue outline: existing component, modified. Green outline: added. Grey: existing, called without change.</figcaption>
+    </figure>
+    <p class="sub">Legend: <span class="tag accent">changed (blue)</span> · <span class="tag bad">removed (red)</span> · <span class="tag good">added (green)</span>. Nothing is removed.</p>
+
+    <h4>Current state, grounded in code</h4>
+    <table>
+      <thead><tr><th>Component</th><th>Current state (file ref)</th><th>Supports new design?</th><th>Change required</th></tr></thead>
+      <tbody>
+        <tr><td>CLI dispatch</td><td><code>COMMANDS</code> map, <code>lib/specforge-cli.mjs:364</code>; <code>parseArgs</code> with a <code>BOOLEAN_FLAGS</code> set.</td><td>yes</td><td>Two entries: <code>export-md</code>, <code>import-md</code>. Add <code>zip</code> to <code>BOOLEAN_FLAGS</code>.</td></tr>
+        <tr><td>File ingest</td><td><code>cmdImport</code>, <code>lib/specforge-cli.mjs:65</code>: copies a file into the store as-is and attaches it.</td><td>partly</td><td>Unchanged for <code>.html</code>. Markdown routes to <code>importMd</code> instead of a byte copy.</td></tr>
+        <tr><td>Spec types</td><td><code>TYPE_SHELL</code>, <code>lib/meta.mjs:20</code>: the single source of truth; <code>SPEC_TYPES</code> derives from its keys and <code>bundledShell()</code> picks <code>templates/spec-base-&lt;type&gt;.html</code> when the file exists.</td><td>yes</td><td>Done as the prerequisite (Stage P): a <code>general</code> type, its shell, and <code>DEFAULT_TYPE</code>/<code>LEGACY_TYPE</code> split.</td></tr>
+        <tr><td>Spec parsing</td><td><code>lib/spec.mjs</code>: <code>getSectionIds</code>, <code>sectionBody</code>, <code>parsePlan</code>, <code>getTitle</code>, <code>getStatus</code>, regex based, no DOM.</td><td>yes</td><td>None. The exporter imports it for section and plan extraction.</td></tr>
+        <tr><td>Tracker</td><td><code>computeTracker</code> / <code>renderTrackerTable</code>, <code>lib/tracker.mjs</code>: projects <code>data-sf-status</code> into a table.</td><td>yes</td><td>None. The importer calls it to rebuild <code>task-tracker</code>.</td></tr>
+        <tr><td>Templates</td><td><code>templates/spec-base*.html</code>, resolved per type by <code>lib/store-templates.mjs</code> (a store <code>template-&lt;type&gt;</code> spec wins over the bundled file).</td><td>yes</td><td>None. The importer composes into whatever shell that resolver returns.</td></tr>
+        <tr><td>Lint</td><td><code>lintSpec</code>, <code>lib/lint-spec.mjs:118</code>: title, status, unique section ids, theme contract, palette tokens (blocking); commentability and language (advisory).</td><td>yes</td><td>None. <code>importMd</code> calls it and reports the result.</td></tr>
+        <tr><td>Daemon routes</td><td><code>server/daemon.mjs</code>: <code>/api/spec/:id/export</code> at :269 queues the Google Docs relay; <code>/spec/:id</code> at :335 serves the spec.</td><td>yes</td><td>One route: <code>GET /api/spec/:id/md</code>, rendered per request, streamed as a download.</td></tr>
+        <tr><td>Review UI menu</td><td><code>server/public/review.js</code>: menu assembled at :915, <code>exportRow()</code> at :1045 posts to <code>/export</code> and polls <code>meta.export</code>.</td><td>partly</td><td>One row. It is a direct download, so it holds no <code>meta</code> state and needs no relay.</td></tr>
+        <tr><td>Google Docs export</td><td><code>lib/store-export.mjs</code>: a one-shot <code>meta.export</code> state machine relayed through the attached session.</td><td>yes</td><td>None. Markdown download is a separate mechanism and does not touch <code>meta.export</code>.</td></tr>
+        <tr><td>convert-spec skill</td><td><code>skills/convert-spec/SKILL.md</code>: branch 2A imports HTML as-is, branch 2B re-authors a <code>.md</code> by hand into a scaffolded spec.</td><td>partly</td><td>Branch 2B runs <code>import-md</code> first, then edits the produced spec instead of authoring from an empty scaffold.</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Interfaces</h4>
+    <table>
+      <thead><tr><th>Interface</th><th>Between (components)</th><th>New or changed</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>specforge export-md &lt;id&gt; [--out &lt;path&gt;] [--zip]</code></td><td>user or agent → store-md</td><td>new</td><td>Prints <code>{ id, mdPath, assetsDir, assets, warnings }</code>. Exit 1 on unknown id or a deck type.</td></tr>
+        <tr><td><code>specforge import-md &lt;file&gt; [--title t] [--type t]</code></td><td>user or agent → store-md</td><td>new</td><td>Prints <code>{ id, htmlPath, url, type, report }</code>. Creates a new spec, attaches it to the session.</td></tr>
+        <tr><td><code>GET /api/spec/:id/md</code></td><td>review UI → daemon → store-md</td><td>new</td><td><code>text/markdown</code> when the spec has no diagrams, <code>application/zip</code> when it does. <code>Content-Disposition: attachment</code>.</td></tr>
+        <tr><td><code>exportMd(id, { dest, zip })</code></td><td>store-md → html-to-md</td><td>new</td><td>Returns <code>{ markdown, assets: [{name, svg}], warnings }</code> when <code>dest</code> is omitted, so the daemon can stream without touching disk.</td></tr>
+        <tr><td><code>importMd(file, { title, type })</code></td><td>store-md → md-parse → md-to-html → store</td><td>new</td><td>Returns the created spec plus a report: section count, unsupported constructs, assets inlined, lint result.</td></tr>
+        <tr><td><code>meta.json</code></td><td>store-md → meta.mjs</td><td>changed</td><td>Adds <code>derivedFrom</code>: the <code>specforge_id</code> read from frontmatter, when present. Provenance only; nothing reads it to route a write.</td></tr>
+        <tr><td>convert-spec skill contract</td><td>skill → CLI</td><td>changed</td><td>Branch 2B calls <code>import-md</code> and edits <code>htmlPath</code>; it no longer scaffolds from <code>create</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Request flow</h4>
+    <figure>
+      <svg viewBox="0 0 980 300" role="img" aria-label="Round-trip flow: spec HTML to markdown and back into a new spec, with the previous agent-only path shown dashed">
+        <defs>
+          <marker id="fh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+          <marker id="fd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+          </marker>
+        </defs>
+        <g font-family="var(--mono)" font-size="12.5">
+          <rect x="16" y="96" width="150" height="56" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="30" y="120" fill="var(--ink)">spec.html</text>
+          <text x="30" y="138" fill="var(--muted)" font-size="11">store, spec id A</text>
+
+          <rect x="212" y="96" width="150" height="56" rx="10" fill="var(--panel)" stroke="var(--green)" stroke-width="2"/>
+          <text x="226" y="120" fill="var(--ink)">html-to-md</text>
+          <text x="226" y="138" fill="var(--muted)" font-size="11">walk + lift SVG</text>
+
+          <rect x="408" y="80" width="170" height="88" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="422" y="104" fill="var(--ink)">doc.md</text>
+          <text x="422" y="122" fill="var(--muted)" font-size="11">doc.assets/*.svg</text>
+          <text x="422" y="142" fill="var(--muted)" font-size="11">GitHub, editor,</text>
+          <text x="422" y="157" fill="var(--muted)" font-size="11">another repo</text>
+
+          <rect x="624" y="96" width="160" height="56" rx="10" fill="var(--panel)" stroke="var(--green)" stroke-width="2"/>
+          <text x="638" y="120" fill="var(--ink)">md-parse +</text>
+          <text x="638" y="138" fill="var(--ink)">md-to-html</text>
+
+          <rect x="830" y="96" width="134" height="56" rx="10" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="844" y="120" fill="var(--ink)">spec.html</text>
+          <text x="844" y="138" fill="var(--muted)" font-size="11">new id B</text>
+
+          <rect x="624" y="212" width="340" height="48" rx="10" fill="var(--panel2)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="638" y="233" fill="var(--ink)">agent pass (convert-spec skill)</text>
+          <text x="638" y="250" fill="var(--muted)" font-size="11">house sections, house register, lint to PASS</text>
+
+          <path d="M166,124 L212,124" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#fh)"/>
+          <path d="M362,124 L408,124" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#fh)"/>
+          <path d="M578,124 L624,124" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#fh)"/>
+          <path d="M784,124 L830,124" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#fh)"/>
+          <path d="M897,152 L897,190 L794,190 L794,236" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#fh)"/>
+
+          <path d="M493,168 L493,236 L624,236" stroke="var(--muted)" stroke-width="2" stroke-dasharray="6 5" fill="none" marker-end="url(#fd)"/>
+          <text x="300" y="240" fill="var(--muted)" font-size="11.5">before: agent reads the .md and authors a spec by hand</text>
+          <text x="300" y="258" fill="var(--muted)" font-size="11.5">(no deterministic step, no test, no headless run)</text>
+          <text x="16" y="40" fill="var(--muted)" font-size="11.5">solid: new path · dashed: path this replaces</text>
+          <text x="16" y="58" fill="var(--muted)" font-size="11.5">spec id A is never written by the import; the import creates spec id B</text>
+        </g>
+      </svg>
+      <figcaption>Export and import are independent. The agent pass runs on every import, including a re-import of a file SpecForge exported.</figcaption>
+    </figure>
+
+    <h4>Export mechanics</h4>
+    <ul>
+      <li>Destination resolution: <code>--out</code> naming a directory writes <code>&lt;slug&gt;.md</code> into it; <code>--out</code> ending in <code>.md</code> writes that exact path; omitted <code>--out</code> writes into the current working directory. <code>&lt;slug&gt;</code> is the slugified spec title.</li>
+      <li>Assets: a spec with <em>n</em> inline <code>&lt;svg&gt;</code> elements produces <code>&lt;slug&gt;.assets/</code> holding <em>n</em> files named <code>&lt;section-id&gt;-&lt;k&gt;.svg</code>, each a standalone SVG document with an <code>xmlns</code> attribute added. A spec with zero diagrams produces no directory.</li>
+      <li>Palette variables inside a lifted SVG (<code>fill="var(--panel)"</code>) do not resolve in a standalone file. The exporter inlines the light-theme token values from the spec's <code>[data-theme="light"]</code> block as a <code>:root</code> style element in each written SVG.</li>
+      <li><code>--zip</code> writes <code>&lt;slug&gt;.zip</code> containing the <code>.md</code> and the assets directory, and writes no loose files.</li>
+      <li>Nothing is written into <code>~/.specforge/specs/&lt;id&gt;/</code>. A stored copy would go stale on the next spec edit and there is no invalidation hook to keep it honest.</li>
+    </ul>
+
+    <h4>Import mechanics</h4>
+    <ul>
+      <li>Frontmatter: a leading <code>---</code> fenced block parsed as flat <code>key: value</code> pairs only. Nested maps, block scalars, and sequences are not parsed; they are reported as unsupported and ignored.</li>
+      <li>Type: <code>--type</code> wins; else frontmatter <code>type</code>; else <code>general</code>. The value is validated against <code>SPEC_TYPES</code> (<code>lib/meta.mjs</code>). A foreign markdown file has headings of its own and no house section set, so <code>general</code> is the shell that fits it; the prerequisite below added that type.</li>
+      <li>Title: <code>--title</code> wins; else frontmatter <code>title</code>; else the first <code>#</code> heading; else the file basename.</li>
+      <li>Sections: each <code>##</code> opens a <code>&lt;section id="…" data-sf-section&gt;</code>. The id comes from an immediately preceding <code>&lt;!-- sf:section id="…" --&gt;</code> marker when present, else from the slugified heading text. Duplicate ids get a <code>-2</code>, <code>-3</code> suffix, which keeps the <code>unique-section-ids</code> lint check green.</li>
+      <li>Content before the first <code>##</code> becomes the <code>tldr</code> section. Headings deeper than <code>##</code> stay inside the open section as <code>h3</code> and <code>h4</code>.</li>
+      <li>Plan reconstruction: a section whose id is <code>impl-plan</code> has its <code>###</code> stage headings and task-list items rebuilt into the <code>data-sf-stage</code> / <code>data-sf-pr</code> / <code>data-sf-task</code> / <code>data-sf-status</code> markup that <code>parsePlan</code> reads. A checked box maps to <code>done</code>, unchecked to <code>todo</code>; a <code>&lt;!-- sf:task … --&gt;</code> marker overrides both.</li>
+      <li>Tracker: <code>task-tracker</code> is regenerated by calling <code>renderTrackerTable(computeTracker(html))</code> from <code>lib/tracker.mjs</code> after the plan is built. It is never parsed from the markdown.</li>
+      <li>Assets: an image link is resolved relative to the markdown file. An <code>.svg</code> target is inlined verbatim as <code>&lt;svg&gt;</code>. A raster target of 512 KB or less is inlined as a base64 <code>data:</code> URI; above 512 KB it is dropped and named in the report, because a spec must stay a single self-contained file.</li>
+      <li>Sanitization: passed-through raw HTML has <code>&lt;script&gt;</code>, <code>&lt;iframe&gt;</code>, <code>&lt;object&gt;</code>, <code>&lt;embed&gt;</code> elements and <code>on*</code> attributes removed before it enters the spec.</li>
+      <li>Shell: the type's template resolves through <code>lib/store-templates.mjs</code>. Its <code>&lt;section&gt;</code> elements are replaced by the imported ones; theme CSS, palette tokens, and the TOC container are kept, and TOC links are rebuilt from the imported sections in document order.</li>
+      <li>Provenance: <code>meta.origin</code> is the absolute path of the source file (the field <code>cmdImport</code> already sets). <code>meta.derivedFrom</code> is the frontmatter <code>specforge_id</code> when present.</li>
+    </ul>
+
+    <h4>Design options considered</h4>
+    <table>
+      <thead><tr><th>Option</th><th>Pros</th><th>Cons</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>A. In-house converter both ways, agent pass on top</td>
+          <td>Zero deps kept. Deterministic and unit-testable. Runs headless. The agent improves a valid spec instead of producing one from nothing.</td>
+          <td>A markdown parser has to be written and maintained (roughly 350 lines) and will not cover CommonMark in full.</td>
+          <td><span class="tag good">chosen</span> The subset is bounded by what the house templates emit, and §5 enumerates it.</td>
+        </tr>
+        <tr>
+          <td>B. Agent-only conversion in both directions</td>
+          <td>No new library code. Handles any input shape.</td>
+          <td>Non-reproducible, untestable, cannot run in CI, and costs a model call for a mechanical transform.</td>
+          <td><span class="tag bad">rejected</span> Fails the reproducibility and headless requirements in §2.</td>
+        </tr>
+        <tr>
+          <td>C. Pull in <code>marked</code> and <code>turndown</code></td>
+          <td>Full CommonMark coverage on day one, less code to own.</td>
+          <td>Breaks the zero-runtime-dependency property the package advertises, and adds a supply-chain surface to a plugin that installs into a user's Claude Code.</td>
+          <td><span class="tag bad">rejected</span> The dependency count is a stated property of the project, not an accident.</td>
+        </tr>
+        <tr>
+          <td>D. Markdown as the stored source of truth, HTML rendered from it</td>
+          <td>One document, no round-trip loss, diffable in git.</td>
+          <td>Rewrites the store, the review layer's block anchoring, the comment model, and every skill. Diagrams and house components have no markdown source form.</td>
+          <td><span class="tag bad">rejected</span> Out of proportion to the requirement, which is interop, not a format migration.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="dialect" data-sf-section>
+    <h2>5 · The dialect</h2>
+    <p>SF-MD is GFM: CommonMark, plus tables and task lists, plus YAML frontmatter, plus HTML comments. Every construct in it renders on GitHub with no extension. Markers exist only where markdown has no way to carry identity, and are emitted only when needed.</p>
+
+    <h4>Shape of an exported file</h4>
+<pre><code>---
+title: SpecForge markdown interop
+type: design-impl
+status: draft
+specforge_id: fcc608bdf1
+exported_at: 2026-08-14
+---
+
+# SpecForge markdown interop
+
+## 1 · Overview
+
+A SpecForge spec exists only as a single self-contained HTML file...
+
+## 4 · Design
+
+![Architecture: new markdown modules](specforge-markdown-interop.assets/design-1.svg)
+&lt;!-- sf:svg id="design-1" --&gt;
+
+| Concept | What it is | Inputs | Outputs |
+|---|---|---|---|
+| SF-MD | The markdown dialect | n/a | n/a |
+
+## 11 · Implementation plan
+&lt;!-- sf:section id="impl-plan" --&gt;
+
+### Stage 1 · Exporter (PR 1)
+
+- [x] 1.1 Section walker and markdown renderer
+      verify: `node --test test/md-export.test.mjs` passes
+- [ ] 1.2 SVG lift into the assets directory
+      &lt;!-- sf:task id="1.2" status="in_progress" --&gt;
+      verify: a fixture with two diagrams writes two .svg files
+</code></pre>
+
+    <h4>Element mapping</h4>
+    <table>
+      <thead><tr><th>Spec HTML</th><th>Markdown</th><th>Marker emitted</th></tr></thead>
+      <tbody>
+        <tr><td><code>&lt;title&gt;</code>, <code>&lt;h1&gt;</code>, <code>data-sf-spec-status</code></td><td>frontmatter <code>title</code>, <code>status</code>, plus <code># Title</code></td><td>frontmatter</td></tr>
+        <tr><td><code>&lt;section id&gt;</code> and its <code>&lt;h2&gt;</code></td><td><code>## Heading</code></td><td>only when <code>slug(heading) !== id</code></td></tr>
+        <tr><td><code>&lt;h3&gt;</code>, <code>&lt;h4&gt;</code></td><td><code>###</code>, <code>####</code></td><td>none</td></tr>
+        <tr><td><code>&lt;p&gt;</code>, <code>&lt;ul&gt;</code>, <code>&lt;ol&gt;</code>, <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;code&gt;</code>, <code>&lt;a&gt;</code></td><td>the obvious GFM equivalents</td><td>none</td></tr>
+        <tr><td><code>&lt;table&gt;</code></td><td>GFM table</td><td>none</td></tr>
+        <tr><td><code>&lt;pre&gt;&lt;code class="lang-x"&gt;</code></td><td>fenced block with info string <code>x</code></td><td>none</td></tr>
+        <tr><td><code>.panel</code>, <code>.card</code></td><td>the contained blocks, unwrapped</td><td><code>sf:box</code> with the class</td></tr>
+        <tr><td><code>.callout</code>, <code>.callout.warn</code>, <code>.callout.good</code></td><td>blockquote</td><td><code>sf:callout</code> with the variant</td></tr>
+        <tr><td><code>&lt;svg&gt;</code>, <code>&lt;figure&gt;</code></td><td><code>![alt](&lt;slug&gt;.assets/&lt;id&gt;.svg)</code>; alt from <code>aria-label</code>, <code>&lt;title&gt;</code>, or <code>&lt;figcaption&gt;</code></td><td><code>sf:svg</code> with the id</td></tr>
+        <tr><td><code>&lt;li data-sf-stage&gt;</code></td><td><code>### Stage N · Name (PR p)</code></td><td>none</td></tr>
+        <tr><td><code>&lt;li data-sf-task&gt;</code> and its <code>.verify</code></td><td><code>- [ ] N.k Task</code> plus an indented <code>verify:</code> line</td><td><code>sf:task</code> when status is not <code>todo</code> or <code>done</code></td></tr>
+        <tr><td><code>&lt;li data-sf-q="open"&gt;</code></td><td><code>- [ ] Q1 …</code>; resolved becomes <code>- [x]</code></td><td><code>sf:q</code> when the state is <code>dropped</code></td></tr>
+        <tr><td><code>&lt;style&gt;</code>, <code>&lt;script&gt;</code>, <code>nav.toc</code>, footer <code>.footnote</code></td><td>omitted</td><td>none</td></tr>
+        <tr><td><code>#task-tracker</code> body</td><td>omitted, regenerated on import</td><td>none</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Loss ledger</h4>
+    <p class="sub">What a round trip does not preserve. Each entry is accepted, not a defect.</p>
+    <table>
+      <thead><tr><th>#</th><th>Not preserved</th><th>Effect on the re-imported spec</th></tr></thead>
+      <tbody>
+        <tr><td>L1</td><td><code>.tag</code> span classes (<code>good</code>, <code>bad</code>, <code>warn</code>) inside prose and table cells</td><td>The tag's text survives; its color does not. A cell reading "chosen" is plain text.</td></tr>
+        <tr><td>L2</td><td>Inline <code>style</code> attributes and column widths</td><td>Dropped. The template's default table and panel styling applies.</td></tr>
+        <tr><td>L3</td><td>Table cells containing block content (lists, multiple paragraphs)</td><td>Flattened to a single line with <code>&lt;br&gt;</code> separators, since GFM cells are inline-only.</td></tr>
+        <tr><td>L4</td><td>Raster images above 512 KB referenced from an imported markdown file</td><td>Dropped and named in the import report.</td></tr>
+        <tr><td>L5</td><td>Prose whitespace and attribute order</td><td>Differs. The round-trip assertion is structural, never byte equality.</td></tr>
+        <tr><td>L6</td><td>Comment threads, block registry (<code>blocks.json</code>), share and publication state</td><td>Not exported and not carried into the new spec. The new spec starts with no threads.</td></tr>
+        <tr><td>L7</td><td><code>&lt;section&gt;</code> nesting</td><td>Not applicable: specs do not nest sections (<code>lib/spec.mjs</code> header comment).</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Parser subset</h4>
+    <p>Supported blocks: ATX headings <code>h1</code> to <code>h4</code>, paragraphs, fenced code (<code>```</code> and <code>~~~</code>) with an info string, GFM tables, unordered and ordered lists nested to three levels by two-space indent, task-list items, blockquotes, thematic breaks, images, HTML comments, and raw HTML blocks. Supported inline: <code>**bold**</code>, <code>*emphasis*</code>, <code>`code`</code>, <code>[text](url)</code>, <code>![alt](src)</code>, and autolinks.</p>
+    <p>Not supported: setext headings, reference-style links, footnotes, definition lists, nested tables, and YAML beyond flat pairs. Each occurrence is recorded in <code>report.unsupported</code> with its line number and passed through as escaped text, so no content is lost silently and the agent pass has a list to work from.</p>
+  </section>
+
+  <section id="testing" data-sf-section>
+    <h2>6 · Testing</h2>
+    <p class="sub">Test-infrastructure design only. The suite runs on <code>node --test</code> (<code>package.json</code> <code>test</code> script) with unit tests in <code>test/</code> and a Playwright e2e in <code>test-e2e/review.e2e.mjs</code>. Existing tests already point <code>SPECFORGE_HOME</code> at a temporary store, which covers store isolation for both new paths.</p>
+    <ul>
+      <li>Gap: there is no fixture corpus of spec HTML. Add <code>test/fixtures/md/</code> holding one spec per doc type plus its expected <code>.md</code> golden file and expected asset names.</li>
+      <li>Gap: there is no way to assert two spec HTML documents are equivalent. Add <code>test/helpers/structural-equivalence.mjs</code> exporting <code>assertStructurallyEquivalent(a, b)</code>, comparing section ids and order, heading text, plan task ids and statuses, table cell text, code block content and info string, and image references. It reports the first mismatch as a named field, not as a diff of the whole document.</li>
+      <li>Gap: the e2e harness drives the review page but never a download. Add a Playwright step that clicks the new menu row and asserts the response content type and filename.</li>
+      <li>No new environment, service, or credential is required. Both conversions are pure functions over strings and files.</li>
+    </ul>
+  </section>
+
+  <section id="decisions" data-sf-section>
+    <h2>7 · Decisions</h2>
+    <table>
+      <thead><tr><th style="width:42px">#</th><th>Decision</th><th>Choice</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td>D1</td><td>How much machine metadata may the markdown carry?</td><td>YAML frontmatter plus HTML-comment markers, emitted only where markdown cannot carry identity.</td><td>Both render as nothing in every markdown renderer, so the file stays readable while section ids and task statuses survive.</td></tr>
+        <tr><td>D2</td><td>Where do inline SVG diagrams go?</td><td>A sidecar <code>&lt;slug&gt;.assets/</code> directory, referenced by a normal image link.</td><td>GitHub's sanitizer strips inline SVG, so an inlined diagram would render as nothing. An image link renders everywhere.</td></tr>
+        <tr><td>D3</td><td>How is the implementation plan encoded?</td><td>GFM task lists under <code>###</code> stage headings; checkbox state carries done or todo.</td><td>Checkbox state is the encoding a person editing the markdown will actually change. A table cannot be ticked.</td></tr>
+        <tr><td>D4</td><td>Is the task tracker exported?</td><td>No. It is regenerated on import from the plan.</td><td>The tracker is already a projection of <code>data-sf-status</code> (<code>lib/tracker.mjs</code>). Exporting it would create a second copy of one truth that can disagree.</td></tr>
+        <tr><td>D5</td><td>What does import do with an existing spec?</td><td>Nothing. Import always creates a new spec with a new id.</td><td>Removes clobber guards, content hashing, and merge semantics from the design. A stale re-import can never destroy a review round.</td></tr>
+        <tr><td>D6</td><td>Does the agent pass run on a re-import of a SpecForge export?</td><td>Yes, on every import.</td><td>One path, no mode flag. The deterministic CLI stays independently testable, so nothing in CI depends on the agent.</td></tr>
+        <tr><td>D7</td><td>Which markdown library?</td><td>None. The parser and the HTML walker are in-house.</td><td>The package advertises zero runtime dependencies; a plugin installed into a user's Claude Code should not add a supply-chain surface for a mechanical transform.</td></tr>
+        <tr><td>D8</td><td>Is the exported markdown stored?</td><td>No. It is rendered on demand by the CLI and by the download route.</td><td>A stored copy has no invalidation hook and would go stale on the next spec edit.</td></tr>
+        <tr><td>D9</td><td>What does the review UI hand over?</td><td>A <code>.md</code> when the spec has no diagrams; a <code>.zip</code> when it does.</td><td>A browser download is one file. The common diagram-free case avoids an unzip step.</td></tr>
+        <tr><td>D10</td><td>Are deck specs in scope?</td><td>No. <code>export-md</code> on a deck exits non-zero.</td><td>Flattening slides into a linear document is a separate format question with no requirement behind it yet.</td></tr>
+        <tr><td>D11</td><td>Where does markdown import live in the skills layer?</td><td>Inside the existing <code>/specforge:convert</code>, as its <code>.md</code> branch.</td><td>One front door for "bring a file in". A second import command would split the same intent across two names.</td></tr>
+        <tr><td>D12</td><td>Are section headings renumbered on export?</td><td>No. Heading text is emitted verbatim.</td><td>The numbering in <code>2 · Requirements</code> is authored content. Generating or stripping it would edit the document during a format conversion.</td></tr>
+        <tr><td>D13</td><td>Which shell does an imported markdown file compose into?</td><td>A new <code>general</code> spec type: the scaffold, one <code>tldr</code> section, no others.</td><td>Every existing type carries a section set the importer would have to fake. General carries none, so imported sections are the document's own. Landed as the prerequisite (Stage P).</td></tr>
+        <tr><td>D15</td><td>Is the markdown download reachable through a share link?</td><td>No. The route is local-daemon only; the gateway does not proxy it (resolves Q1).</td><td>A share token grants a read-only review page. Turning it into a document download changes what sharing means, and no requirement asks for it.</td></tr>
+        <tr><td>D16</td><td>What may the agent pass rewrite on a round-trip re-import?</td><td>Structure and reported gaps only. With an empty <code>report.unsupported</code> and a passing lint, it verifies and stops (resolves Q2).</td><td>Keeps D6 (the agent runs on every import) without the prose drifting on each export and re-import cycle.</td></tr>
+        <tr><td>D14</td><td>Does the new-spec default change apply to untyped specs already in the store?</td><td>No. <code>DEFAULT_TYPE</code> becomes <code>general</code> for writes; a new <code>LEGACY_TYPE</code> keeps reads of untyped specs at <code>design-impl</code>.</td><td>Untyped specs predate the type field and were authored in the design-impl shape. One constant serving both directions would relabel them and hide their plans.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="open-questions" data-sf-section>
+    <h2>8 · Open questions</h2>
+    <ul>
+      <li data-sf-q="resolved"><strong>Q1 · <span class="tag good">resolved</span></strong> Should <code>/api/spec/:id/md</code> be reachable through the publication gateway (<code>lib/gateway.mjs</code>, <code>lib/publications.mjs</code>), so a reviewer holding a share link can download the markdown? <strong>No, not in v1.</strong> The route is registered on the local daemon only and the gateway does not proxy it. A share token today grants a read-only review page; extending it to a full document download is a change in what sharing means, and no requirement in §2 asks for it. Adding it later is one proxy rule.</li>
+      <li data-sf-q="resolved"><strong>Q2 · <span class="tag good">resolved</span></strong> On a re-import of a file SpecForge exported (frontmatter carries <code>specforge_id</code>), what is the agent pass allowed to change? <strong>Structure and gaps, not prose.</strong> When <code>report.unsupported</code> is empty and the lint passes, the agent verifies and stops: no rewriting of sentences the deterministic pass restored. It rewrites only what the report names (unsupported constructs, dropped assets) or what the lint fails on. A foreign markdown file has no <code>specforge_id</code>, so it gets the full pass including register. This keeps the agent on every import (D6) without letting text drift on each cycle.</li>
+    </ul>
+  </section>
+
+  <section id="design-alignment" data-sf-section>
+    <h2>9 · Design alignment</h2>
+    <table>
+      <thead><tr><th>Guidance (quoted)</th><th>Aligned / misaligned</th><th>How &amp; why</th><th>Reference</th></tr></thead>
+      <tbody>
+        <tr><td>"A spec is a single self-contained <code>.html</code> file, inline <code>&lt;style&gt;</code> and <code>&lt;script&gt;</code>, no external assets."</td><td>aligned</td><td>Imported specs inline every asset: SVG verbatim, rasters as data URIs, with a 512 KB cap and a report entry above it. The sidecar directory exists only on the exported side, never in the store.</td><td><code>templates/house-rules.md</code>, Format</td></tr>
+        <tr><td>"SpecForge owns the spec format, so lightweight regex parsing is sufficient and keeps the plugin dependency-free."</td><td>aligned</td><td><code>html-to-md.mjs</code> uses the same tolerant-regex approach and imports <code>lib/spec.mjs</code> rather than adding a DOM.</td><td><code>lib/spec.mjs</code>, header comment</td></tr>
+        <tr><td>"Not for you if you want specs that live in your repo as markdown."</td><td>partly misaligned</td><td>The README positions markdown-in-repo as explicitly not the product. Export makes a markdown copy possible while the store stays the source of truth; the README line needs the qualifier (§14).</td><td><code>README.md</code>, Who it is for</td></tr>
+        <tr><td>"Use the canonical palette tokens for every color, don't invent per-spec names."</td><td>aligned</td><td>Lifted SVGs keep their <code>var(--token)</code> references and gain a resolved <code>:root</code> block so the standalone file renders; the spec copy is untouched.</td><td><code>templates/house-rules.md</code>, Palette tokens</td></tr>
+        <tr><td>"One stage = one PR. Write tests first."</td><td>aligned</td><td>§11 is five stages, each a PR, each opening with its tests.</td><td><code>templates/house-rules.md</code>, Implementation plan</td></tr>
+        <tr><td>"Breakdown work into stages; use TDD-Red-Green-Refactor; write integration tests first, then unit tests."</td><td>aligned</td><td>Stage 0 lands the fixture corpus and the equivalence helper before any converter code exists.</td><td><code>~/workspace/CLAUDE.md</code>, Coding guidance</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="invariants" data-sf-section>
+    <h2>10 · Invariants</h2>
+    <table>
+      <thead><tr><th>Was true before</th><th>Now (after this design)</th><th>Who / what relied on it</th></tr></thead>
+      <tbody>
+        <tr><td>A spec existed in exactly one form: the HTML file in its store directory.</td><td>A spec has a derived markdown projection, generated on demand and never stored.</td><td>Nothing reads the store directory expecting a fixed file set; <code>lib/store-paths.mjs</code> names each file explicitly. The invariant holds inside the store.</td></tr>
+        <tr><td>Every <code>&lt;section id&gt;</code> in a spec was written by an author or a template.</td><td>Ids can be derived by slugifying a foreign document's headings, with numeric suffixes on collision.</td><td>Comment anchoring keys off section and block ids (<code>lib/store-blocks.mjs</code>, <code>blocks.json</code>). A newly imported spec has no threads, so no anchor can be orphaned by this.</td></tr>
+        <tr><td><code>specforge import</code> copied a file into the store byte for byte.</td><td>It still does for <code>.html</code>. A <code>.md</code> file now produces generated HTML instead.</td><td>The <code>convert-spec</code> skill branch 2A and anything scripting <code>import</code> on an HTML path are unaffected.</td></tr>
+        <tr><td>A spec scaffolded with no <code>--type</code> was a <code>design-impl</code> spec, with a plan and a tracker.</td><td>It is a <code>general</code> spec: the scaffold and a TL;DR. A plan is scaffolded only when the type asks for one.</td><td>Anything that ran <code>create</code> without <code>--type</code> and expected a tracker. The create-spec skill now names the type it picked, and <code>--type design-impl</code> restores the old shape.</td></tr>
+        <tr><td>Every spec in the store was authored by an agent following the house rules.</td><td>A spec can enter the store mechanically, before any agent has read it.</td><td>The <code>lintSpec</code> blocking checks are the floor that now guards store entry; <code>importMd</code> reports the result and the skill must not stop on a failing lint.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="impl-plan" data-sf-section>
+    <h2>11 · Implementation plan</h2>
+    <p class="sub">Stages and tasks. One stage is one PR. Tests first. Work happens in the worktree
+    <code>~/workspace/worktrees/specforge-md-interop</code> on branch <code>feat/md-interop</code>, cut from
+    <code>origin/main</code> at <code>de4e2fb</code>.</p>
+    <div class="callout">Every stage runs <code>node --test</code> locally before its PR opens. Stage 3 additionally runs the Playwright e2e against a daemon on a temporary <code>SPECFORGE_HOME</code>.</div>
+    <ol class="sf-stages">
+      <li data-sf-stage="P" data-sf-pr="">
+        <div class="sh"><h3>Stage P · General spec template (prerequisite)</h3><span class="tag done">done</span></div>
+        <p class="sub">Built before the stages below, because the importer has no shell to compose into without it. Landed in the worktree; not yet a PR.</p>
+        <ul class="sf-tasks">
+          <li data-sf-task="P.1" data-sf-status="done">Add a <code>general</code> type to <code>TYPE_SHELL</code> (<code>lib/meta.mjs</code>) mapping to the doc family, and <code>templates/spec-base-general.html</code>: theme, palette, TOC chrome, status line, one <code>tldr</code> section, plan CSS but no plan markup.<span class="verify">verify: <code>templateHtmlFor('general')</code> returns that file; it holds exactly one section and lints PASS</span></li>
+          <li data-sf-task="P.2" data-sf-status="done">Split the type fallbacks: <code>DEFAULT_TYPE = 'general'</code> for new specs, new <code>LEGACY_TYPE = 'design-impl'</code> for reading untyped specs, applied at the two read sites (<code>lib/specforge-cli.mjs</code> <code>row()</code>, <code>server/index-page.mjs</code> <code>rowHtml()</code> and <code>tplCard()</code>).<span class="verify">verify: a created spec is general; a meta with no type still reports design-impl</span></li>
+          <li data-sf-task="P.3" data-sf-status="done">Derive the index page's type filter from <code>SPEC_TYPES</code> instead of a hardcoded list, which had already drifted (it was missing <code>deck</code>).<span class="verify">verify: the filter lists every type in <code>SPEC_TYPES</code></span></li>
+          <li data-sf-task="P.4" data-sf-status="done">Document the type: <code>create-spec</code> (inference rules and a general authoring paragraph), <code>convert-spec</code>, <code>tune-templates</code>, <code>templates/house-rules.md</code> (required sections are per-type), README type table.<span class="verify">verify: no doc still calls design-impl the default</span></li>
+          <li data-sf-task="P.5" data-sf-status="done">Tests: general shell shape and lint in <code>test/store-templates.test.mjs</code>; type-fallback split in <code>test/meta.test.mjs</code>; updated create/listall/createSpec expectations.<span class="verify">verify: <code>node --test</code> reports 802 pass, 0 fail</span></li>
+        </ul>
+        <p class="sub"><strong>Testing:</strong> unit tests plus a store-level smoke script (<code>~/workspace/scripts/check-general-template.mjs</code>) · <strong>Verifiable output:</strong> a scaffolded general spec that lints PASS with one section</p>
+      </li>
+      <li data-sf-stage="0" data-sf-pr="">
+        <div class="sh"><h3>Stage 0 · Test setup</h3><span class="tag done">done</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="0.1" data-sf-status="done">Build <code>test/fixtures/md/</code>: one spec HTML per doc type (design, research, design-impl, impl), one with two SVG diagrams, one with a nested list and a code fence.<span class="verify">verify: four fixture files exist and each passes <code>lintSpec</code></span></li>
+          <li data-sf-task="0.2" data-sf-status="done">Write <code>test/helpers/structural-equivalence.mjs</code> with <code>assertStructurallyEquivalent(a, b)</code> covering section ids and order, heading text, task ids and statuses, table cell text, code content and info string, image refs.<span class="verify">verify: a unit test proves it fails on a reordered section and on a changed task status</span></li>
+          <li data-sf-task="0.3" data-sf-status="done">Add a temp-store harness helper matching the existing <code>SPECFORGE_HOME</code> pattern used by <code>test/store.test.mjs</code>.<span class="verify">verify: a throwaway test creates and reads a spec in a temp store and leaves no files behind</span></li>
+        </ul>
+        <p class="sub"><strong>Testing:</strong> the helper itself, by unit test · <strong>Verifiable output:</strong> <code>node --test</code> green with the new helper tests present</p>
+      </li>
+      <li data-sf-stage="1" data-sf-pr="">
+        <div class="sh"><h3>Stage 1 · Exporter</h3><span class="tag done">done</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="1.1" data-sf-status="done">Write <code>test/md-export.test.mjs</code> against the fixtures and their golden <code>.md</code> files, red first.<span class="verify">verify: the suite fails for the stated reason before any implementation lands</span></li>
+          <li data-sf-task="1.2" data-sf-status="done">Implement <code>lib/html-to-md.mjs</code>: block walker, inline renderer, GFM tables, fences, callout and panel handling, plan and open-question task lists, marker emission rules from §5.<span class="verify">verify: golden files match for all four fixtures</span></li>
+          <li data-sf-task="1.3" data-sf-status="done">Implement SVG lift: standalone files with <code>xmlns</code> and a resolved <code>:root</code> token block, named <code>&lt;section-id&gt;-&lt;k&gt;.svg</code>.<span class="verify">verify: the two-diagram fixture writes two files and each parses as XML</span></li>
+          <li data-sf-task="1.4" data-sf-status="done">Implement <code>exportMd</code> in <code>lib/store-md.mjs</code> plus the <code>export-md</code> CLI entry, including deck refusal and destination resolution.<span class="verify">verify: <code>export-md</code> on a store spec writes the file; on a deck spec exits 1 with the message</span></li>
+        </ul>
+        <p class="sub"><strong>Testing:</strong> golden-file comparison, unit tests for the walker · <strong>Verifiable output:</strong> a <code>.md</code> file an agent can read back and diff against its golden</p>
+      </li>
+      <li data-sf-stage="2" data-sf-pr="">
+        <div class="sh"><h3>Stage 2 · Parser and importer</h3><span class="tag done">done</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="2.1" data-sf-status="done">Write <code>test/md-parse.test.mjs</code> covering every supported block and inline construct in §5 plus the unsupported-report path, red first.<span class="verify">verify: each construct has a case asserting its AST node</span></li>
+          <li data-sf-task="2.2" data-sf-status="done">Implement <code>lib/md-parse.mjs</code>: frontmatter, block grammar, inline grammar, unsupported reporting with line numbers.<span class="verify">verify: <code>test/md-parse.test.mjs</code> green</span></li>
+          <li data-sf-task="2.3" data-sf-status="done">Implement <code>lib/md-to-html.mjs</code>: section synthesis with slug ids and marker override, plan reconstruction into <code>data-sf-*</code>, tracker regeneration through <code>lib/tracker.mjs</code>, asset inlining with the 512 KB cap, HTML sanitization, shell composition and TOC rebuild.<span class="verify">verify: every fixture imports to a spec whose <code>lintSpec</code> blocking checks pass</span></li>
+          <li data-sf-task="2.4" data-sf-status="done">Implement <code>importMd</code> plus the <code>import-md</code> CLI entry: new spec id, session attach, <code>origin</code> and <code>derivedFrom</code>, JSON report.<span class="verify">verify: importing the same file twice yields two distinct spec ids and leaves the first untouched</span></li>
+          <li data-sf-task="2.5" data-sf-status="done">Write <code>test/md-roundtrip.test.mjs</code>: export then import each fixture, assert structural equivalence.<span class="verify">verify: all four types pass; the loss ledger entries are the only differences</span></li>
+        </ul>
+        <p class="sub"><strong>Testing:</strong> unit tests per module plus the round-trip suite · <strong>Verifiable output:</strong> a spec id an agent can lint and open</p>
+      </li>
+      <li data-sf-stage="3" data-sf-pr="">
+        <div class="sh"><h3>Stage 3 · Review UI download</h3><span class="tag done">done</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="3.1" data-sf-status="done">Write <code>test/zip.test.mjs</code> and <code>test/daemon-md.test.mjs</code>, red first.<span class="verify">verify: the zip test unpacks with the system <code>unzip</code>; the route test asserts both content types</span></li>
+          <li data-sf-task="3.2" data-sf-status="done">Implement <code>lib/zip.mjs</code> on <code>node:zlib</code> <code>deflateRaw</code>: local headers, central directory, CRC32.<span class="verify">verify: <code>unzip -t</code> reports no errors on a generated archive</span></li>
+          <li data-sf-task="3.3" data-sf-status="done">Add <code>GET /api/spec/:id/md</code> to <code>server/daemon.mjs</code>, rendering in memory with the right content type and <code>Content-Disposition</code>.<span class="verify">verify: curl against a running daemon returns the file for both the diagram and no-diagram cases</span></li>
+          <li data-sf-task="3.4" data-sf-status="done">Add the download row to the spec action menu in <code>server/public/review.js</code>, next to the Google Docs row, with no <code>meta</code> state.<span class="verify">verify: the Playwright e2e clicks it and asserts the download filename</span></li>
+        </ul>
+        <p class="sub"><strong>Testing:</strong> unit tests plus a Playwright download assertion · <strong>Verifiable output:</strong> a downloaded file on disk in the e2e run</p>
+      </li>
+      <li data-sf-stage="4" data-sf-pr="">
+        <div class="sh"><h3>Stage 4 · Skills, docs, journeys</h3><span class="tag done">done</span></div>
+        <ul class="sf-tasks">
+          <li data-sf-task="4.1" data-sf-status="done">Add <code>skills/export-md/SKILL.md</code> and <code>commands/export-md.md</code>: resolve the spec, run the CLI, report the path.<span class="verify">verify: <code>/specforge:export-md</code> on an attached spec prints a path that exists</span></li>
+          <li data-sf-task="4.2" data-sf-status="done">Rewrite branch 2B of <code>skills/convert-spec/SKILL.md</code>: run <code>import-md</code>, read the report, then edit the produced spec into house shape and register.<span class="verify">verify: converting a foreign <code>.md</code> produces a lint-PASS spec whose sections are the house set</span></li>
+          <li data-sf-task="4.3" data-sf-status="done">Documentation updates per §14.<span class="verify">verify: the README, house rules, and command list name both directions</span></li>
+          <li data-sf-task="4.4" data-sf-status="done">Testing journeys per §15.<span class="verify">verify: both journeys run green end to end</span></li>
+        </ul>
+        <p class="sub"><strong>Testing:</strong> skill runs end to end on a real store spec · <strong>Verifiable output:</strong> a spec id created from a markdown file with no hand editing</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="task-tracker" data-sf-section>
+    <h2>12 · Task tracker</h2>
+    <p class="sub">Projection of <code>data-sf-status</code> across the plan, one row per task, status
+    <span class="tag todo">todo</span>/<span class="tag done">done</span>. Rendered live when served; the
+    table below is the authoring-time snapshot.</p>
+    <table>
+      <thead><tr><th>Stage</th><th>PR</th><th>Task</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>P · General template</td><td>n/a</td><td>P.1 general type + shell</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>P · General template</td><td>n/a</td><td>P.2 DEFAULT_TYPE / LEGACY_TYPE split</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>P · General template</td><td>n/a</td><td>P.3 type filter from SPEC_TYPES</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>P · General template</td><td>n/a</td><td>P.4 docs and skills</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>P · General template</td><td>n/a</td><td>P.5 tests</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>0 · Test setup</td><td>n/a</td><td>0.1 fixture corpus</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>0 · Test setup</td><td>n/a</td><td>0.2 structural-equivalence helper</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>0 · Test setup</td><td>n/a</td><td>0.3 temp-store harness</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>1 · Exporter</td><td>n/a</td><td>1.1 export tests, red</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>1 · Exporter</td><td>n/a</td><td>1.2 html-to-md.mjs</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>1 · Exporter</td><td>n/a</td><td>1.3 SVG lift</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>1 · Exporter</td><td>n/a</td><td>1.4 exportMd + CLI</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>2 · Parser and importer</td><td>n/a</td><td>2.1 parser tests, red</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>2 · Parser and importer</td><td>n/a</td><td>2.2 md-parse.mjs</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>2 · Parser and importer</td><td>n/a</td><td>2.3 md-to-html.mjs</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>2 · Parser and importer</td><td>n/a</td><td>2.4 importMd + CLI</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>2 · Parser and importer</td><td>n/a</td><td>2.5 round-trip suite</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>3 · Review UI download</td><td>n/a</td><td>3.1 zip and route tests, red</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>3 · Review UI download</td><td>n/a</td><td>3.2 zip.mjs</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>3 · Review UI download</td><td>n/a</td><td>3.3 /api/spec/:id/md</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>3 · Review UI download</td><td>n/a</td><td>3.4 menu row</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>4 · Skills, docs, journeys</td><td>n/a</td><td>4.1 export-md skill and command</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>4 · Skills, docs, journeys</td><td>n/a</td><td>4.2 convert-spec branch 2B</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>4 · Skills, docs, journeys</td><td>n/a</td><td>4.3 documentation updates</td><td><span class="tag done">done</span></td></tr>
+        <tr><td>4 · Skills, docs, journeys</td><td>n/a</td><td>4.4 testing journeys</td><td><span class="tag done">done</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="runtime" data-sf-section>
+    <h2>13 · Runtime</h2>
+    <p class="sub">Filled during implementation. The runtime record CLAUDE.md asks for, in one place.</p>
+    <h4>Design decisions (implementation time)</h4>
+    <p class="sub">Choices made where the spec was ambiguous.</p>
+    <ul>
+      <li><strong>The section-id comparison strips the display ordinal.</strong> §5 said a marker is written when <code>slug(heading) !== id</code>. House headings are numbered, so <code>slug("3 · Design")</code> is <code>3-design</code> and every section in every spec got a marker, which made the sparse-marker rule worth nothing. <code>headingSlug()</code> drops a leading ordinal before comparing.</li>
+      <li><strong>The section marker sits under its heading, and names that section.</strong> The example in §5 showed it there; the importer first read it as belonging to the next heading, which shifted every id in the document by one. Caught by the round trip on its first run.</li>
+      <li><strong>A section title is compared by text, not by heading level.</strong> Markdown gives a section exactly one heading, so the house TL;DR (an <code>h4</code> inside a panel) necessarily returns as the section's <code>h2</code>. Recorded as loss L8; headings below the title are still compared exactly.</li>
+      <li><strong>The tracker is exempt from round-trip content comparison.</strong> It is regenerated from the plan rather than read back, so its heading and rows are output of <code>lib/tracker.mjs</code>, not of the conversion. That it exists and holds its position is still asserted.</li>
+      <li><strong>Diagram files are numbered within their section</strong> (<code>architecture-1.svg</code>, <code>flow-1.svg</code>), not across the document, so adding a diagram to one section does not renumber another's files.</li>
+      <li><strong><code>isSafeUrl</code> lives in <code>lib/md-parse.mjs</code></strong>, the bottom of the import stack, because the inline renderer builds <code>&lt;a&gt;</code> and <code>&lt;img&gt;</code> straight from markdown link syntax and needs the same guard as the raw-HTML sanitizer. One definition, both paths.</li>
+      <li><strong><code>data:image</code> URIs are allowed, except <code>svg+xml</code>.</strong> An inline raster is how an image survives into a self-contained spec; SVG carries script and executes when navigated to.</li>
+      <li><strong>Containment is checked on the real path.</strong> <code>resolve()</code> is lexical, so a symlink inside the source directory pointing anywhere passed. Both ends go through <code>realpath</code>, and the read uses the resolved path.</li>
+      <li><strong>The zip stores rather than deflates when deflate would grow the entry</strong>, and carries a fixed DOS timestamp unless one is passed, so the same input produces the same bytes and a test can compare them.</li>
+      <li><strong>Path safety is enforced at three levels, not one.</strong> The zip writer refuses an entry whose name has a <code>..</code> segment, the exporter reduces a section id to a safe token before it becomes a file name, and the importer reduces a marker's id to what an HTML id may be. The entry name is assembled from the two layers above it, so guarding only the writer would have left the assembly free to produce something the writer then refused.</li>
+      <li><strong>Consecutive inline nodes are gathered into one paragraph.</strong> House markup puts prose straight inside a <code>.callout</code> with an inline <code>&lt;code&gt;</code> in the middle; walking those children as separate blocks emitted the code as bare text. Found by exporting this spec and reading the warning.</li>
+    </ul>
+    <h4>What review cost, and what it caught</h4>
+    <p class="sub">Six PRs, and the security work was not in the estimate.</p>
+    <table>
+      <thead><tr><th>PR</th><th>Stage</th><th>Review rounds</th><th>What review found</th></tr></thead>
+      <tbody>
+        <tr><td>#126</td><td>P: general type</td><td>3</td><td>A skill listing template types by hand, twice: it omitted <code>deck</code> both times. Fixed by reading <code>SPEC_TYPES</code> at run time.</td></tr>
+        <tr><td>#128</td><td>0: contract</td><td>3</td><td>The equivalence assertion could not see a flattened nested list, an <code>ol</code> silently becoming a <code>ul</code>, or a task status of <code>todo</code> that no fixture actually had.</td></tr>
+        <tr><td>#129</td><td>1: exporter</td><td>1</td><td>Nothing.</td></tr>
+        <tr><td>#130</td><td>2: importer</td><td><strong>7</strong></td><td>Seven security findings, all real: a <code>javascript:</code> block-list bypassed four ways, path traversal, a symlink out of the source directory, attribute injection through alt text, remote images as tracking beacons, and a void element that swallowed the rest of the document.</td></tr>
+        <tr><td>#131</td><td>3: surfaces</td><td>2</td><td>Zip slip: a <code>..</code> in an entry name.</td></tr>
+        <tr><td>#132</td><td>4: skills and docs</td><td>5</td><td>A hard line break lost in two places, a skill fallback that would strand the imported spec and attach a second one, and an id check open enough to admit command substitution.</td></tr>
+      </tbody>
+    </table>
+    <p>The importer is the module that takes untrusted input, and it absorbed 7 of the 21 rounds on its own. The block-list to allow-list rewrite is the lesson: four of its findings were the same idea spelled differently, and no further spelling has been found since the allow-list landed.</p>
+
+    <h4>Deviations</h4>
+    <p class="sub">Intentional departures from the spec, and why.</p>
+    <ul>
+      <li><strong>The sanitizer allow-lists elements and attributes; §4 specified a block-list</strong> ("strips <code>&lt;script&gt;</code>, <code>&lt;iframe&gt;</code>, <code>&lt;object&gt;</code>, <code>&lt;embed&gt;</code>, and <code>on*</code> attributes"). Review found four bypasses of that block-list in four rounds, each a different spelling of one idea: a quoting form the pattern missed, an entity-encoded scheme, a solidus standing in for the separator between attributes. The list of dangerous things is a guess, and the guess is what gets enumerated. Allow-listing makes the class a non-event: an attribute nobody listed is dropped whatever it is called.</li>
+      <li><strong>The import report field is <code>assetsDropped</code>, not <code>assetsResolved</code>.</strong> The interesting number is what did not make it, and each entry carries its reason.</li>
+      <li><strong>Stage 3's e2e is a new file</strong> (<code>test-e2e/download-md.e2e.mjs</code>) rather than a step inside <code>test-e2e/review.e2e.mjs</code>. That file imports <code>server/app.mjs</code> and <code>lib/paths.mjs</code>, both deleted in the v2 retirement, so it cannot run; it is left alone rather than repaired as a side effect of this work.</li>
+      <li><strong>The <code>general</code> spec type was built first, as Stage P.</strong> Not in the original plan: the importer had no shell to compose into that did not impose a section set the source document does not have.</li>
+    </ul>
+    <h4>Tradeoffs</h4>
+    <p class="sub">Alternatives considered and why the chosen path won.</p>
+    <ul>
+      <li><strong>An in-house markdown parser against <code>marked</code> + <code>turndown</code>.</strong> The subset is bounded by what the house templates emit, and the package advertises zero runtime dependencies. Cost: roughly 350 lines to own, and two parser bugs the tests caught (an ordered list absorbed into a preceding bullet list; a footnote reported twice because it also matches the reference-link shape).</li>
+      <li><strong>Structural equivalence against byte equality.</strong> Byte equality was never reachable: whitespace, attribute order, inline styles and tag classes are all documented losses. The assertion names the field that moved, which is what made four separate conversion bugs diagnosable in one line each.</li>
+      <li><strong>Regex parsing against a DOM library.</strong> Kept, matching <code>lib/spec.mjs</code>. It cost two file-corrupting mistakes during development (raw control characters written into a source file, making it binary to <code>grep</code>) and one class of security bug that a real parser would not have had. A DOM would be a runtime dependency in a plugin that installs into a user's Claude Code.</li>
+      <li><strong>Unwrapping unlisted elements against deleting them.</strong> Unwrapping keeps the author's text and discards only the markup. Deleting would be safer against an element whose <em>content</em> is the payload, which is why <code>script</code>, <code>style</code> and the framing elements are dropped whole instead.</li>
+    </ul>
+  </section>
+
+  <section id="doc-updates" data-sf-section>
+    <h2>14 · Documentation updates</h2>
+    <table>
+      <thead><tr><th style="width:170px">What changed</th><th>To reflect in the docs</th></tr></thead>
+      <tbody>
+        <tr><td>New handlers / APIs</td><td>CLI: <code>export-md</code>, <code>import-md</code>. Daemon: <code>GET /api/spec/:id/md</code>. Skill and command: <code>specforge:export-md</code>. README "Everyday commands" gains both CLI entries.</td></tr>
+        <tr><td>New patterns</td><td>SF-MD marker syntax (<code>sf:section</code>, <code>sf:task</code>, <code>sf:svg</code>, <code>sf:callout</code>, <code>sf:box</code>, <code>sf:q</code>) documented in <code>templates/house-rules.md</code>, so a future exporter change keeps one definition.</td></tr>
+        <tr><td>New features</td><td>README: a spec downloads as markdown from the action menu; a markdown file converts into a spec without an agent authoring it.</td></tr>
+        <tr><td>New invariants</td><td>House rules: imported specs inline all assets, with a 512 KB raster cap; import never writes an existing spec.</td></tr>
+        <tr><td>Removed / renamed</td><td>README "Who it is for" states specs-as-markdown-in-your-repo is not the product; qualify it to mean authoring, since export now exists.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="test-journeys" data-sf-section>
+    <h2>15 · Testing journeys</h2>
+    <table>
+      <thead><tr><th style="width:96px">Change</th><th>Journey</th><th>What it exercises</th></tr></thead>
+      <tbody>
+        <tr><td><span class="tag good">add</span></td><td>Export and share</td><td>Open a store spec with diagrams in the review UI, click the download row, receive a zip, unzip it, confirm the <code>.md</code> parses as GFM and every image reference resolves to a file in the assets directory.</td></tr>
+        <tr><td><span class="tag good">add</span></td><td>Foreign markdown to spec</td><td>Run <code>/specforge:convert</code> on <code>~/workspace/golem/project_management/design/design_v3.md</code>: the deterministic pass creates a lint-PASS spec with one section per <code>##</code>, the agent pass remaps it onto house sections, the spec opens in the review UI, and the source file is unmodified.</td></tr>
+        <tr><td><span class="tag warn">modify</span></td><td>Convert an HTML design doc</td><td>Branch 2A of <code>convert-spec</code> is unchanged; the journey confirms the <code>.md</code> branch change did not alter HTML ingestion.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="appendix" data-sf-section>
+    <h2>Appendix</h2>
+    <p class="sub">References.</p>
+    <ul>
+      <li>Worktree: <code>~/workspace/worktrees/specforge-md-interop</code>, branch <code>feat/md-interop</code>, cut from <code>origin/main</code> at <code>de4e2fb</code>.</li>
+      <li>House rules: <code>templates/house-rules.md</code>. Language contract: <code>references/spec-language.md</code>.</li>
+      <li>Reference markdown register for the exported dialect: <code>~/workspace/golem/project_management/design/design_v3.md</code>, numbered <code>##</code> sections, GFM tables, fenced code, task lists, HTML comments used for out-of-band notes.</li>
+      <li>Existing interop paths this design sits beside: <code>lib/store-export.mjs</code> (Google Docs relay), <code>skills/convert-spec/SKILL.md</code> (agent re-author), <code>tools/spec-pdf.mjs</code> (PDF render).</li>
+    </ul>
+  </section>
+
+  <p class="footnote" style="margin-top:40px">Authored with SpecForge · 2026-08-14</p>
+</main>
+</div>
+
+<script>
+  // TOC scroll-spy.
+  (function(){
+    var links=[].slice.call(document.querySelectorAll("nav.toc a"));
+    var map={};links.forEach(function(a){map[a.getAttribute("href").slice(1)]=a;});
+    var obs=new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(e.isIntersecting){
+          links.forEach(function(l){l.classList.remove("active");});
+          var a=map[e.target.id];if(a)a.classList.add("active");
+        }
+      });
+    },{rootMargin:"-10% 0px -80% 0px",threshold:0});
+    Object.keys(map).forEach(function(id){var el=document.getElementById(id);if(el)obs.observe(el);});
+  })();
+</script>
+</body>
+</html>
