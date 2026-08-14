@@ -7,8 +7,8 @@ description: |
   learnings into the templates", or after a batch of specs has accumulated feedback.
   Mines every human comment across the store, clusters the recurring cross-spec
   themes + redundant sections, proposes template changes as a spec, and — only on
-  the user's go-ahead — edits the four template specs in place. Never touches or
-  rewrites existing specs; templates only.
+  the user's go-ahead — edits the template specs in place, one per spec type.
+  Never touches or rewrites existing specs; templates only.
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
@@ -53,7 +53,10 @@ one concrete template change, with an evidence index back to the comments. Prese
 
 - the ranked themes (spread + representative quotes),
 - redundant / missing sections per template,
-- the exact change proposed for each of the four templates,
+- the exact change proposed for each template in `SPEC_TYPES` (`lib/meta.mjs` is
+  the list; a new type appears here without this file changing). For
+  `template-general` the proposal covers chrome and the authoring comment only,
+  since adding sections to it would defeat the type,
 - open questions the user must decide.
 
 Attach it and **wait for the user's decisions**. Do not proceed to §3 until they
