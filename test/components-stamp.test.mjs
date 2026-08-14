@@ -77,6 +77,87 @@ test('a spec with no style element is refused rather than guessed at', () => {
   assert.throws(() => stampHtml('<html><head></head><body></body></html>'), /style/i);
 });
 
+// An imported spec does not have to use the bare tag the templates happen to
+// use, and refusing to stamp it would be a refusal nobody could act on.
+test('any valid style tag is stamped, not only the bare one', () => {
+  for (const tag of ['<style type="text/css">', '<style media="screen">', '<STYLE>']) {
+    const html = `<!DOCTYPE html><html data-sf-spec-status="draft"><head><title>T</title>
+${tag}
+  body{margin:0}
+</${tag.slice(1, 6).toLowerCase()}>
+</head><body><main><h1>T</h1></main></body></html>`;
+    const out = stampHtml(html);
+    assert.ok(out.includes(START), `${tag} is stamped`);
+    assert.equal(readBlock(out).present, true, `${tag} block reads back`);
+  }
+});
+
+// An opt-in written in valid HTML that the templates do not happen to produce
+// must still count. Reading it as absent would silently skip that spec in both
+// `sync --all` and the lint, which is the quietest possible failure.
+test('an opt-in is recognised however the html tag is written', async () => {
+  const { optedIn, optedInVersion } = await import('../lib/components-stamp.mjs');
+  const variants = [
+    `<html lang="en" ${ATTR}="1">`,
+    `<HTML LANG="en" ${ATTR}="1">`,
+    `<html ${ATTR}='1'>`,
+    `<html ${ATTR} = "1">`,
+    `<html\n  ${ATTR}="1">`,
+  ];
+  for (const tag of variants) {
+    const html = `<!DOCTYPE html>${tag}<head><title>T</title><style>body{}</style></head><body></body></html>`;
+    assert.equal(optedIn(html), true, `opted in: ${tag.replace(/\n/g, ' ')}`);
+    assert.equal(optedInVersion(html), 1);
+  }
+  assert.equal(optedIn('<html lang="en"><head></head><body></body></html>'), false);
+});
+
+// A spec can carry more than one stylesheet. Looking only at the first would
+// read an existing block in a later one as absent and insert a second copy, so
+// the spec would carry two definitions of every component.
+test('a block in a later style element is found, not duplicated', () => {
+  const two = (blockIn) => `<!DOCTYPE html><html data-sf-spec-status="draft"><head><title>T</title>
+<style>${blockIn === 0 ? 'BLOCK' : '  body{margin:0}'}</style>
+<style media="print">${blockIn === 1 ? 'BLOCK' : '  h1{font-size:20px}'}</style>
+</head><body><main><h1>T</h1></main></body></html>`;
+
+  // Stamped into the first when there is no block anywhere.
+  const fresh = stampHtml(two(-1));
+  assert.equal((fresh.match(/specforge:components v\d+ start/g) || []).length, 1);
+
+  // Stamped in place when the block already lives in the second.
+  const inSecond = two(1).replace('BLOCK', buildCss().trim());
+  assert.equal(readBlock(inSecond).present, true, 'a block in the second sheet is found');
+  const out = stampHtml(inSecond);
+  assert.equal((out.match(/specforge:components v\d+ start/g) || []).length, 1, 'still one block');
+  assert.ok(out.split('<style media="print">')[1].includes('specforge:components'),
+    'and it stayed where it was');
+});
+
+// Reading a tag loosely is only half the job: writing it back has to survive the
+// same variety. Slicing at a lowercase `html` produced `<htmlML LANG="en">` on an
+// uppercase root tag, corrupting exactly the imported documents the loose
+// matching was added for.
+test('stamping preserves the root tag it found, whatever its case', async () => {
+  const { optedInVersion } = await import('../lib/components-stamp.mjs');
+  for (const tag of ['<HTML LANG="en">', '<Html lang="en">', '<html lang="en">']) {
+    const html = `<!DOCTYPE html>${tag}<head><title>T</title><style>body{}</style></head><body><h1>x</h1></body></html>`;
+    const out = stampHtml(html);
+    const root = out.match(/<[hH][tT][mM][lL][^>]*>/)[0];
+    assert.ok(/^<(html|Html|HTML)\s/.test(root), `root tag intact, got ${root}`);
+    assert.ok(root.includes('LANG="en"') || root.includes('lang="en"'), `attributes intact, got ${root}`);
+    assert.equal(optedInVersion(out), VERSION, `and opted in, got ${root}`);
+  }
+});
+
+test('stamping updates an existing attribute rather than adding a second', async () => {
+  const { optedInVersion } = await import('../lib/components-stamp.mjs');
+  const html = `<!DOCTYPE html><html ${ATTR}='0'><head><title>T</title><style>body{}</style></head><body></body></html>`;
+  const out = stampHtml(html, { force: true });
+  assert.equal((out.match(new RegExp(ATTR, 'g')) || []).length, 1, 'one attribute');
+  assert.equal(optedInVersion(out), VERSION, 'at the current version');
+});
+
 // ---- reading a block back ----
 
 test('readBlock reports the version and whether the body is untouched', () => {
@@ -96,6 +177,52 @@ test('readBlock detects a hand-edited block', () => {
 
 test('readBlock on a pre-library spec reports absent', () => {
   assert.deepEqual(readBlock(SPEC()), { present: false, version: null, edited: false });
+});
+
+// ---- a spec that writes ABOUT the library ----
+//
+// Both of these are regressions. `components sync --all` ran against the real
+// store and rewrote the design spec for this library: it documents the marker
+// format in a <pre><code> example, and it names the attribute in its prose. The
+// opt-in test matched the prose, and the block regex matched the example, so the
+// example was replaced with the whole stylesheet.
+
+const DOCUMENTING_SPEC = `<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="draft">
+<head><meta charset="utf-8"><title>T</title>
+<style>
+  :root{--bg:#0f1115}
+</style>
+</head>
+<body><main>
+<p>The &lt;html&gt; element carries <code>${ATTR}="1"</code>. A spec without it is pre-library.</p>
+<pre><code>&lt;style&gt;
+  /* specforge:components v1 start: generated, do not edit */
+  ...
+  /* specforge:components end */
+&lt;/style&gt;</code></pre>
+</main></body></html>`;
+
+test('a spec that only writes about the attribute has not opted in', () => {
+  const id = seed('hhh8888888', DOCUMENTING_SPEC);
+  const r = syncAll();
+  assert.deepEqual(r.skipped, [id], 'prose mentioning the attribute is not consent');
+  assert.equal(specHtml(id), DOCUMENTING_SPEC, 'and the file is byte-identical');
+});
+
+test('stamping never touches markers outside the stylesheet', () => {
+  const out = stampHtml(DOCUMENTING_SPEC);
+  assert.ok(out.includes('  /* specforge:components v1 start: generated, do not edit */\n  ...\n'),
+    'the code example survives intact');
+  assert.equal((out.match(/specforge:components v\d+ start/g) || []).length, 2,
+    'one real block plus the one being written about');
+  // The real block landed in the stylesheet, not in the body.
+  const styleCss = out.slice(out.indexOf('<style>'), out.indexOf('</style>'));
+  assert.ok(styleCss.includes('.callout.decision::before'), 'the stylesheet has the library');
+});
+
+test('readBlock ignores a block written about in the body', () => {
+  assert.deepEqual(readBlock(DOCUMENTING_SPEC), { present: false, version: null, edited: false });
 });
 
 // ---- syncing a spec in the store ----

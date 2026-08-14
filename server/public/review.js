@@ -136,7 +136,14 @@
   }
 
   // Elements that can carry a comment. The innermost match under the pointer wins.
-  var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,td,th,pre,blockquote,figure,.panel,.callout,.card,.stat,.loop .step,.matrix .q,.bar,.ns';
+  //
+  // The component library's block components are appended from the injected
+  // config rather than listed here. The lint tells an author a block component is
+  // commentable; if this list did not follow, that would be a promise the page
+  // could not keep, and text inside a .diff or a .flow would be uncommentable
+  // while the lint reported it as fine.
+  var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,td,th,pre,blockquote,figure,.panel,.callout,.card,.stat,.loop .step,.matrix .q,.bar,.ns'
+    + ((window.SPECFORGE || {}).blocks || []).map(function (c) { return ',.' + c; }).join('');
   var INTERACTIVE = 'a,button,input,textarea,select,summary,label';
 
   var INIT_FILTER = (PREFS.filter === 'resolved' || PREFS.filter === 'all') ? PREFS.filter : 'open';
