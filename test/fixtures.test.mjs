@@ -54,16 +54,17 @@ test('the corpus covers every construct the converters have to handle', () => {
   }
 });
 
-test('the plan fixture exercises every task status the tracker knows', () => {
+test('the corpus exercises every task status the tracker knows', () => {
+  // Across the corpus, not one fixture: the plan-only spec is where todo lives,
+  // and design-impl is where the settled and blocked states live.
   const statuses = new Set(
-    parsePlan(fixture('design-impl').html()).flatMap((s) => s.tasks.map((t) => t.status))
+    FIXTURES.flatMap((f) => parsePlan(f.html())).flatMap((s) => s.tasks.map((t) => t.status))
   );
   for (const s of ['todo', 'in_progress', 'done', 'blocked', 'deferred']) {
-    // 'dropped' is deliberately absent: it behaves exactly like 'deferred' in the
-    // tracker (both settle a task) and adding it would test the same branch twice.
-    assert.ok(statuses.has(s) || s === 'todo', `a task is ${s}`);
+    assert.ok(statuses.has(s), `some task in the corpus is ${s} (have: ${[...statuses].join(', ')})`);
   }
-  assert.ok(statuses.has('done') && statuses.has('blocked'), 'settled and blocked are both present');
+  // 'dropped' is deliberately absent: the tracker settles it exactly as it
+  // settles 'deferred', so a fixture for it would cover the same branch twice.
 });
 
 test('fixture() names what is available when asked for something missing', () => {

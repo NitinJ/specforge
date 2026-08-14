@@ -96,6 +96,28 @@ test('a dropped list item fails', () => {
   assert.throws(() => assertStructurallyEquivalent(after, before), /\.listItems/);
 });
 
+test('a flattened nested list fails: depth is part of the comparison', () => {
+  const before = design();
+  // Same items, same order, same text — only the hierarchy is gone. Comparing
+  // item text alone would call this equivalent.
+  const after = before.replace(
+    /<li>A connection error, which covers:\s*<ul>([\s\S]*?)<\/ul>\s*<\/li>/,
+    (_m, inner) => `<li>A connection error, which covers:</li>${inner}`
+  );
+  assert.notEqual(after, before, 'the flattening rewrite applied');
+  assert.throws(() => assertStructurallyEquivalent(after, before), /\.listItems/);
+});
+
+test('nesting depth is recorded, and plan tasks stay out of it', () => {
+  const designSection = structuralModel(design()).sections.find((s) => s.id === 'design');
+  assert.deepEqual(
+    designSection.listItems.filter((i) => i.depth === 1).map((i) => i.text),
+    ['DNS failure', 'TLS handshake failure', 'Read timeout past 10s']
+  );
+  const planSection = structuralModel(plan()).sections.find((s) => s.id === 'impl-plan');
+  assert.deepEqual(planSection.listItems, [], 'tasks are compared by id and status, not as list text');
+});
+
 test('a changed title or status fails', () => {
   const before = design();
   // getTitle() reads <title> and only falls back to <h1>, so each is checked on

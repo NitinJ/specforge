@@ -92,15 +92,75 @@ function diagramsOf(body) {
   return out;
 }
 
-function listItemsOf(body) {
-  const out = [];
-  // Plan tasks carry their own comparison (see planOf); counting them twice would
-  // fail a round trip on formatting alone.
-  const re = /<li\b(?![^>]*data-sf-(?:task|stage))[^>]*>([\s\S]*?)(?=<li\b|<\/ul>|<\/ol>)/g;
+/** The end of the element opened at `from`, counting nested opens of `tag`. */
+function closeOf(html, from, tag) {
+  const re = new RegExp(`<(/?)${tag}\\b`, 'gi');
+  re.lastIndex = from;
+  let depth = 1;
   let m;
-  while ((m = re.exec(body))) {
-    const text = textOf(m[1].replace(/<\/?(?:ul|ol)\b[^>]*>/g, ' '));
-    if (text) out.push(text);
+  while ((m = re.exec(html))) {
+    depth += m[1] ? -1 : 1;
+    if (depth === 0) {
+      const gt = html.indexOf('>', m.index);
+      return { start: m.index, end: gt === -1 ? html.length : gt + 1 };
+    }
+  }
+  return { start: html.length, end: html.length };
+}
+
+/**
+ * List items with their nesting depth, in document order.
+ *
+ * Depth is part of the comparison, not decoration: a round trip that flattened
+ * "A connection error / DNS failure / TLS failure" into three siblings would
+ * otherwise produce the same three strings and pass.
+ *
+ * Plan tasks are excluded because planOf() compares them by id and status;
+ * counting them here as well would fail a correct round trip on list formatting.
+ */
+function listItemsOf(body, depth = 0, out = []) {
+  const listRe = /<(ul|ol)\b([^>]*)>/gi;
+  let m;
+  while ((m = listRe.exec(body))) {
+    const tag = m[1].toLowerCase();
+    const start = m.index + m[0].length;
+    const close = closeOf(body, start, tag);
+    const inner = body.slice(start, close.start);
+    listRe.lastIndex = close.end;
+    if (/\bclass\s*=\s*"[^"]*sf-(?:tasks|stages)/i.test(m[2])) continue;
+    itemsOf(inner, depth, out);
+  }
+  return out;
+}
+
+function itemsOf(inner, depth, out) {
+  const liRe = /<li\b([^>]*)>/gi;
+  let m;
+  while ((m = liRe.exec(inner))) {
+    const attrs = m[1];
+    const start = m.index + m[0].length;
+    const close = closeOf(inner, start, 'li');
+    const body = inner.slice(start, close.start);
+    liRe.lastIndex = close.end;
+    if (/data-sf-(?:task|stage)/i.test(attrs)) continue;
+
+    // The item's own text is what is left once its sub-lists are cut out.
+    let own = body;
+    const nested = [];
+    const subRe = /<(ul|ol)\b[^>]*>/gi;
+    let s;
+    while ((s = subRe.exec(body))) {
+      const subTag = s[1].toLowerCase();
+      const subStart = s.index + s[0].length;
+      const subClose = closeOf(body, subStart, subTag);
+      nested.push(body.slice(s.index, subClose.end));
+      subRe.lastIndex = subClose.end;
+    }
+    for (const n of nested) own = own.replace(n, ' ');
+
+    const text = textOf(own);
+    if (text) out.push({ depth, text });
+    for (const n of nested) listItemsOf(n, depth + 1, out);
   }
   return out;
 }
