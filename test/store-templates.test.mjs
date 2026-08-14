@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { SPEC_TYPES, readMeta } from '../lib/meta.mjs';
+import { lintSpec } from '../lib/lint-spec.mjs';
 import { readSpecHtml, writeSpecHtml } from '../lib/store.mjs';
 import {
   templateId, ensureTemplates, templateHtmlFor, TEMPLATE_COLLECTION,
@@ -77,4 +78,24 @@ test('a per-type bundled seed (spec-base-<type>.html) wins over the shared shell
   // and a fresh seed carries the research shape, not design's.
   ensureTemplates();
   assert.match(readSpecHtml(templateId('research')), /id="findings"/, 'research template has a Findings section');
+});
+
+test('the general shell is chrome plus a TL;DR and nothing else', () => {
+  const general = readFileSync(join(ROOT, 'templates', 'spec-base-general.html'), 'utf8');
+  assert.equal(templateHtmlFor('general'), general, 'general scaffolds from its own bundled shell');
+
+  const ids = [...general.matchAll(/<section\b[^>]*\bid="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(ids, ['tldr'], 'exactly one section: the agent decides the rest');
+
+  const tocLinks = [...general.matchAll(/<nav class="toc">[\s\S]*?<\/nav>/g)]
+    .flatMap((n) => [...n[0].matchAll(/href="#([^"]+)"/g)].map((m) => m[1]));
+  assert.deepEqual(tocLinks, ['tldr'], 'the TOC starts with only the TL;DR link');
+
+  // The scaffold is what this type contributes: theme, palette, TOC chrome, status.
+  const { ok, checks } = lintSpec(general);
+  assert.ok(ok, `general shell lints: ${checks.filter((c) => !c.ok && !c.advisory).map((c) => c.name).join(', ')}`);
+  // The plan CSS ships (a plan the agent adds must render); the plan MARKUP does not.
+  assert.doesNotMatch(general, /<li\b[^>]*data-sf-(?:stage|task)/, 'no plan markup in the shell');
+  assert.doesNotMatch(general, /<section\b[^>]*id="task-tracker"/, 'no tracker section in the shell');
+  assert.match(general, /li\[data-sf-stage\]/, 'plan styling is present for a plan the agent adds');
 });

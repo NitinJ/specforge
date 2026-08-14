@@ -15,12 +15,19 @@ in `lib/config.mjs` and can be overridden per project at
 
 ## Required sections (enforced)
 
-Every spec must contain these `<section id="…">` blocks:
+An implementation spec (`design-impl`, `impl`) must contain these
+`<section id="…">` blocks:
 
 `tldr`, `overview`, `goals`, `design`, `decisions`, `impl-plan`,
 `task-tracker`, `impl-decisions`, `deviations`, `tradeoffs`.
 
 Optional but encouraged: `open-questions`, `appendix`.
+
+A `general` spec has no required section but `tldr`. It is the type for a
+document none of the others describe, and its sections come from the use case
+(or, for a converted file, from the source's own headings). Everything else on
+this page still applies to it: stable unique ids, the theme contract, the palette
+tokens, `data-sf-section` on every section, and the TOC kept in sync.
 
 `impl-decisions`, `deviations`, and `tradeoffs` start as empty stubs — they are
 filled **during implementation**, not at authoring time.

@@ -4,7 +4,10 @@ import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { defaultMeta, readMeta, writeMeta, listSpecs, SPEC_TYPES, DEFAULT_TYPE, TYPE_SHELL } from '../lib/meta.mjs';
+import {
+  defaultMeta, readMeta, writeMeta, listSpecs,
+  SPEC_TYPES, DEFAULT_TYPE, LEGACY_TYPE, TYPE_SHELL,
+} from '../lib/meta.mjs';
 import { specDir } from '../lib/store.mjs';
 
 let home;
@@ -30,20 +33,30 @@ test('defaultMeta has the v2 schema with draft/unattached defaults', () => {
   assert.equal(m.origin, '/proj');
   assert.equal(m.attachedSession, null);
   assert.equal(m.heartbeat, 0);
-  assert.equal(m.type, 'design-impl');
+  assert.equal(m.type, 'general');
   assert.equal(typeof m.created, 'number');
   assert.equal(typeof m.updated, 'number');
 });
 
-test('defaultMeta type: defaults to design-impl, honours valid, rejects unknown', () => {
-  assert.equal(defaultMeta({ id: 'a' }).type, 'design-impl');
+test('defaultMeta type: defaults to general, honours valid, rejects unknown', () => {
+  assert.equal(defaultMeta({ id: 'a' }).type, 'general');
   assert.equal(defaultMeta({ id: 'a', type: 'research' }).type, 'research');
-  assert.equal(defaultMeta({ id: 'a', type: 'bogus' }).type, 'design-impl'); // defensive default
+  assert.equal(defaultMeta({ id: 'a', type: 'bogus' }).type, 'general'); // defensive default
 });
 
 test('every spec type maps to a known shell (TYPE_SHELL is the source of truth)', () => {
   for (const t of SPEC_TYPES) assert.ok(['doc', 'impl'].includes(TYPE_SHELL[t]), `${t} maps to a shell`);
   assert.ok(SPEC_TYPES.includes(DEFAULT_TYPE), 'DEFAULT_TYPE is a valid type');
+  assert.equal(DEFAULT_TYPE, 'general', 'a new spec that fits no other type gets the general shell');
+  assert.equal(TYPE_SHELL.general, 'doc', 'general carries no tracker');
+});
+
+test('LEGACY_TYPE keeps untyped pre-existing specs in the shape they were authored in', () => {
+  // Untyped specs predate the type field and were all authored as design-impl.
+  // Reading them as DEFAULT_TYPE would relabel them general and hide their plan.
+  assert.equal(LEGACY_TYPE, 'design-impl');
+  assert.ok(SPEC_TYPES.includes(LEGACY_TYPE), 'LEGACY_TYPE is a valid type');
+  assert.notEqual(LEGACY_TYPE, DEFAULT_TYPE, 'the new-spec default and the legacy fallback are separate');
 });
 
 test('defaultMeta falls back to Untitled', () => {

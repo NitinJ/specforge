@@ -55,8 +55,17 @@ test('create without a session scaffolds unattached (graceful degrade)', async (
   assert.equal(readMeta(r.id).attachedSession, null);
 });
 
-test('create defaults to design-impl and scaffolds the impl shell (has the tracker)', async () => {
+test('create defaults to general and scaffolds the chrome-only shell (no tracker)', async () => {
   const r = await cmdCreate({ title: 'D' }, deps());
+  assert.equal(r.type, 'general');
+  assert.equal(readMeta(r.id).type, 'general');
+  const html = readFileSync(r.htmlPath, 'utf8');
+  assert.doesNotMatch(html, /id="task-tracker"/, 'no plan machinery a caller did not ask for');
+  assert.match(html, /id="tldr"/, 'the scaffold, and one section to start from');
+});
+
+test('create --type design-impl scaffolds the impl shell (has the tracker)', async () => {
+  const r = await cmdCreate({ title: 'D2', type: 'design-impl' }, deps());
   assert.equal(r.type, 'design-impl');
   assert.equal(readMeta(r.id).type, 'design-impl');
   assert.match(readFileSync(r.htmlPath, 'utf8'), /id="task-tracker"/);
@@ -221,7 +230,7 @@ test('listall shows every spec with its attached state', async () => {
   assert.equal(session, 'sess-1', 'listall reports the current session so the picker can classify rows');
   const free = rows.find((r) => r.id === a.id);
   assert.equal(free.attached, 'free');
-  assert.equal(free.type, 'design-impl', 'rows carry the spec type');
+  assert.equal(free.type, 'general', 'rows carry the spec type');
   assert.ok(rows.some((r) => r.attached === 'sess-2'));
 });
 
