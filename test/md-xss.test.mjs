@@ -147,6 +147,8 @@ test('an attribute value cannot break out of its own quotes', () => {
     ['link href', '[x](http://a"onmouseover="alert(1))'],
     ['link text', '[<img src=x onerror=alert(1)>](http://a)'],
     ['image alt with a tag', '![<img src=x onerror=alert(1)>](x.png)'],
+    ['autolink', '<https://a"onmouseover="alert(1)>'],
+    ['autolink with a quote and a tag', '<https://a"><img src=x onerror=alert(1)>'],
   ];
   const survived = [];
   for (const [name, vector] of breakouts) {

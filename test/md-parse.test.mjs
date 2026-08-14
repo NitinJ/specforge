@@ -250,6 +250,17 @@ test('the exporter backslash escapes come back off', () => {
   assert.equal(inlineToHtml('\\# not a heading'), '# not a heading');
 });
 
+test('an autolink is a link, with its quotes escaped', () => {
+  assert.equal(
+    inlineToHtml('see <https://example.com/a> for more'),
+    'see <a href="https://example.com/a">https://example.com/a</a> for more'
+  );
+  // The quote is escaped inside the href; between the tags it is ordinary text.
+  const out = inlineToHtml('<https://a"onmouseover="alert(1)>');
+  assert.match(out, /href="[^"]*&quot;onmouseover=&quot;[^"]*"/, out);
+  assert.doesNotMatch(out.match(/href="[^"]*"/)[0], /"onmouseover/, 'the attribute cannot be broken out of');
+});
+
 test('intra-word underscores are left alone', () => {
   assert.equal(inlineToHtml('data_sf_status and event_id'), 'data_sf_status and event_id');
 });
