@@ -31,6 +31,43 @@ test('accepted losses do not fail the assertion', () => {
   assertStructurallyEquivalent(after, before, 'accepted losses');
 });
 
+// A tag's colour is an accepted loss because the text restates it. A notice's
+// type is the only place the block's meaning is recorded, so losing it is a
+// changed document. Before the exporter derived its list from the library, all
+// 12 types came back as a bare callout and this assertion said nothing.
+test('a changed notice type fails, naming the notice', () => {
+  const before = design();
+  const after = before.replace(/class="callout([^"]*)"/, 'class="callout note"');
+  if (after === before) return; // the design fixture carries no notice
+  assert.throws(
+    () => assertStructurallyEquivalent(after, before, 'notice type'),
+    /notices/,
+  );
+});
+
+// The model has to pick the type the exporter picks, or a presentation class
+// written before the type produces a false mismatch on a valid round trip.
+test('a notice type is found whatever order its classes are written in', () => {
+  const spec = (cls) => `<!DOCTYPE html><html data-sf-spec-status="draft"><head><title>T</title></head>
+<body><main><h1>T</h1><section id="s" data-sf-section><h2>1 · S</h2>
+<div class="${cls}">The trigger, and the consequence.</div></section></main></body></html>`;
+  assertStructurallyEquivalent(spec('callout compact risk'), spec('callout risk compact'), 'class order');
+  assert.throws(
+    () => assertStructurallyEquivalent(spec('callout compact note'), spec('callout risk compact'), 'type'),
+    /notices/,
+  );
+});
+
+test('a dropped notice type fails', () => {
+  const one = '<div class="callout risk">The trigger, and the consequence.</div>';
+  const spec = (body) => `<!DOCTYPE html><html data-sf-spec-status="draft"><head><title>T</title></head>
+<body><main><h1>T</h1><section id="s" data-sf-section><h2>1 · S</h2>${body}</section></main></body></html>`;
+  assert.throws(
+    () => assertStructurallyEquivalent(spec(one.replace(' risk', '')), spec(one), 'dropped type'),
+    /notices/,
+  );
+});
+
 test('a reordered section fails, naming section order', () => {
   const before = plan();
   const a = before.match(/<section id="decisions"[\s\S]*?<\/section>/)[0];

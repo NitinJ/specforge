@@ -54,6 +54,12 @@ export const FIXTURES = [
     file: join(HERE, 'diagrams.spec.html'),
     covers: 'two inline SVGs, one in a figure with a caption and one bare with an aria-label',
   },
+  {
+    name: 'notices',
+    type: 'design',
+    file: join(HERE, 'notices.spec.html'),
+    covers: 'one notice of every library type, the three legacy tones, and an untyped one',
+  },
 ].map((f) => ({ ...f, html: () => readFileSync(f.file, 'utf8') }));
 
 /** One fixture by name. Throws rather than returning undefined. */

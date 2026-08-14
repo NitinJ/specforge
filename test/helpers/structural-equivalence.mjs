@@ -11,6 +11,7 @@
 
 import assert from 'node:assert/strict';
 import { getSectionIds, sectionBody, parsePlan, getTitle, getStatus } from '../../lib/spec.mjs';
+import { CALLOUT_VARIANTS } from '../../lib/html-to-md.mjs';
 
 /** Sections the importer regenerates rather than reads back (see the loop below). */
 const DERIVED_SECTIONS = new Set(['task-tracker']);
@@ -91,6 +92,33 @@ function diagramsOf(body) {
     const aria = (attrs.match(/aria-label\s*=\s*"([^"]*)"/) || [, ''])[1];
     const title = (inner.match(/<title\b[^>]*>([\s\S]*?)<\/title>/) || [, ''])[1];
     out.push({ label: textOf(aria || title) });
+  }
+  return out;
+}
+
+/**
+ * Notices in document order, as {type, text}.
+ *
+ * The type is structure, not decoration. A tag's colour class is an accepted
+ * loss (L1) because it restates what the text says; a notice's type is the only
+ * place the block's meaning is recorded, so a round trip that drops it has
+ * changed the document. Before the exporter derived its list from the library,
+ * all 12 types came back as a bare callout and this assertion would not have
+ * noticed.
+ */
+function noticesOf(body) {
+  const out = [];
+  const re = /<div\b([^>]*\bclass\s*=\s*"([^"]*\bcallout\b[^"]*)"[^>]*)>/g;
+  let m;
+  while ((m = re.exec(body))) {
+    const classes = m[2].trim().split(/\s+/);
+    // The first REGISTERED variant, matching how the exporter picks one. Taking
+    // the first non-callout class instead makes the type depend on class order,
+    // so `class="callout compact risk"` models as `compact` before the round
+    // trip and `risk` after it: a false mismatch on a valid document.
+    const type = CALLOUT_VARIANTS.find((c) => classes.includes(c)) || '';
+    const { start } = closeOf(body, re.lastIndex, 'div');
+    out.push({ type, text: textOf(body.slice(re.lastIndex, start)) });
   }
   return out;
 }
@@ -200,6 +228,7 @@ export function structuralModel(html) {
         tables: tablesOf(body),
         code: codeBlocksOf(body),
         diagrams: diagramsOf(body),
+        notices: noticesOf(body),
         listItems: listItemsOf(body),
       };
     }),
@@ -248,6 +277,7 @@ export function assertStructurallyEquivalent(actual, expected, label = '') {
     }
     assert.deepEqual(as.code, es.code, at(`${where}.code`));
     assert.deepEqual(as.diagrams, es.diagrams, at(`${where}.diagrams`));
+    assert.deepEqual(as.notices, es.notices, at(`${where}.notices (type and text)`));
     assert.deepEqual(as.listItems, es.listItems, at(`${where}.listItems`));
   }
 
