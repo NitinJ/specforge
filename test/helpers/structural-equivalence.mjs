@@ -12,6 +12,9 @@
 import assert from 'node:assert/strict';
 import { getSectionIds, sectionBody, parsePlan, getTitle, getStatus } from '../../lib/spec.mjs';
 
+/** Sections the importer regenerates rather than reads back (see the loop below). */
+const DERIVED_SECTIONS = new Set(['task-tracker']);
+
 /** Decode the entity subset the renderers emit. `&amp;` last, or `&amp;lt;` double-decodes. */
 function decodeEntities(s) {
   return s
@@ -128,12 +131,12 @@ function listItemsOf(body, depth = 0, out = []) {
     const inner = body.slice(start, close.start);
     listRe.lastIndex = close.end;
     if (/\bclass\s*=\s*"[^"]*sf-(?:tasks|stages)/i.test(m[2])) continue;
-    itemsOf(inner, depth, out);
+    itemsOf(inner, depth, out, tag === 'ol');
   }
   return out;
 }
 
-function itemsOf(inner, depth, out) {
+function itemsOf(inner, depth, out, ordered) {
   const liRe = /<li\b([^>]*)>/gi;
   let m;
   while ((m = liRe.exec(inner))) {
@@ -158,8 +161,10 @@ function itemsOf(inner, depth, out) {
     }
     for (const n of nested) own = own.replace(n, ' ');
 
+    // `ordered` is compared too: numbered steps and a bag of bullets are not the
+    // same document, and without it an <ol> silently becoming a <ul> would pass.
     const text = textOf(own);
-    if (text) out.push({ depth, text });
+    if (text) out.push({ depth, ordered, text });
     for (const n of nested) listItemsOf(n, depth + 1, out);
   }
   return out;
@@ -223,7 +228,20 @@ export function assertStructurallyEquivalent(actual, expected, label = '') {
     const as = a.sections[i];
     const es = e.sections[i];
     const where = `sections[${i}] (#${es.id})`;
-    assert.deepEqual(as.headings, es.headings, at(`${where}.headings`));
+
+    // A derived section is rebuilt from the plan on import, never carried through
+    // the markdown. That it exists and sits in the same place is the contract;
+    // its heading text and table are output of the tracker, not of the round trip.
+    if (DERIVED_SECTIONS.has(es.id)) continue;
+
+    // A section's own title is compared by text, not by level. Markdown gives a
+    // section exactly one heading, so a title that lived in an <h4> inside a
+    // panel (the house TL;DR) necessarily comes back as the section's <h2>.
+    // Every heading below it is compared exactly, level included.
+    const [aTitle, ...aRest] = as.headings;
+    const [eTitle, ...eRest] = es.headings;
+    assert.equal(aTitle?.text, eTitle?.text, at(`${where}.headings[0].text (the section title)`));
+    assert.deepEqual(aRest, eRest, at(`${where}.headings (below the title)`));
     assert.equal(as.tables.length, es.tables.length, at(`${where}.tables.length`));
     for (let t = 0; t < es.tables.length; t++) {
       assert.deepEqual(as.tables[t].rows, es.tables[t].rows, at(`${where}.tables[${t}].rows`));

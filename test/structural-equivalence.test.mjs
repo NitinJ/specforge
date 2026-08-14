@@ -108,6 +108,46 @@ test('a flattened nested list fails: depth is part of the comparison', () => {
   assert.throws(() => assertStructurallyEquivalent(after, before), /\.listItems/);
 });
 
+test('an ordered list turned into an unordered one fails', () => {
+  const before = fixture('research').html();
+  const after = before.replace(/<ol>([\s\S]*?)<\/ol>/, '<ul>$1</ul>');
+  assert.notEqual(after, before, 'the rewrite applied');
+  assert.throws(() => assertStructurallyEquivalent(after, before), /\.listItems/);
+});
+
+test('the section title is compared by text, not by heading level', () => {
+  const before = fixture('research').html();
+  // The house TL;DR lives in an <h4> inside a panel. Markdown gives a section
+  // exactly one heading, so it necessarily returns as the section's <h2>: that
+  // is an accepted loss, and the text still has to match.
+  const asH2 = before.replace('<h4 style="margin-top:0">TL;DR</h4>', '<h2>TL;DR</h2>');
+  assertStructurallyEquivalent(asH2, before, 'title level');
+
+  const renamed = before.replace('<h4 style="margin-top:0">TL;DR</h4>', '<h4 style="margin-top:0">Summary</h4>');
+  assert.throws(() => assertStructurallyEquivalent(renamed, before), /the section title/);
+});
+
+test('a heading below the section title is still compared exactly', () => {
+  const before = design();
+  const after = before.replace('<h3>Classification</h3>', '<h4>Classification</h4>');
+  assert.throws(() => assertStructurallyEquivalent(after, before), /headings \(below the title\)/);
+});
+
+test('the tracker is exempt: it is regenerated from the plan, not carried', () => {
+  const before = plan();
+  // Same plan, a rebuilt tracker: different heading, different rows. A round trip
+  // that regenerates the tracker correctly must not fail on it.
+  const after = before.replace(
+    /<section id="task-tracker"[\s\S]*?<\/section>/,
+    '<section id="task-tracker" data-sf-section><h2>Task tracker</h2><table><thead><tr><th>Stage</th></tr></thead><tbody><tr><td>rebuilt</td></tr></tbody></table></section>'
+  );
+  assertStructurallyEquivalent(after, before, 'derived tracker');
+
+  // Losing it altogether is still a failure: it is a section, and it must be there.
+  const dropped = before.replace(/<section id="task-tracker"[\s\S]*?<\/section>/, '');
+  assert.throws(() => assertStructurallyEquivalent(dropped, before), /section ids and order/);
+});
+
 test('nesting depth is recorded, and plan tasks stay out of it', () => {
   const designSection = structuralModel(design()).sections.find((s) => s.id === 'design');
   assert.deepEqual(
