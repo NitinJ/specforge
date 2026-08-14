@@ -84,6 +84,31 @@ test('an unknown class with no near match is still reported', () => {
   assert.match(c.detail, /zzzqqq/);
 });
 
+// A slide, a filmstrip and a table of contents are the shell a spec is authored
+// in, not drift. The list that made that distinction was hand-picked and named
+// eight; the deck shell alone defines 43, so every deck reported them forever.
+test('the shell a spec is authored in is not reported as drift', async () => {
+  const { SHELL_CLASSES } = await import('../lib/shell-classes.mjs');
+  for (const cls of ['slide', 'filmstrip', 'sl-hd', 'sl-notes', 'fs-item', 'toc', 'layout']) {
+    assert.ok(SHELL_CLASSES.has(cls), `.${cls} is shell vocabulary`);
+  }
+  const c = check(spec('<div class="slide"><div class="sl-hd"><p class="sl-num">01</p></div></div>'));
+  assert.equal(c.ok, true, 'and none of it is reported');
+});
+
+// Derived, not listed: a template that grows a class must not start failing the
+// lint that reads this, and a class the library owns is not shell vocabulary.
+test('the shell vocabulary is regenerated from the templates', async () => {
+  const { shellClasses } = await import('../lib/components-build.mjs');
+  const { SHELL_CLASSES } = await import('../lib/shell-classes.mjs');
+  const { componentClasses } = await import('../components/index.mjs');
+  assert.deepEqual(shellClasses(), [...SHELL_CLASSES],
+    'the generated module is current; run components build');
+  const owned = new Set(componentClasses());
+  assert.deepEqual([...SHELL_CLASSES].filter((c) => owned.has(c)), [],
+    'a shell adjusting a component does not claim its name');
+});
+
 test('a stale stamped block is reported', () => {
   const stale = buildCss()
     .replace(/v\d+ start/, 'v0 start')

@@ -274,18 +274,18 @@ test('sync --all skips every spec that has not opted in', () => {
 // The exclusion has to hold at creation too, not only in the repo templates: a
 // deck stamped at create time carries the library AND the deck's own 18
 // duplicate definitions, and renders as a mixture of the two.
-test('the deck is excluded from stamping until its duplicates are reconciled', async () => {
+test('every spec type is on the library, the deck included', async () => {
   const { STAMPED_TYPES, STAMPED_TEMPLATES, stampsAtCreate } = await import('../lib/components-build.mjs');
   const { SPEC_TYPES } = await import('../lib/meta.mjs');
 
-  assert.equal(stampsAtCreate('deck'), false, 'a deck is not stamped');
-  assert.ok(!STAMPED_TEMPLATES.includes('spec-base-deck.html'), 'nor is its template');
-  for (const type of SPEC_TYPES.filter((t) => t !== 'deck')) {
+  assert.equal(stampsAtCreate('deck'), true, 'a deck is stamped like anything else');
+  assert.ok(STAMPED_TEMPLATES.includes('spec-base-deck.html'), 'and so is its template');
+  for (const type of SPEC_TYPES) {
     assert.equal(stampsAtCreate(type), true, `${type} is stamped`);
   }
   // Every type is accounted for, so a type added later cannot silently miss the
   // library by being forgotten here.
-  assert.deepEqual([...STAMPED_TYPES, 'deck'].sort(), [...SPEC_TYPES].sort());
+  assert.deepEqual([...STAMPED_TYPES].sort(), [...SPEC_TYPES].sort());
 });
 
 // ---- the templates ----
@@ -304,10 +304,22 @@ test('every stamped template carries the block and the version', async () => {
   }
 });
 
+/**
+ * The class names a selector defines, or null if it only adjusts one.
+ *
+ * A selector with one compound defines what it names: `.card`, `div.card` and
+ * `.callout.warn` are all a second definition of a library component in a file
+ * that already has the first. A selector with an ancestor adjusts a component
+ * where it sits — `.slide .svg-box` says what a diagram box looks like on a
+ * slide, and there is still one definition of a diagram box.
+ */
+function definedBy(selector) {
+  const compounds = selector.trim().split(/\s+|\s*>\s*|\s*\+\s*|\s*~\s*/).filter(Boolean);
+  if (compounds.length !== 1) return null;
+  return [...compounds[0].matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]);
+}
+
 // Two definitions of a card in one file is the state the library exists to end.
-// The deck is absent from STAMPED_TEMPLATES until Stage 7 reconciles its 18
-// duplicate classes, which is why this iterates the stamped list rather than the
-// directory.
 test('no stamped template redefines a class the library owns', async () => {
   const { STAMPED_TEMPLATES } = await import('../lib/components-build.mjs');
   const { COMPONENTS, BASE_CLASSES } = await import('../components/index.mjs');
@@ -321,10 +333,31 @@ test('no stamped template redefines a class the library owns', async () => {
 
   for (const name of STAMPED_TEMPLATES) {
     const html = readFileSync(join(root, 'templates', name), 'utf8');
-    // Everything after the generated block is the template's own CSS.
-    const own = html.split('specforge:components end')[1].split('</style>')[0];
-    const dup = [...new Set([...own.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]))].filter((c) => owned.has(c));
-    assert.deepEqual(dup, [], `${name} redefines library classes`);
+    // Everything after the generated block is the template's own CSS, comments
+    // stripped: prose naming a class is not a rule defining one.
+    const own = html.split('specforge:components end')[1].split('</style>')[0]
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const dup = new Set();
+    for (const rule of own.split('}')) {
+      const head = rule.split('{')[0];
+      if (!head || !rule.includes('{')) continue;
+      for (const selector of head.split(',')) {
+        for (const c of definedBy(selector) || []) if (owned.has(c)) dup.add(c);
+      }
+    }
+    assert.deepEqual([...dup], [], `${name} redefines library classes`);
+  }
+});
+
+// The other half of adoption: the deck keeps what the library has no equivalent
+// for. A slide is a presentation surface, and the library does not extend into
+// layout.
+test('the deck keeps its slide layout', () => {
+  const root = join(new URL('../', import.meta.url).pathname);
+  const css = readFileSync(join(root, 'templates', 'spec-base-deck.html'), 'utf8')
+    .split('specforge:components end')[1].split('</style>')[0];
+  for (const c of ['slide', 'sl-hd', 'sl-body', 'deck-nav', 'filmstrip']) {
+    assert.match(css, new RegExp(`\\.${c}\\b`), `.${c} is still defined`);
   }
 });
 
