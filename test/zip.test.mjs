@@ -37,6 +37,25 @@ test('entry names are normalised to forward slashes with no leading slash', () =
   assert.ok(!buf.includes(Buffer.from('/spec.assets')), 'an absolute path would extract outside the target');
 });
 
+test('an entry name that escapes the archive is refused', () => {
+  // Zip slip: plenty of extractors happily write outside the target directory,
+  // so the archive must not contain the path in the first place. Refused rather
+  // than rewritten, because a caller passing one has a bug worth seeing.
+  for (const name of [
+    '../escape.svg',
+    'a/../../escape.svg',
+    'spec.assets/../../escape.svg',
+    '..\\escape.svg',
+    './escape.svg',
+    'C:/windows/x.svg',
+  ]) {
+    assert.throws(() => zip([{ name, data: 'x' }]), /escapes the archive|is absolute/, name);
+  }
+
+  // A legitimate nested path is still fine.
+  assert.ok(zip([{ name: 'spec.assets/deep/d-1.svg', data: 'x' }]).includes(Buffer.from('spec.assets/deep/d-1.svg')));
+});
+
 test('data deflate would grow is stored instead', () => {
   // One byte: deflate adds framing that costs more than the byte itself, so the
   // stored branch is taken. Deterministic, unlike hoping a buffer is random

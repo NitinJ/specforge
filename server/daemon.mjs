@@ -84,7 +84,8 @@ function serveMarkdown(id, res) {
   }
   // The slug is already [a-z0-9-]; the guard is for a title that slugged to
   // nothing and fell back to the id, and for anything a future slug lets past.
-  const base = (rendered.slug || id).replace(/[^\w.-]/g, '') || 'spec';
+  // Leading dots go too, so the name can never be `..` or a dotfile.
+  const base = (rendered.slug || id).replace(/[^\w.-]/g, '').replace(/^\.+/, '') || 'spec';
 
   if (!rendered.assets.length) {
     res.writeHead(200, {

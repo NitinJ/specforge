@@ -187,6 +187,19 @@ test('diagram files are numbered within their section', () => {
   assert.deepEqual(assets.map((a) => a.name), ['architecture-1.svg', 'flow-1.svg']);
 });
 
+test('a section id becomes a file name, so it is reduced to a safe token', () => {
+  // House ids are kebab-case, but a hand-authored spec can carry anything, and
+  // the id ends up as a path inside the assets directory and inside a zip.
+  const html = fixture('diagrams').html().replace('id="architecture"', 'id="../../escape"');
+  const { assets, markdown } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.deepEqual(assets.map((a) => a.name), ['escape-1.svg', 'flow-1.svg']);
+  assert.doesNotMatch(
+    markdown.match(/!\[[^\]]*\]\([^)]*\)/g).join('\n'),
+    /\.\.\//,
+    'no traversal survives into the image link'
+  );
+});
+
 test('a spec with no diagrams produces no assets', () => {
   for (const name of ['design', 'research', 'design-impl', 'impl']) {
     assert.equal(exportFixture(fixture(name)).assets.length, 0, `${name} has no diagrams`);
