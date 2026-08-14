@@ -42,9 +42,11 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import "<file>" --title "<tit
 
 Prints `{ id, htmlPath, url, status, type }` — the file is copied into the store,
 attached to this session, daemon ensured. Lint `htmlPath` (step 3). If lint fails
-because it isn't house-style, fall back to **2C** and author into the same
-`htmlPath`. Not 2B: that path runs a markdown parser, and handing it HTML would
-mechanically reconvert the document instead of shaping it.
+because it isn't house-style, fall back to **2C** and author into the `htmlPath`
+you already have; 2C says so too, and running `create` there would leave this
+spec behind and attach a second one. Not 2B: that path runs a markdown parser,
+and handing it HTML would mechanically reconvert the document instead of shaping
+it.
 
 ## 2B. Convert a `.md` — deterministic pass first, then edit
 
@@ -97,10 +99,17 @@ do not grow a plan inside a general spec and call it typed.
 ## 2C. Author a freeform HTML doc into a spec
 
 Arbitrary HTML has no deterministic path: it carries someone else's structure and
-styling, and there is nothing to map it onto mechanically. Scaffold and author:
+styling, and there is nothing to map it onto mechanically. It gets authored.
+
+**Arriving from 2A** (an HTML spec that turned out not to be house-style): you
+already have an `htmlPath` in the store, attached to this session. **Author into
+that file.** Do not run `create` — it would make a second spec and leave the
+malformed one attached, so a later edit or handoff could pick up either.
+
+**Arriving from step 1** with a freeform HTML doc and no spec yet, scaffold one:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type>
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type "<type>"
 ```
 
 It prints `{ id, htmlPath, url, type }`. **Author into `htmlPath`**, following the

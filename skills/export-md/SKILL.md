@@ -28,7 +28,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list
 ## 2. Export
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-md <id> [--out "<dir|file.md>"]
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-md "<id>" [--out "<dir|file.md>"]
 ```
 
 `--out` takes a directory (the file is named from the spec title) or a path
