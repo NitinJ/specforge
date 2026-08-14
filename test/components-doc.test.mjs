@@ -12,12 +12,15 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { createDaemon, renderIndex } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
+import { readMeta } from '../lib/meta.mjs';
+import { specHtmlPath, isReservedId } from '../lib/store-paths.mjs';
+import { syncAll } from '../lib/components-stamp.mjs';
 import { COMPONENTS, FAMILIES } from '../components/index.mjs';
 import { buildDoc, docPath, writeDoc, DOC_ID } from '../lib/components-doc.mjs';
 
@@ -84,6 +87,46 @@ test('writeDoc recreates the document after it is deleted', () => {
   assert.ok(existsSync(docPath()), 'build recreates it');
 });
 
+// ---- addressable as a store entry ----
+
+// The whole reason it lives in the store: every comments handler starts with
+// readMeta(id) and 404s without it, so a document with no meta.json renders a
+// review layer whose every write is refused.
+test('writeDoc gives it a meta.json, so the comments API can resolve it', () => {
+  writeDoc();
+  const meta = readMeta(DOC_ID);
+  assert.ok(meta, 'the entry resolves');
+  assert.equal(meta.id, DOC_ID);
+  assert.equal(meta.reserved, true, 'and says what it is');
+});
+
+// The live-reload watcher takes an id, not a path, and watches
+// specs/<id>/spec.html. A document written anywhere else reloads on nothing.
+test('the document is at the path the review layer resolves for its id', () => {
+  assert.equal(docPath(), specHtmlPath(DOC_ID));
+});
+
+test('a rebuild leaves the meta alone', () => {
+  writeDoc();
+  const meta = readMeta(DOC_ID);
+  meta.attachedSession = 's-1';
+  meta.status = 'approved';
+  writeFileSync(join(home, 'specs', DOC_ID, 'meta.json'), JSON.stringify(meta));
+  writeDoc();
+  const after = readMeta(DOC_ID);
+  assert.equal(after.attachedSession, 's-1', 'the session that owns it survives');
+  assert.equal(after.status, 'approved', 'and so does the human judgement on it');
+});
+
+// It carries the attribute, so without the reserved-id skip `sync --all` would
+// report the generated document as a spec it stamped.
+test('components sync --all skips it', () => {
+  writeDoc();
+  const r = syncAll();
+  const seen = [...r.synced, ...r.unchanged, ...r.skipped, ...r.refused.map((x) => x.id)];
+  assert.ok(!seen.includes(DOC_ID), 'not stamped, not skipped, not reported');
+});
+
 // ---- served ----
 
 test('GET /components serves the document with the review layer', async (t) => {
@@ -111,7 +154,59 @@ test('GET /components builds it on demand when the store has none', async (t) =>
   assert.match(await res.text(), /data-component="risk"/);
 });
 
+// The review layer on the page is worth nothing if the API behind it refuses.
+// This is the assertion the first draft of this stage was missing: it checked
+// that the layer was injected, not that a comment written through it lands.
+test('a comment written on the document is stored and read back', async (t) => {
+  writeDoc();
+  const server = createDaemon();
+  const port = await listen(server);
+  t.after(() => new Promise((r) => server.close(r)));
+
+  const api = `http://127.0.0.1:${port}/api/spec/${DOC_ID}/comments`;
+  const post = await fetch(api, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      anchor: { block: { index: 3, tag: 'div', text: 'A decision that has been made.' } },
+      body: 'Should this one be a constraint instead?',
+      author: 'Nitin',
+    }),
+  });
+  assert.equal(post.status, 201, 'the write is accepted');
+
+  const got = await (await fetch(api)).json();
+  assert.equal(got.threads.length, 1);
+  assert.equal(got.threads[0].comments[0].body, 'Should this one be a constraint instead?');
+  assert.equal(got.threads[0].comments[0].author, 'Nitin');
+});
+
+// The build writes to disk. Thrown from the request handler that unhandled
+// rejection takes the daemon down, and with it every other spec open in a
+// browser, over a page nobody was reading.
+test('a store it cannot write to is a 500, not a dead daemon', async (t) => {
+  const server = createDaemon();
+  const port = await listen(server);
+  t.after(() => new Promise((r) => server.close(r)));
+
+  const blocked = join(home, 'not-a-directory');
+  writeFileSync(blocked, 'a file where the store root should be');
+  process.env.SPECFORGE_HOME = blocked;
+  t.after(() => { process.env.SPECFORGE_HOME = home; });
+
+  const res = await fetch(`http://127.0.0.1:${port}/components`);
+  assert.equal(res.status, 500);
+  assert.match(await res.text(), /could not build the component library/);
+
+  process.env.SPECFORGE_HOME = home;
+  assert.equal((await fetch(`http://127.0.0.1:${port}/healthz`)).status, 200, 'still serving');
+});
+
 // ---- the boundary: it is not a spec ----
+
+test('the document id is reserved, so nothing lists it as a spec', () => {
+  assert.equal(isReservedId(DOC_ID), true);
+});
 
 test('the document does not appear in the index spec list or its counts', async () => {
   createSpec({ title: 'A real spec', html: '<h1>A</h1>' });

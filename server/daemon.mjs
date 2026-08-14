@@ -28,7 +28,7 @@
 import http from 'node:http';
 import { watch } from 'node:fs';
 import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
-import { inboxDir } from '../lib/store-paths.mjs';
+import { inboxDir, isReservedId } from '../lib/store-paths.mjs';
 import { agentBusy } from '../lib/store-inbox.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
@@ -112,6 +112,10 @@ function serveMarkdown(id, res) {
 
 function serveSpec(id, res) {
   let html;
+  // A reserved entry has a spec's layout on disk, which is what makes the review
+  // APIs work on it. This route is where the difference is enforced: the library
+  // document is reached at /components or not at all.
+  if (isReservedId(id)) return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
   try {
     html = readSpecHtml(id);
   } catch {
@@ -128,10 +132,20 @@ function serveSpec(id, res) {
  * already use. Built on demand: a fresh install has no store yet, and answering
  * with a 404 for a document that is entirely derived from the plugin's own
  * definitions would be a refusal nobody could act on.
+ *
+ * The build writes to disk, so it can fail on a read-only or full store. That
+ * failure is this request's to report: thrown from here it would reach no
+ * handler and take the daemon, and every other spec in the browser, down with it.
  */
 function serveComponentsDoc(res) {
-  send(res, 200, 'text/html; charset=utf-8',
-    injectReviewLayer(readDoc(), { specId: DOC_ID }));
+  let html;
+  try {
+    html = injectReviewLayer(readDoc(), { specId: DOC_ID });
+  } catch (e) {
+    return send(res, 500, 'text/plain; charset=utf-8',
+      `could not build the component library: ${e.message}`);
+  }
+  send(res, 200, 'text/html; charset=utf-8', html);
 }
 
 /**

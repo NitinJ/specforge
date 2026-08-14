@@ -369,17 +369,17 @@ Must contain: data-sf-stage; data-sf-task; data-sf-status.
 Variants: `sf-tasks`, `sh`, `verify`.
 
 ```html
-<li data-sf-stage="1"><div class="sh"><h3>Stage 1: Name</h3></div><ul class="sf-tasks"><li data-sf-task="1.1" data-sf-status="todo">Task<span class="verify">verify: how</span></li></ul></li>
+<ol class="sf-stages"><li data-sf-stage="1"><div class="sh"><h3>Stage 1: Name</h3></div><ul class="sf-tasks"><li data-sf-task="1.1" data-sf-status="todo">Task<span class="verify">verify: how</span></li></ul></li></ol>
 ```
 
-### `<question>`
+### `li[data-sf-q]`
 
 An unresolved question. While one is open the pre-implementation gate refuses to start.
 
 Must contain: data-sf-q of open, resolved, or dropped.
 
 ```html
-<li data-sf-q="open"><strong>Q1</strong> The question.</li>
+<ul><li data-sf-q="open"><strong>Q1 — <span class="tag warn">open</span></strong> The question.</li></ul>
 ```
 
 ### `.evidence`

@@ -24,13 +24,15 @@ li[data-sf-stage]>.sh h3{margin:0;font-size:15.5px}
 ul.sf-tasks{list-style:none;padding-left:4px;margin:10px 0 2px}
 li[data-sf-task]{margin:6px 0;font-size:14px}
 li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margin:2px 0 0 20px}`,
-    example: '<li data-sf-stage="1"><div class="sh"><h3>Stage 1: Name</h3></div><ul class="sf-tasks"><li data-sf-task="1.1" data-sf-status="todo">Task<span class="verify">verify: how</span></li></ul></li>',
+    example: '<ol class="sf-stages"><li data-sf-stage="1"><div class="sh"><h3>Stage 1: Name</h3></div><ul class="sf-tasks"><li data-sf-task="1.1" data-sf-status="todo">Task<span class="verify">verify: how</span></li></ul></li></ol>',
   },
   {
-    name: 'question', family: 'spec', kind: 'element', block: true,
+    // No element is named `question`; the component is an attribute on a list
+    // item, so it carries the selector an author actually writes.
+    name: 'question', family: 'spec', kind: 'element', selector: 'li[data-sf-q]', block: true,
     rule: 'An unresolved question. While one is open the pre-implementation gate refuses to start.',
     requires: ['data-sf-q of open, resolved, or dropped'],
-    example: '<li data-sf-q="open"><strong>Q1</strong> The question.</li>',
+    example: '<ul><li data-sf-q="open"><strong>Q1 — <span class="tag warn">open</span></strong> The question.</li></ul>',
   },
   {
     name: 'evidence', family: 'spec', kind: 'class', block: true,
