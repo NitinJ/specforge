@@ -214,3 +214,17 @@ test('the stylesheet takes its colors from the host page, with fallbacks', () =>
   // fallbacks would paste a dark card onto it.
   assert.match(UI_CSS, /@media \(prefers-color-scheme: light\)[\s\S]*--sfui-panel: var\(--panel, #ffffff\)/);
 });
+
+// A snackbar the same color as the page is a panel; one the color of the page's
+// TEXT is a layer over it. Inverting off --ink/--panel needs no per-theme table
+// and comes out right on any theme, named ones included.
+test('the snackbar is built on the page palette inverted, and stands clear of the disconnection banner', () => {
+  assert.match(UI_CSS, /--sfui-inv-bg:\s*var\(--sfui-ink\)/);
+  assert.match(UI_CSS, /--sfui-inv-ink:\s*var\(--sfui-panel\)/);
+  assert.match(UI_CSS, /\.sfui-snack\s*\{[^}]*background:\s*var\(--sfui-inv-bg\)/);
+  assert.match(UI_CSS, /\.sfui-snack\s*\{[^}]*color:\s*var\(--sfui-inv-ink\)/);
+  // The mix is gated: a var() that fails to substitute unsets the property.
+  assert.match(UI_CSS, /@supports \(color: color-mix[\s\S]*--sfui-inv-muted/);
+  // The banner holds the same spot and stays until the connection returns.
+  assert.match(UI_CSS, /body:has\(\.sf-disconnected:not\(\[hidden\]\)\) \.sfui-snacks \{ bottom:/);
+});

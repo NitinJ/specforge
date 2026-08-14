@@ -1052,6 +1052,30 @@ test('Escape dismisses the composer without creating a thread', async (t) => {
   assert.equal(posts.filter((x) => /\/comments$/.test(x.url)).length, 0, 'nothing was created');
 });
 
+// Escape closing a confirmation must not also reach the layer behind it: the
+// same keypress would cancel the composer and take an unposted draft with it.
+test('Escape aimed at a dialog does not reach the composer behind it', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  mouse(window, document.querySelector('p.a'), 'click');
+  await tick(window);
+  const box = document.querySelector('.sf-bub-compose textarea');
+  box.value = 'half a thought';
+
+  window.SFUI.confirm({ title: 'Detach', body: 'y', onOk: function () {} });
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await tick(window);
+  assert.ok(document.querySelector('.sf-bub-compose'), 'the composer is still open');
+  assert.equal(document.querySelector('.sf-bub-compose textarea').value, 'half a thought',
+    'and the draft is still in it');
+
+  // With nothing modal up, Escape means what it always meant.
+  document.getElementById('sf-dc-cancel').click();
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await tick(window);
+  assert.ok(!document.querySelector('.sf-bub-compose'), 'dismissed');
+});
+
 test('expanding a thread closes an open composer — only one focused card', async (t) => {
   const { window } = await bootReviewLayer(t, { threads: twoOnOneBlock() });
   const { document } = window;

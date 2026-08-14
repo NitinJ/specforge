@@ -34,6 +34,22 @@
   }
 }
 
+/* The inverted pair the snackbar is built on. The page's own two poles, swapped
+   — no per-theme table, and any theme inverts correctly by construction. */
+:root {
+  --sfui-inv-bg: var(--sfui-ink);
+  --sfui-inv-ink: var(--sfui-panel);
+  --sfui-inv-muted: var(--sfui-panel);
+  /* Legible on an inverted card whichever way it inverted: bright enough for a
+     near-black one, saturated enough for a near-white one. */
+  --sfui-inv-red: #ff5a52;
+}
+/* A var() whose substitution fails unsets the whole property, so the mix is
+   layered on only where it resolves — the same gating review.css uses. */
+@supports (color: color-mix(in srgb, red, blue)) {
+  :root { --sfui-inv-muted: color-mix(in srgb, var(--sfui-inv-ink) 62%, var(--sfui-inv-bg)); }
+}
+
 /* ── snackbar ──────────────────────────────────────────────────────────── */
 /* Bottom centre, stacked, newest nearest the edge. Centre because the two
    surfaces disagreed on a corner and both corners are spoken for: the home
@@ -51,47 +67,57 @@
   transform: translateX(-50%);
   pointer-events: none;
 }
+/* The review layer's disconnection banner holds the same spot and is not going
+   anywhere on its own — it stays until the connection returns. A message that
+   covered it would hide the one control that fixes it. */
+body:has(.sf-disconnected:not([hidden])) .sfui-snacks { bottom: 78px; }
+
+/* Inverted, not tinted: a card the color of the page's own text, carrying text
+   the color of the page. That is what makes it read as a layer over the
+   document rather than another panel in it, and it needs no per-theme table —
+   --ink and --panel are already the two poles of whatever theme is loaded, so a
+   dracula spec and a light home page both invert correctly. */
 .sfui-snack {
   display: flex;
   align-items: center;
   gap: 10px;
   max-width: min(90vw, 460px);
-  padding: 9px 10px 9px 14px;
-  border: 1px solid var(--sfui-line);
+  padding: 10px 10px 10px 15px;
+  border: none;
   border-radius: 10px;
-  background: var(--sfui-panel);
-  color: var(--sfui-ink);
+  background: var(--sfui-inv-bg);
+  color: var(--sfui-inv-ink);
   font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
+  font-weight: 500;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .32);
   pointer-events: auto;
   animation: sfui-rise 160ms cubic-bezier(.16, 1, .3, 1);
 }
-/* A failure is marked, not shouted: a red edge and nothing else, since the text
-   is already doing the work. The rail sits flush inside the border rather than
-   floating off it. */
-.sfui-snack.err { border-color: var(--sfui-red); padding-left: 0; }
+/* A failure is marked, not shouted: one edge, in a red that reads on an
+   inverted card whichever way it inverted. */
+.sfui-snack.err { padding-left: 0; }
 .sfui-snack.err::before {
   content: "";
   flex: none;
-  width: 3px;
+  width: 4px;
   align-self: stretch;
-  margin: -9px 10px -9px 0;
-  border-radius: 9px 0 0 9px;
-  background: var(--sfui-red);
+  margin: -10px 11px -10px 0;
+  border-radius: 10px 0 0 10px;
+  background: var(--sfui-inv-red);
 }
 .sfui-snack-msg { flex: 1; min-width: 0; }
 .sfui-snack-act {
   flex: none;
   padding: 3px 9px;
-  border: 1px solid var(--sfui-line);
+  border: 1px solid transparent;
   border-radius: 7px;
   background: none;
-  color: var(--sfui-accent);
+  color: var(--sfui-inv-ink);
   font: inherit;
-  font-weight: 560;
+  font-weight: 620;
   cursor: pointer;
 }
-.sfui-snack-act:hover { border-color: var(--sfui-accent); }
+.sfui-snack-act:hover { border-color: var(--sfui-inv-muted); }
 .sfui-snack-x {
   flex: none;
   width: 22px;
@@ -100,11 +126,11 @@
   border: none;
   border-radius: 6px;
   background: none;
-  color: var(--sfui-muted);
+  color: var(--sfui-inv-muted);
   font: 15px/1 -apple-system, system-ui, sans-serif;
   cursor: pointer;
 }
-.sfui-snack-x:hover { color: var(--sfui-ink); }
+.sfui-snack-x:hover { color: var(--sfui-inv-ink); }
 @keyframes sfui-rise { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { .sfui-snack { animation: none; } }
 

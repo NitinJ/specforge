@@ -521,6 +521,11 @@
     document.addEventListener('mousemove', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
     document.addEventListener('keydown', function (e) {
+      // A modal dialog answers Escape itself, and the keypress still bubbles to
+      // here. Acting on it a second time would collapse the thread and cancel
+      // the composer behind the dialog — losing an unposted draft to a keypress
+      // that was meant to close a confirmation.
+      if (window.SFUI && window.SFUI.dialogOpen()) return;
       if (e.key === 'Escape') { clearHover(); closeMenu(); collapseThread(); cancelCompose(); }
       if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) onSaveKey(e);
     });
