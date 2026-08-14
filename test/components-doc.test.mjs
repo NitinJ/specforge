@@ -20,6 +20,7 @@ import { createDaemon, renderIndex } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
 import { readMeta } from '../lib/meta.mjs';
 import { specHtmlPath, isReservedId } from '../lib/store-paths.mjs';
+import { specUrl } from '../lib/daemon-client.mjs';
 import { syncAll } from '../lib/components-stamp.mjs';
 import { COMPONENTS, FAMILIES } from '../components/index.mjs';
 import { buildDoc, docPath, writeDoc, DOC_ID } from '../lib/components-doc.mjs';
@@ -206,6 +207,20 @@ test('a store it cannot write to is a 500, not a dead daemon', async (t) => {
 
 test('the document id is reserved, so nothing lists it as a spec', () => {
   assert.equal(isReservedId(DOC_ID), true);
+});
+
+// `open <id>` is what the header's Connect button tells a human to run, and it
+// prints the url it attached. Composing /spec/<id> for a reserved id would hand
+// back the one route that 404s.
+test('the url for the reserved id is its own route', () => {
+  assert.equal(specUrl('http://127.0.0.1:4180/', DOC_ID), 'http://127.0.0.1:4180/components');
+  assert.equal(specUrl('http://127.0.0.1:4180/', 'abc123'), 'http://127.0.0.1:4180/spec/abc123');
+});
+
+// The document is born unattached and nothing attaches it, so a reviewer who
+// comments and waits is waiting on nobody. The page has to say so.
+test('the document says how to get an agent onto it', () => {
+  assert.match(buildDoc(), /specforge open specforge-components/);
 });
 
 test('the document does not appear in the index spec list or its counts', async () => {
