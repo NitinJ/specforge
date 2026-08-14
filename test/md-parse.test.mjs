@@ -219,6 +219,14 @@ test('inline: bold, emphasis, code, links, images', () => {
   assert.equal(inlineToHtml('![alt](a.svg)'), '<img src="a.svg" alt="alt">');
 });
 
+test('a URL may carry balanced parentheses', () => {
+  assert.equal(
+    inlineToHtml('[Mercury](https://en.wikipedia.org/wiki/Mercury_(planet))'),
+    '<a href="https://en.wikipedia.org/wiki/Mercury_(planet)">Mercury</a>',
+    'stopping at the first ) truncated the link and left the bracket as text'
+  );
+});
+
 test('a code span is never re-parsed as emphasis or a link', () => {
   assert.equal(inlineToHtml('`a *b* c`'), '<code>a *b* c</code>');
   assert.equal(inlineToHtml('`[x](y)`'), '<code>[x](y)</code>');

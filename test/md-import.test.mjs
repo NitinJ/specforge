@@ -6,12 +6,13 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 import { useTempStore } from './helpers/temp-store.mjs';
 import { markdownToSpecHtml, slugify, sanitizeHtml } from '../lib/md-to-html.mjs';
+import { inlineToHtml, isSafeUrl } from '../lib/md-parse.mjs';
 import { importMd, assetResolver } from '../lib/store-md.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { lintSpec } from '../lib/lint-spec.mjs';
@@ -292,6 +293,50 @@ test('srcdoc and framing elements do not survive', () => {
   assert.doesNotMatch(sanitizeHtml('<iframe srcdoc="<script>alert(1)</script>"></iframe>'), /srcdoc|iframe/i);
   assert.doesNotMatch(sanitizeHtml('<base href="https://evil.test/">'), /<base/i);
   assert.doesNotMatch(sanitizeHtml('<meta http-equiv="refresh" content="0;url=x">'), /<meta/i);
+});
+
+test('a markdown link cannot smuggle an executable scheme past the sanitizer', () => {
+  // sanitizeHtml only sees raw HTML blocks. `[x](javascript:…)` is ordinary
+  // markdown, rendered straight into an <a> by the inline renderer, so the
+  // check has to live there too.
+  const md = [
+    '# Doc', '', '## Body', '',
+    '[click](javascript:alert(1))', '',
+    '[ok](https://example.com)', '',
+    '![shot](javascript:alert(2))', '',
+    '[enc](java&#x73;cript:alert(3))', '',
+  ].join('\n');
+  const { html, report } = convert(md);
+  const body = sectionBody(html, 'body');
+  assert.doesNotMatch(body, /javascript/i, 'no executable URL survived, not even as echoed text');
+  assert.match(body, /<a href="#">click<\/a>/);
+  assert.match(body, /\[image refused: unsupported URL scheme\]/, 'and the payload is not repeated back');
+  assert.match(body, /<a href="https:\/\/example\.com">ok<\/a>/, 'a real link is untouched');
+  assert.ok(
+    report.assetsDropped.some((a) => /scheme that is not allowed/.test(a.why)),
+    'the refusal is reported rather than silent'
+  );
+});
+
+test('inlineToHtml is where that guard lives, so it holds for every caller', () => {
+  assert.equal(inlineToHtml('[x](javascript:alert(1))'), '<a href="#">x</a>');
+  assert.equal(inlineToHtml('[x](javascript:void)'), '<a href="#">x</a>');
+  assert.equal(inlineToHtml('[x](/safe/path)'), '<a href="/safe/path">x</a>');
+  assert.equal(isSafeUrl('data:image/png;base64,AAA'), true);
+  assert.equal(isSafeUrl('data:image/svg+xml;base64,AAA'), false);
+  assert.equal(isSafeUrl('vbscript:x'), false);
+});
+
+test('a symlink out of the directory is not a way around containment', () => {
+  const docs = join(store.dir, 'docs');
+  mkdirSync(docs, { recursive: true });
+  writeFileSync(join(store.dir, 'secret.svg'), '<svg>private</svg>');
+  // A symlink INSIDE the directory pointing outside it: lexically contained,
+  // and resolve() alone would have accepted it.
+  symlinkSync(join(store.dir, 'secret.svg'), join(docs, 'link.svg'));
+
+  const resolve_ = assetResolver(docs);
+  assert.equal(resolve_('link.svg').kind, 'outside', 'the real path is what counts');
 });
 
 test('an asset path may not escape the directory the markdown came from', () => {
