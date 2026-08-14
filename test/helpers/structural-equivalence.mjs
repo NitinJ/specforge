@@ -11,6 +11,7 @@
 
 import assert from 'node:assert/strict';
 import { getSectionIds, sectionBody, parsePlan, getTitle, getStatus } from '../../lib/spec.mjs';
+import { CALLOUT_VARIANTS } from '../../lib/html-to-md.mjs';
 
 /** Sections the importer regenerates rather than reads back (see the loop below). */
 const DERIVED_SECTIONS = new Set(['task-tracker']);
@@ -111,7 +112,11 @@ function noticesOf(body) {
   let m;
   while ((m = re.exec(body))) {
     const classes = m[2].trim().split(/\s+/);
-    const type = classes.find((c) => c !== 'callout') || '';
+    // The first REGISTERED variant, matching how the exporter picks one. Taking
+    // the first non-callout class instead makes the type depend on class order,
+    // so `class="callout compact risk"` models as `compact` before the round
+    // trip and `risk` after it: a false mismatch on a valid document.
+    const type = CALLOUT_VARIANTS.find((c) => classes.includes(c)) || '';
     const { start } = closeOf(body, re.lastIndex, 'div');
     out.push({ type, text: textOf(body.slice(re.lastIndex, start)) });
   }

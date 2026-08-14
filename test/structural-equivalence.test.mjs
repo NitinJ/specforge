@@ -45,6 +45,19 @@ test('a changed notice type fails, naming the notice', () => {
   );
 });
 
+// The model has to pick the type the exporter picks, or a presentation class
+// written before the type produces a false mismatch on a valid round trip.
+test('a notice type is found whatever order its classes are written in', () => {
+  const spec = (cls) => `<!DOCTYPE html><html data-sf-spec-status="draft"><head><title>T</title></head>
+<body><main><h1>T</h1><section id="s" data-sf-section><h2>1 · S</h2>
+<div class="${cls}">The trigger, and the consequence.</div></section></main></body></html>`;
+  assertStructurallyEquivalent(spec('callout compact risk'), spec('callout risk compact'), 'class order');
+  assert.throws(
+    () => assertStructurallyEquivalent(spec('callout compact note'), spec('callout risk compact'), 'type'),
+    /notices/,
+  );
+});
+
 test('a dropped notice type fails', () => {
   const one = '<div class="callout risk">The trigger, and the consequence.</div>';
   const spec = (body) => `<!DOCTYPE html><html data-sf-spec-status="draft"><head><title>T</title></head>
