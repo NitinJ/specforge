@@ -28,10 +28,11 @@
 import http from 'node:http';
 import { watch } from 'node:fs';
 import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
-import { inboxDir } from '../lib/store-paths.mjs';
+import { inboxDir, isReservedId } from '../lib/store-paths.mjs';
 import { agentBusy } from '../lib/store-inbox.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
+import { readDoc, DOC_ID } from '../lib/components-doc.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
 import { SERVICE, daemonAt, daemonUrl, defaultPort } from '../lib/daemon-state.mjs';
@@ -111,12 +112,40 @@ function serveMarkdown(id, res) {
 
 function serveSpec(id, res) {
   let html;
+  // A reserved entry has a spec's layout on disk, which is what makes the review
+  // APIs work on it. This route is where the difference is enforced: the library
+  // document is reached at /components or not at all.
+  if (isReservedId(id)) return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
   try {
     html = readSpecHtml(id);
   } catch {
     return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
   }
   send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id }));
+}
+
+/**
+ * The component library, as a page a human can comment on.
+ *
+ * It gets the review layer under its reserved id, so comments land in the store
+ * beside it and reach the attached session through the batch mechanism specs
+ * already use. Built on demand: a fresh install has no store yet, and answering
+ * with a 404 for a document that is entirely derived from the plugin's own
+ * definitions would be a refusal nobody could act on.
+ *
+ * The build writes to disk, so it can fail on a read-only or full store. That
+ * failure is this request's to report: thrown from here it would reach no
+ * handler and take the daemon, and every other spec in the browser, down with it.
+ */
+function serveComponentsDoc(res) {
+  let html;
+  try {
+    html = injectReviewLayer(readDoc(), { specId: DOC_ID });
+  } catch (e) {
+    return send(res, 500, 'text/plain; charset=utf-8',
+      `could not build the component library: ${e.message}`);
+  }
+  send(res, 200, 'text/html; charset=utf-8', html);
 }
 
 /**
@@ -385,6 +414,10 @@ export function createDaemon() {
       if (st) return sendJson(res, 200, readPublicationState(st[1]));
       const md = path.match(/^\/api\/spec\/([\w-]+)\/md$/);
       if (md) return serveMarkdown(md[1], res);
+      // The library document. Served with the review layer like a spec, because
+      // being commentable is the point of it living in the store, but it is not
+      // a spec: no lifecycle, no sections contract, and it is generated.
+      if (path === '/components') return serveComponentsDoc(res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
       if (sm) return serveSpec(sm[1], res);
       const pub = path.match(/^\/public\/([\w.-]+)$/);
