@@ -18,6 +18,17 @@ asked for that spec.
 `${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Specs live at
 `~/.specforge/specs/<id>/spec.html`; you address them by **id**.
 
+**Never paste what the user typed into a command.** A store id is 10 hex
+characters. If what you were given is anything else, look the spec up first and
+use the id that reports:
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" listall
+```
+
+The CLI refuses an id outside `[A-Za-z0-9_-]`, but that check runs after the
+shell has already parsed the line, so it is the second guard and not the first.
+
 Two passes. The codemod is code, because a class rename is mechanical. Choosing
 between `warning`, `assumption` and `risk` for a block requires reading it, and
 that is your pass.
@@ -43,9 +54,12 @@ That is theirs to decide, not yours.
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" components migrate <id> --plan
 ```
 
-Returns `{ id, blocks: [{ index, source, text }] }` — every callout the codemod
-could not type. `source` is the legacy variant: `warn`, `good`, `bad`, or `""`
-for a bare callout.
+Returns `{ id, blocks: [{ index, key, source, text }] }` — every callout the
+codemod could not type. `source` is the legacy variant: `warn`, `good`, `bad`, or
+`""` for a bare callout. `key` is a hash of the block's text, and is how you name
+a block in step 3: it follows the block if the spec is edited between the plan
+and the apply, and an assignment whose key matches nothing stops the run rather
+than landing on the wrong block.
 
 Assign a type to each from its text. Stay within the source's group: the tone is
 part of what the original said, and moving a block from `good` to `risk` reverses
@@ -71,8 +85,8 @@ recoverable and the report names it for a later pass.
 
 ## 3. Apply
 
-Write your decisions as `{ "assignments": { "<index>": "<type>", ... } }` and
-apply them:
+Write your decisions as `{ "assignments": { "<key>": "<type>", ... } }`, keyed by
+the `key` from the plan, and apply them:
 
 ```
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" components migrate <id> --assign /tmp/<id>-assign.json

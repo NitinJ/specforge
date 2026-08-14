@@ -73,13 +73,33 @@ test('migrate --assign applies the agent decisions and records them', () => {
   const id = seed();
   const plan = run('components', 'migrate', id, '--plan').json;
   const file = join(store.dir, 'assign.json');
-  writeFileSync(file, JSON.stringify({ assignments: { [plan.blocks[0].index]: 'risk' } }));
+  writeFileSync(file, JSON.stringify({ assignments: { [plan.blocks[0].key]: 'risk' } }));
 
   const r = run('components', 'migrate', id, '--assign', file);
   assert.equal(r.status, 0, r.stderr);
   assert.match(read(id), /class="callout risk">Nothing in this decides it/);
   const a = r.json.assignments.find((x) => /Nothing in this decides it/.test(x.text));
   assert.equal(a.by, 'agent');
+});
+
+// The plan names blocks by content hash, so an agent that reads the plan, the
+// user that edits the spec, and the apply that follows cannot disagree silently.
+test('migrate --assign stops when the spec moved on from the plan', () => {
+  const id = seed();
+  const plan = run('components', 'migrate', id, '--plan').json;
+  const file = join(store.dir, 'assign.json');
+  writeFileSync(file, JSON.stringify({ assignments: { [plan.blocks[0].key]: 'risk' } }));
+  writeFileSync(specHtmlPath(id), read(id).replace('Nothing in this decides it.', 'Rewritten.'));
+
+  const r = run('components', 'migrate', id, '--assign', file);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /no longer there/);
+});
+
+test('migrate refuses an id carrying shell syntax', () => {
+  const r = run('components', 'migrate', 'abc; touch /tmp/sf-pwned');
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /not a spec id/);
 });
 
 test('migrate with no decisions still finalizes, on the classifier default', () => {

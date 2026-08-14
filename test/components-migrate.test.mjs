@@ -275,23 +275,59 @@ test('the report lands in the spec directory and reads back', () => {
   assert.equal(readReport(id).id, id);
 });
 
+const AMBIGUOUS = LEGACY.replace('<div class="callout caut">Watch the density rule.</div>',
+  '<div class="callout warn">Nothing here decides it.</div>');
+
+const target = (id) => ambiguousBlocks(codemod(read(id)).html)
+  .find((b) => /Nothing here decides it/.test(b.text));
+
 test('an agent assignment wins over the classifier and is recorded as one', () => {
-  const id = seed(LEGACY.replace('<div class="callout caut">Watch the density rule.</div>',
-    '<div class="callout warn">Nothing here decides it.</div>'));
-  const blocks = ambiguousBlocks(codemod(read(id)).html);
-  const target = blocks.find((b) => /Nothing here decides it/.test(b.text));
-  const report = migrateSpec(id, { assign: { [target.index]: 'risk' } });
+  const id = seed(AMBIGUOUS);
+  const report = migrateSpec(id, { assign: { [target(id).key]: 'risk' } });
   assert.match(read(id), /class="callout risk">Nothing here decides it/);
   const a = report.assignments.find((x) => /Nothing here decides it/.test(x.text));
   assert.equal(a.by, 'agent');
 });
 
 test('an assignment naming something that is not a notice type is refused', () => {
-  const id = seed(LEGACY.replace('<div class="callout caut">Watch the density rule.</div>',
-    '<div class="callout warn">Nothing here decides it.</div>'));
-  const blocks = ambiguousBlocks(codemod(read(id)).html);
-  const target = blocks.find((b) => /Nothing here decides it/.test(b.text));
-  assert.throws(() => migrateSpec(id, { assign: { [target.index]: 'c-risk' } }), /not a notice type/);
+  const id = seed(AMBIGUOUS);
+  assert.throws(() => migrateSpec(id, { assign: { [target(id).key]: 'c-risk' } }), /not a notice type/);
+});
+
+// A plan and the apply that follows it are two runs against a file a person can
+// edit in between. An assignment names a block by the hash of its text, so it
+// either finds what the agent read or finds nothing, and finding nothing stops
+// the run rather than silently taking a default on a block nobody looked at.
+test('an assignment survives the block moving', () => {
+  const id = seed(AMBIGUOUS);
+  const key = target(id).key;
+  // The same blocks, reordered: the index the plan reported now names another one.
+  writeFileSync(specHtmlPath(id), read(id).replace(
+    '<div class="callout warn">Nothing here decides it.</div>\n  <div class="callout dec">',
+    '<div class="callout dec">',
+  ).replace('<span class="tag ok">done</span>',
+    '<div class="callout warn">Nothing here decides it.</div>\n  <span class="tag ok">done</span>'));
+
+  migrateSpec(id, { assign: { [key]: 'risk' } });
+  assert.match(read(id), /class="callout risk">Nothing here decides it/, 'it followed the text');
+});
+
+test('an assignment for a block that is gone stops the run and names it', () => {
+  const id = seed(AMBIGUOUS);
+  const key = target(id).key;
+  writeFileSync(specHtmlPath(id), read(id).replace('Nothing here decides it.', 'Rewritten since the plan.'));
+  assert.throws(() => migrateSpec(id, { assign: { [key]: 'risk' } }), new RegExp(`no longer there[\\s\\S]*${key}`));
+});
+
+test('the work list names each block by a key that follows its text', () => {
+  const blocks = ambiguousBlocks(codemod(AMBIGUOUS).html);
+  assert.ok(blocks.every((b) => /^[0-9a-f]{10}$/.test(b.key)), 'every block has one');
+  assert.equal(new Set(blocks.map((b) => b.key)).size, blocks.length, 'and they differ');
+});
+
+test('migrate refuses an id that is not the shape of one', () => {
+  assert.throws(() => migrateSpec('abc; rm -rf /'), /not a spec id/);
+  assert.throws(() => migrateSpec('../../etc/passwd'), /not a spec id/);
 });
 
 test('a dry run reports everything and writes nothing', () => {
