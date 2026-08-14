@@ -585,9 +585,29 @@ ${strip}
       var ic=document.createElement('span'); ic.className='mic'; ic.textContent=it.icon; ic.setAttribute('aria-hidden','true');
       var lb=document.createElement('span'); lb.textContent=it.label;
       b.appendChild(ic); b.appendChild(lb);
-      b.onclick=function(){closePop(); it.run();};
+      b.onclick=function(){
+        // Focus goes back to the button that opened the menu before the action
+        // runs — so Move up leaves you on the collection you moved, wherever it
+        // landed — and an action that opens a dialog or the picker takes it from
+        // there, since it focuses its own field synchronously.
+        var owner=popOwner;
+        closePop();
+        if(owner&&owner.focus) owner.focus();
+        it.run();
+      };
       m.appendChild(b);
     });
+    // role="menu" promises arrow keys; this is that promise.
+    m.onkeydown=function(e){
+      var all=[].slice.call(m.querySelectorAll('.mitem'));
+      var i=all.indexOf(document.activeElement);
+      var to=null;
+      if(e.key==='ArrowDown') to=all[(i+1)%all.length];
+      else if(e.key==='ArrowUp') to=all[(i<=0?all.length:i)-1];
+      else if(e.key==='Home') to=all[0];
+      else if(e.key==='End') to=all[all.length-1];
+      if(to){e.preventDefault(); to.focus();}
+    };
     openPop(m,anchor);
     var first=m.querySelector('.mitem'); if(first) first.focus();
   }
@@ -797,10 +817,16 @@ ${strip}
     var n=crow.nextElementSibling;
     return n&&n.getAttribute('data-c')!==''?n:null;
   }
+  // The continuation runs whether or not the write landed, on purpose: a rename
+  // or a delete is the thing that was asked for, and refusing to do it because a
+  // cosmetic order failed to save would be the worse failure. But a silent one is
+  // worse still — a reorder that did not save reverts on the next load with no
+  // explanation — so a failure says so, the same way a partial fan-out does.
   function putOrder(order,then){
     var done=then||function(){};
+    function settle(ok){ if(!ok) warn('The collection order could not be saved.'); done(); }
     fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({collectionOrder:order})})
-      .then(done,done);
+      .then(function(x){settle(!!(x&&x.ok));},function(){settle(false);});
   }
   function moveColl(crow,dir){
     var name=crow.getAttribute('data-c');

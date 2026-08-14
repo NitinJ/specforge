@@ -696,6 +696,59 @@ test('Move up and Move down reorder the rail and the list together, and persist'
   assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta', '']);
 });
 
+// role="menu" is a promise of arrow keys; a menu that only takes a mouse should
+// not have claimed to be one.
+test('the menu takes arrow keys, and hands focus back to the button that opened it', (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const menu = document.getElementById('menu');
+  const kebab = document.querySelector('.crow[data-c="Alpha"] .kebab');
+  const key = (k) => menu.dispatchEvent(new window.KeyboardEvent('keydown', { key: k, bubbles: true }));
+
+  kebab.click();
+  const all = [].slice.call(menu.querySelectorAll('.mitem'));
+  assert.equal(document.activeElement, all[0], 'opens on the first item');
+  key('ArrowDown');
+  assert.equal(document.activeElement, all[1]);
+  key('ArrowUp');
+  assert.equal(document.activeElement, all[0]);
+  key('ArrowUp');
+  assert.equal(document.activeElement, all[all.length - 1], 'wraps to the end');
+  key('Home');
+  assert.equal(document.activeElement, all[0]);
+  key('End');
+  assert.equal(document.activeElement, all[all.length - 1]);
+  kebab.click(); // the same button closes it again
+
+  // Move down: focus lands back on the button, which has moved with its row.
+  kebab.click();
+  item(document, 'Move down').click();
+  assert.equal(document.activeElement, kebab, 'you keep your place after a move');
+  assert.equal(railOrder(document)[1], 'Alpha', 'and the row really moved');
+});
+
+test('an order that fails to save says so, and the rename it carried still happens', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  setCollection(a, 'Alpha');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  window.fetch = (url) => (/\/api\/prefs$/.test(url)
+    ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+    : Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  document.querySelector('.crow[data-c="Alpha"] .kebab').click();
+  item(document, 'Rename').click();
+  document.getElementById('dp-input').value = 'Release';
+  document.getElementById('dp-ok').click();
+  await tick(window);
+  const toast = document.querySelector('.toast');
+  assert.ok(toast, 'a failed order write is not swallowed');
+  assert.match(toast.textContent, /order could not be saved/);
+});
+
 test('the ends of the list offer no move past them, and Uncollected never moves', (t) => {
   const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
   const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
