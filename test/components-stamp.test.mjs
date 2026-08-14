@@ -331,22 +331,30 @@ test('no stamped template redefines a class the library owns', async () => {
     ...COMPONENTS.flatMap((c) => [c.kind === 'class' ? c.name : null, ...(c.variants || [])]).filter(Boolean),
   ]);
 
+  const { selectors } = await import('../lib/components-build.mjs');
   for (const name of STAMPED_TEMPLATES) {
     const html = readFileSync(join(root, 'templates', name), 'utf8');
-    // Everything after the generated block is the template's own CSS, comments
-    // stripped: prose naming a class is not a rule defining one.
-    const own = html.split('specforge:components end')[1].split('</style>')[0]
-      .replace(/\/\*[\s\S]*?\*\//g, '');
+    // Everything after the generated block is the template's own CSS. Selectors
+    // are parsed rather than matched, so prose naming a class is not a rule
+    // defining one and a compact at-rule does not hide one.
+    const own = html.split('specforge:components end')[1].split('</style>')[0];
     const dup = new Set();
-    for (const rule of own.split('}')) {
-      const head = rule.split('{')[0];
-      if (!head || !rule.includes('{')) continue;
-      for (const selector of head.split(',')) {
-        for (const c of definedBy(selector) || []) if (owned.has(c)) dup.add(c);
-      }
+    for (const selector of selectors(own)) {
+      for (const c of definedBy(selector) || []) if (owned.has(c)) dup.add(c);
     }
     assert.deepEqual([...dup], [], `${name} redefines library classes`);
   }
+});
+
+// Both the generated vocabulary and the duplication test read the same parser,
+// so a blind spot in it hides a shell class and lets a redefinition through at
+// once.
+test('a rule written inside a compact at-rule is still a rule', async () => {
+  const { selectors } = await import('../lib/components-build.mjs');
+  const css = '@media (max-width:900px){.fs-group{grid-column:1/-1}.card{margin:0}}\n.plain{color:red}';
+  assert.deepEqual(selectors(css), ['.fs-group', '.card', '.plain']);
+  assert.deepEqual(selectors('/* .commented {x} */ .real{y}'), ['.real'],
+    'and a comment is not a rule');
 });
 
 // The other half of adoption: the deck keeps what the library has no equivalent
