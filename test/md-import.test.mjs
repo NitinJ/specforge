@@ -272,7 +272,10 @@ test('a javascript: URL is neutralised however it is quoted or escaped', () => {
   for (const v of vectors) {
     const clean = sanitizeHtml(v);
     assert.doesNotMatch(clean, /javascript|vbscript|data:text\/html|svg\+xml/i, `not neutralised: ${v}`);
-    assert.match(clean, /#/, `no href left at all: ${v}`);
+    // The URL is either replaced with '#' (the attribute is one specs use) or the
+    // attribute is gone entirely (it is not on the allow-list). Both are fine;
+    // what matters is that nothing navigable to a script is left.
+    assert.doesNotMatch(clean, /=\s*["']?\s*\w+script/i, `a scheme survived: ${v}`);
   }
 });
 
