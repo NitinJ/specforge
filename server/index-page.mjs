@@ -889,8 +889,12 @@ ${strip}
     putOrder(sending,function(ok){
       writing=false;
       if(ok) savedOrder=sending;
-      else { showMsg(ORDER_FAILED); setRail(savedOrder||sending); }
-      if(pendingWrite){ pendingWrite=false; commitOrder(); }
+      // A move made while this was in flight is a newer statement of intent than
+      // this result. Send that instead — rolling back first would wipe it off
+      // the rail and then store the wipe. If it fails in turn, ITS handler is
+      // the one that rolls back, to the same place.
+      if(pendingWrite){ pendingWrite=false; commitOrder(); return; }
+      if(!ok){ showMsg(ORDER_FAILED); setRail(savedOrder||sending); }
     });
   }
   function moveColl(crow,dir){

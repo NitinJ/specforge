@@ -794,6 +794,41 @@ test('a second move during a save does not race it', async (t) => {
   assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta'], 'which is what is on screen');
 });
 
+// The rollback must not run before the coalesced write has taken the rail: it
+// would wipe the newer move off the screen and then store the wipe.
+test('a move made during a failing write survives it', async (t) => {
+  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
+  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
+  setCollection(a, 'Alpha');
+  setCollection(b, 'Beta');
+  setCollection(c, 'Gamma');
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const sent = [];
+  let settle;
+  const held = new Promise((r) => { settle = r; });
+  let first = true;
+  window.fetch = (url, init) => {
+    sent.push(JSON.parse(init.body).collectionOrder);
+    if (first) { first = false; return held.then(() => ({ ok: false, status: 500, json: () => Promise.resolve({}) })); }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+
+  const up = (name) => {
+    document.querySelector(`.crow[data-c="${name}"] .kebab`).click();
+    item(document, 'Move up').click();
+  };
+  up('Gamma'); // in flight, and it will fail
+  up('Gamma'); // made during it — this is the newer intent
+  settle();
+  await tick(window);
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta'], 'the newer move is still on screen');
+  assert.deepEqual(sent[sent.length - 1], ['Gamma', 'Alpha', 'Beta'], 'and is what got stored');
+  assert.equal(document.querySelector('.toast'), null, 'a failure the retry recovered from is not reported');
+});
+
 test('a rollback goes to the last order that saved, not to where the move began', async (t) => {
   const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
   const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
