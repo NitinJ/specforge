@@ -776,6 +776,12 @@
       // Awaiting response → Picked up comments → Working on comments — from the
       // batch progress the hooks + review-spec skill report via meta.reviewProgress.
       if (repliedAgentCount() >= unresolved) return { label: 'Review replies', state: 'replied', act: 'review' };
+      // Nobody owns the spec, so nothing is coming. "Awaiting response" with a
+      // spinner would report work in flight over an empty queue, and the header
+      // already says No agent with a Connect button beside it.
+      if (!(state.meta && state.meta.attachedSession)) {
+        return { label: 'No agent to answer', state: 'other', act: null };
+      }
       // Comments submitted, agent processing, not yet ready to review — one phase, so
       // all three steps carry the loading spinner (loading) to signal work in flight.
       var prog = state.meta && state.meta.reviewProgress;
