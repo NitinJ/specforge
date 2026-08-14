@@ -92,6 +92,34 @@ ${tag}
   }
 });
 
+// An opt-in written in valid HTML that the templates do not happen to produce
+// must still count. Reading it as absent would silently skip that spec in both
+// `sync --all` and the lint, which is the quietest possible failure.
+test('an opt-in is recognised however the html tag is written', async () => {
+  const { optedIn, optedInVersion } = await import('../lib/components-stamp.mjs');
+  const variants = [
+    `<html lang="en" ${ATTR}="1">`,
+    `<HTML LANG="en" ${ATTR}="1">`,
+    `<html ${ATTR}='1'>`,
+    `<html ${ATTR} = "1">`,
+    `<html\n  ${ATTR}="1">`,
+  ];
+  for (const tag of variants) {
+    const html = `<!DOCTYPE html>${tag}<head><title>T</title><style>body{}</style></head><body></body></html>`;
+    assert.equal(optedIn(html), true, `opted in: ${tag.replace(/\n/g, ' ')}`);
+    assert.equal(optedInVersion(html), 1);
+  }
+  assert.equal(optedIn('<html lang="en"><head></head><body></body></html>'), false);
+});
+
+test('stamping updates an existing attribute rather than adding a second', async () => {
+  const { optedInVersion } = await import('../lib/components-stamp.mjs');
+  const html = `<!DOCTYPE html><html ${ATTR}='0'><head><title>T</title><style>body{}</style></head><body></body></html>`;
+  const out = stampHtml(html, { force: true });
+  assert.equal((out.match(new RegExp(ATTR, 'g')) || []).length, 1, 'one attribute');
+  assert.equal(optedInVersion(out), VERSION, 'at the current version');
+});
+
 // ---- reading a block back ----
 
 test('readBlock reports the version and whether the body is untouched', () => {
