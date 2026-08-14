@@ -112,6 +112,28 @@ test('an opt-in is recognised however the html tag is written', async () => {
   assert.equal(optedIn('<html lang="en"><head></head><body></body></html>'), false);
 });
 
+// A spec can carry more than one stylesheet. Looking only at the first would
+// read an existing block in a later one as absent and insert a second copy, so
+// the spec would carry two definitions of every component.
+test('a block in a later style element is found, not duplicated', () => {
+  const two = (blockIn) => `<!DOCTYPE html><html data-sf-spec-status="draft"><head><title>T</title>
+<style>${blockIn === 0 ? 'BLOCK' : '  body{margin:0}'}</style>
+<style media="print">${blockIn === 1 ? 'BLOCK' : '  h1{font-size:20px}'}</style>
+</head><body><main><h1>T</h1></main></body></html>`;
+
+  // Stamped into the first when there is no block anywhere.
+  const fresh = stampHtml(two(-1));
+  assert.equal((fresh.match(/specforge:components v\d+ start/g) || []).length, 1);
+
+  // Stamped in place when the block already lives in the second.
+  const inSecond = two(1).replace('BLOCK', buildCss().trim());
+  assert.equal(readBlock(inSecond).present, true, 'a block in the second sheet is found');
+  const out = stampHtml(inSecond);
+  assert.equal((out.match(/specforge:components v\d+ start/g) || []).length, 1, 'still one block');
+  assert.ok(out.split('<style media="print">')[1].includes('specforge:components'),
+    'and it stayed where it was');
+});
+
 // Reading a tag loosely is only half the job: writing it back has to survive the
 // same variety. Slicing at a lowercase `html` produced `<htmlML LANG="en">` on an
 // uppercase root tag, corrupting exactly the imported documents the loose
