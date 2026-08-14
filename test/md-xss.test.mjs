@@ -15,6 +15,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
+import { JSDOM } from 'jsdom';
+
 import { markdownToSpecHtml } from '../lib/md-to-html.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -66,7 +68,7 @@ const VECTORS = [
   ['handler after a tab', '<img\tonerror=alert(1)>'],
 ];
 
-const EXECUTABLE = /javascript\s*:|vbscript\s*:|data:text\/html|data:image\/svg\+xml|<script|<iframe|<object|<embed|<base\b|<link\b|<meta\b|srcdoc/i;
+const EXECUTABLE_URL = /^\s*(?:javascript|vbscript|livescript|data:text\/html|data:image\/svg\+xml)/i;
 
 function importBody(vector) {
   const { html } = markdownToSpecHtml(`# Probe\n\n## Body\n\n${vector}\n`, {
@@ -77,14 +79,76 @@ function importBody(vector) {
   return (html.match(/<section id="body"[\s\S]*?<\/section>/) || [''])[0];
 }
 
+/**
+ * What actually survived, judged by parsing rather than by pattern.
+ *
+ * A regex over the output cannot tell markup from text: `alt="&quot; onerror=…"`
+ * contains the string `onerror=` and is completely inert, while `<img onerror=x>`
+ * contains the same string and is not. Parsing answers the question that matters
+ * — does any ELEMENT carry a handler — and does not raise a false alarm on
+ * escaped text, which is exactly what correct output looks like.
+ */
+function findings(bodyHtml) {
+  const { document } = new JSDOM(`<div id="root">${bodyHtml}</div>`).window;
+  const out = [];
+  for (const el of document.querySelectorAll('*')) {
+    const tag = el.tagName.toLowerCase();
+    if (['script', 'iframe', 'object', 'embed', 'base', 'link', 'meta', 'form'].includes(tag)) {
+      out.push(`element <${tag}> survived`);
+    }
+    for (const attr of el.attributes) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith('on')) out.push(`<${tag}> kept the handler ${name}`);
+      if (name === 'srcdoc') out.push(`<${tag}> kept srcdoc`);
+      if (['href', 'src', 'action', 'formaction', 'poster', 'xlink:href'].includes(name)
+        && EXECUTABLE_URL.test(attr.value)) {
+        out.push(`<${tag}> kept an executable ${name}: ${attr.value.slice(0, 40)}`);
+      }
+      if (['src', 'poster', 'xlink:href'].includes(name) && /^(?:https?:)?\/\//i.test(attr.value)) {
+        out.push(`<${tag}> kept a remote ${name}: ${attr.value.slice(0, 40)}`);
+      }
+    }
+  }
+  return out;
+}
+
 test('no XSS vector survives the import path', () => {
   const survived = [];
   for (const [name, vector] of VECTORS) {
-    const body = importBody(vector);
-    if (EXECUTABLE.test(body)) survived.push(`${name}: executable content`);
-    if (/\son[a-z]+\s*=/i.test(body)) survived.push(`${name}: inline event handler`);
+    for (const finding of findings(importBody(vector))) survived.push(`${name}: ${finding}`);
   }
   assert.deepEqual(survived, [], `vectors that survived:\n${survived.join('\n')}`);
+});
+
+test('an attribute value cannot break out of its own quotes', () => {
+  // The renderer interpolates alt text and hrefs into attributes. esc() handles
+  // &<> but not quotes, so a quote in the source closed the attribute early and
+  // whatever followed became markup.
+  const breakouts = [
+    ['image alt', '![" onerror="alert(1)](x.png)'],
+    ['image alt, single quotes', "![' onerror='alert(1)](x.png)"],
+    ['link href', '[x](http://a"onmouseover="alert(1))'],
+    ['link text', '[<img src=x onerror=alert(1)>](http://a)'],
+    ['image alt with a tag', '![<img src=x onerror=alert(1)>](x.png)'],
+  ];
+  const survived = [];
+  for (const [name, vector] of breakouts) {
+    for (const finding of findings(importBody(vector))) survived.push(`${name}: ${finding}`);
+  }
+  assert.deepEqual(survived, [], `breakouts that survived:\n${survived.join('\n')}`);
+});
+
+test('a remote image in raw HTML does not become a request', () => {
+  // A spec is self-contained and can be published: a remote src is a beacon that
+  // fires for every reviewer who opens the page and hands the author their IP.
+  for (const vector of [
+    '<img src="https://evil.test/track.png?u=1">',
+    '<video poster="https://evil.test/t.png"></video>',
+    '<svg><image xlink:href="https://evil.test/t.png"/></svg>',
+    '<img src="//evil.test/protocol-relative.png">',
+  ]) {
+    assert.deepEqual(findings(importBody(vector)), [], vector);
+  }
 });
 
 test('the guard does not swallow the document around it', () => {
@@ -102,10 +166,17 @@ test('the guard does not swallow the document around it', () => {
 });
 
 test('legitimate content is untouched by the guard', () => {
-  const body = importBody(
-    '[docs](https://example.com/a?b=1&c=2) and <a href="/rel">rel</a> and <a href="#frag">frag</a>'
-  );
+  // Markdown links: absolute with a query string, relative, and a fragment. The
+  // ampersand is escaped exactly once — escaping it twice renders `&amp;` as
+  // visible text in the middle of the URL.
+  const body = importBody('[docs](https://example.com/a?b=1&c=2) and [rel](/rel) and [frag](#frag)');
   assert.match(body, /href="https:\/\/example\.com\/a\?b=1&amp;c=2"/);
+  assert.doesNotMatch(body, /&amp;amp;/, 'double-escaped');
   assert.match(body, /href="\/rel"/);
   assert.match(body, /href="#frag"/);
+
+  // And a raw HTML block, which is the path that goes through the sanitizer.
+  const raw = importBody('<div class="panel">\n<a href="https://example.com/x">link</a>\n</div>');
+  assert.match(raw, /<div class="panel">/);
+  assert.match(raw, /<a href="https:\/\/example\.com\/x">link<\/a>/);
 });
