@@ -257,6 +257,29 @@ test('image references follow the file name when --out renames the export', () =
   assert.doesNotMatch(md, /topology\.assets/, 'no link left pointing at the old name');
 });
 
+test('--zip writes one archive instead of a file and a folder', () => {
+  const id = createSpec({ html: fixture('diagrams').html(), title: 'Topology', type: 'design' });
+  const r = exportMd(id, { out: store.dir, exportedAt: EXPORTED_AT, zip: true });
+
+  assert.equal(r.mdPath, null, 'nothing loose is written');
+  assert.equal(r.assetsDir, null);
+  assert.match(r.zipPath, /topology\.zip$/);
+  assert.deepEqual(readdirSync(store.dir).filter((f) => f !== 'specs'), ['topology.zip']);
+
+  const buf = readFileSync(r.zipPath);
+  assert.equal(buf.readUInt32LE(0), 0x04034b50);
+  assert.ok(buf.includes(Buffer.from('topology.md')));
+  assert.ok(buf.includes(Buffer.from('topology.assets/architecture-1.svg')));
+});
+
+test('--zip on a spec with no diagrams is still one archive holding the .md', () => {
+  const id = createSpec({ html: fixture('design').html(), title: 'Retry policy', type: 'design' });
+  const r = exportMd(id, { out: store.dir, exportedAt: EXPORTED_AT, zip: true });
+  assert.match(r.zipPath, /retry-policy\.zip$/);
+  assert.equal(r.assets, 0);
+  assert.ok(readFileSync(r.zipPath).includes(Buffer.from('retry-policy.md')));
+});
+
 test('resolveOut treats a .md path as the file and anything else as a directory', () => {
   assert.equal(resolveOut('/tmp/x/notes.md', 'spec'), '/tmp/x/notes.md');
   assert.equal(resolveOut('/tmp/x', 'spec'), '/tmp/x/spec.md');
