@@ -325,6 +325,19 @@ test('the work list names each block by a key that follows its text', () => {
   assert.equal(new Set(blocks.map((b) => b.key)).size, blocks.length, 'and they differ');
 });
 
+// Both inputs decide the assignment. The same sentence under `warn` and under
+// `good` is a different claim, so an answer given for one must not be applied to
+// the other when an author revises the tone between the plan and the apply.
+test('an assignment does not survive the source group changing under it', () => {
+  const id = seed(AMBIGUOUS);
+  const key = target(id).key;
+  writeFileSync(specHtmlPath(id), read(id).replace(
+    '<div class="callout warn">Nothing here decides it.</div>',
+    '<div class="callout good">Nothing here decides it.</div>',
+  ));
+  assert.throws(() => migrateSpec(id, { assign: { [key]: 'risk' } }), /no longer there/);
+});
+
 test('migrate refuses an id that is not the shape of one', () => {
   assert.throws(() => migrateSpec('abc; rm -rf /'), /not a spec id/);
   assert.throws(() => migrateSpec('../../etc/passwd'), /not a spec id/);

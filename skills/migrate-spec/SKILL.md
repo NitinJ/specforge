@@ -56,10 +56,11 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" components migrate <id> --pla
 
 Returns `{ id, blocks: [{ index, key, source, text }] }` — every callout the
 codemod could not type. `source` is the legacy variant: `warn`, `good`, `bad`, or
-`""` for a bare callout. `key` is a hash of the block's text, and is how you name
-a block in step 3: it follows the block if the spec is edited between the plan
-and the apply, and an assignment whose key matches nothing stops the run rather
-than landing on the wrong block.
+`""` for a bare callout. `key` is a hash of the block's source and text, and is
+how you name a block in step 3: it follows the block if the spec is edited
+between the plan and the apply, and an assignment whose key matches nothing stops
+the run rather than landing on the wrong block. If that happens, the spec moved
+under you: re-run `--plan` and read the blocks again.
 
 Assign a type to each from its text. Stay within the source's group: the tone is
 part of what the original said, and moving a block from `good` to `risk` reverses
