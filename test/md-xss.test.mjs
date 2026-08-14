@@ -53,6 +53,17 @@ const VECTORS = [
   ['markdown image, svg data uri', '![x](data:image/svg+xml;base64,PHN2Zz4=)'],
   ['xlink:href in svg', '<svg><use xlink:href="javascript:alert(1)"/></svg>'],
   ['video poster', '<video poster="javascript:alert(1)"></video>'],
+  // HTML accepts a solidus where whitespace would go between attributes, so
+  // these are ordinary elements with handlers, and a pattern anchored on
+  // whitespace walks straight past them.
+  ['solidus before handler', '<img/onerror=alert(1) src=x>'],
+  ['solidus between attributes', '<img/src=x/onerror=alert(1)>'],
+  ['solidus on svg', '<svg/onload=alert(1)>'],
+  ['solidus before href', '<a/href="javascript:alert(1)">x</a>'],
+  ['solidus before unquoted href', '<a/href=javascript:alert(1)>x</a>'],
+  ['double solidus', '<div//onclick=alert(1)>x</div>'],
+  ['handler after a newline', '<img\n onerror=alert(1)>'],
+  ['handler after a tab', '<img\tonerror=alert(1)>'],
 ];
 
 const EXECUTABLE = /javascript\s*:|vbscript\s*:|data:text\/html|data:image\/svg\+xml|<script|<iframe|<object|<embed|<base\b|<link\b|<meta\b|srcdoc/i;
