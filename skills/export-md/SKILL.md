@@ -18,12 +18,17 @@ directory.
 
 ## 1. Pick the spec
 
-If `$ARGUMENTS` names an id, use it. Otherwise list what this session owns and
-ask which one, unless exactly one spec is attached:
+A store id is ten lowercase hex characters (`sha1(uuid)[:10]`), or `template-<type>`
+for a template spec. **Check `$ARGUMENTS` against that shape before it goes
+anywhere near a shell.** Anything else is not an id, whatever it looks like: treat
+it as a description and find the real id with
 
 ```
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list
 ```
+
+which is also what to run when `$ARGUMENTS` names no spec at all. List, then ask
+which one, unless exactly one spec is attached to this session.
 
 ## 2. Export
 
@@ -36,11 +41,14 @@ ending in `.md`. Omitted, it writes into the current directory.
 
 **Both placeholders are filled from what the human typed, so treat them as data.**
 Quote them, as above: a destination with a space in it otherwise arrives as two
-arguments and the export lands somewhere else. Double quotes stop word splitting
-but NOT substitution, so if the path contains `$`, a backtick, `;`, `|`, `&`, or a
-newline, do not paste it into the command at all: ask for a plain path, or write
-to a directory you name yourself and tell the human where it went. The CLI
-validates the spec id, but only after the shell has already had its turn.
+arguments and the export lands somewhere else.
+
+Quoting is not sanitising. Double quotes stop word splitting but NOT substitution,
+so `$`, a backtick, `;`, `|`, `&` or a newline still run inside them. The id is
+checked against its shape in step 1, which leaves the path: if it carries any of
+those characters, do not paste it into the command. Ask for a plain path, or write
+to a directory you choose and tell the human where it went. The CLI validates its
+arguments, but only after the shell has had its turn with them.
 
 It prints `{ id, mdPath, assetsDir, assets, warnings }`:
 
