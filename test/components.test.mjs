@@ -115,6 +115,28 @@ test('blockComponents covers the blocks a reviewer can comment on', () => {
   assert.ok(!blocks.includes('kw'), 'an inline component is not a comment target');
 });
 
+// A dispatch table with Object.prototype behind it answers to names nobody
+// registered: `components constructor` resolved the Function constructor,
+// called it, and exited 0 printing {}. Both tables are null-prototype now.
+test('a command name off Object.prototype is not a command', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+  const cli = new URL('../lib/specforge-cli.mjs', import.meta.url).pathname;
+
+  for (const argv of [['components', 'constructor'], ['components', '__proto__'], ['constructor'], ['toString']]) {
+    await assert.rejects(
+      () => run(process.execPath, [cli, ...argv]),
+      (err) => {
+        assert.ok(err.code > 0, `${argv.join(' ')} exits non-zero, got ${err.code}`);
+        assert.match(err.stderr, /unknown (command|subcommand)/, `${argv.join(' ')} says it is unknown`);
+        return true;
+      },
+      `${argv.join(' ')} is refused`,
+    );
+  }
+});
+
 test('no two components share a name', () => {
   const names = COMPONENTS.map((c) => c.name);
   assert.deepEqual(names.length, new Set(names).size, 'duplicate component name');
