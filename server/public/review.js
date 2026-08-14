@@ -92,8 +92,8 @@
   //
   // The server values are still read once, as the starting point for a browser
   // that has none. Nothing writes them back.
-  var GLOBAL_PREF_KEYS = { theme: 1, font: 1 };
-  var GLOBAL_STORE_KEY = 'sf-prefs';          // theme + font: every spec
+  var GLOBAL_PREF_KEYS = { theme: 1, font: 1, mono: 1 };
+  var GLOBAL_STORE_KEY = 'sf-prefs';          // theme + font + mono: every spec
   var SPEC_STORE_KEY = 'sf-prefs:' + SPEC;    // width, fit, toc, filter: this spec
 
   function readLocal(key) {
@@ -167,9 +167,22 @@
     { id: 'space-grotesk', name: 'Space Grotesk', cat: 'presentation', google: 'Space+Grotesk:wght@400;600;700', stack: '"Space Grotesk", system-ui, sans-serif' },
     { id: 'fraunces', name: 'Fraunces', cat: 'presentation', google: 'Fraunces:wght@400;600;700', stack: '"Fraunces", Georgia, serif' },
   ];
-  var FONT_CATS = ['sans', 'serif', 'mono', 'presentation'];
+  // Two axes, because they answer two questions. A reading font is what prose
+  // looks like; a monospace face is what code looks like. Picking JetBrains Mono
+  // used to set the whole document in it, which is the one thing nobody choosing
+  // a code font is asking for.
+  var FONT_CATS = ['sans', 'serif', 'presentation'];
   function fontById(id) { return FONTS.filter(function (f) { return f.id === id; })[0] || null; }
-  function initFont() { return fontById(PREFS.font) ? PREFS.font : 'default'; }
+  function isMono(id) { var f = fontById(id); return !!f && f.cat === 'mono'; }
+  function initFont() {
+    return (fontById(PREFS.font) && !isMono(PREFS.font)) ? PREFS.font : 'default';
+  }
+  // A pref saved before the split named a mono in the reading-font slot. Read it
+  // as what it always meant: that face, for code.
+  function initMono() {
+    if (isMono(PREFS.mono)) return PREFS.mono;
+    return isMono(PREFS.font) ? PREFS.font : 'default';
+  }
 
   // Inject the Google Fonts stylesheet for a font once, the first time it's picked.
   var _loadedFonts = {};
@@ -254,7 +267,8 @@
     }
     // The floating "Contents" TOC + its collapse state are owned by the #sf-toc
     // injector (the second IIFE below), which builds after this chrome.
-    applyFont(initFont()); // reading font — persisted choice (or sans) on load
+    applyFont(initFont()); // reading font — persisted choice (or the spec's own) on load
+    applyMono(initMono()); // and the monospace face, which is a separate choice
     buildChrome();
     // Establish block identity before the first render, so comments resolve by
     // id rather than by guessing at content. Non-blocking on failure.
@@ -403,20 +417,42 @@
   // applyWidth) and the attr lands there — the chrome is still safe because every
   // chrome root (#sf-sidebar/#sf-menu/#sf-launcher/#sf-compose/#sf-toc) declares its
   // own font-family, so the reading font can't inherit in. Code stays monospace
-  // unless the whole doc is set to mono.
+  // under every reading font; which monospace is applyMono's business.
   function applyFont(id) {
     var c = widthContainer();
     var f = fontById(id);
-    if (!f) { // 'default' / unknown → spec's own font, no override, no fetch
+    if (!f || f.cat === 'mono') { // 'default' / unknown / a code font → no override, no fetch
       c.removeAttribute('data-sf-font');
       c.style.removeProperty('--sf-reading-font');
       return;
     }
     loadGoogleFont(f);
-    // data-sf-font carries the CATEGORY (sans/serif/mono) — review.css keys the
-    // code-block exemption off it; the actual family is the inline --sf-reading-font.
+    // data-sf-font carries the CATEGORY (sans/serif/presentation) — review.css keys
+    // the code exemption off its presence; the family is the inline --sf-reading-font.
     c.setAttribute('data-sf-font', f.cat);
     c.style.setProperty('--sf-reading-font', f.stack);
+  }
+
+  /**
+   * The monospace face, wherever the document uses one.
+   *
+   * Sets --mono, the canonical palette token every spec already writes its code
+   * and pre rules against, so the pick reaches .kw, .diff, .codeblock's filename
+   * and a deck's slide numbers without review.css naming any of them. The
+   * attribute is for the specs that hardcoded a stack instead of the token; the
+   * rule keyed on it puts them back on --mono.
+   */
+  function applyMono(id) {
+    var c = widthContainer();
+    var f = isMono(id) ? fontById(id) : null;
+    if (!f) {
+      c.removeAttribute('data-sf-mono');
+      c.style.removeProperty('--mono');
+      return;
+    }
+    loadGoogleFont(f);
+    c.setAttribute('data-sf-mono', f.id);
+    c.style.setProperty('--mono', f.stack);
   }
 
   // ---------- data ----------
@@ -912,6 +948,7 @@
 
     // Font — sans/serif/mono reading font, persisted.
     els.menu.appendChild(fontRow());
+    els.menu.appendChild(monoRow());
 
     // Export — open the print dialog (pick "Save as PDF"); the review chrome is
     // hidden by the print stylesheet so the PDF is just the spec.
@@ -1024,8 +1061,9 @@
     row.appendChild(grid);
     return row;
   }
-  // Font — a dropdown of reading fonts grouped Sans/Serif/Mono; applies live and
-  // persists the pick. "Default" leaves the spec's own font alone.
+  // Font — a dropdown of reading fonts grouped Sans/Serif/Presentation; applies
+  // live and persists the pick. "Default" leaves the spec's own font alone. The
+  // monospace faces are not here: they are the Code font row below.
   function fontRow() {
     var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
     row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">A</span><span>Font</span></span>';
@@ -1040,6 +1078,21 @@
     });
     sel.value = initFont();
     sel.onchange = function () { applyFont(sel.value); putPref({ font: sel.value }); };
+    row.appendChild(sel);
+    return row;
+  }
+  // Code font — the monospace face, everywhere the document uses one. Composes
+  // with the reading font rather than replacing it.
+  function monoRow() {
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">&#123;&#125;</span><span>Code font</span></span>';
+    var sel = create('select', { class: 'sf-mono-select', 'aria-label': 'Code font' });
+    sel.appendChild(create('option', { value: 'default' }, 'Default'));
+    FONTS.filter(function (f) { return f.cat === 'mono'; }).forEach(function (f) {
+      sel.appendChild(create('option', { value: f.id }, f.name));
+    });
+    sel.value = initMono();
+    sel.onchange = function () { applyMono(sel.value); putPref({ mono: sel.value }); };
     row.appendChild(sel);
     return row;
   }
