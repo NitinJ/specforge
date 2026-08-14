@@ -18,10 +18,17 @@ directory.
 
 ## 1. Pick the spec
 
-A store id is ten lowercase hex characters (`sha1(uuid)[:10]`), or `template-<type>`
-for a template spec. **Check `$ARGUMENTS` against that shape before it goes
-anywhere near a shell.** Anything else is not an id, whatever it looks like: treat
-it as a description and find the real id with
+A store id is exactly one of:
+
+- ten lowercase hex characters, `[0-9a-f]{10}` (it is `sha1(uuid)[:10]`), or
+- `template-` followed by one of `general`, `design`, `research`, `design-impl`,
+  `impl`, `deck` — that list and nothing else.
+
+**Check `$ARGUMENTS` against those two forms before it goes anywhere near a
+shell.** The enumeration is the point: `template-<anything>` would let
+`template-$(id)` through as identifier-shaped. Anything that does not match is
+not an id, whatever it looks like. Treat it as a description and find the real id
+with
 
 ```
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list
@@ -44,11 +51,13 @@ Quote them, as above: a destination with a space in it otherwise arrives as two
 arguments and the export lands somewhere else.
 
 Quoting is not sanitising. Double quotes stop word splitting but NOT substitution,
-so `$`, a backtick, `;`, `|`, `&` or a newline still run inside them. The id is
-checked against its shape in step 1, which leaves the path: if it carries any of
-those characters, do not paste it into the command. Ask for a plain path, or write
-to a directory you choose and tell the human where it went. The CLI validates its
-arguments, but only after the shell has had its turn with them.
+so `$`, a backtick, `;`, `|`, `&` or a newline still run inside them.
+
+**If either placeholder carries one of those characters, do not paste it into the
+command.** For the id that cannot happen once step 1's check has run, which is why
+that check is a closed enumeration rather than a warning. For the path, ask for a
+plain one, or write to a directory you choose and tell the human where it went.
+The CLI validates its arguments, but only after the shell has had its turn.
 
 It prints `{ id, mdPath, assetsDir, assets, warnings }`:
 

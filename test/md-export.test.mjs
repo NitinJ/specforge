@@ -232,6 +232,15 @@ test('the space between two adjacent inline elements survives', () => {
   assert.match(markdown, /Only `these` `outcomes` \*\*retry\*\*:/);
 });
 
+test('a line break inside a paragraph stays a line break', () => {
+  const html = fixture('design').html().replace(
+    '<p>Only these outcomes retry:</p>',
+    '<p>first line<br>second line</p>'
+  );
+  const { markdown } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(markdown, /^first line {2}\nsecond line$/m, 'two trailing spaces: a markdown hard break');
+});
+
 test('a line break in container prose stays a line break', () => {
   // inline() emits a hard break for <br>; the run that gathers container prose
   // used to collapse all whitespace and rejoin the two lines into one.
