@@ -98,6 +98,52 @@ test('readBlock on a pre-library spec reports absent', () => {
   assert.deepEqual(readBlock(SPEC()), { present: false, version: null, edited: false });
 });
 
+// ---- a spec that writes ABOUT the library ----
+//
+// Both of these are regressions. `components sync --all` ran against the real
+// store and rewrote the design spec for this library: it documents the marker
+// format in a <pre><code> example, and it names the attribute in its prose. The
+// opt-in test matched the prose, and the block regex matched the example, so the
+// example was replaced with the whole stylesheet.
+
+const DOCUMENTING_SPEC = `<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="draft">
+<head><meta charset="utf-8"><title>T</title>
+<style>
+  :root{--bg:#0f1115}
+</style>
+</head>
+<body><main>
+<p>The &lt;html&gt; element carries <code>${ATTR}="1"</code>. A spec without it is pre-library.</p>
+<pre><code>&lt;style&gt;
+  /* specforge:components v1 start: generated, do not edit */
+  ...
+  /* specforge:components end */
+&lt;/style&gt;</code></pre>
+</main></body></html>`;
+
+test('a spec that only writes about the attribute has not opted in', () => {
+  const id = seed('hhh8888888', DOCUMENTING_SPEC);
+  const r = syncAll();
+  assert.deepEqual(r.skipped, [id], 'prose mentioning the attribute is not consent');
+  assert.equal(specHtml(id), DOCUMENTING_SPEC, 'and the file is byte-identical');
+});
+
+test('stamping never touches markers outside the stylesheet', () => {
+  const out = stampHtml(DOCUMENTING_SPEC);
+  assert.ok(out.includes('  /* specforge:components v1 start: generated, do not edit */\n  ...\n'),
+    'the code example survives intact');
+  assert.equal((out.match(/specforge:components v\d+ start/g) || []).length, 2,
+    'one real block plus the one being written about');
+  // The real block landed in the stylesheet, not in the body.
+  const styleCss = out.slice(out.indexOf('<style>'), out.indexOf('</style>'));
+  assert.ok(styleCss.includes('.callout.decision::before'), 'the stylesheet has the library');
+});
+
+test('readBlock ignores a block written about in the body', () => {
+  assert.deepEqual(readBlock(DOCUMENTING_SPEC), { present: false, version: null, edited: false });
+});
+
 // ---- syncing a spec in the store ----
 
 test('sync stamps a spec and reports what changed', () => {
