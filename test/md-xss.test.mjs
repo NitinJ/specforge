@@ -66,6 +66,14 @@ const VECTORS = [
   ['double solidus', '<div//onclick=alert(1)>x</div>'],
   ['handler after a newline', '<img\n onerror=alert(1)>'],
   ['handler after a tab', '<img\tonerror=alert(1)>'],
+  // foreignObject switches the parser back into HTML inside SVG, which is the
+  // classic mutation-XSS seam.
+  ['svg foreignObject', '<svg><foreignObject><img src=x onerror=alert(1)></foreignObject></svg>'],
+  ['style with a url', '<style>body{background:url(https://evil.test/t.png)}</style>'],
+  ['style attribute with a url', '<div style="background:url(https://evil.test/t.png)">x</div>'],
+  ['srcset', '<img srcset="https://evil.test/t.png 1x" src="a.png">'],
+  ['anchor ping', '<a href="https://example.com" ping="https://evil.test/p">x</a>'],
+  ['background attribute', '<table background="https://evil.test/t.png"><tr><td>x</td></tr></table>'],
 ];
 
 const EXECUTABLE_URL = /^\s*(?:javascript|vbscript|livescript|data:text\/html|data:image\/svg\+xml)/i;
@@ -104,8 +112,17 @@ function findings(bodyHtml) {
         && EXECUTABLE_URL.test(attr.value)) {
         out.push(`<${tag}> kept an executable ${name}: ${attr.value.slice(0, 40)}`);
       }
-      if (['src', 'poster', 'xlink:href'].includes(name) && /^(?:https?:)?\/\//i.test(attr.value)) {
+      if (['src', 'poster', 'xlink:href', 'srcset', 'ping', 'background'].includes(name)
+        && /^(?:https?:)?\/\//i.test(attr.value)) {
         out.push(`<${tag}> kept a remote ${name}: ${attr.value.slice(0, 40)}`);
+      }
+      // href is a load on anything but an anchor (SVG2 <image href>, <use href>).
+      if (name === 'href' && !['a', 'area'].includes(tag) && /^(?:https?:)?\/\//i.test(attr.value)) {
+        out.push(`<${tag}> kept a remote href: ${attr.value.slice(0, 40)}`);
+      }
+      // Any attribute whose value would make the browser fetch a remote URL.
+      if (name === 'style' && /url\s*\(/i.test(attr.value)) {
+        out.push(`<${tag}> kept a style that fetches: ${attr.value.slice(0, 40)}`);
       }
     }
   }
