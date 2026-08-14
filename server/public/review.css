@@ -191,6 +191,67 @@
   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
 }
 
+/* syntax highlighting — the vendored Prism's token classes, mapped onto the house
+   palette rather than onto colours of their own.
+
+   That mapping is the whole reason highlighting follows the theme. Each of the 6
+   review-layer variants above redefines --accent/--green/--amber/--red/--ink/
+   --muted and nothing else, so a rule written against those re-tints with them
+   and a rule written against #d19a66 does not. It also means a spec's own light
+   and dark palettes drive the highlight, with no third palette to keep in step.
+
+   Six roles, not thirty: a spec is read, not edited, and a code block in a design
+   document has to separate structure from content, not name every node type. */
+[class*="language-"] .token.comment,
+[class*="language-"] .token.prolog,
+[class*="language-"] .token.doctype,
+[class*="language-"] .token.cdata { color: var(--muted); font-style: italic; }
+
+[class*="language-"] .token.punctuation,
+[class*="language-"] .token.operator,
+[class*="language-"] .token.entity { color: var(--muted); }
+
+[class*="language-"] .token.keyword,
+[class*="language-"] .token.atrule,
+[class*="language-"] .token.rule,
+[class*="language-"] .token.important,
+[class*="language-"] .token.regex { color: var(--accent); font-weight: 600; }
+
+[class*="language-"] .token.string,
+[class*="language-"] .token.char,
+[class*="language-"] .token.attr-value,
+[class*="language-"] .token.url,
+[class*="language-"] .token.inserted { color: var(--green); }
+
+[class*="language-"] .token.number,
+[class*="language-"] .token.boolean,
+[class*="language-"] .token.constant,
+[class*="language-"] .token.symbol { color: var(--amber); }
+
+[class*="language-"] .token.deleted { color: var(--red); }
+
+[class*="language-"] .token.function,
+[class*="language-"] .token.class-name,
+[class*="language-"] .token.tag,
+[class*="language-"] .token.selector,
+[class*="language-"] .token.property,
+[class*="language-"] .token.attr-name,
+[class*="language-"] .token.builtin,
+[class*="language-"] .token.variable { color: var(--ink); font-weight: 600; }
+
+/* A diff colours whole lines, so the tint goes behind them rather than on the
+   glyphs, where a green + on green is unreadable.
+   Only the *-sign tokens, which are the lines. Prism nests the +/- prefix inside
+   each one and gives it the same `inserted`/`deleted` class, so a rule written
+   against those puts the sign on a block of its own and every line breaks in two. */
+[class*="language-diff"] .token.inserted-sign,
+[class*="language-diff"] .token.deleted-sign { display: block; color: var(--ink); }
+[class*="language-diff"] .token.inserted-sign { background: color-mix(in srgb, var(--green) 14%, transparent); }
+[class*="language-diff"] .token.deleted-sign { background: color-mix(in srgb, var(--red) 14%, transparent); }
+[class*="language-diff"] .token.prefix { display: inline; background: none; font-weight: 700; }
+[class*="language-diff"] .token.prefix.inserted { color: var(--green); }
+[class*="language-diff"] .token.prefix.deleted { color: var(--red); }
+
 /* live-status pill — relocated into the launcher menu footer by review.js.
    Hidden until then so it never renders as a stray block in the document flow. */
 .sf-live { display: none; }

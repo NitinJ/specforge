@@ -253,6 +253,12 @@
   var SLIDE_SEL = 'main > section[data-sf-section]';
   var DECK_INSET = 16;
 
+  // The vendored highlighter's path. Up here for the same reason as the three
+  // above: initHighlight() runs from boot(), at the readyState check below, and
+  // declared beside its own section it is still `undefined` there — which appends
+  // <script src="undefined">, a 404, and no highlighting, silently.
+  var HIGHLIGHT_SRC = '/public/prism.js';
+
   var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState !== 'loading') boot();
@@ -272,7 +278,8 @@
     // The floating "Contents" TOC + its collapse state are owned by the #sf-toc
     // injector (the second IIFE below), which builds after this chrome.
     applyFont(initFont()); // reading font — persisted choice (or the spec's own) on load
-    applyMono(initMono()); // and the monospace face, which is a separate choice
+    applyMono(initMono()); // the monospace face, which is a separate choice
+    initHighlight();       // and colour the code blocks whose author named a language
     buildChrome();
     // Establish block identity before the first render, so comments resolve by
     // id rather than by guessing at content. Non-blocking on failure.
@@ -457,6 +464,88 @@
     loadGoogleFont(f);
     c.setAttribute('data-sf-mono', f.id);
     c.style.setProperty('--mono', f.stack);
+  }
+
+  // ---------- syntax highlighting (review-layer owned) ----------
+  //
+  // Declared, never detected. Measured across the 117 specs in the store: 0 of
+  // 133 code blocks name a language, and about half of them are not a language
+  // at all — ASCII data-flow diagrams, pseudo-code carrying prose annotations,
+  // structural sketches that look like JSON and are not. Guessing would colour a
+  // box-drawing diagram as if it were code, and a wrong highlight reads worse
+  // than none, so a block is highlighted when its author says what it is.
+  //
+  // An author may write the language where it falls naturally: `data-lang` on the
+  // block, the pre or the code, or Prism's own `class="language-x"`. They all end
+  // up as that class on the element Prism reads.
+  //
+  // HIGHLIGHT_SRC is declared with the other boot-time constants near the top,
+  // not here: boot() runs before this line would execute.
+
+  /** The element to highlight and the language it declares, or null. */
+  function declaredLang(pre) {
+    var code = pre.querySelector('code') || pre;
+    var from = [code, pre, pre.parentNode];
+    for (var i = 0; i < from.length; i++) {
+      var el = from[i];
+      if (!el || !el.getAttribute) continue;
+      var attr = el.getAttribute('data-lang');
+      if (attr) return { el: code, lang: attr.toLowerCase() };
+      var m = /(?:^|\s)lang(?:uage)?-([\w+#-]+)/.exec(el.className || '');
+      if (m) return { el: code, lang: m[1].toLowerCase() };
+    }
+    return null;
+  }
+
+  /** Every code block whose author declared a language. */
+  function declaredBlocks() {
+    var out = [];
+    var pres = document.querySelectorAll('pre');
+    for (var i = 0; i < pres.length; i++) {
+      // The review chrome writes no code blocks; this is belt and braces for a
+      // spec that nests one inside a comment rail's markup.
+      if (pres[i].closest && pres[i].closest('#sf-sidebar,#sf-menu,#sf-compose')) continue;
+      var d = declaredLang(pres[i]);
+      if (d) out.push(d);
+    }
+    return out;
+  }
+
+  function highlightAll(blocks) {
+    if (!window.Prism || !window.Prism.languages) return;
+    blocks.forEach(function (b) {
+      // No grammar means the vendored build does not carry that language. Leaving
+      // it as plain text is the honest outcome; Prism would otherwise emit one
+      // undifferentiated token and the block would look highlighted and not be.
+      if (!window.Prism.languages[b.lang]) return;
+      if (!/(?:^|\s)language-/.test(b.el.className || '')) {
+        b.el.className = (b.el.className ? b.el.className + ' ' : '') + 'language-' + b.lang;
+      }
+      try { window.Prism.highlightElement(b.el); } catch (e) { /* a bad grammar is not a broken page */ }
+    });
+  }
+
+  /**
+   * Load the highlighter, once, and only for a spec that has something to
+   * highlight. A spec of prose and diagrams fetches nothing, which is the same
+   * bargain the reading fonts make.
+   */
+  function initHighlight() {
+    var blocks = declaredBlocks();
+    if (!blocks.length) return;
+    // The class has to land before Prism runs, so the markup is normalised first
+    // and the highlight follows whenever the script is ready.
+    blocks.forEach(function (b) {
+      if (!/(?:^|\s)language-/.test(b.el.className || '')) {
+        b.el.className = (b.el.className ? b.el.className + ' ' : '') + 'language-' + b.lang;
+      }
+    });
+    if (window.Prism) { highlightAll(blocks); return; }
+    var s = document.createElement('script');
+    s.src = HIGHLIGHT_SRC;
+    s.async = true;
+    s.onload = function () { highlightAll(blocks); };
+    document.head.appendChild(s);
   }
 
   // ---------- data ----------
