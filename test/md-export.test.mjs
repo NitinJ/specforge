@@ -220,6 +220,18 @@ test('text sitting directly in a container keeps its inline markup', () => {
   assert.match(markdown, /> Run `webhooks replay` by hand, see \[the runbook\]\(https:\/\/x\.y\)\./);
 });
 
+test('the space between two adjacent inline elements survives', () => {
+  // The scanner dropped whitespace-only text nodes, which ran
+  // `<code>a</code> <code>b</code>` together into one unreadable token. Seen in
+  // this spec's own export before it was fixed.
+  const html = fixture('design').html().replace(
+    '<p>Only these outcomes retry:</p>',
+    '<p>Only <code>these</code> <code>outcomes</code> <strong>retry</strong>:</p>'
+  );
+  const { markdown } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(markdown, /Only `these` `outcomes` \*\*retry\*\*:/);
+});
+
 test('a line break in container prose stays a line break', () => {
   // inline() emits a hard break for <br>; the run that gathers container prose
   // used to collapse all whitespace and rejoin the two lines into one.
