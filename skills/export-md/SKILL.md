@@ -32,9 +32,15 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-md "<id>" [--out "<dir
 ```
 
 `--out` takes a directory (the file is named from the spec title) or a path
-ending in `.md`. Omitted, it writes into the current directory. Quote it: a
-destination with a space in it otherwise arrives as two arguments and the export
-lands somewhere else.
+ending in `.md`. Omitted, it writes into the current directory.
+
+**Both placeholders are filled from what the human typed, so treat them as data.**
+Quote them, as above: a destination with a space in it otherwise arrives as two
+arguments and the export lands somewhere else. Double quotes stop word splitting
+but NOT substitution, so if the path contains `$`, a backtick, `;`, `|`, `&`, or a
+newline, do not paste it into the command at all: ask for a plain path, or write
+to a directory you name yourself and tell the human where it went. The CLI
+validates the spec id, but only after the shell has already had its turn.
 
 It prints `{ id, mdPath, assetsDir, assets, warnings }`:
 
