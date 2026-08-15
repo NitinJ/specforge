@@ -172,6 +172,35 @@ test('restore() re-registers published project shares on the same tokens', async
   assert.notEqual(second.pubs.origin(), null);
 });
 
+test('restore() prunes a share whose project no longer exists, keeping the token', async () => {
+  // A UI rename moves every spec to the new name; the old share would serve an
+  // empty page and hold the tunnel open for nothing.
+  seed('a1', 'specforge');
+  const first = mkPubs();
+  const share = await first.pubs.shareProject('specforge');
+  writeFileSync(join(specDir('a1'), 'meta.json'),
+    JSON.stringify({ id: 'a1', title: 'a1', status: 'draft', project: 'renamed' }));
+  await first.pubs.closeGateway();
+
+  const second = mkPubs();
+  await second.pubs.restore();
+  assert.equal(second.pubs.resolveProject(share.token), null);
+  assert.equal(second.pubs.origin(), null, 'nothing left to hold the tunnel');
+  // The token survives the prune: recreating the project and re-sharing hands
+  // back the URL that was already sent.
+  assert.equal(readProjectShareToken('specforge'), share.token);
+});
+
+test('listProjects carries the live spec count, so an emptied share is visible', async () => {
+  seed('a1', 'specforge');
+  const { pubs } = mkPubs();
+  await pubs.shareProject('specforge');
+  assert.equal(pubs.listProjects()[0].specs, 1);
+  writeFileSync(join(specDir('a1'), 'meta.json'),
+    JSON.stringify({ id: 'a1', title: 'a1', status: 'draft', project: 'renamed' }));
+  assert.equal(pubs.listProjects()[0].specs, 0);
+});
+
 test('restore() does not resurrect an unshared project', async () => {
   seed('a1', 'specforge');
   const first = mkPubs();
