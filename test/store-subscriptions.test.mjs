@@ -74,6 +74,17 @@ test('leave removes by URL, by token, or by name', () => {
   assert.equal(mod.removeSubscription('nothing left'), false);
 });
 
+test('leave by an ambiguous name is refused, naming the tokens', () => {
+  const b = 'b'.repeat(32);
+  mod.addSubscription({ name: 'Shared project', origin: 'https://x.example', token: TOK });
+  mod.addSubscription({ name: 'Shared project', origin: 'https://y.example', token: b });
+  assert.throws(() => mod.removeSubscription('Shared project'), /2 subscriptions are named/);
+  assert.equal(mod.readSubscriptions().length, 2, 'nothing was removed');
+  // By token still works, because a token names exactly one.
+  assert.equal(mod.removeSubscription(b), true);
+  assert.equal(mod.readSubscriptions().length, 1);
+});
+
 test('a corrupt file reads as no subscriptions rather than throwing', () => {
   mkdirSync(home, { recursive: true });
   writeFileSync(subscriptionsPath(), '[{broken');
