@@ -1216,6 +1216,8 @@ ${strip}
       collOrder().forEach(function(name){ if(mine[name]) pg.appendChild(mine[name]); });
       if(mine['']) pg.appendChild(mine['']);
     });
+    // A different collection is first now, so the spacing has to move with it.
+    markLead();
   }
   function syncProjGroups(){
     var host=document.getElementById('groups');
@@ -1224,6 +1226,8 @@ ${strip}
     pgrps.forEach(function(pg){mine[pg.getAttribute('data-p')]=pg;});
     projRail.order().forEach(function(name){ if(mine[name]) host.appendChild(mine[name]); });
     if(mine['']) host.appendChild(mine['']);
+    // A different project is first now, so the spacing has to move with it.
+    markLead();
   }
 
   document.addEventListener('keydown',function(e){
@@ -1312,25 +1316,13 @@ ${strip}
       g.style.display=vis?'':'none';
     });
     // A project section with nothing left in it goes too, heading and all.
-    //
-    // The "lead" class is the top-of-list spacing, and it has to follow what is
-    // SHOWN rather than what is first in the DOM: a filter hides sections
-    // without reordering them, so :first-child would leave the tight spacing on
-    // something invisible and drop the first visible project below a gap meant
-    // to separate two projects. Marked here, where visibility is already known.
-    var leadProject=true;
     pgrps.forEach(function(pg){
-      var shownGrps=[].slice.call(pg.querySelectorAll('.grp')).filter(function(g){return g.style.display!=='none';});
+      var vis=[].slice.call(pg.querySelectorAll('.grp')).filter(function(g){return g.style.display!=='none';}).length;
       var gc=pg.querySelector('.ph .gcount');
       if(gc) gc.textContent=[].slice.call(pg.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
-      var on=shownGrps.length>0;
-      pg.style.display=on?'':'none';
-      pg.classList.toggle('lead',on&&leadProject);
-      if(on) leadProject=false;
-      [].slice.call(pg.querySelectorAll('.grp')).forEach(function(g){
-        g.classList.toggle('lead',g===shownGrps[0]);
-      });
+      pg.style.display=vis?'':'none';
     });
+    markLead();
     // The collections rail is the whole store's names; inside a project only the
     // ones with members there are filters that lead anywhere, so the rest leave
     // rather than sitting at zero. The count is always the visible slice.
@@ -1368,6 +1360,31 @@ ${strip}
       :fview!=='all'?VIEWNAME[fview]
       :fproj===null?VIEWNAME.all:(fproj===''?NO_PROJECT:fproj);
   }
+  /**
+   * Put the top-of-list spacing on the first section that is actually SHOWN, at
+   * both levels.
+   *
+   * :first-child cannot do this. A filter hides sections without reordering
+   * them, so it would leave the tight spacing on something invisible and drop
+   * the first section the reader sees under a gap meant to separate two of them.
+   *
+   * Called after anything that changes which section comes first: a filter pass,
+   * and either rail reorder. The DOM is queried fresh each time rather than
+   * reusing the load-time list, because a reorder moves the sections and the
+   * load-time list keeps its original order.
+   */
+  function markLead(){
+    var first=true;
+    [].slice.call(document.querySelectorAll('#groups .pgrp')).forEach(function(pg){
+      var on=pg.style.display!=='none';
+      pg.classList.toggle('lead',on&&first);
+      if(on) first=false;
+      var grpsIn=[].slice.call(pg.querySelectorAll('.grp'));
+      var shown=grpsIn.filter(function(g){return g.style.display!=='none';})[0];
+      grpsIn.forEach(function(g){ g.classList.toggle('lead',g===shown); });
+    });
+  }
+
   /** True when a project is the only thing narrowing the page. */
   function onlyProject(){
     var q=(search&&search.value.trim())||'';

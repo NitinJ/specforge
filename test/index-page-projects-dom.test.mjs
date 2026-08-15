@@ -251,6 +251,38 @@ test('the top-of-list spacing follows the first shown project, not the first in 
   assert.deepEqual(lead(), ['specforge']);
 });
 
+test('reordering projects moves the spacing to the one that becomes first', async (t) => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'] });
+  seedProjects({ figur: { UI: 1 }, specforge: { Engineering: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const lead = () => [].slice.call(document.querySelectorAll('.pgrp.lead')).map((p) => p.getAttribute('data-p'));
+
+  assert.deepEqual(lead(), ['figur']);
+
+  // A reorder is a DOM move with no filter pass behind it, so the marker has to
+  // be refreshed there too or it stays on whatever used to be first.
+  clickMenuItem(window, document.querySelector('.prow[data-p="specforge"] .kebab'), 'Move up');
+  await tick(window);
+
+  assert.deepEqual(lead(), ['specforge']);
+});
+
+test('reordering collections moves the spacing inside the project', async (t) => {
+  writeGlobalPrefs({ projects: ['figur'], collectionOrder: ['Product', 'UI'] });
+  seedProjects({ figur: { Product: 1, UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const lead = () => [].slice.call(document.querySelectorAll('.grp.lead')).map((g) => g.getAttribute('data-coll'));
+
+  assert.deepEqual(lead(), ['Product']);
+
+  clickMenuItem(window, collRow(document, 'UI').querySelector('.kebab'), 'Move up');
+  await tick(window);
+
+  assert.deepEqual(lead(), ['UI']);
+});
+
 test('the same holds for the first shown collection inside a project', (t) => {
   writeGlobalPrefs({ projects: ['figur'] });
   seedProjects({ figur: { Product: ['Garment model'], UI: ['Wardrobe grid'] } });
