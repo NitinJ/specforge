@@ -202,6 +202,35 @@ test('a view and a project narrow together rather than replacing each other', (t
     'choosing a view does not drop you out of the project');
 });
 
+// ---- the two levels are visually distinguishable ----
+// The fault this guards against shipped once: a project heading at 13px and a
+// collection heading at 11px, both weight 650, is a level change carried by two
+// pixels and a case change.
+//
+// Asserted through computed style rather than by matching the stylesheet text,
+// so reformatting the CSS cannot break the test and flattening the hierarchy
+// cannot slip past it. Only properties with literal values are checked: jsdom
+// does not resolve var(), so the rule under the heading and the count pill are
+// verified in a browser instead.
+
+test('a project heading outweighs the collection headings under it', (t) => {
+  writeGlobalPrefs({ projects: ['figur'] });
+  seedProjects({ figur: { UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+
+  const style = (el) => window.getComputedStyle(el);
+  const ph = document.querySelector('.pgrp .ph');
+  const ch = document.querySelector('.grp h2');
+  const phSize = parseFloat(style(ph).fontSize);
+  const chSize = parseFloat(style(ch).fontSize);
+
+  assert.ok(phSize >= chSize + 4,
+    `project ${phSize}px vs collection ${chSize}px: too close to read as a level change`);
+  assert.notEqual(style(ph).textTransform, style(ch).textTransform,
+    'and the two are not both uppercase, which would flatten them again');
+});
+
 // ---- moving specs ----
 
 test('a row can be moved into a project from its menu', async (t) => {

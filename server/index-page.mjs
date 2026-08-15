@@ -416,16 +416,34 @@ ${inner}
   @media(max-width:960px){.wrap{padding:0 18px 96px}}
 
   /* ── project + collection groups ──────────────────────────────────── */
-  /* The project heading only earns its line when more than one project is on
+  /* Two levels, and the reader has to see which is which without reading them.
+     The project takes a scale jump and a rule spanning the content column; the
+     collection heading is untouched at 11px uppercase. 17 against 11 is a real
+     step, and the rule is the edge you cross going from one project to the next.
+     Nothing is added but a hairline: a panel per project would put a card inside
+     a panel inside a page, which is three borders deep and louder than anything
+     else here.
+
+     The project heading only earns its line when more than one project is on
      screen. Inside a project the page header already names it, so body.inproj
      takes it away rather than repeating it. */
-  .pgrp{margin:26px 0 0}
-  .ph{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:650;letter-spacing:-.01em;
-      color:var(--ink);text-transform:none;margin:0 0 2px 2px;padding:4px 2px}
+  .pgrp{margin:40px 0 0}
+  .pgrp:first-child{margin-top:8px}
+  .ph{display:flex;align-items:center;gap:7px;font-size:17px;font-weight:660;letter-spacing:-.02em;
+      color:var(--ink);text-transform:none;margin:0;padding:0 0 10px 2px;
+      border-bottom:1px solid var(--line2)}
+  /* At 17px a filled pill reads as a badge on a title rather than a count, so
+     the project wears plain numerals. The collections keep their pill, which
+     leaves a second signal of which level you are looking at. */
+  .ph .gcount{background:none;color:var(--faint);font-weight:400;font-size:13px;padding:0 0 0 2px}
   body.inproj .ph{display:none}
   body.inproj .pgrp{margin-top:0}
-  .grp{margin:22px 0 0}
-  .pgrp .grp:first-of-type{margin-top:8px}
+  .grp{margin:24px 0 0}
+  /* The 18px is the space under the project heading. With the heading hidden it
+     would be a gap under nothing, so inside a project it goes back to the 8px
+     the page had before. */
+  .pgrp .grp:first-of-type{margin-top:18px}
+  body.inproj .pgrp .grp:first-of-type{margin-top:8px}
   .grp h2,.tpls h2{display:flex;align-items:center;gap:5px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:650;margin:0 0 7px 2px}
   /* the collection you are inside stays named while you scroll it */
   .grp h2{position:sticky;top:94px;z-index:5;background:var(--bg);padding:5px 2px;margin:0 0 3px;cursor:pointer;user-select:none}
