@@ -172,11 +172,57 @@ test('re-contributing after a rotate retires the entry left under the old token'
     await withCreator(t, {}, async (creator, seen) => {
       rememberContribution({ origin: creator, token: PTOK, specId: id, specToken: old });
       const out = await cmdContribute({ id, url: `${creator}/p/${PTOK}` }, deps);
-      assert.equal(out.replaced, old);
+      assert.deepEqual(out.replaced, [old]);
+      assert.deepEqual(out.unretired, []);
       assert.equal(out.token, fresh);
       const del = seen.find((s) => s.method === 'DELETE');
       assert.ok(del, 'the stale entry was retired');
       assert.equal(del.url, `/p/${PTOK}/contribute/${old}`);
+    });
+  });
+});
+
+test('a retirement that fails is owed, not forgotten', async (t) => {
+  // The hazard: forget the old token before the delete lands and the stale
+  // entry outlives the only record of its key, sitting on the project page
+  // with nobody able to remove it.
+  const id = createSpec({ title: 'Rotates twice', html: '<h1>x</h1>' });
+  const old = newToken();
+  const { rememberContribution, staleTokens } = await import('../lib/store-contributed.mjs');
+
+  await withOwnDaemon(t, async (deps) => {
+    // A creator whose DELETE always fails.
+    const failing = { ...deps, fetchImpl: null };
+    await withCreator(t, {}, async (creator) => {
+      rememberContribution({ origin: creator, token: PTOK, specId: id, specToken: old });
+      failing.fetchImpl = async (url, init) => {
+        if (init && init.method === 'DELETE') return { ok: false, status: 503, json: async () => ({}) };
+        return { ok: true, status: 201, json: async () => ({ ok: true }) };
+      };
+      const out = await cmdContribute({ id, url: `${creator}/p/${PTOK}` }, failing);
+      assert.deepEqual(out.replaced, [], 'nothing was actually retired');
+      assert.deepEqual(out.unretired, [old], 'and the caller is told');
+      assert.deepEqual(staleTokens({ origin: creator, token: PTOK, specId: id }), [old],
+        'the token is still owed, so a later run can clear it');
+    });
+  });
+});
+
+test('a later run clears what an earlier one could not retire', async (t) => {
+  const id = createSpec({ title: 'Recovers', html: '<h1>x</h1>' });
+  const old = newToken();
+  const { rememberContribution, staleTokens } = await import('../lib/store-contributed.mjs');
+
+  await withOwnDaemon(t, async (deps, fresh) => {
+    await withCreator(t, {}, async (creator, seen) => {
+      // A row already owing a retirement, as the failing run above would leave.
+      rememberContribution({
+        origin: creator, token: PTOK, specId: id, specToken: fresh, stale: [old],
+      });
+      await cmdContribute({ id, url: `${creator}/p/${PTOK}` }, deps);
+      const deletes = seen.filter((s) => s.method === 'DELETE').map((s) => s.url);
+      assert.ok(deletes.includes(`/p/${PTOK}/contribute/${old}`), 'the owed token was retried');
+      assert.deepEqual(staleTokens({ origin: creator, token: PTOK, specId: id }), []);
     });
   });
 });
