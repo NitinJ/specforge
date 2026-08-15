@@ -361,7 +361,31 @@ export function createDaemon() {
         origin: publications.origin(),
         localPort: publications.localPort(),
         shares: publications.list(),
+        projects: publications.listProjects(),
       });
+    }
+    // A project name arrives URL-encoded (names carry spaces); decoded before it
+    // reaches the registry, which normalizes it the way the store does.
+    const pshareR = path.match(/^\/api\/project\/([^/]+)\/share$/);
+    if (pshareR) {
+      let name;
+      try {
+        name = decodeURIComponent(pshareR[1]);
+      } catch {
+        return sendJson(res, 400, { error: 'malformed project name' });
+      }
+      if (method === 'POST') {
+        return readJsonBody(req).catch(() => ({}))
+          .then((b) => publications.shareProject(name, { rotate: !!(b && b.rotate) }))
+          .then((share) => sendJson(res, 201, { ok: true, share }))
+          .catch((e) => sendJson(res, 400, { error: e.message }));
+      }
+      if (method === 'DELETE') {
+        return publications.unshareProject(name)
+          .then((was) => sendJson(res, 200, { ok: true, wasPublished: was }))
+          .catch((e) => sendJson(res, 400, { error: e.message }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
     }
     const shareR = path.match(/^\/api\/spec\/([\w-]+)\/share$/);
     if (shareR) {
