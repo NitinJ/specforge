@@ -48,14 +48,22 @@ injects the review layer at serve time.
 ## 2. Scaffold into the store
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type>
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type> [--project <name>]
 ```
 
-Prints `{ id, htmlPath, url, status, type }`. It has started/reused the daemon,
-copied the right shell to `htmlPath` (impl types → the full Stages/tracker/Runtime
-shell; design/research → a chrome-only doc shell; general → the scaffold and a
-TL;DR, nothing else), and attached the spec to this session. **Author into
-`htmlPath`** — that file IS the spec.
+Prints `{ id, htmlPath, url, status, type, project }`. It has started/reused the
+daemon, copied the right shell to `htmlPath` (impl types → the full
+Stages/tracker/Runtime shell; design/research → a chrome-only doc shell; general →
+the scaffold and a TL;DR, nothing else), and attached the spec to this session.
+**Author into `htmlPath`** — that file IS the spec.
+
+**Projects.** With no `--project`, the spec is filed into whichever project the
+home page is showing, which is usually what the user means: they are working
+inside that body of work. Pass it explicitly only when the request names a
+different one, or when the spec plainly belongs elsewhere — and say where it went
+in the one-line confirmation, since the default is invisible otherwise. Use
+`--project ""` to file it nowhere. A project that does not exist yet is created
+by using its name.
 
 The shell comes from the store's per-type **template spec** (`template-<type>`,
 listed under Templates on the index) when one exists, else the bundled file. To

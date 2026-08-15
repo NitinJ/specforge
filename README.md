@@ -140,6 +140,33 @@ credentials are passed around and nobody needs their own domain.
 Each person's specs live on their own machine and are reviewed by their own
 agent, so a spec is readable while its author's machine is on.
 
+### Organise a store you can find things in
+
+Specs are grouped two levels deep. A **project** is the body of work a spec
+belongs to; a **collection** is what kind of artefact it is within that work. So
+a research spec about the Shopify app is project `shopify`, collection
+`Research`, and it is reachable from either reading.
+
+Collections are scoped to their project: `UI` in one project and `UI` in another
+are two different collections, with their own members. Renaming one leaves the
+other alone.
+
+On the home page the left rail lists your projects. **All projects** is where you
+land and where you search the whole store; picking a project narrows the page,
+the collections rail and search to it. Specs whose project is not set gather
+under **No project**, exactly as ones with no collection gather under
+**Uncollected** — there is nothing to set up, and nothing to migrate.
+
+Make a project with **+ New project**, and move specs into one from a row's
+actions menu, or by ticking several and using the bulk bar. Deleting a project
+never deletes a spec: its specs move to **No project**, keeping the collections
+they were in. Templates sit outside projects and stay reachable from every view.
+
+A spec's page names its project in the header; clicking it opens the home page on
+that project. `specforge create` files a new spec into whichever project the home
+page is showing, so a spec an agent writes while you are working inside one lands
+there. Pass `--project <name>` to say otherwise, or `--project ""` for none.
+
 ### Keep the spec and the work in step
 
 Implementation specs render their Stages and Tasks as a live tracker, and hooks

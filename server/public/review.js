@@ -846,6 +846,12 @@
     // A container, not a button: it also carries the lifecycle CTA, and nesting
     // a button inside a button is invalid. The title itself is the button.
     els.titlebar = create('div', { id: 'sf-titlebar' });
+    // Which body of work this spec belongs to, and a way into the rest of it —
+    // "which project" is rarely the last question, "what else is in it" is the
+    // next one. Hidden until meta says there is one; a published copy is never
+    // told, because handlePublicMeta does not carry the field.
+    els.project = create('a', { class: 'sf-tb-proj', hidden: 'hidden' });
+    els.titlebar.appendChild(els.project);
     var home = create('button', { class: 'sf-tb-home', type: 'button', title: 'Back to top' });
     els.titlebarLabel = create('span', { class: 'sf-tb-title' });
     home.appendChild(els.titlebarLabel);
@@ -895,6 +901,32 @@
    * someone else's agent, and telling them the author's session is down only
    * invites them to stop writing.
    */
+  /**
+   * The project chip: which body of work this spec is filed under.
+   *
+   * Absent means unfiled, and unfiled is a real state rather than a gap to fill,
+   * so nothing renders. That is also what a published copy sees: the reader's
+   * meta subset does not carry the field, so the chip stays hidden there without
+   * needing its own rule.
+   *
+   * The name is set as text and the link built with encodeURIComponent, because
+   * a project name is whatever the author typed.
+   */
+  function renderProject() {
+    if (!els.project) return;
+    var name = (state.meta || {}).project;
+    if (!name || isPublishedCopy()) {
+      els.project.setAttribute('hidden', 'hidden');
+      els.project.textContent = '';
+      els.project.removeAttribute('href');
+      return;
+    }
+    els.project.removeAttribute('hidden');
+    els.project.textContent = name;
+    els.project.setAttribute('title', 'Open ' + name + ' on the home page');
+    els.project.setAttribute('href', '/?project=' + encodeURIComponent(name));
+  }
+
   function renderConn() {
     if (!els.conn) return;
     var meta = state.meta;
@@ -1809,7 +1841,7 @@
   }
 
   // ---------- render ----------
-  function render() { renderSidebar(); renderHighlights(); renderRail(); renderSlideCounts(); renderLauncher(); renderAction(); renderShared(); renderConn(); syncTitle(); }
+  function render() { renderSidebar(); renderHighlights(); renderRail(); renderSlideCounts(); renderLauncher(); renderAction(); renderShared(); renderConn(); renderProject(); syncTitle(); }
 
   function visible() {
     return state.threads.filter(function (t) {
