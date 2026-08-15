@@ -167,6 +167,40 @@ that project. `specforge create` files a new spec into whichever project the hom
 page is showing, so a spec an agent writes while you are working inside one lands
 there. Pass `--project <name>` to say otherwise, or `--project ""` for none.
 
+### Rules a spec is checked against
+
+Every spec is verified when it is written, one rule at a time, so a failure names
+what failed rather than that something did.
+
+Rules come in two kinds. A **check** is a function over the spec: a placeholder
+left in, a TOC entry pointing at nothing, an anchor with no target. It runs in
+Node, costs nothing and is offline. An **ask** is a sentence of English that a
+function cannot answer — whether a decision gives a reason rather than restating
+the choice, whether the TL;DR is still true of the body — and the agent judges it
+by reading. Nothing here calls a model: SpecForge has no runtime dependencies and
+runs under any harness, so the judged half is a work list the agent answers, not
+an API call.
+
+```sh
+specforge verify <id>          # the report, for reading
+specforge verify <id> --json   # the same thing, for an agent
+```
+
+An unjudged rule reports as **pending**, never as a pass. That third state is the
+point: a spec whose blocking rules nobody has judged is not verified, and saying
+otherwise would manufacture assurance. Nothing is stored, so re-running reports
+the same pending list — it is a work list to read the spec against, not a
+checklist that empties. The exit code says which kind of attention is needed:
+`1` a rule failed, `2` the judgements are yours, `0` neither.
+
+A **type's own rules** live in its template, as a list of sentences you edit in
+SpecForge like anything else. Adding a rule is writing a sentence; a type can
+also soften an inherited rule or turn it off by id, which is how a deck keeps the
+line a design spec may not. A template can also carry a **prompt**: guidance
+attached to one section, handed to the agent before that section is written and
+stripped out of the spec, for the things that shape how a section is written
+rather than testing what it became.
+
 ### Keep the spec and the work in step
 
 Implementation specs render their Stages and Tasks as a live tracker, and hooks

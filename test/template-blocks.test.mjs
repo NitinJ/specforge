@@ -187,6 +187,37 @@ test('a rule sentence with markup characters survives the round trip', () => {
   assert.equal(parseTemplateRules(html)[0].ask, 'The spec has an <h1> & a <title>, not "one" of them.');
 });
 
+test('a rule keeps its fix hint through the round trip', () => {
+  // The hint is what makes a failure actionable. A template rule that lost it
+  // reported a failure with no next step.
+  const html = renderTemplateBlocks('<body></body>', {
+    rules: [{ id: 'r', ask: 'The rule.', fix: 'Do this about it.' }],
+  });
+  const [back] = parseTemplateRules(html);
+  assert.equal(back.ask, 'The rule.', 'the hint does not leak into the sentence');
+  assert.equal(back.fix, 'Do this about it.');
+});
+
+test('the fix hint is marked with a data attribute, not a class', () => {
+  // `fix` is not in the component library, and a template spec is a spec, so a
+  // class outside the library makes every template fail its own components lint.
+  const html = renderTemplateBlocks('<body></body>', {
+    rules: [{ id: 'r', ask: 'The rule.', fix: 'Do this.' }],
+  });
+  assert.match(html, /<span data-sf-fix>/);
+  assert.doesNotMatch(html, /class="fix"/);
+});
+
+test('every default template rule survives the round trip with its hint', () => {
+  for (const [type, rules] of Object.entries(TEMPLATE_RULES)) {
+    const back = parseTemplateRules(renderTemplateBlocks('<body></body>', { rules }));
+    for (const [i, r] of rules.entries()) {
+      assert.equal(back[i].id, r.id, type);
+      if (r.fix) assert.equal(back[i].fix, r.fix, `${type}/${r.id}: lost its fix hint`);
+    }
+  }
+});
+
 test('the corpus citation rides along without becoming part of the rule', () => {
   const shell = '<body></body>';
   const rules = [{ id: 'r', ask: 'The rule.', corpus: 'The comment that produced it.' }];

@@ -244,6 +244,32 @@ test('references-are-links ignores a path inside code, a pre block or a link', (
   }
 });
 
+test('references-are-links ignores a diagram label and a code-block caption', () => {
+  // Found by running the rules against a real spec: an architecture diagram
+  // labels its nodes with filenames, and a code block captions itself with one.
+  // Neither can be a link, so flagging them is advice that cannot be taken.
+  const cases = [
+    '<p>Text.</p><figure><svg viewBox="0 0 10 10"><text>lib/rules/global.mjs</text></svg></figure>',
+    '<div class="codeblock"><span class="filename">lib/rules/global.mjs</span><pre>x</pre></div>',
+  ];
+  for (const body of cases) {
+    const html = cleanSpec({ sections: [{ id: 'tldr', title: 'TL;DR', body }] });
+    assert.equal(verdictFor(html, 'references-are-links').ok, true, `should be exempt: ${body.slice(0, 40)}`);
+  }
+});
+
+test('no-placeholders ignores a placeholder inside a code sample', () => {
+  // A spec that documents the shell's own syntax writes {{ … }} in <code>.
+  // Failing it for that would mean the rule cannot be described in a spec.
+  for (const body of ['<p>No <code>{{ … }}</code> remains.</p>', '<pre>{{TITLE}}</pre>']) {
+    const html = cleanSpec({ sections: [{ id: 'tldr', title: 'TL;DR', body }] });
+    assert.equal(verdictFor(html, 'no-placeholders').ok, true, `should be exempt: ${body}`);
+  }
+  // and still catches one in prose, which is the case it exists for
+  const real = cleanSpec({ sections: [{ id: 'tldr', title: 'TL;DR', body: '<p>{{ Write the summary. }}</p>' }] });
+  assert.equal(verdictFor(real, 'no-placeholders').ok, false);
+});
+
 test('references-are-links catches a bare section reference', () => {
   const html = cleanSpec({
     sections: [{ id: 'tldr', title: 'TL;DR', body: '<p>The rules are listed in §5 and tuned in §6.1.</p>' }],

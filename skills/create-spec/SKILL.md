@@ -59,11 +59,18 @@ injects the review layer at serve time.
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type> [--project <name>]
 ```
 
-Prints `{ id, htmlPath, url, status, type, project }`. It has started/reused the
-daemon, copied the right shell to `htmlPath` (impl types → the full
-Stages/tracker/Runtime shell; design/research → a chrome-only doc shell; general →
-the scaffold and a TL;DR, nothing else), and attached the spec to this session.
-**Author into `htmlPath`** — that file IS the spec.
+Prints `{ id, htmlPath, url, status, type, project, prompts }`. It has
+started/reused the daemon, copied the right shell to `htmlPath` (impl types → the
+full Stages/tracker/Runtime shell; design/research → a chrome-only doc shell;
+general → the scaffold and a TL;DR, nothing else), and attached the spec to this
+session. **Author into `htmlPath`** — that file IS the spec.
+
+**Read `prompts` before you write.** Each entry is `{ section, text }`: authoring
+guidance the spec type attaches to one section, written by the user into the
+template and stripped out of your copy so a reader never sees it. It is
+instruction, not content — follow it when you write that section. Open questions
+and Decisions carry one on most types, because those are the two sections review
+corrects most.
 
 **Projects.** With no `--project`, the spec is filed into whichever project the
 home page is showing, which is usually what the user means: they are working
@@ -152,20 +159,55 @@ The rules that catch most drafts:
 - Assume the reader has agreed to the direction: spend words on resolution, not
   persuasion.
 
-## 4. Lint (must pass)
+## 4. Verify (must run; fix what it finds)
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" verify <id> --json
 ```
 
-Checks the universal basics: a title, a lifecycle status, unique section ids, and
-the light/dark theme contract (per-type sections are recommended, not enforced).
-Fix and re-run until `PASS`. **Don't finish on a failing lint.**
+This is the last step before handover and it is not optional. It runs the spec
+against every rule its type carries and returns:
 
-The `spec-language` line is advisory and never fails the lint, but it is the
-contract talking: it counts em dashes, attention-curating phrases, precision
-theatre and hedged decisions. Clear it before handing over. It cannot see
-aphorism or an unlabelled sentence, so a clean report is a floor, not a pass.
+- `verdicts` — the rules a function could answer. A `blocking` one that failed is
+  a defect: fix it.
+- `pending` — the rules **no function can answer**, each with the sentence to
+  judge and a `fix` hint. These are yours. A pending blocking rule keeps `ok`
+  false, because reporting an unjudged rule as a pass manufactures assurance.
+- `ok` / `exit` — `exit` is `0` when nothing failed and nothing is outstanding,
+  `1` when a blocking rule failed, `2` when nothing mechanical is broken and the
+  judgements are yours.
+
+**Re-running does not clear `pending`.** Nothing is stored, so the verifier
+cannot learn that you judged a rule; it reports the same list every time. `exit
+2` is the normal end state of a real spec, not a failure. Re-run to confirm the
+*mechanical* half went green after your fixes, and close out the judged half
+yourself.
+
+**Judge the pending rules against the spec. If your harness can run a subagent,
+run this in one**, handing it only the spec path and the pending rules. A fresh
+reader judges a document more honestly than its author, and the author is you: an
+agent that has just written a spec is the party least able to notice that its
+TL;DR overclaims. If your harness has no subagent, judge them yourself, reading
+the spec from the top as though you had not written it.
+
+Then fix and re-run. **At most three rounds.** An agent that cannot satisfy a
+rule in three attempts is usually failing to understand the rule rather than the
+spec, and a fourth attempt turns a bad rule into a long silence. When the rounds
+run out, hand over anyway and say in one line which rules still fail — a rule you
+could not satisfy is a line in the report, not a reason to keep going.
+
+The loop always ends in a handover. It is finished when the mechanical half is
+green and you have read the spec against every pending rule, not when `verify`
+prints PASS: for most types it never will.
+
+The lint still exists and `verify` is a superset of it; run
+`node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>` only when you want
+the mechanical checks alone.
+
+The `spec-language` rule is advisory and never blocks, but it is the contract
+talking: it counts em dashes, attention-curating phrases, precision theatre and
+hedged decisions. Clear it before handing over. It cannot see aphorism or an
+unlabelled sentence, so a clean report is a floor, not a pass.
 
 ## 5. Hand off + arm the review watcher
 
