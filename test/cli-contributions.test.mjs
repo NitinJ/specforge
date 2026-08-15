@@ -1,0 +1,246 @@
+// contribute / withdraw / prune: the two-way half of shared projects.
+//
+// contribute runs on the CONTRIBUTOR's machine: it publishes their spec under
+// their own token (their daemon), then registers a pointer with the creator's
+// gateway. prune runs on the creator's, against their own store.
+
+import { test, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createServer } from 'node:http';
+
+let home;
+let prevHome;
+
+beforeEach(() => {
+  home = mkdtempSync(join(tmpdir(), 'sf-cli-contrib-'));
+  prevHome = process.env.SPECFORGE_HOME;
+  process.env.SPECFORGE_HOME = home;
+});
+
+afterEach(() => {
+  if (prevHome === undefined) delete process.env.SPECFORGE_HOME;
+  else process.env.SPECFORGE_HOME = prevHome;
+  rmSync(home, { recursive: true, force: true });
+});
+
+const { cmdContribute, cmdWithdraw, cmdPrune } = await import('../lib/specforge-cli.mjs');
+const { createSpec } = await import('../lib/store.mjs');
+const { writeProjectShare, listContributions } = await import('../lib/store-project-shares.mjs');
+const { newToken } = await import('../lib/tokens.mjs');
+
+const PTOK = 'c'.repeat(32);
+
+/** A creator's gateway: records what was registered, refuses what it should. */
+async function withCreator(t, opts = {}, fn) {
+  const seen = [];
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      seen.push({ method: req.method, url: req.url, body: body ? JSON.parse(body) : null });
+      if (opts.status && opts.status !== 201) {
+        res.writeHead(opts.status, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: opts.error || 'refused' }));
+      }
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true, entry: { title: 'Their spec' } }));
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise((r) => server.close(r)));
+  return fn(`http://127.0.0.1:${server.address().port}`, seen);
+}
+
+/** A local daemon stub standing in for the contributor's own share flow. */
+async function withOwnDaemon(t, fn) {
+  const token = newToken();
+  const server = createServer((req, res) => {
+    res.writeHead(201, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: true,
+      share: { specId: 'x', token, url: `https://mine.example/s/${token}` },
+    }));
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise((r) => server.close(r)));
+  const deps = { ensureDaemon: async () => ({ url: `http://127.0.0.1:${server.address().port}` }) };
+  return fn(deps, token);
+}
+
+test('contribute publishes the spec, then registers a pointer with the creator', async (t) => {
+  const id = createSpec({ title: 'My contribution', html: '<h1>x</h1>' });
+  await withOwnDaemon(t, async (deps, token) => {
+    await withCreator(t, {}, async (creator, seen) => {
+      const out = await cmdContribute({
+        id, url: `${creator}/p/${PTOK}`, owner: 'mira',
+      }, deps);
+      assert.equal(out.ok, true);
+      assert.equal(out.token, token, 'listed under the contributor’s own spec token');
+
+      const post = seen.find((s) => s.method === 'POST');
+      assert.equal(post.url, `/p/${PTOK}/contribute`);
+      assert.equal(post.body.token, token);
+      assert.equal(post.body.title, 'My contribution');
+      assert.equal(post.body.owner, 'mira');
+      assert.equal(post.body.origin, 'https://mine.example', 'the origin its own share is on');
+      assert.ok(!('html' in post.body), 'no content travels');
+    });
+  });
+});
+
+test('contribute refuses a URL that is not a project share', async (t) => {
+  const id = createSpec({ title: 'x', html: '<h1>x</h1>' });
+  await withOwnDaemon(t, async (deps) => {
+    await assert.rejects(
+      () => cmdContribute({ id, url: `https://x.example/s/${PTOK}` }, deps),
+      /project share URL/,
+    );
+  });
+});
+
+test('contribute surfaces the creator refusing it', async (t) => {
+  const id = createSpec({ title: 'x', html: '<h1>x</h1>' });
+  await withOwnDaemon(t, async (deps) => {
+    await withCreator(t, { status: 400, error: 'entry limit (200) reached for atelier' },
+      async (creator) => {
+        await assert.rejects(
+          () => cmdContribute({ id, url: `${creator}/p/${PTOK}` }, deps),
+          /entry limit/,
+        );
+      });
+  });
+});
+
+test('withdraw asks the creator to drop the entry, by the spec token on disk', async (t) => {
+  const id = createSpec({ title: 'x', html: '<h1>x</h1>' });
+  // A contributed spec has a share record; that token is the handle the entry
+  // was registered under, and the only one that can withdraw it.
+  const { writeShare } = await import('../lib/store-share.mjs');
+  const token = newToken();
+  writeShare(id, { specId: id, token, createdAt: 'x' });
+
+  await withCreator(t, {}, async (creator, seen) => {
+    const out = await cmdWithdraw({ id, url: `${creator}/p/${PTOK}` }, {});
+    assert.equal(out.ok, true);
+    const del = seen.find((s) => s.method === 'DELETE');
+    assert.ok(del, 'a DELETE was sent');
+    assert.equal(del.url, `/p/${PTOK}/contribute/${token}`);
+  });
+});
+
+test('withdraw refuses a spec that was never shared', async (t) => {
+  const id = createSpec({ title: 'never shared', html: '<h1>x</h1>' });
+  await withCreator(t, {}, async (creator) => {
+    await assert.rejects(() => cmdWithdraw({ id, url: `${creator}/p/${PTOK}` }, {}),
+      /never shared/);
+  });
+});
+
+test('withdrawal survives a rotate: the registered token is what is named', async (t) => {
+  // Rotating a share mints a new spec token so the old link dies. The entry on
+  // the creator's side is keyed by the token that was registered, so the
+  // current one would name nothing.
+  const id = createSpec({ title: 'Rotated later', html: '<h1>x</h1>' });
+  const registered = newToken();
+  const afterRotate = newToken();
+  const { rememberContribution } = await import('../lib/store-contributed.mjs');
+  const { writeShare } = await import('../lib/store-share.mjs');
+
+  await withCreator(t, {}, async (creator, seen) => {
+    rememberContribution({
+      origin: creator, token: PTOK, specId: id, specToken: registered,
+    });
+    // ... and then the contributor rotates, so share.json now holds a different token.
+    writeShare(id, { specId: id, token: afterRotate, createdAt: 'x' });
+
+    await cmdWithdraw({ id, url: `${creator}/p/${PTOK}` }, {});
+    const del = seen.find((s) => s.method === 'DELETE');
+    assert.equal(del.url, `/p/${PTOK}/contribute/${registered}`,
+      'the token the entry is keyed by, not the spec’s current one');
+  });
+});
+
+test('re-contributing after a rotate retires the entry left under the old token', async (t) => {
+  const id = createSpec({ title: 'Rotates', html: '<h1>x</h1>' });
+  const old = newToken();
+  const { rememberContribution } = await import('../lib/store-contributed.mjs');
+
+  await withOwnDaemon(t, async (deps, fresh) => {
+    await withCreator(t, {}, async (creator, seen) => {
+      rememberContribution({ origin: creator, token: PTOK, specId: id, specToken: old });
+      const out = await cmdContribute({ id, url: `${creator}/p/${PTOK}` }, deps);
+      assert.deepEqual(out.replaced, [old]);
+      assert.deepEqual(out.unretired, []);
+      assert.equal(out.token, fresh);
+      const del = seen.find((s) => s.method === 'DELETE');
+      assert.ok(del, 'the stale entry was retired');
+      assert.equal(del.url, `/p/${PTOK}/contribute/${old}`);
+    });
+  });
+});
+
+test('a retirement that fails is owed, not forgotten', async (t) => {
+  // The hazard: forget the old token before the delete lands and the stale
+  // entry outlives the only record of its key, sitting on the project page
+  // with nobody able to remove it.
+  const id = createSpec({ title: 'Rotates twice', html: '<h1>x</h1>' });
+  const old = newToken();
+  const { rememberContribution, staleTokens } = await import('../lib/store-contributed.mjs');
+
+  await withOwnDaemon(t, async (deps) => {
+    // A creator whose DELETE always fails.
+    const failing = { ...deps, fetchImpl: null };
+    await withCreator(t, {}, async (creator) => {
+      rememberContribution({ origin: creator, token: PTOK, specId: id, specToken: old });
+      failing.fetchImpl = async (url, init) => {
+        if (init && init.method === 'DELETE') return { ok: false, status: 503, json: async () => ({}) };
+        return { ok: true, status: 201, json: async () => ({ ok: true }) };
+      };
+      const out = await cmdContribute({ id, url: `${creator}/p/${PTOK}` }, failing);
+      assert.deepEqual(out.replaced, [], 'nothing was actually retired');
+      assert.deepEqual(out.unretired, [old], 'and the caller is told');
+      assert.deepEqual(staleTokens({ origin: creator, token: PTOK, specId: id }), [old],
+        'the token is still owed, so a later run can clear it');
+    });
+  });
+});
+
+test('a later run clears what an earlier one could not retire', async (t) => {
+  const id = createSpec({ title: 'Recovers', html: '<h1>x</h1>' });
+  const old = newToken();
+  const { rememberContribution, staleTokens } = await import('../lib/store-contributed.mjs');
+
+  await withOwnDaemon(t, async (deps, fresh) => {
+    await withCreator(t, {}, async (creator, seen) => {
+      // A row already owing a retirement, as the failing run above would leave.
+      rememberContribution({
+        origin: creator, token: PTOK, specId: id, specToken: fresh, stale: [old],
+      });
+      await cmdContribute({ id, url: `${creator}/p/${PTOK}` }, deps);
+      const deletes = seen.filter((s) => s.method === 'DELETE').map((s) => s.url);
+      assert.ok(deletes.includes(`/p/${PTOK}/contribute/${old}`), 'the owed token was retried');
+      assert.deepEqual(staleTokens({ origin: creator, token: PTOK, specId: id }), []);
+    });
+  });
+});
+
+test('prune drops an entry from the creator’s own store, no network', async () => {
+  writeProjectShare('atelier', { token: PTOK, createdAt: 'x' });
+  const theirs = newToken();
+  const { addContribution } = await import('../lib/store-project-shares.mjs');
+  addContribution('atelier', {
+    origin: 'https://theirs.example', token: theirs, title: 'Theirs', owner: 'them',
+  });
+  const out = await cmdPrune({ name: 'atelier', token: theirs });
+  assert.equal(out.ok, true);
+  assert.deepEqual(listContributions('atelier'), []);
+});
+
+test('prune reports when nothing matched rather than claiming success', async () => {
+  writeProjectShare('atelier', { token: PTOK, createdAt: 'x' });
+  await assert.rejects(() => cmdPrune({ name: 'atelier', token: newToken() }),
+    /no contribution/);
+});
