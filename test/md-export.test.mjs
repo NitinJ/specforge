@@ -206,6 +206,16 @@ test('at-rules do not follow a diagram out of the spec', () => {
   assert.doesNotMatch(assets[1].svg, /fill:#000/, 'the print override stays in the spec');
 });
 
+test('a blockless at-rule does not swallow the rule after it', () => {
+  // `@charset` and `@import` end at a semicolon. Reading up to the next `{`
+  // would glue the following selector onto them, and the whole run would be
+  // discarded as an at-rule, losing that rule's paint.
+  const html = fixture('diagrams').html().replace('.svg-box{', '@charset "utf-8";@import url(x.css);.svg-box{');
+  const { assets } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(assets[1].svg, /\.svg-box\{fill:var\(--panel\)/);
+  assert.doesNotMatch(assets[1].svg, /@charset|@import/);
+});
+
 test('a class name cannot drag its longer neighbour along', () => {
   // `.svg-box` must not match `.svg-box-a`: a diagram that uses only the plain
   // box would otherwise carry the accent variant too.
