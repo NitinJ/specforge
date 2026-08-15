@@ -422,6 +422,9 @@ export function createDaemon() {
       // share committing anywhere inside it would leave a public URL serving a
       // spec that no longer exists, with nothing on disk left to find it by.
       return publications.unshareThen(specRes[1], () => handleDelete(specRes[1], res))
+        // Deleting the last spec of a published project empties it, the same
+        // way an organize move can. Swept behind the response, like the others.
+        .then(() => { publications.sweepProjects(); })
         .catch((e) => sendJson(res, 500, { error: e.message }));
     }
 
