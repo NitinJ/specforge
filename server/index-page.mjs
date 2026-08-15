@@ -19,6 +19,7 @@ import { sessionDisplay } from '../lib/session-label.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
 import { STATUSES } from '../lib/lifecycle.mjs';
+import { readSubscriptions } from '../lib/store-subscriptions.mjs';
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -214,6 +215,21 @@ const NO_PROJECT = 'No project';
  * rename, nothing to delete, and nowhere to put them but first and last.
  * `kind` is 'all' | 'none' | 'named'.
  */
+/**
+ * A subscription card: a link out to the owner's origin, never a proxy.
+ *
+ * The server renders the last-known name; the client refreshes name and spec
+ * count from the remote's public meta on every load, and a fetch that fails
+ * flips the card to unreachable — the honest state when the owner's machine is
+ * off (spec 82f5dabccf, R2).
+ */
+function subRowHtml(s) {
+  const href = `${s.origin}/p/${s.token}`;
+  return `<a class="srow" href="${esc(href)}" target="_blank" rel="noopener" data-meta="${esc(`${href}/api/meta`)}">
+    <span class="sname">${esc(s.name)}</span><span class="snc" hidden></span><span class="soff" hidden>unreachable</span>
+  </a>`;
+}
+
 function projRowHtml(key, count, kind, selected) {
   const on = selected ? ' on' : '';
   const label = kind === 'all' ? 'All projects' : kind === 'none' ? NO_PROJECT : esc(key);
@@ -238,6 +254,7 @@ function projRowHtml(key, count, kind, selected) {
  */
 export function renderIndex({ shareInfo, project } = {}) {
   const prefs = readGlobalPrefs();
+  const subs = readSubscriptions();
   const theme = prefs.theme === 'dark' ? 'dark' : 'light';
   const all = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const tpls = all.filter((m) => m.template);
@@ -395,6 +412,16 @@ ${inner}
   .projnew{display:block;width:100%;height:26px;margin-top:2px;padding:0 8px;border:none;border-radius:7px;
         background:none;color:var(--faint);font-size:12.5px;text-align:left;cursor:pointer}
   .projnew:hover{background:var(--surface2);color:var(--ink)}
+
+  /* ── Shared with me: subscription cards, links out to other origins ── */
+  .subs{display:flex;flex-direction:column;gap:1px}
+  .srow{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border-radius:7px;
+        color:var(--ink);font-size:13px;text-decoration:none}
+  .srow:hover{background:var(--surface2)}
+  .srow .sname{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .srow .snc{color:var(--faint);font-size:11.5px}
+  .srow .soff{color:var(--muted);font-size:11px;font-style:italic}
+  .srow.off .sname{color:var(--muted)}
 
   /* ── sticky top: search + toolbar ─────────────────────────────────── */
   .top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);
@@ -612,6 +639,8 @@ ${inner}
   <div class="shead">Projects</div>
   <nav class="projs" id="projs" aria-label="Projects">${projRows}</nav>
   <button class="projnew" id="projnew" type="button">+ New project</button>
+  ${subs.length ? `<div class="shead">Shared with me</div>
+  <nav class="subs" id="subs" aria-label="Shared with me">${subs.map(subRowHtml).join('\n')}</nav>` : ''}
   <div class="shead">Views</div>
   <nav class="views" id="views" aria-label="Views">${views}</nav>
   <div class="shead" id="chead">Collections</div>
@@ -1593,6 +1622,30 @@ ${strip}
     if(!/[?&]project=/.test(location.search)) return;
     var asked=new URLSearchParams(location.search).get('project');
     if(asked===fproj) putSelection();
+  })();
+
+  // Shared-with-me cards: refresh name + spec count from each remote's public
+  // meta on every load (nothing is stored beyond the pointer), and flip a card
+  // to unreachable when its owner's machine does not answer. Cross-origin: the
+  // gateway allows CORS on exactly this one read-only route.
+  (function(){
+    var cards=[].slice.call(document.querySelectorAll('#subs .srow'));
+    cards.forEach(function(a){
+      var ctl=new AbortController();
+      var timer=setTimeout(function(){ctl.abort();},5000);
+      fetch(a.getAttribute('data-meta'),{signal:ctl.signal}).then(function(r){
+        clearTimeout(timer);
+        if(!r.ok) throw new Error('unreachable');
+        return r.json();
+      }).then(function(m){
+        if(m&&typeof m.project==='string'&&m.project){a.querySelector('.sname').textContent=m.project;}
+        if(m&&typeof m.specs==='number'){var nc=a.querySelector('.snc');nc.textContent=m.specs;nc.hidden=false;}
+      }).catch(function(){
+        clearTimeout(timer);
+        a.querySelector('.soff').hidden=false;
+        a.classList.add('off');
+      });
+    });
   })();
 })();
 </script>

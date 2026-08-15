@@ -141,6 +141,22 @@ test('the project meta route reports what a subscription card needs', async () =
   assert.ok(meta.specs >= 2);
 });
 
+test('CORS is on the project meta route and nowhere else (D8)', async () => {
+  const meta = await fetch(`${base}/p/${tok}/api/meta`);
+  assert.equal(meta.headers.get('access-control-allow-origin'), '*',
+    'the Shared-with-me rail fetches this cross-origin');
+  for (const path of [
+    `/p/${tok}`,
+    `/p/${tok}/spec/in1`,
+    `/p/${tok}/spec/in1/api/comments`,
+    `/p/${tok}/spec/in1/api/meta`,
+  ]) {
+    const r = await fetch(`${base}${path}`);
+    assert.equal(r.headers.get('access-control-allow-origin'), null,
+      `${path} must stay same-origin`);
+  }
+});
+
 test('an unknown or unpublished project token is 404, indistinguishably', async () => {
   const revoked = newToken();
   publishedProjects.set(revoked, 'atelier');
