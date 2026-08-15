@@ -175,6 +175,68 @@ test('a lifted SVG is a standalone document with the palette resolved', () => {
   assert.match(svg, /<\/svg>\n$/);
 });
 
+test('the rules that consume the palette are lifted with the diagram', () => {
+  // Tokens alone are not enough. A house diagram paints through `.svg-box` and
+  // friends, which live in the spec's stylesheet and do not travel; without
+  // them the file renders as black plates on white.
+  const { assets } = exportFixture(fixture('diagrams'));
+  const svg = assets[1].svg;
+  assert.match(svg, /\.svg-box\{fill:var\(--panel\);stroke:var\(--line\)/);
+  assert.match(svg, /\.svg-box-a\{[^}]*stroke:var\(--accent\)/);
+  assert.match(svg, /\.svg-lbl\{fill:var\(--ink\)/);
+  assert.match(svg, /\.svg-arrow\{stroke:var\(--muted\)/);
+});
+
+test('only the classes the diagram uses are lifted', () => {
+  const { assets } = exportFixture(fixture('diagrams'));
+  const svg = assets[1].svg;
+  // `.flow` is on the wrapper, which does not travel, and `figcaption` belongs
+  // to the page. A lifted file carries the paint for its own contents, not a
+  // copy of the spec's stylesheet.
+  assert.doesNotMatch(svg, /\.flow\{/);
+  assert.doesNotMatch(svg, /figcaption/);
+  assert.doesNotMatch(svg, /\.svg-lbl-m/, 'a class the diagram never uses stays behind');
+});
+
+test('at-rules do not follow a diagram out of the spec', () => {
+  // A lifted file is light-theme only: `lightTokens()` writes the light values
+  // onto :root, so any paint under a media query would contradict them.
+  const { assets } = exportFixture(fixture('diagrams'));
+  assert.doesNotMatch(assets[1].svg, /@media/);
+  assert.doesNotMatch(assets[1].svg, /fill:#000/, 'the print override stays in the spec');
+});
+
+test('a blockless at-rule does not swallow the rule after it', () => {
+  // `@charset` and `@import` end at a semicolon. Reading up to the next `{`
+  // would glue the following selector onto them, and the whole run would be
+  // discarded as an at-rule, losing that rule's paint.
+  const html = fixture('diagrams').html().replace('.svg-box{', '@charset "utf-8";@import url(x.css);.svg-box{');
+  const { assets } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(assets[1].svg, /\.svg-box\{fill:var\(--panel\)/);
+  assert.doesNotMatch(assets[1].svg, /@charset|@import/);
+});
+
+test('a semicolon inside a selector does not truncate it', () => {
+  // Only a semicolon outside quotes ends a statement. Splitting on every one
+  // would cut `.svg-box[data-kind="a;b"]` down to `b"]`, which matches nothing,
+  // and the rule would be dropped from the file.
+  const html = fixture('diagrams')
+    .html()
+    .replace('.svg-box{', '.svg-box[data-kind="a;b"]{')
+    .replace('class="svg-box"', 'class="svg-box" data-kind="a;b"');
+  const { assets } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(assets[1].svg, /\.svg-box\[data-kind="a;b"\]\{fill:var\(--panel\)/);
+});
+
+test('a class name cannot drag its longer neighbour along', () => {
+  // `.svg-box` must not match `.svg-box-a`: a diagram that uses only the plain
+  // box would otherwise carry the accent variant too.
+  const html = fixture('diagrams').html().replace(/class="svg-box-a"/g, 'class="svg-box"');
+  const { assets } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(assets[1].svg, /\.svg-box\{/);
+  assert.doesNotMatch(assets[1].svg, /\.svg-box-a\{/);
+});
+
 test('a figure caption becomes emphasised text under the image', () => {
   const { markdown } = exportFixture(fixture('diagrams'));
   assert.match(markdown, /\*Collector, queue, writer\. The writer is the only component this spec adds\.\*/);

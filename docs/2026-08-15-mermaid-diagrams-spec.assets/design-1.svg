@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 152" role="img" aria-label="The source stays inert on disk; the daemon injects the review layer; review.js lazily fetches the vendored renderer and replaces the pre's children with SVG; review.css repaints that SVG from the palette tokens"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}.svg-arrow{stroke:var(--muted);stroke-width:1.4;fill:none}</style>
+        <rect class="svg-box" x="1" y="16" width="150" height="48" rx="8"/>
+        <text class="svg-lbl" x="76" y="36" text-anchor="middle">spec.html</text>
+        <text class="svg-lbl-m" x="76" y="52" text-anchor="middle">source, inert</text>
+        <path class="svg-arrow" d="M153 40 H181"/>
+        <rect class="svg-box" x="183" y="16" width="150" height="48" rx="8"/>
+        <text class="svg-lbl" x="258" y="36" text-anchor="middle">daemon</text>
+        <text class="svg-lbl-m" x="258" y="52" text-anchor="middle">inject.mjs</text>
+        <path class="svg-arrow" d="M335 40 H363"/>
+        <rect class="svg-box-a" x="365" y="16" width="150" height="48" rx="8"/>
+        <text class="svg-lbl" x="440" y="36" text-anchor="middle">review.js</text>
+        <text class="svg-lbl-m" x="440" y="52" text-anchor="middle">initMermaid()</text>
+        <path class="svg-arrow" d="M517 40 H545"/>
+        <rect class="svg-box-a" x="547" y="16" width="150" height="48" rx="8"/>
+        <text class="svg-lbl" x="622" y="36" text-anchor="middle">mermaid.js</text>
+        <text class="svg-lbl-m" x="622" y="52" text-anchor="middle">959 KB gz, lazy</text>
+        <path class="svg-arrow" d="M699 40 H727"/>
+        <rect class="svg-box-a" x="729" y="16" width="150" height="48" rx="8"/>
+        <text class="svg-lbl" x="804" y="36" text-anchor="middle">inline SVG</text>
+        <text class="svg-lbl-m" x="804" y="52" text-anchor="middle">in the same pre</text>
+        <path class="svg-arrow" d="M804 66 V96"/>
+        <rect class="svg-box-a" x="588" y="98" width="291" height="46" rx="8"/>
+        <text class="svg-lbl" x="733" y="118" text-anchor="middle">review.css palette bridge</text>
+        <text class="svg-lbl-m" x="733" y="134" text-anchor="middle">repaints from the 13 tokens, no re-render</text>
+      </svg>
