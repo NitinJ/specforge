@@ -60,6 +60,12 @@ export const FIXTURES = [
     file: join(HERE, 'notices.spec.html'),
     covers: 'one notice of every library type, the three legacy tones, and an untyped one',
   },
+  {
+    name: 'mermaid',
+    type: 'design',
+    file: join(HERE, 'mermaid.spec.html'),
+    covers: 'three mermaid diagrams, a declared python block, and one undeclared block that is not a language',
+  },
 ].map((f) => ({ ...f, html: () => readFileSync(f.file, 'utf8') }));
 
 /** One fixture by name. Throws rather than returning undefined. */

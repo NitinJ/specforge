@@ -537,6 +537,25 @@
     return out;
   }
 
+  /**
+   * Put the DECIDED language on the element Prism reads, replacing any other.
+   *
+   * This used to append only when no `language-` class was present, which meant
+   * markup declaring two things (`<code data-lang="yaml" class="language-sql">`)
+   * was decided as yaml by declaredLang and then highlighted as sql, because the
+   * stale class was left in place. Deciding one language and applying another is
+   * a bug however rare the markup, and the markdown exporter reads the same
+   * precedence, so the two would have disagreed about the same block.
+   *
+   * Stripping `lang-` too normalises what import-md writes, which review.css
+   * keys on as `[class*="language-"]`.
+   */
+  function applyLang(el, lang) {
+    var cls = String(el.className || '').replace(/(?:^|\s)lang(?:uage)?-[\w+#-]+/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+    el.className = (cls ? cls + ' ' : '') + 'language-' + lang;
+  }
+
   function highlightAll(blocks) {
     if (!window.Prism || !window.Prism.languages) return;
     blocks.forEach(function (b) {
@@ -544,9 +563,7 @@
       // it as plain text is the honest outcome; Prism would otherwise emit one
       // undifferentiated token and the block would look highlighted and not be.
       if (!window.Prism.languages[b.lang]) return;
-      if (!/(?:^|\s)language-/.test(b.el.className || '')) {
-        b.el.className = (b.el.className ? b.el.className + ' ' : '') + 'language-' + b.lang;
-      }
+      applyLang(b.el, b.lang);
       try { window.Prism.highlightElement(b.el); } catch (e) { /* a bad grammar is not a broken page */ }
     });
   }
@@ -561,11 +578,7 @@
     if (!blocks.length) return;
     // The class has to land before Prism runs, so the markup is normalised first
     // and the highlight follows whenever the script is ready.
-    blocks.forEach(function (b) {
-      if (!/(?:^|\s)language-/.test(b.el.className || '')) {
-        b.el.className = (b.el.className ? b.el.className + ' ' : '') + 'language-' + b.lang;
-      }
-    });
+    blocks.forEach(function (b) { applyLang(b.el, b.lang); });
     if (window.Prism) { highlightAll(blocks); return; }
     var s = document.createElement('script');
     s.src = HIGHLIGHT_SRC;
