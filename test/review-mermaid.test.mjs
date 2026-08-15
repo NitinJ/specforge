@@ -192,13 +192,28 @@ test('a page whose diagram failed to parse is still settled', async (t) => {
   assert.equal(puts.length, 1, 'a bad source fails the same way every load, so it is safe to remember');
 });
 
-test('a page whose renderer never arrived does not write the registry', async (t) => {
+test('a page whose renderer never arrived does not touch the registry at all', async (t) => {
   const { window, calls } = await boot(t, diagram(GOOD), { mermaid: 'absent', reconcile: true });
   await failTheRendererFetch(window);
-  const puts = calls.filter((c) => c.method === 'PUT' && /\/blocks$/.test(c.url));
-  assert.equal(puts.length, 0, 'writing this page would orphan every thread on a diagram');
-  const gets = calls.filter((c) => c.method === 'GET' && /\/blocks$/.test(c.url));
-  assert.equal(gets.length, 1, 'but it is still read, so threads resolve as they always did');
+  const blocks = calls.filter((c) => /\/blocks$/.test(c.url));
+  // Not read either, and that is the point. Reconciling populates goneBids in
+  // memory whether or not the result is persisted, so an unrendered diagram's
+  // stored id would read as deleted and its threads would render as orphans on
+  // a page that wrote nothing. Skipping falls back to resolving by content.
+  assert.deepEqual(blocks, [], 'an unsettled page is not one to learn anything from');
+});
+
+test('one diagram rendering and another not still leaves the registry alone', async (t) => {
+  // The mixed page is the dangerous one: something to reconcile against, and
+  // half of it not yet what it will be.
+  const { window, calls } = await boot(t, `<main>
+    <pre data-lang="mermaid"><code>${GOOD}</code></pre>
+    <pre data-lang="mermaid"><code>${GOOD}</code></pre>
+  </main>`, { mermaid: 'absent', reconcile: true, fastTimeout: true });
+  await deliverRendererLate(window, 60);
+
+  const blocks = calls.filter((c) => /\/blocks$/.test(c.url));
+  assert.deepEqual(blocks, [], 'no read, no write, no orphan');
 });
 
 // The rail loads behind the renderer, so a request that neither completes nor
@@ -260,8 +275,8 @@ test('a render that lands after the page settled does not touch the block', asyn
     'the block must not change after the reconcile has run against it');
   assert.match(pre.textContent, /flowchart LR/, 'it stays as its source until the next load');
 
-  const puts = calls.filter((c) => c.method === 'PUT' && /\/blocks$/.test(c.url));
-  assert.equal(puts.length, 0, 'and the page that timed out is still not written');
+  const blocks = calls.filter((c) => /\/blocks$/.test(c.url));
+  assert.deepEqual(blocks, [], 'and the page that timed out is left out of the registry entirely');
 });
 
 test('a render that lands in time is applied as normal', async (t) => {

@@ -1608,19 +1608,30 @@
   // here is non-fatal — we still render, just without ids.
   //
   // `settled` false means a declared diagram did not render, so this page's block
-  // text is not the text the same spec produces when it does. Reconciling is
-  // still right (a thread resolves by content, as it did before ids existed);
-  // writing is not, because retirement is durable and one unreachable renderer
-  // would orphan every thread on a diagram permanently.
+  // text is not the text the same spec produces when it does. Such a page is not
+  // one to learn anything from, and it is skipped entirely rather than merely
+  // not written.
+  //
+  // Not written was the first attempt, and it was not enough. reconcileBlocks
+  // also populates `goneBids` from the diff, in memory, whether or not the
+  // result is persisted. On a page where one diagram rendered and another did
+  // not, the unrendered one's stored id has no match, so it reads as deleted and
+  // every thread on it renders as an orphan until the next load. Nothing was
+  // written and the reader still sees the damage.
+  //
+  // Skipping leaves bidByEl null, so every thread resolves by content: exactly
+  // the path that predates the registry, which is the worst case this was always
+  // designed to degrade to.
   function syncBlocks(done, settled) {
     if (!window.SFReconcile) return done();
+    if (settled === false) return done();
     fetch(SPEC_API + '/blocks')
       .then(function (r) { return r.json(); })
       .catch(function () { return null; })
       .then(function (body) {
         var registry = body && body.registry;
         var out = reconcileBlocks(registry);
-        if (!out || !out.changed || settled === false) return done();
+        if (!out || !out.changed) return done();
         var payload = out.registry;
         payload.baseVersion = registry && typeof registry.version === 'number' ? registry.version : 0;
         return fetch(SPEC_API + '/blocks', {
