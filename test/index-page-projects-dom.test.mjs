@@ -231,6 +231,41 @@ test('a project heading outweighs the collection headings under it', (t) => {
     'and the two are not both uppercase, which would flatten them again');
 });
 
+test('the top-of-list spacing follows the first shown project, not the first in the DOM', (t) => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'] });
+  seedProjects({ figur: { UI: ['Wardrobe grid'] }, specforge: { Engineering: ['Markdown interop'] } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const lead = () => [].slice.call(document.querySelectorAll('.pgrp.lead')).map((p) => p.getAttribute('data-p'));
+
+  assert.deepEqual(lead(), ['figur'], 'the first one to begin with');
+
+  // Filter figur out of the page. specforge is now the first thing a reader
+  // sees, so the tight top spacing has to move to it; leaving it on the hidden
+  // section would drop specforge below a gap meant to separate two projects.
+  const search = document.getElementById('search');
+  search.value = 'markdown';
+  search.dispatchEvent(new window.Event('input'));
+
+  assert.equal(document.querySelector('.pgrp[data-p="figur"]').style.display, 'none');
+  assert.deepEqual(lead(), ['specforge']);
+});
+
+test('the same holds for the first shown collection inside a project', (t) => {
+  writeGlobalPrefs({ projects: ['figur'] });
+  seedProjects({ figur: { Product: ['Garment model'], UI: ['Wardrobe grid'] } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const lead = () => [].slice.call(document.querySelectorAll('.grp.lead')).map((g) => g.getAttribute('data-coll'));
+
+  assert.deepEqual(lead(), ['Product']);
+
+  const search = document.getElementById('search');
+  search.value = 'wardrobe';
+  search.dispatchEvent(new window.Event('input'));
+  assert.deepEqual(lead(), ['UI']);
+});
+
 // ---- moving specs ----
 
 test('a row can be moved into a project from its menu', async (t) => {

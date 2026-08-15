@@ -299,13 +299,25 @@ export function renderIndex({ shareInfo, project } = {}) {
   // already hidden, so the page the server sends agrees with the header and the
   // counts it also sends — with no script, or before it runs, a selected project
   // must not show another project's specs.
+  //
+  // `lead` marks the first section that is actually SHOWN, at both levels. The
+  // top-of-list spacing hangs off it rather than off :first-child, because a
+  // filter hides sections without reordering them: :first-child would keep
+  // giving the tight spacing to something the reader cannot see, and the first
+  // visible project would sit under the gap meant to separate it from another.
+  // The client re-marks it on every filter pass; this is the same answer for the
+  // first paint.
+  let leadProject = true;
   const groups = projOrder.filter(({ specs: list }) => list.length).map(({ key: pk, specs: plist }) => {
-    const inner = groupByCollection(plist, prefs.collectionOrder).order.map(({ key, specs: list }) => `<section class="grp" data-p="${esc(pk)}" data-coll="${esc(key)}">
+    const inner = groupByCollection(plist, prefs.collectionOrder).order.map(({ key, specs: list }, i) => `<section class="grp${i === 0 ? ' lead' : ''}" data-p="${esc(pk)}" data-coll="${esc(key)}">
   <h2>${key === '' ? 'Uncollected' : esc(key)} <span class="gcount">${list.length}</span></h2>
   <div class="card"><ul class="rows">${list.map((m) => rowHtml(m, sigOf(m))).join('\n')}</ul></div>
 </section>`).join('\n');
-    const off = selected !== null && selected !== pk ? ' style="display:none"' : '';
-    return `<section class="pgrp" data-p="${esc(pk)}"${off}>
+    const hidden = selected !== null && selected !== pk;
+    const off = hidden ? ' style="display:none"' : '';
+    const lead = !hidden && leadProject ? ' lead' : '';
+    if (!hidden) leadProject = false;
+    return `<section class="pgrp${lead}" data-p="${esc(pk)}"${off}>
   <h2 class="ph">${pk === '' ? NO_PROJECT : esc(pk)} <span class="gcount">${plist.length}</span></h2>
 ${inner}
 </section>`;
@@ -428,7 +440,7 @@ ${inner}
      screen. Inside a project the page header already names it, so body.inproj
      takes it away rather than repeating it. */
   .pgrp{margin:40px 0 0}
-  .pgrp:first-child{margin-top:8px}
+  .pgrp.lead{margin-top:8px}
   .ph{display:flex;align-items:center;gap:7px;font-size:17px;font-weight:660;letter-spacing:-.02em;
       color:var(--ink);text-transform:none;margin:0;padding:0 0 10px 2px;
       border-bottom:1px solid var(--line2)}
@@ -441,9 +453,10 @@ ${inner}
   .grp{margin:24px 0 0}
   /* The 18px is the space under the project heading. With the heading hidden it
      would be a gap under nothing, so inside a project it goes back to the 8px
-     the page had before. */
-  .pgrp .grp:first-of-type{margin-top:18px}
-  body.inproj .pgrp .grp:first-of-type{margin-top:8px}
+     the page had before. Keyed on .lead rather than :first-of-type, so a filter
+     that hides the first collection moves the spacing with it. */
+  .pgrp .grp.lead{margin-top:18px}
+  body.inproj .pgrp .grp.lead{margin-top:8px}
   .grp h2,.tpls h2{display:flex;align-items:center;gap:5px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:650;margin:0 0 7px 2px}
   /* the collection you are inside stays named while you scroll it */
   .grp h2{position:sticky;top:94px;z-index:5;background:var(--bg);padding:5px 2px;margin:0 0 3px;cursor:pointer;user-select:none}
@@ -1299,11 +1312,24 @@ ${strip}
       g.style.display=vis?'':'none';
     });
     // A project section with nothing left in it goes too, heading and all.
+    //
+    // The "lead" class is the top-of-list spacing, and it has to follow what is
+    // SHOWN rather than what is first in the DOM: a filter hides sections
+    // without reordering them, so :first-child would leave the tight spacing on
+    // something invisible and drop the first visible project below a gap meant
+    // to separate two projects. Marked here, where visibility is already known.
+    var leadProject=true;
     pgrps.forEach(function(pg){
-      var vis=[].slice.call(pg.querySelectorAll('.grp')).filter(function(g){return g.style.display!=='none';}).length;
+      var shownGrps=[].slice.call(pg.querySelectorAll('.grp')).filter(function(g){return g.style.display!=='none';});
       var gc=pg.querySelector('.ph .gcount');
       if(gc) gc.textContent=[].slice.call(pg.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
-      pg.style.display=vis?'':'none';
+      var on=shownGrps.length>0;
+      pg.style.display=on?'':'none';
+      pg.classList.toggle('lead',on&&leadProject);
+      if(on) leadProject=false;
+      [].slice.call(pg.querySelectorAll('.grp')).forEach(function(g){
+        g.classList.toggle('lead',g===shownGrps[0]);
+      });
     });
     // The collections rail is the whole store's names; inside a project only the
     // ones with members there are filters that lead anywhere, so the rest leave
