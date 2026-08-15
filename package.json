@@ -14,7 +14,7 @@
   },
   "scripts": {
     "test": "node --test --test-force-exit",
-    "test:e2e": "node --test test-e2e/review.e2e.mjs"
+    "test:e2e": "node --test test-e2e/*.e2e.mjs"
   },
   "devDependencies": {
     "jsdom": "^29.1.1",
