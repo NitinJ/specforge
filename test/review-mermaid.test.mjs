@@ -28,7 +28,9 @@ const BAD = 'flowchart LR\n  BOOM ][';
  *   as far as deciding whether to write
  */
 async function boot(t, body, opts = {}) {
-  const { mermaid = 'ok', reconcile = false, slowRenderMs = 0, fastTimeout = false } = opts;
+  const {
+    mermaid = 'ok', reconcile = false, slowRenderMs = 0, fastTimeout = false, beforeScript,
+  } = opts;
   const dom = new JSDOM(`<!doctype html><html><head></head><body>${body}</body></html>`, {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
@@ -91,6 +93,8 @@ async function boot(t, body, opts = {}) {
         : answer(id, src)),
     };
   }
+
+  if (beforeScript) beforeScript(window);
 
   const script = window.document.createElement('script');
   script.textContent = readFileSync(REVIEW_JS, 'utf8');
@@ -295,6 +299,69 @@ test('a render that lands in time is applied as normal', async (t) => {
   assert.equal(window.document.querySelector('pre').getAttribute('data-sf-mermaid'), 'rendered');
 });
 
+// ---- measuring, and what has to have arrived first ----
+//
+// Mermaid sizes every box around its label's measured width. A reading font is a
+// web font fetched on demand, so measuring before it lands sizes each box for
+// the fallback and paints in the real face: labels clipped mid-word. It survived
+// the browser suite because that fixture uses no web font, and it was visible on
+// the first real spec.
+
+test('rendering waits for the page fonts', async (t) => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+
+  const { window } = await boot(t, diagram(GOOD), {
+    beforeScript: (w) => {
+      // jsdom has no document.fonts; the real thing is a promise that resolves
+      // when every pending face has loaded or failed.
+      Object.defineProperty(w.document, 'fonts', { value: { ready: gate }, configurable: true });
+    },
+  });
+
+  assert.equal(window.document.querySelector('pre').getAttribute('data-sf-mermaid'), null,
+    'nothing is measured while a font is still in flight');
+
+  release();
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(window.document.querySelector('pre').getAttribute('data-sf-mermaid'), 'rendered',
+    'and it renders once they have arrived');
+});
+
+test('a font that never settles does not hold the comment rail', async (t) => {
+  // The rail loads behind the render, and there are two ways to wait: for the
+  // script, and for the fonts. A page that already has mermaid skips the fetch,
+  // so a timer armed only on the fetch path armed nothing here.
+  const { window, calls } = await boot(t, diagram(GOOD), {
+    reconcile: true,
+    fastTimeout: true,
+    beforeScript: (w) => {
+      Object.defineProperty(w.document, 'fonts', {
+        value: { ready: new Promise(() => {}) }, configurable: true,
+      });
+    },
+  });
+  await new Promise((r) => setTimeout(r, 120));
+
+  assert.equal(window.document.querySelector('pre').getAttribute('data-sf-mermaid'), null,
+    'the diagram never rendered, because its font never arrived');
+  assert.ok(calls.some((c) => /comments/.test(c.url)),
+    'but the page settled anyway and the rail loaded');
+});
+
+test('a font that never loads does not withhold the diagram', async (t) => {
+  const { window } = await boot(t, diagram(GOOD), {
+    beforeScript: (w) => {
+      Object.defineProperty(w.document, 'fonts', {
+        value: { ready: Promise.reject(new Error('font fetch failed')) }, configurable: true,
+      });
+    },
+  });
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(window.document.querySelector('pre').getAttribute('data-sf-mermaid'), 'rendered',
+    'a rejected fonts.ready is treated as ready');
+});
+
 // ---- a diagram is one block ----
 //
 // Mermaid renders its labels as <p> and <span> inside a foreignObject, and <p>
@@ -414,9 +481,19 @@ test('the override is strong enough to beat mermaid, which scopes by id', () => 
 test('a rendered diagram is not still wearing the code block chrome', () => {
   const chrome = mermaidRules().find((r) => r.sel === '[data-sf-mermaid]');
   assert.ok(chrome, 'the block itself is restyled');
-  for (const prop of ['background', 'border', 'padding', 'font-family']) {
+  for (const prop of ['background', 'border', 'padding']) {
     assert.match(chrome.decl, new RegExp(`${prop}\\s*:[^;]*!important`), `${prop} is neutralised`);
   }
+});
+
+test('the bridge sets no font, because mermaid measured with one', () => {
+  // Deliberately absent, and worth asserting rather than leaving to be
+  // rediscovered: a label's box is sized around its text, so overriding the
+  // family afterwards draws glyphs that no longer fit. review.js tells mermaid
+  // the page's real family before it measures instead.
+  const forcing = mermaidRules().filter((r) => /font-family/.test(r.decl));
+  assert.deepEqual(forcing.map((r) => r.sel), [],
+    'no rule in the mermaid block may set font-family');
 });
 
 // ---- the boot-order trap this file has hit before ----

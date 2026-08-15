@@ -605,6 +605,24 @@
   // would retire every diagram's block id and orphan the threads on them. That is
   // what `settled` carries to syncBlocks.
 
+  /**
+   * The font the document is actually set in, as a family string.
+   *
+   * Diagrams are pinned to it at render time rather than inheriting it. A
+   * rendered diagram is a measured artefact: its boxes were sized around text in
+   * a particular font, so if the reader later picks a different reading font the
+   * diagram must keep the one it was drawn with. Inheriting would resize the
+   * glyphs inside boxes that cannot resize with them.
+   */
+  function readingFont() {
+    try {
+      var el = widthContainer() || document.body;
+      var f = window.getComputedStyle(el).fontFamily;
+      if (f) return f;
+    } catch (e) { /* fall through */ }
+    return '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  }
+
   /** Every block whose author declared the mermaid language. */
   function mermaidBlocks() {
     var out = [];
@@ -688,7 +706,13 @@
           securityLevel: 'strict',   // no click directives, label HTML sanitised
           theme: 'base',             // review.css repaints it from the palette
           maxTextSize: MERMAID_MAX_TEXT,
-          fontFamily: 'inherit',
+          // The REAL family, resolved from the page, not the keyword `inherit`.
+          // Mermaid measures each label to size the box around it, and it
+          // measures in whatever font this names. Passing `inherit` measured in
+          // a fallback and painted in the spec's reading font, so every label
+          // was sized for one font and drawn in another: "collector" rendered as
+          // "collecto" inside its box.
+          fontFamily: readingFont(),
         });
       } catch (e) {
         return settle(false);
@@ -735,16 +759,43 @@
       });
     }
 
-    if (window.mermaid) return render();
+    /**
+     * Render once the page's fonts have actually arrived.
+     *
+     * Mermaid measures every label to size the box around it. A reading font is
+     * a web font fetched on demand, so rendering immediately measures in the
+     * fallback and then paints in the real face when it lands: the same
+     * clipping as measuring in the wrong family, and invisible on any machine
+     * where the font happens to be local. `document.fonts.ready` is already
+     * resolved when nothing is being fetched, so this costs a microtask in the
+     * common case. Rejection is treated as ready: a font that will not load is
+     * not a reason to withhold the diagram.
+     */
+    function renderWhenFontsReady() {
+      var fonts = document.fonts;
+      if (fonts && fonts.ready && typeof fonts.ready.then === 'function') {
+        fonts.ready.then(render, render);
+        return;
+      }
+      render();
+    }
+
+    // Armed before either path, not just the fetch. It is the guarantee that the
+    // comment rail is never held hostage by this, and there are now two ways to
+    // wait: for the script, and for the fonts. A page that already has mermaid
+    // skips the fetch entirely and can still wait on document.fonts.ready
+    // forever, which armed nothing when the timer lived below.
+    setTimeout(function () { settle(false); }, MERMAID_LOAD_TIMEOUT);
+
+    if (window.mermaid) return renderWhenFontsReady();
     var s = document.createElement('script');
     s.src = MERMAID_SRC;
     s.async = true;
-    s.onload = render;
+    s.onload = renderWhenFontsReady;
     // The page is readable without the renderer, so a failed fetch is not an
     // error state: the blocks stay as the source, shown as code.
     s.onerror = function () { settle(false); };
     document.head.appendChild(s);
-    setTimeout(function () { settle(false); }, MERMAID_LOAD_TIMEOUT);
   }
 
   // ---------- data ----------
