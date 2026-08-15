@@ -17,10 +17,19 @@
   @media (prefers-color-scheme: light){
     :root:not([data-theme="dark"]){ --bg:#fbfaf7; --ink:#222629; }
   }
+  @media print{
+    .svg-lbl{fill:#000}
+  }
   body{background:var(--bg);color:var(--ink)}
   figure{margin:18px 0}
   figure svg{max-width:100%;height:auto;display:block}
   figcaption{color:var(--muted);font-size:12.5px;margin-top:6px}
+  .flow{margin:18px 0}
+  .flow svg{max-width:100%;height:auto}
+  .svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}
+  .svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}
+  .svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}
+  .svg-arrow{stroke:var(--muted);stroke-width:1.4;fill:none}
 </style>
 </head>
 <body>
@@ -64,15 +73,13 @@
 
   <section id="flow" data-sf-section>
     <h2>2 · Request flow</h2>
-    <svg viewBox="0 0 300 70" role="img" aria-label="Retry path from the writer back onto the queue">
-      <g font-family="var(--mono)" font-size="11">
-        <rect x="4" y="16" width="120" height="38" rx="8" fill="var(--panel)" stroke="var(--line)"/>
-        <text x="20" y="39" fill="var(--ink)">writer</text>
-        <rect x="176" y="16" width="120" height="38" rx="8" fill="var(--panel)" stroke="var(--amber)" stroke-width="2"/>
-        <text x="196" y="39" fill="var(--ink)">retry queue</text>
-        <path d="M124,35 L176,35" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4 3"/>
-      </g>
-    </svg>
+    <div class="flow"><svg viewBox="0 0 300 70" role="img" aria-label="Retry path from the writer back onto the queue">
+      <rect class="svg-box" x="4" y="16" width="120" height="38" rx="8"/>
+      <text class="svg-lbl" x="64" y="39" text-anchor="middle">writer</text>
+      <path class="svg-arrow" d="M124,35 L176,35"/>
+      <rect class="svg-box-a" x="176" y="16" width="120" height="38" rx="8"/>
+      <text class="svg-lbl" x="236" y="39" text-anchor="middle">retry queue</text>
+    </svg></div>
     <p>A failed write returns to the retry queue with its attempt count incremented.</p>
   </section>
 </main>
