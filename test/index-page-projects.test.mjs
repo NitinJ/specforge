@@ -17,7 +17,7 @@ useTempStore({ beforeEach, afterEach }, 'sf-projidx-');
 function railProjects(html) {
   const nav = html.match(/<nav class="projs"[^>]*>([\s\S]*?)<\/nav>/);
   if (!nav) return [];
-  return [...nav[1].matchAll(/<button class="pnav[^"]*"[^>]*>(?:<span class="pname">)?([^<]*)<\/span><span class="nc">(\d+)<\/span>/g)]
+  return [...nav[1].matchAll(/<button class="pnav[^"]*"[^>]*><span class="projname">([^<]*)<\/span><span class="nc">(\d+)<\/span>/g)]
     .map((m) => [m[1], Number(m[2])]);
 }
 
