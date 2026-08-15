@@ -99,6 +99,49 @@ test('strip on a document with neither block changes nothing', () => {
   assert.equal(stripTemplateBlocks(plain), plain);
 });
 
+test('a prompt holding nested markup is removed whole', () => {
+  // A prompt is prose you edit in SpecForge, so it can perfectly well end up
+  // holding a <div>. A non-greedy `</div>` cuts at the first one, which removes
+  // half the prompt and leaves a stray closing tag in the finished spec.
+  // Malformed HTML in a shipped document is worse than the scaffolding it was
+  // trying to remove. Greptile on #171.
+  const nested = `<body>
+<section id="open-questions"><h2>Q</h2>
+  <div data-sf-prompt><p>Guidance.</p><div class="card"><p>An example.</p></div><p>More.</p></div>
+</section>
+</body>`;
+  const stripped = stripTemplateBlocks(nested);
+  assert.equal(hasTemplateBlocks(stripped), false);
+  assert.doesNotMatch(stripped, /An example/, 'the nested content went with it');
+  assert.doesNotMatch(stripped, /<\/div>/, 'no orphaned closing tag left behind');
+  assert.equal(stripped, '<body>\n<section id="open-questions"><h2>Q</h2>\n</section>\n</body>');
+});
+
+test('a nested prompt parses as one prompt, not a truncated one', () => {
+  const nested = '<section id="q"><div data-sf-prompt><p>One.</p><div><p>Two.</p></div></div></section>';
+  const [p] = parseTemplatePrompts(nested);
+  assert.equal(parseTemplatePrompts(nested).length, 1);
+  assert.match(p.text, /One\./);
+  assert.match(p.text, /Two\./, 'the nested half is part of the same prompt');
+});
+
+test('a rules block holding a nested section is removed whole', () => {
+  const nested = `<body><section id="a"><p>x</p></section>
+<section data-sf-rules hidden><ul><li data-sf-rule="r">A rule.</li></ul><section><p>Odd but legal.</p></section></section>
+</body>`;
+  const stripped = stripTemplateBlocks(nested);
+  assert.equal(hasTemplateBlocks(stripped), false);
+  assert.doesNotMatch(stripped, /Odd but legal/);
+  assert.equal(stripped, '<body><section id="a"><p>x</p></section>\n</body>');
+});
+
+test('an unclosed block is left alone rather than truncating the document', () => {
+  // Truncating at an unbalanced tag turns one bad edit into a lost spec.
+  const broken = '<body><section id="a"><p>Keep me.</p></section><div data-sf-prompt><p>No close.</p></body>';
+  assert.equal(stripTemplateBlocks(broken), broken);
+  assert.match(stripTemplateBlocks(broken), /Keep me/);
+});
+
 test('parsing twice gives the same answer', () => {
   // The block regexes are module-level and carry /g. Both .match() and
   // .replace() reset lastIndex, but a future edit might not, so this pins it.
