@@ -221,7 +221,7 @@ function projRowHtml(key, count, kind, selected) {
   const acts = kind === 'named' ? kebabHtml(`Actions for ${key}`) : '';
   const drag = kind === 'named' ? ' draggable="true"' : '';
   return `<div class="prow" ${attr}${drag}>
-    <button class="pnav${on}" type="button" ${attr}><span class="pname">${label}</span><span class="nc">${count}</span></button>
+    <button class="pnav${on}" type="button" ${attr}><span class="projname">${label}</span><span class="nc">${count}</span></button>
     ${acts}
   </div>`;
 }
@@ -355,7 +355,10 @@ ${inner}
   .nav.on,.cnav.on,.pnav.on{background:var(--accent-soft);color:var(--accent);font-weight:560}
   .nc{margin-left:auto;font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
   .nav.on .nc,.cnav.on .nc,.pnav.on .nc{color:inherit;opacity:.7}
-  .cname,.pname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* .projname, not .pname: the collection picker already uses .pname for its own
+     item labels, and one class on two unrelated components is one place for a
+     later change to leak. */
+  .cname,.projname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   .crow,.prow{display:flex;align-items:center;gap:2px;border-radius:7px}
   .crow .cnav,.prow .pnav{min-width:0}
@@ -575,7 +578,7 @@ ${inner}
   <button class="projnew" id="projnew" type="button">+ New project</button>
   <div class="shead">Views</div>
   <nav class="views" id="views" aria-label="Views">${views}</nav>
-  <div class="shead">Collections</div>
+  <div class="shead" id="chead">Collections</div>
   <nav class="colls" id="colls" aria-label="Collections">${collRows}</nav>
   ${named.length ? '' : '<p class="shint">Select specs with the checkbox, then move them into a collection.</p>'}
 </aside>
@@ -605,6 +608,7 @@ ${strip}
 <div class="bulk" id="bulk" hidden>
   <span class="bn" id="bn">0 selected</span><span class="bsep"></span>
   <button class="bbtn primary" id="bmove" type="button" aria-haspopup="dialog" aria-expanded="false">Move to collection…</button>
+  <button class="bbtn" id="bproj" type="button" aria-haspopup="dialog" aria-expanded="false">Move to project…</button>
   <button class="bbtn" id="bcancel" type="button">Cancel</button>
 </div>
 
@@ -727,24 +731,47 @@ ${strip}
     return b;
   }
   /**
-   * @param anchor the button it hangs off
-   * @param current the collection the target is in now ('' = uncollected)
-   * @param onPick called with the chosen name ('' to ungroup)
+   * The projects the picker offers, read off the RAIL rather than the rows.
+   *
+   * A project can hold nothing and still exist — that is the whole point of
+   * being able to create one before filing anything into it — so a list derived
+   * from the rows would omit exactly the project you just made and are trying to
+   * move something into.
    */
-  function openPicker(anchor,current,onPick){
+  function projects(){
+    return prows.filter(function(pr){return pr.getAttribute('data-p')!=='';})
+      .map(function(pr){
+        var nc=pr.querySelector('.nc');
+        return {name:pr.getAttribute('data-p'),count:nc?+nc.textContent:0};
+      });
+  }
+  /**
+   * @param anchor the button it hangs off
+   * @param current the group the target is in now ('' = none)
+   * @param onPick called with the chosen name ('' to take it out of everything)
+   * @param kind 'collection' (default) or 'project' — the same popover either
+   *   way, so there is one thing to learn about naming a destination
+   */
+  function openPicker(anchor,current,onPick,kind){
     var pick=document.getElementById('cpick'), list=document.getElementById('plist');
     var filter=document.getElementById('pfilter'), create=document.getElementById('pnew');
-    var all=collections();
+    var isProj=kind==='project';
+    var all=isProj?projects():collections();
+    var noneLabel=isProj?NO_PROJECT:'Uncollected';
+    var emptyText=isProj?'No project matches':'No collection matches';
+    pick.setAttribute('aria-label',isProj?'Move to project':'Move to collection');
+    filter.placeholder=isProj?'Filter or new project…':'Filter or new name…';
     filter.value='';
     function paint(){
       var q=filter.value.trim(), lq=q.toLowerCase();
       list.innerHTML='';
       var hits=all.filter(function(c){return !lq||c.name.toLowerCase().indexOf(lq)!==-1;});
       hits.forEach(function(c){list.appendChild(pickItem(c.name,c.name,c.count,current));});
-      // Uncollected is a destination, not a collection: it never matches a filter
-      // and never carries a count, it is just "take this out of wherever it is".
-      if(!q) list.appendChild(pickItem('','Uncollected',null,current));
-      else if(!hits.length){var e=document.createElement('div'); e.className='pempty'; e.textContent='No collection matches'; list.appendChild(e);}
+      // Uncollected / No project is a destination, not a group: it never matches
+      // a filter and never carries a count, it is just "take this out of
+      // wherever it is".
+      if(!q) list.appendChild(pickItem('',noneLabel,null,current));
+      else if(!hits.length){var e=document.createElement('div'); e.className='pempty'; e.textContent=emptyText; list.appendChild(e);}
       // Offered only when what you typed is not already a collection — otherwise
       // "Create" beside the identically named thing invites a duplicate.
       var exact=all.some(function(c){return c.name.toLowerCase()===lq;});
@@ -775,6 +802,16 @@ ${strip}
   // to carry its own of each, and the two disagreed on where a message appears
   // and whether it ever goes away.
   function askName(o){ SFUI.prompt(o); }
+  /**
+   * The name the store will actually hold for what was typed.
+   *
+   * sanitizeCollection / sanitizeProject collapse internal whitespace and cap at
+   * 60 characters before writing, so comparing raw input against the rail would
+   * miss "spec  forge" colliding with an existing "spec forge" — and a
+   * collision that slips past the check merges two groups with no warning.
+   * Mirrored here so the page decides identity the same way the server does.
+   */
+  function normName(s){ return String(s==null?'':s).replace(/\\s+/g,' ').trim().slice(0,60); }
   function askConfirm(o){ SFUI.confirm(o); }
 
   function paintChips(row,tags){
@@ -796,11 +833,13 @@ ${strip}
       var next=tagsOf(r3).filter(function(x){return x!==chip.getAttribute('data-tag');});
       api(id,'/organize','PATCH',{tags:next}).then(function(){chip.remove();updateKey(r3);}).catch(function(){});}
     else if(t.classList.contains('kebab')){
-      // The same button in two places; which menu it opens is decided by what it
-      // sits in, so neither the row nor the rail needs its own handler.
+      // The same button in three places; which menu it opens is decided by what
+      // it sits in, so no row and neither rail needs its own handler.
       if(pop===document.getElementById('menu')&&popOwner===t){closePop();return;}
-      var row=rowOf(t);
-      if(row) rowMenu(t,row); else collMenu(t,t.closest('.crow'));
+      var row=rowOf(t), prow=t.closest('.prow');
+      if(row) rowMenu(t,row);
+      else if(prow) projMenu(t,prow);
+      else collMenu(t,t.closest('.crow'));
     }
   });
 
@@ -816,6 +855,9 @@ ${strip}
       }},
       {icon:'\\u25a4',label:'Move to collection\\u2026',run:function(){
         openPicker(btn,row.getAttribute('data-c'),function(v){setColl([row],v);});
+      }},
+      {icon:'\\u25f1',label:'Move to project\\u2026',run:function(){
+        openPicker(btn,row.getAttribute('data-p'),function(v){setProj([row],v);},'project');
       }},
       {sep:true},
       {icon:'\\ud83d\\uddd1',label:'Delete spec\\u2026',danger:true,run:function(){
@@ -836,14 +878,24 @@ ${strip}
     var items=[];
     if(crow.previousElementSibling) items.push({icon:'\\u2191',label:'Move up',run:function(){moveColl(crow,-1);}});
     if(nextNamed(crow)) items.push({icon:'\\u2193',label:'Move down',run:function(){moveColl(crow,1);}});
+    // Renaming or deleting a collection is an act on ONE collection, and after
+    // projects a name alone does not always identify one: "UI" in two projects
+    // is two collections with two memberships. Offered whenever the name IS
+    // unambiguous — inside a project, or from All projects when every spec
+    // carrying that name sits in the same project, which is every collection in
+    // a store that uses no projects. Reordering is always offered: the order is
+    // a flat list of names, shared across projects by design.
+    if(fproj===null&&projectsUsing(name).length>1){ openMenu(btn,items); return; }
     if(items.length) items.push({sep:true});
     openMenu(btn,items.concat([
       {icon:'\\u270e',label:'Rename\\u2026',run:function(){
-        askName({title:'Rename collection',label:'Collection name',value:name,onOk:function(v){
+        askName({title:'Rename collection',label:'Collection name',value:name,onOk:function(raw){
+          var v=normName(raw);
+          if(!v||v===name) return;
           // The order is a list of names, so a rename has to be applied to it too
           // — and before the reload the move fans out into, or the collection
           // reappears at the bottom under its new name.
-          putOrderThen(collOrder().map(function(c){return c===name?v:c;}),function(){
+          putOrderThen(renamedOrder(name,v),function(){
             setColl(membersOf(name),v,'some are still in "'+name+'"');
           });
         }});
@@ -858,7 +910,7 @@ ${strip}
             ?'Its 1 spec is not deleted \\u2014 it becomes uncollected.'
             :'Its '+n+' specs are not deleted \\u2014 they become uncollected.'),
           onOk:function(){
-            putOrderThen(collOrder().filter(function(c){return c!==name;}),function(){
+            putOrderThen(deletedOrder(name),function(){
               setColl(membersOf(name),'','some are still in "'+name+'"');
             });
           },
@@ -866,146 +918,276 @@ ${strip}
       }},
     ]));
   }
+  /** The distinct projects holding a spec in a collection of this name. */
+  function projectsUsing(name){
+    var seen={}, out=[];
+    rows.forEach(function(r){
+      if(r.getAttribute('data-c')!==name) return;
+      var p=r.getAttribute('data-p');
+      if(!Object.prototype.hasOwnProperty.call(seen,p)){ seen[p]=1; out.push(p); }
+    });
+    return out;
+  }
+  /** True when a collection of this name survives in some OTHER project. */
+  function usedElsewhere(name){
+    return rows.some(function(r){return r.getAttribute('data-c')===name&&!projOk(r);});
+  }
+  /**
+   * The order after renaming this project's collection.
+   *
+   * The order is one flat list of names shared by every project, so a rename
+   * here can only REPLACE the old name if no other project still has a
+   * collection called that. When one does, the new name is inserted beside the
+   * old rather than over it, and both keep a rank.
+   */
+  function renamedOrder(name,v){
+    var keep=usedElsewhere(name), out=[];
+    collOrder().forEach(function(c){
+      if(c!==name){ if(out.indexOf(c)===-1) out.push(c); return; }
+      if(keep) out.push(c);
+      if(out.indexOf(v)===-1) out.push(v);
+    });
+    if(out.indexOf(v)===-1) out.push(v);
+    return out;
+  }
+  /** The order after deleting this project's collection, keeping the name if
+   *  another project still uses it. */
+  function deletedOrder(name){
+    var keep=usedElsewhere(name);
+    return collOrder().filter(function(c){return keep||c!==name;});
+  }
 
-  // ---- collection order (Move up / Move down) ----
+  /**
+   * A project in the rail: reorder it, rename it, or delete it.
+   *
+   * Rename and delete are the collection pair one level up, and deliberately the
+   * same shape: write the name list first, then fan out one PATCH per member,
+   * then reload. Doing the list second would land the project at the bottom
+   * under its new name, which is the reason the collection code gives.
+   */
+  function projMenu(btn,prow){
+    var name=prow.getAttribute('data-p');
+    var items=[];
+    if(prow.previousElementSibling&&prow.previousElementSibling.hasAttribute('data-p')) items.push({icon:'\\u2191',label:'Move up',run:function(){moveProj(prow,-1);}});
+    if(projRail.nextNamed(prow)) items.push({icon:'\\u2193',label:'Move down',run:function(){moveProj(prow,1);}});
+    if(items.length) items.push({sep:true});
+    openMenu(btn,items.concat([
+      {icon:'\\u270e',label:'Rename\\u2026',run:function(){
+        askName({title:'Rename project',label:'Project name',value:name,onOk:function(raw){
+          var v=normName(raw);
+          if(!v||v===name) return;
+          var rename=function(){
+            projRail.putThen(projRail.order().map(function(p){return p===name?v:p;}),function(){
+              setProj(membersOfProject(name),v,'some are still in "'+name+'"');
+            });
+          };
+          // Renaming onto a name already in use is not a rename, it is a merge:
+          // both sets of specs end up under one name and the other project stops
+          // existing. That may well be what was wanted, so it is offered rather
+          // than refused — but not silently, because nothing here undoes it.
+          if(projRail.order().indexOf(v)===-1){ rename(); return; }
+          var mine=membersOfProject(name).length, theirs=membersOfProject(v).length;
+          askConfirm({
+            title:'Merge projects',
+            body:'"'+v+'" already exists. Its '+theirs+' spec'+(theirs===1?'':'s')+' and "'+name+'"\\u2019s '+mine+' will end up in one project called "'+v+'", and "'+name+'" will be gone.',
+            ok:'Merge',
+            danger:false,
+            onOk:rename,
+          });
+        }});
+      }},
+      {icon:'\\ud83d\\uddd1',label:'Delete project\\u2026',danger:true,run:function(){
+        var n=membersOfProject(name).length;
+        askConfirm({
+          title:'Delete project',
+          // Same reason the collection dialog spells it out: "delete" beside a
+          // count of specs reads like it takes them with it. It does not, and
+          // the collections they are in travel with them.
+          body:'Delete "'+name+'"? '+(n===1
+            ?'Its 1 spec is not deleted \\u2014 it moves to No project.'
+            :'Its '+n+' specs are not deleted \\u2014 they move to No project.'),
+          onOk:function(){
+            projRail.putThen(projRail.order().filter(function(p){return p!==name;}),function(){
+              setProj(membersOfProject(name),'','some are still in "'+name+'"');
+            });
+          },
+        });
+      }},
+    ]));
+  }
+
+  // ---- rail order (Move up / Move down, and drag) ----
   // The rail is the order. Reading it back off the DOM means the two can never
   // disagree, and a move is then a DOM move plus one PUT — no reload, so the
   // scroll position and any open filter survive it.
-  var colls=document.getElementById('colls');
-  /** The named collections, top to bottom. Uncollected is not one of them. */
-  function collOrder(){
-    return [].slice.call(document.querySelectorAll('.crow')).map(function(c){return c.getAttribute('data-c');})
-      .filter(function(c){return c!=='';});
-  }
-  /** The next collection row that is not Uncollected, which never moves. */
-  function nextNamed(crow){
-    var n=crow.nextElementSibling;
-    return n&&n.getAttribute('data-c')!==''?n:null;
-  }
-  var ORDER_FAILED='The collection order could not be saved.';
-  /** Store the order. @param done called with whether it landed. */
-  function putOrder(order,done){
-    fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({collectionOrder:order})})
-      .then(function(x){done(!!(x&&x.ok));},function(){done(false);});
-  }
-  /**
-   * Write the order a rename or a delete implies, then do the thing itself —
-   * whether or not the write landed. Refusing to rename a collection because a
-   * cosmetic order failed to save would be the worse failure. The message is the
-   * carried one, since what follows reloads the page over the top of it.
-   */
-  function putOrderThen(order,then){
-    putOrder(order,function(ok){ if(!ok) warn(ORDER_FAILED); then(); });
-  }
-  function grpFor(name){
-    for(var i=0;i<grps.length;i++){ if(grps[i].getAttribute('data-coll')===name) return grps[i]; }
-    return null;
-  }
-  /**
-   * Put the list in the rail's order. The page's groups are the same order and
-   * the two must never read differently, so this runs after every rail change.
-   * Appending in sequence is the whole algorithm; Uncollected goes last because
-   * it is the absence of a collection, not a position anyone chose.
-   */
-  function syncGroups(){
-    var host=document.getElementById('groups');
-    if(!host) return;
-    collOrder().forEach(function(name){ var g=grpFor(name); if(g) host.appendChild(g); });
-    var un=grpFor(''); if(un) host.appendChild(un);
-  }
-  /** Restore an order taken earlier from collOrder() — the undo for a failed write. */
-  function setRail(order){
-    var un=null;
-    order.forEach(function(name){
-      for(var i=0;i<crows.length;i++){ if(crows[i].getAttribute('data-c')===name) colls.appendChild(crows[i]); }
-    });
-    for(var i=0;i<crows.length;i++){ if(crows[i].getAttribute('data-c')==='') un=crows[i]; }
-    if(un) colls.appendChild(un);
-    syncGroups();
-  }
-  /**
-   * Persist the rail as it now stands, and put it back if the write does not
-   * land.
-   *
-   * One write is in flight at a time and a move made during one is coalesced
-   * into a single write after it, because the rail IS the desired state — there
-   * is nothing to queue but "send it again". Letting them overlap would let two
-   * settle out of order, and an older failure would then roll back over a newer
-   * order that did save.
-   *
-   * The rollback target is the last order the store is KNOWN to hold, not the
-   * one this move started from: after a coalesced write, "before" is a position
-   * halfway through a gesture that was never stored.
-   */
-  var savedOrder=null, writing=false, pendingWrite=false;
-  function commitOrder(){
-    if(writing){ pendingWrite=true; return; }
-    writing=true;
-    var sending=collOrder();
-    putOrder(sending,function(ok){
-      writing=false;
-      if(ok) savedOrder=sending;
-      // A move made while this was in flight is a newer statement of intent than
-      // this result. Send that instead — rolling back first would wipe it off
-      // the rail and then store the wipe. If it fails in turn, ITS handler is
-      // the one that rolls back, to the same place.
-      if(pendingWrite){ pendingWrite=false; commitOrder(); return; }
-      if(!ok){ showMsg(ORDER_FAILED); setRail(savedOrder||sending); }
-    });
-  }
-  function moveColl(crow,dir){
-    var sib=dir<0?crow.previousElementSibling:nextNamed(crow);
-    if(!sib) return;
-    if(dir<0) colls.insertBefore(crow,sib); else colls.insertBefore(sib,crow);
-    syncGroups();
-    commitOrder();
+  //
+  // One controller, two rails. Collections and projects are the same list
+  // problem at two levels: an ordered set of named rows with one unnamed row
+  // (Uncollected, No project) pinned last that is never a passenger and never a
+  // target. Two copies of this would be two places for a fix to land in one of.
+  function makeRail(cfg){
+    // cfg: {nav, rowSel, keyAttr, prefKey, failMsg, after}
+    var nav=cfg.nav;
+    var saved=null, writing=false, pendingWrite=false;
+    /** The named rows, top to bottom. The unnamed one is not one of them. */
+    function order(){
+      return [].slice.call(document.querySelectorAll(cfg.rowSel))
+        .map(function(r){return r.getAttribute(cfg.keyAttr);})
+        .filter(function(k){return k!=='';});
+    }
+    /** The next row that is not the unnamed one, which never moves. */
+    function nextNamed(row){
+      var n=row.nextElementSibling;
+      return n&&n.getAttribute(cfg.keyAttr)!==''&&n.getAttribute(cfg.keyAttr)!==null?n:null;
+    }
+    /** Store the order. @param done called with whether it landed. */
+    function put(list,done){
+      var body={}; body[cfg.prefKey]=list;
+      fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(function(x){done(!!(x&&x.ok));},function(){done(false);});
+    }
+    /**
+     * Write the order a rename or a delete implies, then do the thing itself —
+     * whether or not the write landed. Refusing to rename because a cosmetic
+     * order failed to save would be the worse failure. The message is the
+     * carried one, since what follows reloads the page over the top of it.
+     */
+    function putThen(list,then){
+      put(list,function(ok){ if(!ok) warn(cfg.failMsg); then(); });
+    }
+    /**
+     * Persist the rail as it now stands, and put it back if the write does not
+     * land.
+     *
+     * One write is in flight at a time and a move made during one is coalesced
+     * into a single write after it, because the rail IS the desired state —
+     * there is nothing to queue but "send it again". Letting them overlap would
+     * let two settle out of order, and an older failure would then roll back
+     * over a newer order that did save.
+     *
+     * The rollback target is the last order the store is KNOWN to hold, not the
+     * one this move started from: after a coalesced write, "before" is a
+     * position halfway through a gesture that was never stored.
+     */
+    function commit(){
+      if(writing){ pendingWrite=true; return; }
+      writing=true;
+      var sending=order();
+      put(sending,function(ok){
+        writing=false;
+        if(ok) saved=sending;
+        // A move made while this was in flight is a newer statement of intent
+        // than this result. Send that instead — rolling back first would wipe it
+        // off the rail and then store the wipe. If it fails in turn, ITS handler
+        // is the one that rolls back, to the same place.
+        if(pendingWrite){ pendingWrite=false; commit(); return; }
+        if(!ok){ showMsg(cfg.failMsg); restore(saved||sending); }
+      });
+    }
+    /** Restore an order taken earlier from order() — the undo for a failed write. */
+    function restore(list){
+      var all=[].slice.call(document.querySelectorAll(cfg.rowSel));
+      var unnamed=null;
+      list.forEach(function(name){
+        for(var i=0;i<all.length;i++){ if(all[i].getAttribute(cfg.keyAttr)===name) nav.appendChild(all[i]); }
+      });
+      for(var i=0;i<all.length;i++){ if(all[i].getAttribute(cfg.keyAttr)==='') unnamed=all[i]; }
+      if(unnamed) nav.appendChild(unnamed);
+      if(cfg.after) cfg.after();
+    }
+    function move(row,dir){
+      var sib=dir<0?row.previousElementSibling:nextNamed(row);
+      if(!sib) return;
+      if(dir<0) nav.insertBefore(row,sib); else nav.insertBefore(sib,row);
+      if(cfg.after) cfg.after();
+      commit();
+    }
+    // ---- drag to reorder ----
+    // The row moves under the pointer rather than a line being drawn between
+    // rows: the rail is short and the result is the preview, so there is nothing
+    // to interpret about where it will land. The unnamed row is not a target and
+    // never a passenger, which is why every lookup here filters it out.
+    var dragging=null, dragFrom=null;
+    if(nav){
+      nav.addEventListener('dragstart',function(e){
+        var row=e.target.closest&&e.target.closest(cfg.rowSel);
+        if(!row||row.getAttribute(cfg.keyAttr)==='') return;
+        dragging=row; dragFrom=order();
+        row.classList.add('dragging');
+        nav.classList.add('rearranging');
+        closePop();
+        if(e.dataTransfer){
+          e.dataTransfer.effectAllowed='move';
+          // Firefox starts no drag at all without something on the transfer.
+          try{e.dataTransfer.setData('text/plain',row.getAttribute(cfg.keyAttr));}catch(err){}
+        }
+      });
+      nav.addEventListener('dragover',function(e){
+        if(!dragging) return;
+        var over=e.target.closest&&e.target.closest(cfg.rowSel);
+        if(!over||over===dragging||over.getAttribute(cfg.keyAttr)==='') return;
+        e.preventDefault();
+        if(e.dataTransfer) e.dataTransfer.dropEffect='move';
+        var r=over.getBoundingClientRect();
+        var after=e.clientY>r.top+r.height/2;
+        nav.insertBefore(dragging,after?over.nextSibling:over);
+        if(cfg.after) cfg.after();
+      });
+      // Dropping is not what commits — dragend fires for a drop and for an abort
+      // alike, and by then the rail already reads the way it will stay.
+      nav.addEventListener('drop',function(e){e.preventDefault();});
+      nav.addEventListener('dragend',function(){
+        if(!dragging) return;
+        dragging.classList.remove('dragging');
+        nav.classList.remove('rearranging');
+        var before=dragFrom;
+        dragging=null; dragFrom=null;
+        if(before.join('\\u0000')!==order().join('\\u0000')) commit();
+      });
+    }
+    // What the store holds right now: the page was rendered from it.
+    saved=order();
+    return {order:order,nextNamed:nextNamed,putThen:putThen,move:move};
   }
 
-  // ---- drag to reorder ----
-  // The row moves under the pointer rather than a line being drawn between rows:
-  // the rail is short and the result is the preview, so there is nothing to
-  // interpret about where it will land. Uncollected is not a target and never a
-  // passenger, which is why every lookup here filters it out.
-  var crows=[].slice.call(document.querySelectorAll('.crow'));
-  // What the store holds right now: the page was rendered from it.
-  savedOrder=collOrder();
-  var dragging=null, dragFrom=null;
-  if(colls){
-    colls.addEventListener('dragstart',function(e){
-      var row=e.target.closest&&e.target.closest('.crow');
-      if(!row||row.getAttribute('data-c')==='') return;
-      dragging=row; dragFrom=collOrder();
-      row.classList.add('dragging');
-      colls.classList.add('rearranging');
-      closePop();
-      if(e.dataTransfer){
-        e.dataTransfer.effectAllowed='move';
-        // Firefox starts no drag at all without something on the transfer.
-        try{e.dataTransfer.setData('text/plain',row.getAttribute('data-c'));}catch(err){}
-      }
+  var colls=document.getElementById('colls');
+  var projs=document.getElementById('projs');
+  var collRail=makeRail({
+    nav:colls, rowSel:'.crow', keyAttr:'data-c', prefKey:'collectionOrder',
+    failMsg:'The collection order could not be saved.', after:syncGroups,
+  });
+  var projRail=makeRail({
+    nav:projs, rowSel:'.prow[data-p]', keyAttr:'data-p', prefKey:'projects',
+    failMsg:'The project order could not be saved.', after:syncProjGroups,
+  });
+  var collOrder=collRail.order, nextNamed=collRail.nextNamed;
+  var putOrderThen=collRail.putThen;
+  function moveColl(crow,dir){ collRail.move(crow,dir); }
+  function moveProj(prow,dir){ projRail.move(prow,dir); }
+  /**
+   * Put the groups in the rail's order. The page's groups are the same order and
+   * the two must never read differently, so this runs after every rail change.
+   * Appending in sequence is the whole algorithm; the unnamed group goes last
+   * because it is the absence of a name, not a position anyone chose.
+   *
+   * Collections are ordered within each project section, since the same name in
+   * two projects is two groups that both take the name's rank.
+   */
+  function syncGroups(){
+    pgrps.forEach(function(pg){
+      var mine={};
+      [].slice.call(pg.querySelectorAll('.grp')).forEach(function(g){mine[g.getAttribute('data-coll')]=g;});
+      collOrder().forEach(function(name){ if(mine[name]) pg.appendChild(mine[name]); });
+      if(mine['']) pg.appendChild(mine['']);
     });
-    colls.addEventListener('dragover',function(e){
-      if(!dragging) return;
-      var over=e.target.closest&&e.target.closest('.crow');
-      if(!over||over===dragging||over.getAttribute('data-c')==='') return;
-      e.preventDefault();
-      if(e.dataTransfer) e.dataTransfer.dropEffect='move';
-      var r=over.getBoundingClientRect();
-      var after=e.clientY>r.top+r.height/2;
-      colls.insertBefore(dragging,after?over.nextSibling:over);
-      syncGroups();
-    });
-    // Dropping is not what commits — dragend fires for a drop and for an abort
-    // alike, and by then the rail already reads the way it will stay.
-    colls.addEventListener('drop',function(e){e.preventDefault();});
-    colls.addEventListener('dragend',function(){
-      if(!dragging) return;
-      dragging.classList.remove('dragging');
-      colls.classList.remove('rearranging');
-      var before=dragFrom;
-      dragging=null; dragFrom=null;
-      if(before.join('\\u0000')!==collOrder().join('\\u0000')) commitOrder();
-    });
+  }
+  function syncProjGroups(){
+    var host=document.getElementById('groups');
+    if(!host) return;
+    var mine={};
+    pgrps.forEach(function(pg){mine[pg.getAttribute('data-p')]=pg;});
+    projRail.order().forEach(function(name){ if(mine[name]) host.appendChild(mine[name]); });
+    if(mine['']) host.appendChild(mine['']);
   }
 
   document.addEventListener('keydown',function(e){
@@ -1042,9 +1224,21 @@ ${strip}
   var chips=[].slice.call(document.querySelectorAll('.fchip'));
   var navs=[].slice.call(document.querySelectorAll('.nav[data-view]'));
   var cnavs=[].slice.call(document.querySelectorAll('.cnav'));
+  var pgrps=[].slice.call(document.querySelectorAll('.pgrp'));
+  var pnavs=[].slice.call(document.querySelectorAll('.pnav'));
+  var prows=[].slice.call(document.querySelectorAll('.prow[data-p]'));
+  var crows=[].slice.call(document.querySelectorAll('.crow'));
   var fstatus='all', fview='all', fcoll=null;
+  // Which project the page is showing: null = All projects, '' = No project, a
+  // name = that project. Read off the rail the server rendered, so the page
+  // starts where the store says it left off rather than resetting on every load.
+  var fproj=(function(){
+    var on=document.querySelector('.pnav.on');
+    return on&&!on.hasAttribute('data-all')?on.getAttribute('data-p'):null;
+  })();
   var SORDER={draft:0,approved:1};
   var VIEWNAME={all:'All specs',attn:'Needs you',live:'Live',shared:'Shared'};
+  var NO_PROJECT=${JSON.stringify(NO_PROJECT)};
 
   function viewOk(r){
     if(fview==='attn'){var rv=r.getAttribute('data-rv');return rv==='needs'||rv==='replied';}
@@ -1052,10 +1246,19 @@ ${strip}
     if(fview==='shared') return r.getAttribute('data-pb')==='1';
     return true;
   }
+  /**
+   * The project narrows everything else, search included.
+   *
+   * A search that reached outside the selected project would answer a question
+   * nobody asked and put rows on screen the rail says are not here. All projects
+   * is the way to search the whole store, and it is where the page opens.
+   */
+  function projOk(r){ return fproj===null||r.getAttribute('data-p')===fproj; }
   function base(r,q,ty){
     return (!q||r.getAttribute('data-k').indexOf(q)!==-1)
       &&(!ty||r.getAttribute('data-t')===ty)
       &&viewOk(r)
+      &&projOk(r)
       &&(fcoll===null||r.getAttribute('data-c')===fcoll);
   }
   function applyFilters(){
@@ -1072,6 +1275,28 @@ ${strip}
       var gc=g.querySelector('.gcount'); if(gc) gc.textContent=vis;
       g.style.display=vis?'':'none';
     });
+    // A project section with nothing left in it goes too, heading and all.
+    pgrps.forEach(function(pg){
+      var vis=[].slice.call(pg.querySelectorAll('.grp')).filter(function(g){return g.style.display!=='none';}).length;
+      var gc=pg.querySelector('.ph .gcount');
+      if(gc) gc.textContent=[].slice.call(pg.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
+      pg.style.display=vis?'':'none';
+    });
+    // The collections rail is the whole store's names; inside a project only the
+    // ones with members there are filters that lead anywhere, so the rest leave
+    // rather than sitting at zero. The count is always the visible slice.
+    var anyColl=0;
+    crows.forEach(function(cr){
+      var c=cr.getAttribute('data-c');
+      var n=rows.filter(function(r){return r.getAttribute('data-c')===c&&projOk(r);}).length;
+      var nc=cr.querySelector('.nc'); if(nc) nc.textContent=n;
+      cr.hidden=!n&&c!==fcoll;
+      if(!cr.hidden) anyColl++;
+    });
+    // An empty project has no collections, and a heading over nothing reads as
+    // something that failed to load.
+    var chead=document.getElementById('chead');
+    if(chead) chead.hidden=!anyColl;
     // live chip counts within the current search+view+collection+type slice
     chips.forEach(function(ch){
       var f=ch.getAttribute('data-f');
@@ -1079,13 +1304,25 @@ ${strip}
       var fc=ch.querySelector('.fc'); if(fc) fc.textContent=c;
       ch.classList.toggle('zero',f!=='all'&&!c);
     });
-    var filtered=!!q||fstatus!=='all'||!!ty||fview!=='all'||fcoll!==null;
+    var filtered=!!q||fstatus!=='all'||!!ty||fview!=='all'||fcoll!==null||fproj!==null;
     if(count) count.textContent=filtered?(shown+' of '+total):(total+' spec'+(total===1?'':'s'));
     if(nohits) nohits.style.display=shown?'none':'block';
     // Templates are not rows and never match a filter; showing them under one
-    // reads as "these are your results".
-    if(tplstrip) tplstrip.style.display=filtered?'none':'';
-    if(htitle) htitle.textContent=fcoll===null?VIEWNAME[fview]:(fcoll===''?'Uncollected':fcoll);
+    // reads as "these are your results". They belong to no project, so a project
+    // selection alone still shows them: they are reachable from everywhere.
+    if(tplstrip) tplstrip.style.display=(filtered&&!onlyProject())?'none':'';
+    // Inside a project the page header names it, so the project headings in the
+    // body would be repeating it back.
+    document.body.classList.toggle('inproj',fproj!==null);
+    if(htitle) htitle.textContent=
+      fcoll!==null?(fcoll===''?'Uncollected':fcoll)
+      :fview!=='all'?VIEWNAME[fview]
+      :fproj===null?VIEWNAME.all:(fproj===''?NO_PROJECT:fproj);
+  }
+  /** True when a project is the only thing narrowing the page. */
+  function onlyProject(){
+    var q=(search&&search.value.trim())||'';
+    return fproj!==null&&!q&&fstatus==='all'&&!(ftype&&ftype.value)&&fview==='all'&&fcoll===null;
   }
   // Drop a deleted row from the in-memory set and refresh counts/groups.
   function removeRow(id){
@@ -1109,7 +1346,47 @@ ${strip}
   function paintNav(){
     navs.forEach(function(x){x.classList.toggle('on',fcoll===null&&x.getAttribute('data-view')===fview);});
     cnavs.forEach(function(x){x.classList.toggle('on',fcoll!==null&&x.getAttribute('data-c')===fcoll);});
+    // The project is a separate axis from the view and the collection: it stays
+    // marked while you move between them, because it did not stop being true.
+    pnavs.forEach(function(x){
+      x.classList.toggle('on',x.hasAttribute('data-all')?fproj===null:x.getAttribute('data-p')===fproj);
+    });
   }
+  /** Store which project is showing, so the next load opens here. */
+  function putSelection(){
+    try{fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:fproj})}).catch(function(){});}catch(e){}
+  }
+  function selectProject(p){
+    fproj=p;
+    // The collection filter belongs to the project you were in: "UI" here is not
+    // "UI" there, so carrying it across would narrow to a collection this
+    // project may not have.
+    fcoll=null;
+    closePop();
+    paintNav(); applyFilters(); putSelection();
+  }
+  pnavs.forEach(function(pv){pv.onclick=function(){
+    selectProject(pv.hasAttribute('data-all')?null:pv.getAttribute('data-p'));
+  };});
+  // A project is made before anything is in it, so creating one is a name and
+  // nothing else. The page reloads into it: the rail, the groups and the
+  // selection all come from the server, so there is one place that decides what
+  // a project looks like rather than two that must agree.
+  var projnew=document.getElementById('projnew');
+  if(projnew) projnew.onclick=function(){
+    askName({title:'New project',label:'Project name',value:'',ok:'Create',onOk:function(raw){
+      var v=normName(raw);
+      if(!v) return;
+      var next=projRail.order();
+      // A name that normalises onto an existing project is that project, so it
+      // is selected rather than added a second time.
+      if(next.indexOf(v)===-1) next.push(v);
+      projRail.putThen(next,function(){
+        fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:v})})
+          .then(function(){location.reload();},function(){location.reload();});
+      });
+    }});
+  };
   chips.forEach(function(ch){ch.onclick=function(){
     var f=ch.getAttribute('data-f');
     fstatus=(fstatus===f)?'all':f;
@@ -1175,10 +1452,14 @@ ${strip}
   // The reload still happens either way — it is what makes the page show the
   // true state — so the warning is handed to the next load rather than painted
   // on a page that is about to be replaced.
-  function setColl(list,value,what){
-    if(!list.length) return;
+  function setColl(list,value,what){ return fanOut(list,{collection:value},what); }
+  /** The same fan-out one level up. Only the project key is sent, so the
+   *  collection each spec is in travels with it. */
+  function setProj(list,value,what){ return fanOut(list,{project:value},what); }
+  function fanOut(list,patch,what){
+    if(!list.length){ location.reload(); return; }
     Promise.all(list.map(function(r){
-      return api(r.getAttribute('data-id'),'/organize','PATCH',{collection:value})
+      return api(r.getAttribute('data-id'),'/organize','PATCH',patch)
         .then(function(x){return !!(x&&x.ok);},function(){return false;});
     })).then(function(oks){
       var done=oks.filter(Boolean).length;
@@ -1206,15 +1487,32 @@ ${strip}
   // The selection moves through the same picker a single row does, so there is
   // one way to name a destination rather than a menu here and a text field there.
   var bmove=document.getElementById('bmove'), bcancel=document.getElementById('bcancel');
+  var bproj=document.getElementById('bproj');
   if(bmove) bmove.onclick=function(){
     if(pop===document.getElementById('cpick')&&popOwner===bmove){closePop();return;}
     // No current collection: the selection may span several.
     openPicker(bmove,null,function(v){setColl(picked(),v);});
   };
+  if(bproj) bproj.onclick=function(){
+    if(pop===document.getElementById('cpick')&&popOwner===bproj){closePop();return;}
+    openPicker(bproj,null,function(v){setProj(picked(),v);},'project');
+  };
   if(bcancel) bcancel.onclick=clearPick;
 
-  /** A collection is derived from meta, so its members are its only definition. */
-  function membersOf(c){return rows.filter(function(r){return r.getAttribute('data-c')===c;});}
+  /**
+   * A collection is derived from meta, so its members are its only definition —
+   * and after projects, its members WITHIN the project you are looking at. The
+   * same name in another project is another collection, so a rename here must
+   * not reach it.
+   */
+  function membersOf(c){return rows.filter(function(r){return r.getAttribute('data-c')===c&&projOk(r);});}
+  /** A project's members: every row filed under it, whatever collection. */
+  function membersOfProject(p){return rows.filter(function(r){return r.getAttribute('data-p')===p;});}
+
+  // The server rendered the selection; this makes the rest of the page agree
+  // with it — the rail narrowed, the counts scoped, the project headings gone.
+  paintNav();
+  applyFilters();
 })();
 </script>
 </body></html>`;

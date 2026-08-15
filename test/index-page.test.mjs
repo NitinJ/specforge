@@ -186,7 +186,7 @@ function act(document, row, label) {
   it.click();
 }
 
-test('the row menu offers exactly rename, move and delete', (t) => {
+test('the row menu offers exactly rename, both moves, and delete', (t) => {
   createSpec({ title: 'X', html: '<h1>X</h1>' });
   const { window } = loadIndex(t);
   const { document } = window;
@@ -194,7 +194,9 @@ test('the row menu offers exactly rename, move and delete', (t) => {
   assert.equal(menu.hidden, true, 'nothing is open until asked for');
   document.querySelector('.row[data-id] .kebab').click();
   assert.equal(menu.hidden, false, 'the menu opens under the button');
-  assert.deepEqual(labels(document), ['Rename…', 'Move to collection…', 'Delete spec…']);
+  // A spec's address has two halves and either can be set on its own, so there
+  // are two move items rather than one that asks which you meant.
+  assert.deepEqual(labels(document), ['Rename…', 'Move to collection…', 'Move to project…', 'Delete spec…']);
   assert.equal(document.querySelector('.row .kebab').getAttribute('aria-expanded'), 'true');
 });
 
