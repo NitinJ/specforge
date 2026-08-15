@@ -451,6 +451,46 @@
 }
 .sf-disconnected .sf-dc-reload:hover { filter: brightness(1.06); }
 
+/* "the owner has updated this spec" — a published page does not reload itself
+   (D11), so this is how the reader learns there is a newer version and takes it
+   when they choose. Amber rather than red: nothing is broken, and it sits above
+   the disconnection banner's slot so the two never overlap. */
+.sf-stale {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 11px 14px;
+  border: 1px solid var(--sf-amber);
+  border-left: 4px solid var(--sf-amber);
+  border-radius: var(--sf-r-md);
+  background: var(--sf-panel);
+  color: var(--sf-ink);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .28);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.sf-stale[hidden] { display: none; }
+/* Both visible at once would sit on top of each other; the newer-version notice
+   steps up so each keeps its own line. */
+.sf-disconnected:not([hidden]) ~ .sf-stale { bottom: 76px; }
+.sf-stale .sf-stale-msg { flex: 1 1 auto; }
+.sf-stale .sf-stale-reload {
+  flex: 0 0 auto;
+  cursor: pointer;
+  padding: 5px 12px;
+  border: 1px solid var(--sf-amber);
+  border-radius: var(--sf-r-sm);
+  background: var(--sf-amber);
+  color: var(--sf-on-accent);
+  font: 600 12.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.sf-stale .sf-stale-reload:hover { filter: brightness(1.06); }
+
 /* block-level highlights in the document */
 /* Hovering an uncommented block just says "you can comment here" — a light
    outline, no fill. */
@@ -1288,7 +1328,7 @@ html[data-sf-toc="hidden"] #sf-tocbtn { transform: translate(0, -50%); }
    spec, and keep atomic blocks from splitting across pages. The spec's own CSS
    (and the print dialog's "Background graphics" toggle) drive the look. */
 @media print {
-  #sf-sidebar, #sf-launcher, #sf-menu, #sf-compose, #sf-toc, #sf-live, #sf-top, #sf-titlebar, #sf-rail, #sf-tocbtn, #sf-disconnected { display: none !important; }
+  #sf-sidebar, #sf-launcher, #sf-menu, #sf-compose, #sf-toc, #sf-live, #sf-top, #sf-titlebar, #sf-rail, #sf-tocbtn, #sf-disconnected, #sf-stale { display: none !important; }
   .sf-hover, .sf-block-mark { outline: none !important; background: none !important; }
   h1, h2, h3, h4, h5, h6 { break-after: avoid-page; }
   figure, table, pre, blockquote, .panel, .card, .callout, .stat { break-inside: avoid; }

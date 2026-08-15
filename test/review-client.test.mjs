@@ -67,6 +67,9 @@ async function bootReviewLayer(t, opts = {}) {
     // api base both key off it.
     transport: opts.transport || 'sse',
     api: opts.api,
+    // A published page sets this when its poll finds a newer spec. Settable at
+    // boot so a test can exercise a stale page without driving the poll.
+    ...(opts.stale ? { stale: true } : {}),
   };
   // jsdom defaults innerWidth to 1024 (below the TOC auto-collapse threshold);
   // let tests widen it so the floating TOC shows in auto mode.
@@ -3370,6 +3373,24 @@ test('a reviewer can still choose the agent, which is the whole point of the chi
   await new Promise((r) => window.setTimeout(r, 0));
   const p = posts.find((x) => /\/comments$/.test(x.url));
   assert.equal(p.body.body, '@agent please add a rollback plan');
+});
+
+// A page showing an old version must not tell the store which paragraphs
+// exist: retirement is durable, so it would report the owner's rewritten
+// paragraphs as deleted and detach the comments on them (spec D11).
+test('a stale page stops reporting block identity', async (t) => {
+  const blocksPut = (puts) => puts.filter((p) => /\/blocks$/.test(String(p.url)));
+
+  // The control: an ordinary published page reconciles and reports.
+  const fresh = await bootReviewLayer(t, reviewer);
+  await new Promise((r) => fresh.window.setTimeout(r, 0));
+  assert.ok(blocksPut(fresh.puts).length > 0, 'a current page does report');
+
+  // The same page, knowing the spec has moved under it.
+  const stale = await bootReviewLayer(t, { ...reviewer, stale: true });
+  await new Promise((r) => stale.window.setTimeout(r, 0));
+  assert.equal(blocksPut(stale.puts).length, 0,
+    'a stale page reports nothing, so it cannot retire a paragraph it never saw');
 });
 
 // Resolving is the owner's verdict, and the gateway serves no route for it.

@@ -125,31 +125,49 @@ function sseWatcher(id) {
 }
 
 /**
- * Live-reload by asking: the published case.
+ * Go stale by asking: the published case.
  *
- * Reloads when the spec file's mtime moves. The comments mtime is returned too
- * and deliberately ignored here, because the rail refetches comments on its own
- * and a full reload on every comment would throw away whatever the reader was
- * typing.
+ * When the spec file's mtime moves, the page does NOT reload itself. It goes
+ * **stale**: it stops reporting which paragraphs exist, and offers the reader a
+ * reload to take when they choose (spec 82f5dabccf, D11).
  *
- * `busy` says an agent is part-way through answering a batch. Its writes land
- * one section at a time, so they are remembered and taken as a single reload
- * once the round finishes — the same hold the event stream applies.
+ * Both halves matter. Comments anchor to paragraphs, and every open page helps
+ * the store track which paragraphs still exist; a page showing an old version
+ * would report paragraphs the owner has since rewritten as deleted, detaching
+ * their comments. And a reader mid-sentence is not someone to yank the document
+ * out from under — the owner's own tabs live-reload because the owner is the one
+ * who just caused the change.
+ *
+ * The comments mtime is returned too and deliberately ignored: the rail refetches
+ * comments on its own, and going stale for a comment would be noise.
+ *
+ * `busy` says an agent is part-way through answering a batch. Its writes land one
+ * section at a time, so staleness waits for the round to finish rather than
+ * announcing itself once per section.
  */
 function pollWatcher(api, interval) {
   // Off the api base, never the origin root: every route a publication has lives
   // under its token, so a root path is served by nothing and every poll fails.
   return `  var statePath=${JSON.stringify(`${api}/state`)};
   var last=null, misses=0, held=false;
+  function goStale(){
+    if(window.SPECFORGE) window.SPECFORGE.stale=true;
+    if(stale) stale.hidden=false;
+    set('● new version','#d29922');
+    // Anything listening for it — the review layer stops reporting block
+    // identity the moment this fires, so a stale tab cannot retire a paragraph.
+    try { document.dispatchEvent(new CustomEvent('sf-stale')); } catch(e){}
+  }
   function poll(){
     fetch(statePath, { cache: 'no-store' }).then(function(r){
       if(!r.ok) throw new Error('state '+r.status);
       return r.json();
     }).then(function(s){
-      misses=0; connected();
+      misses=0;
+      if(!(window.SPECFORGE||{}).stale) connected();
       if(last===null){ last=s.spec; return; }
       if(s.spec!==last){ last=s.spec; held=true; }
-      if(held && !s.busy){ location.reload(); }
+      if(held && !s.busy){ held=false; goStale(); }
     }).catch(function(){ if(++misses>1) disconnected(); });
   }
   poll();
@@ -179,18 +197,27 @@ function reviewSnippet(specId, prefs, transport, api) {
     ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
   });
   const watcher = transport === 'poll' ? pollWatcher(base, POLL_INTERVAL_MS) : sseWatcher(id);
+  // The stale bar exists only where a page can go stale: a published copy is a
+  // reader's, and reloading it is theirs to choose. The owner's own tabs
+  // live-reload, because the owner is who caused the change.
+  const staleBar = transport === 'poll' ? `
+<div id="sf-stale" class="sf-stale" role="status" hidden>
+  <span class="sf-stale-msg">The owner has updated this spec.</span>
+  <button type="button" class="sf-stale-reload" onclick="location.reload()">Show the new version</button>
+</div>` : '';
   return `<!-- specforge:review-layer -->
 <div id="sf-live" class="sf-live">● live</div>
 <div id="sf-disconnected" class="sf-disconnected" role="alert" hidden>
   <span class="sf-dc-dot"></span>
   <span class="sf-dc-msg">Live connection lost. This spec may be stale, and new comments will not save until it reconnects.</span>
   <button type="button" class="sf-dc-reload" onclick="location.reload()">Reload</button>
-</div>
+</div>${staleBar}
 <script>window.SPECFORGE = ${cfg};</script>
 <script>
 (function(){
   var pill=document.getElementById('sf-live');
   var banner=document.getElementById('sf-disconnected');
+  var stale=document.getElementById('sf-stale');
   var timer=null, GRACE=4000;
   function set(t,c){ if(pill){pill.textContent=t; pill.style.color=c;} }
   function showBanner(){ if(banner){ banner.hidden=false; } }
