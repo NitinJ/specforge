@@ -106,6 +106,19 @@ test('a rule that throws is reported as failing, not propagated', () => {
   assert.match(verdicts[0].detail, /rule threw: boom/);
 });
 
+test('a rule that throws a non-Error is still reported, not propagated', () => {
+  // `throw null` is legal and reading .message off it throws again, inside the
+  // catch, where nothing is left to handle it. Greptile P2 on #168.
+  for (const thrown of [null, undefined, 'a string', 42]) {
+    const verdicts = runCheckRules(
+      [defineRule({ id: 'odd-throw', check: () => { throw thrown; } })],
+      cleanSpec(),
+    );
+    assert.equal(verdicts[0].ok, false);
+    assert.match(verdicts[0].detail, /^rule threw: /);
+  }
+});
+
 test('one broken rule does not stop the rules after it', () => {
   const verdicts = runCheckRules(
     [
@@ -140,6 +153,17 @@ test('a template rule with a new id is added', () => {
   const merged = mergeRules(base, [{ id: 'no-build-plan', ask: 'There is no stage list.' }]);
   assert.deepEqual(merged.map((r) => r.id), ['has-title', 'no-build-plan']);
   assert.equal(merged[1].severity, 'blocking', 'a template rule defaults to blocking');
+});
+
+test('an override with a misspelled severity is refused, not silently applied', () => {
+  // An override matching an existing id never goes through defineRule, so
+  // without a check here "advisroy" would set a severity nothing recognises:
+  // not off, not blocking, and quietly uncounted. Greptile P2 on #168.
+  const base = [defineRule({ id: 'no-aphorisms', ask: 'No aphorisms.' })];
+  assert.throws(() => mergeRules(base, [{ id: 'no-aphorisms', severity: 'advisroy' }]), /unknown severity/);
+  assert.throws(() => mergeRules(base, [{ id: 'no-aphorisms', severity: '' }]), /unknown severity/);
+  // undefined still means "inherit", which is what a bare override relies on.
+  assert.equal(mergeRules(base, [{ id: 'no-aphorisms', ask: 'Restated.' }])[0].severity, 'blocking');
 });
 
 test('a template rule with a new id but no sentence is refused', () => {
