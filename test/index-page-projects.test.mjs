@@ -144,6 +144,28 @@ test('no stored selection lands on All projects', () => {
   assert.match(html, /id="htitle">All specs</);
 });
 
+test('a selection hides the other projects in the markup, not only in script', () => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'], project: 'figur' });
+  seedProjects({ figur: { UI: 1 }, specforge: { Engineering: 1 }, '': { '': 1 } });
+  const html = renderIndex();
+
+  // The header and the counts already say "figur". The sections have to agree
+  // before any script runs, or the page contradicts itself on first paint.
+  assert.match(html, /<section class="pgrp" data-p="figur">/, 'the selected one is shown');
+  assert.match(html, /<section class="pgrp" data-p="specforge" style="display:none">/);
+  assert.match(html, /<section class="pgrp" data-p="" style="display:none">/);
+  assert.match(html, /<body class="inproj">/, 'and the project headings give way to the page header');
+});
+
+test('All projects renders every section visible and no inproj flag', () => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'] });
+  seedProjects({ figur: { UI: 1 }, specforge: { Engineering: 1 } });
+  const html = renderIndex();
+
+  assert.equal(/style="display:none"/.test(html.match(/<div id="groups">[\s\S]*?<\/div>\n<div id="nohits"/)[0]), false);
+  assert.match(html, /<body>/);
+});
+
 test('a selection naming a project that no longer exists falls back to All projects', () => {
   writeGlobalPrefs({ project: 'deleted-elsewhere' });
   seedProjects({ figur: { UI: 1 } });

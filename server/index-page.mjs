@@ -288,12 +288,19 @@ export function renderIndex({ shareInfo } = {}) {
   // Groups are keyed by the pair: a project section holding one collection
   // section per collection IN THAT PROJECT. An empty project gets a rail row but
   // no section, because there is nothing to head.
+  //
+  // Every project's section is rendered, because switching between them is a DOM
+  // pass rather than a request. The ones the selection excludes are rendered
+  // already hidden, so the page the server sends agrees with the header and the
+  // counts it also sends — with no script, or before it runs, a selected project
+  // must not show another project's specs.
   const groups = projOrder.filter(({ specs: list }) => list.length).map(({ key: pk, specs: plist }) => {
     const inner = groupByCollection(plist, prefs.collectionOrder).order.map(({ key, specs: list }) => `<section class="grp" data-p="${esc(pk)}" data-coll="${esc(key)}">
   <h2>${key === '' ? 'Uncollected' : esc(key)} <span class="gcount">${list.length}</span></h2>
   <div class="card"><ul class="rows">${list.map((m) => rowHtml(m, sigOf(m))).join('\n')}</ul></div>
 </section>`).join('\n');
-    return `<section class="pgrp" data-p="${esc(pk)}">
+    const off = selected !== null && selected !== pk ? ' style="display:none"' : '';
+    return `<section class="pgrp" data-p="${esc(pk)}"${off}>
   <h2 class="ph">${pk === '' ? NO_PROJECT : esc(pk)} <span class="gcount">${plist.length}</span></h2>
 ${inner}
 </section>`;
@@ -559,7 +566,7 @@ ${inner}
     .crow{width:auto}
     .tags,.id,.upd{display:none}
   }
-</style></head><body>
+</style></head><body${selected === null ? '' : ' class="inproj"'}>
 <div class="app">
 <aside class="side">
   <span class="brand"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2l1.2 2.6L14 5.8l-2.8 1.2L10 9.6 8.8 7 6 5.8l2.8-1.2z"/><rect x="4" y="11" width="12" height="3.4" rx="1.2"/><rect x="6" y="15.4" width="8" height="2.6" rx="1"/></svg>SpecForge</span>
