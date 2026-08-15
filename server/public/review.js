@@ -265,6 +265,18 @@
   // declared beside its own section it is still `undefined` there — which appends
   // <script src="undefined">, a 404, and no highlighting, silently.
   var HIGHLIGHT_SRC = '/public/prism.js';
+  // The vendored diagram renderer, up here for exactly the same reason.
+  var MERMAID_SRC = '/public/mermaid.js';
+  // A ceiling on the source one diagram may carry. Mermaid's own default is
+  // 50000; this is lower because a published spec is read by strangers and an
+  // imported one carries untrusted markdown, and no diagram legible at a spec's
+  // column width comes close to this.
+  var MERMAID_MAX_TEXT = 20000;
+  // How long to wait for the renderer before giving up on it. The comment rail
+  // loads behind this, so a request that neither completes nor fails would
+  // otherwise leave a spec with no comments at all rather than with no diagram.
+  // Generous, because the bundle is about a megabyte over a tunnel.
+  var MERMAID_LOAD_TIMEOUT = 15000;
 
   var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
@@ -288,9 +300,16 @@
     applyMono(initMono()); // the monospace face, which is a separate choice
     initHighlight();       // and colour the code blocks whose author named a language
     buildChrome();
-    // Establish block identity before the first render, so comments resolve by
-    // id rather than by guessing at content. Non-blocking on failure.
-    syncBlocks(load);
+    // Diagrams before the reconcile, never beside it. Rendering replaces a
+    // block's contents, and the reconcile identifies a block by its text, so
+    // running them concurrently would record whichever answer won the race.
+    // Resolves immediately when the spec declares no diagram, which is every
+    // spec written before this existed.
+    initMermaid(function (settled) {
+      // Establish block identity before the first render, so comments resolve by
+      // id rather than by guessing at content. Non-blocking on failure.
+      syncBlocks(load, settled);
+    });
     // Poll so Claude's replies appear without a manual refresh; pause while the
     // composer is open so we don't disrupt the user mid-comment.
     // Pause the poll while a composer is open so a reload can't wipe what the
@@ -553,6 +572,133 @@
     s.async = true;
     s.onload = function () { highlightAll(blocks); };
     document.head.appendChild(s);
+  }
+
+  // ---------- diagrams (review-layer owned) ----------
+  //
+  // A mermaid diagram is a code block whose declared language is `mermaid`, so
+  // everything above already applies to it: declaredLang() finds it, and Prism
+  // skips it because the vendored build carries no grammar by that name.
+  //
+  // Rendering replaces the block's children with an SVG, which changes the text
+  // the block reconcile identifies that block by. Two states are therefore not
+  // the same failure, and only one of them is safe to remember:
+  //
+  //   rendered            text is the node labels     deterministic given the source
+  //   source will not parse   text is the error       deterministic given the source
+  //   renderer unreachable    text is the source      depends on the network
+  //
+  // The last is the one that must never reach blocks.json, because writing it
+  // would retire every diagram's block id and orphan the threads on them. That is
+  // what `settled` carries to syncBlocks.
+
+  /** Every block whose author declared the mermaid language. */
+  function mermaidBlocks() {
+    var out = [];
+    var pres = document.querySelectorAll('pre');
+    for (var i = 0; i < pres.length; i++) {
+      if (pres[i].closest && pres[i].closest('#sf-sidebar,#sf-menu,#sf-rail')) continue;
+      var d = declaredLang(pres[i]);
+      if (d && d.lang === 'mermaid') out.push(pres[i]);
+    }
+    return out;
+  }
+
+  /**
+   * Replace a block with the reason it did not render.
+   *
+   * The source is removed rather than kept beside the error: a reader cannot act
+   * on mermaid source, and the author who can is looking at the file. Keeping
+   * both would also leave the block's text carrying the source, which is the one
+   * text that must not be remembered.
+   */
+  function showMermaidError(pre, err) {
+    var msg = String((err && err.message) || err || 'could not render');
+    pre.textContent = '';
+    pre.setAttribute('data-sf-mermaid', 'error');
+    var box = document.createElement('div');
+    box.className = 'sf-mermaid-err';
+    box.textContent = 'Diagram error: ' + msg.split('\n')[0].slice(0, 300);
+    pre.appendChild(box);
+  }
+
+  /**
+   * Render every declared diagram, then report whether the page settled.
+   *
+   * @param {(settled:boolean) => void} done `false` only when the renderer never
+   *   arrived. A diagram that fails to parse is a settled outcome: the same
+   *   source fails the same way on every load.
+   */
+  function initMermaid(done) {
+    var blocks = mermaidBlocks();
+    // The common case, and every spec that predates this: nothing declared, so
+    // nothing is fetched and boot is exactly as it was.
+    if (!blocks.length) return done(true);
+
+    // Exactly once. Everything below this point has more than one way to finish
+    // (loaded, failed, timed out, and one settlement per diagram), and calling
+    // back twice would run the reconcile twice against the same page.
+    var finished = false;
+    function settle(ok) {
+      if (finished) return;
+      finished = true;
+      done(ok);
+    }
+
+    function render() {
+      var m = window.mermaid;
+      if (!m || typeof m.render !== 'function') return settle(false);
+      try {
+        m.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',   // no click directives, label HTML sanitised
+          theme: 'base',             // review.css repaints it from the palette
+          maxTextSize: MERMAID_MAX_TEXT,
+          fontFamily: 'inherit',
+        });
+      } catch (e) {
+        return settle(false);
+      }
+
+      var pending = blocks.length;
+      var after = function () { if (--pending === 0) settle(true); };
+
+      blocks.forEach(function (pre, i) {
+        var src = pre.textContent;
+        var id = 'sf-mmd-' + i;
+        var finish = function () {
+          // Mermaid measures in a temporary element and leaves it behind when a
+          // render throws. Unremoved it is a stray block on the page and another
+          // entry the reconcile has to account for.
+          var junk = document.getElementById('d' + id);
+          if (junk && junk.parentNode) junk.parentNode.removeChild(junk);
+          after();
+        };
+        var fail = function (err) { showMermaidError(pre, err); finish(); };
+        try {
+          m.render(id, src).then(function (r) {
+            pre.innerHTML = r.svg;
+            pre.setAttribute('data-sf-mermaid', 'rendered');
+            finish();
+          }, fail);
+        } catch (e) {
+          // render() throws synchronously for some malformed input rather than
+          // rejecting, so both paths have to land in the same place.
+          fail(e);
+        }
+      });
+    }
+
+    if (window.mermaid) return render();
+    var s = document.createElement('script');
+    s.src = MERMAID_SRC;
+    s.async = true;
+    s.onload = render;
+    // The page is readable without the renderer, so a failed fetch is not an
+    // error state: the blocks stay as the source, shown as code.
+    s.onerror = function () { settle(false); };
+    document.head.appendChild(s);
+    setTimeout(function () { settle(false); }, MERMAID_LOAD_TIMEOUT);
   }
 
   // ---------- data ----------
@@ -1449,7 +1595,13 @@
   }
   // Fetch the registry, reconcile, persist if it moved, then render. Any failure
   // here is non-fatal — we still render, just without ids.
-  function syncBlocks(done) {
+  //
+  // `settled` false means a declared diagram did not render, so this page's block
+  // text is not the text the same spec produces when it does. Reconciling is
+  // still right (a thread resolves by content, as it did before ids existed);
+  // writing is not, because retirement is durable and one unreachable renderer
+  // would orphan every thread on a diagram permanently.
+  function syncBlocks(done, settled) {
     if (!window.SFReconcile) return done();
     fetch(SPEC_API + '/blocks')
       .then(function (r) { return r.json(); })
@@ -1457,7 +1609,7 @@
       .then(function (body) {
         var registry = body && body.registry;
         var out = reconcileBlocks(registry);
-        if (!out || !out.changed) return done();
+        if (!out || !out.changed || settled === false) return done();
         var payload = out.registry;
         payload.baseVersion = registry && typeof registry.version === 'number' ? registry.version : 0;
         return fetch(SPEC_API + '/blocks', {
@@ -1465,17 +1617,21 @@
         }).then(function (r) {
           // 409: another tab reconciled first. Re-read and redo once — both tabs
           // compute the same answer from the same page, so this converges.
-          if (r && r.status === 409) return syncBlocksRetry(done);
+          if (r && r.status === 409) return syncBlocksRetry(done, settled);
           done();
         }).catch(function () { done(); });
       })
       .catch(function () { done(); });
   }
   var retried = false;
-  function syncBlocksRetry(done) {
+  // `settled` is carried through rather than defaulted. The retry is only
+  // reachable after a PUT, which an unsettled page never makes, so this cannot
+  // matter today; it is threaded so that stops being something the next edit has
+  // to rediscover.
+  function syncBlocksRetry(done, settled) {
     if (retried) return done();
     retried = true;
-    syncBlocks(done);
+    syncBlocks(done, settled);
   }
 
   // The anchor is ADDITIVE: it gains a bid, and keeps index/text/sectionPath.
