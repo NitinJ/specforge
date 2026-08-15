@@ -252,6 +252,154 @@
 [class*="language-diff"] .token.prefix.inserted { color: var(--green); }
 [class*="language-diff"] .token.prefix.deleted { color: var(--red); }
 
+/* mermaid diagrams — the renderer's own colours, replaced by the house palette.
+
+   Same argument as the highlighting above, and the same payoff: a rule written
+   against --panel/--line/--ink/--muted re-tints with every theme variant and a
+   rule written against mermaid's #ECECFF does not. Two differences from Prism.
+
+   First, `!important` is required rather than preferred. Mermaid emits a <style>
+   block inside the SVG whose selectors are id-scoped (`#sf-mmd-0 .node rect`,
+   specificity 1-1-1), and no class-scoped rule outranks that. Measured: the
+   themeVariables route is closed as well, because mermaid parses those values as
+   colours and `var(--panel)` throws "Unsupported color format".
+
+   Second, the block itself has to stop looking like code. A diagram is authored
+   as <pre data-lang="mermaid">, so until it renders it IS a code block, and that
+   is deliberate: it is what a reader sees from file:// or with the renderer
+   unreachable. Once rendered, the code chrome would be a box around a picture. */
+[data-sf-mermaid] {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 18px 0;
+  overflow-x: auto;
+  font-family: inherit !important;
+  line-height: normal;
+}
+[data-sf-mermaid] svg { max-width: 100%; height: auto; display: block; }
+
+/* node shapes: every mermaid diagram type draws them as one of these four */
+[data-sf-mermaid="rendered"] g.node rect,
+[data-sf-mermaid="rendered"] g.node polygon,
+[data-sf-mermaid="rendered"] g.node circle,
+[data-sf-mermaid="rendered"] g.node path {
+  fill: var(--panel) !important;
+  stroke: var(--line) !important;
+}
+/* Text, and where mermaid actually keeps it.
+   Mermaid paints glyphs with `fill`, sets #333 on the diagram root for
+   everything to inherit, and puts the glyphs themselves one level below the
+   element a reader would name: inside a <tspan> in an SVG <text>, and inside a
+   <p> in a foreignObject. Naming only the <text> or only the wrapping <div>
+   leaves the child's own colour in place, which is how a sequence diagram's
+   actor names stayed dark grey on a dark page while the computed style of the
+   <text> above them read as correct. So the leaves are named too. */
+[data-sf-mermaid="rendered"] text,
+[data-sf-mermaid="rendered"] tspan,
+[data-sf-mermaid="rendered"] .nodeLabel,
+[data-sf-mermaid="rendered"] .label,
+[data-sf-mermaid="rendered"] foreignObject p,
+[data-sf-mermaid="rendered"] foreignObject span {
+  color: var(--ink) !important;
+  fill: var(--ink) !important;
+  font-family: inherit !important;
+}
+/* A foreignObject <p> is a paragraph in the document's flow rules, so it arrives
+   with the spec's own margins and pushes the label off its edge. */
+[data-sf-mermaid="rendered"] foreignObject p { margin: 0 !important; background: none !important; }
+/* Actor labels carry a cream stroke that reads as a halo on any dark palette. */
+[data-sf-mermaid="rendered"] text.actor { stroke: none !important; }
+
+/* edges and their arrowheads. The marker is filled, not stroked, so a rule that
+   only sets stroke leaves a black arrowhead on a dark page. */
+[data-sf-mermaid="rendered"] .edgePath path,
+[data-sf-mermaid="rendered"] .flowchart-link,
+[data-sf-mermaid="rendered"] .transition,
+[data-sf-mermaid="rendered"] .relation,
+[data-sf-mermaid="rendered"] .relationshipLine,
+[data-sf-mermaid="rendered"] .messageLine0,
+[data-sf-mermaid="rendered"] .messageLine1,
+[data-sf-mermaid="rendered"] .actor-line {
+  stroke: var(--muted) !important;
+  fill: none !important;
+}
+[data-sf-mermaid="rendered"] .arrowMarkerPath,
+[data-sf-mermaid="rendered"] marker path,
+[data-sf-mermaid="rendered"] marker polygon,
+[data-sf-mermaid="rendered"] marker circle {
+  fill: var(--muted) !important;
+  stroke: var(--muted) !important;
+}
+
+/* edge labels sit on top of the line they annotate, so they carry the page
+   background rather than mermaid's opaque white rectangle. */
+[data-sf-mermaid="rendered"] .edgeLabel,
+[data-sf-mermaid="rendered"] .edgeLabel span,
+[data-sf-mermaid="rendered"] .edgeLabel p,
+[data-sf-mermaid="rendered"] .messageText,
+[data-sf-mermaid="rendered"] .messageText tspan {
+  color: var(--muted) !important;
+  fill: var(--muted) !important;
+  font-family: inherit !important;
+}
+/* The plate the label sits on, so an edge does not run through the words. It is
+   the <p> that carries it in mermaid 11, not the div named for the job. */
+[data-sf-mermaid="rendered"] .labelBkg,
+[data-sf-mermaid="rendered"] .edgeLabel,
+[data-sf-mermaid="rendered"] .edgeLabel span,
+[data-sf-mermaid="rendered"] .edgeLabel p { background: var(--bg) !important; }
+
+/* groupings: a subgraph in a flowchart, a composite state, a note */
+[data-sf-mermaid="rendered"] .cluster rect,
+[data-sf-mermaid="rendered"] .note rect {
+  fill: var(--panel2) !important;
+  stroke: var(--line) !important;
+}
+[data-sf-mermaid="rendered"] .cluster text,
+[data-sf-mermaid="rendered"] .cluster span { color: var(--muted) !important; fill: var(--muted) !important; }
+
+/* sequence diagrams draw actors as their own boxes, outside g.node entirely */
+[data-sf-mermaid="rendered"] rect.actor,
+[data-sf-mermaid="rendered"] .actor-top,
+[data-sf-mermaid="rendered"] .actor-bottom {
+  fill: var(--panel) !important;
+  stroke: var(--line) !important;
+}
+[data-sf-mermaid="rendered"] text.actor,
+[data-sf-mermaid="rendered"] .actor-box {
+  fill: var(--ink) !important;
+  font-family: inherit !important;
+}
+
+/* state diagrams: the start and end markers are solid by design, so they take
+   the ink colour rather than the panel colour the other nodes get.
+
+   Qualified with g.node deliberately. The marker is a circle INSIDE g.node, so
+   the generic `g.node circle` rule above is specificity 0-2-2 and a bare
+   `.state-start` is 0-2-0: the marker came out panel-on-panel, invisible, while
+   every automated check passed because --panel is a perfectly good palette
+   token. Right palette, wrong role, which is the one thing a sweep for literal
+   colours cannot see. */
+[data-sf-mermaid="rendered"] g.node circle.state-start,
+[data-sf-mermaid="rendered"] g.node .state-end circle,
+[data-sf-mermaid="rendered"] g.node circle.state-end { fill: var(--ink) !important; stroke: var(--ink) !important; }
+
+/* class diagrams rule off their sections */
+[data-sf-mermaid="rendered"] .divider line,
+[data-sf-mermaid="rendered"] .divider path { stroke: var(--line) !important; }
+
+/* a diagram whose source will not parse. Not a code block and not a diagram, so
+   it says what it is: the reason, in the same shape as a danger notice. */
+.sf-mermaid-err {
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, var(--panel));
+  border-left: 3px solid var(--red);
+  border-radius: 0 10px 10px 0;
+  padding: 11px 14px;
+}
+
 /* live-status pill — relocated into the launcher menu footer by review.js.
    Hidden until then so it never renders as a stray block in the document flow. */
 .sf-live { display: none; }

@@ -159,16 +159,24 @@ test('every constant boot() reads is declared before boot() runs', () => {
 // sign on a block of its own and every line renders in two.
 test('a diff tints whole lines, and does not split the sign onto its own', () => {
   const css = readFileSync(REVIEW_CSS, 'utf8');
-  const block = css.slice(css.indexOf('/* A diff colours whole lines'));
-  const blockEnd = block.indexOf('/* live-status');
-  const diff = blockEnd > 0 ? block.slice(0, blockEnd) : block;
+  // Selected by selector rather than by slicing between two section comments.
+  // The slice ran from this section to the next one by name, so it swept up
+  // whatever landed in between: adding the mermaid section put a `display:block`
+  // with no `-sign` in its selector inside the range and failed this test for a
+  // rule it was never about.
+  const rules = [...css.matchAll(/([^{}]*\[class\*="language-diff"\][^{}]*)\{([^}]*)\}/g)]
+    .map((m) => ({ sel: m[1].trim(), decl: m[2] }));
+  assert.ok(rules.length >= 5, 'the diff rules are there to check');
 
-  const blockRules = [...diff.matchAll(/([^{}]+)\{([^}]*display:\s*block[^}]*)\}/g)].map((m) => m[1]);
-  assert.ok(blockRules.length, 'the line tint is a block');
-  for (const sel of blockRules) {
-    assert.match(sel, /-sign/, `display:block must target the line, not the token it nests: ${sel.trim()}`);
+  const blocky = rules.filter((r) => /display:\s*block/.test(r.decl));
+  assert.ok(blocky.length, 'the line tint is a block');
+  for (const r of blocky) {
+    assert.match(r.sel, /-sign/, `display:block must target the line, not the token it nests: ${r.sel}`);
   }
-  assert.match(diff, /\.token\.prefix[^{]*\{[^}]*display:\s*inline/, 'and the sign stays inline');
+  assert.ok(
+    rules.some((r) => /\.token\.prefix/.test(r.sel) && /display:\s*inline/.test(r.decl)),
+    'and the sign stays inline',
+  );
 });
 
 test('the vendored highlighter is present, manual, and carries its licence', () => {
