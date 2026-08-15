@@ -49,7 +49,9 @@ async function boot(t, body, opts = {}) {
 
   const calls = [];
   window.fetch = (url, init) => {
-    calls.push({ url: String(url), method: (init && init.method) || 'GET' });
+    let body = null;
+    try { body = init && init.body ? JSON.parse(init.body) : null; } catch { /* not JSON */ }
+    calls.push({ url: String(url), method: (init && init.method) || 'GET', body });
     return Promise.resolve({
       ok: true,
       status: 200,
@@ -59,13 +61,19 @@ async function boot(t, body, opts = {}) {
   };
   window.EventSource = function () { this.close = () => {}; this.addEventListener = () => {}; };
 
+  // What the reconcile was asked about, which is the page's own idea of its
+  // commentable blocks. Asserting on this beats exporting the internal function.
+  const seen = [];
   if (reconcile) {
     window.SFReconcile = {
-      reconcile: (page) => ({
-        bids: page.map((_, i) => `b${i}`),
-        changed: true,
-        registry: { schema: 1, version: 2, seq: page.length, blocks: [], retired: [] },
-      }),
+      reconcile: (page) => {
+        seen.push(page);
+        return {
+          bids: page.map((_, i) => `b${i}`),
+          changed: true,
+          registry: { schema: 1, version: 2, seq: page.length, blocks: [], retired: [] },
+        };
+      },
     };
   }
 
@@ -73,7 +81,8 @@ async function boot(t, body, opts = {}) {
     const answer = (id, src) => (mermaid === 'fail' || /BOOM/.test(src)
       ? Promise.reject(new Error('Parse error on line 2:\n  BOOM ]['))
       : Promise.resolve({
-        svg: `<svg id="${id}"><g class="node"><text>${src.split('\n')[1].trim()}</text></g></svg>`,
+        svg: opts.svg ? opts.svg(id, src.split('\n')[1].trim())
+          : `<svg id="${id}"><g class="node"><text>${src.split('\n')[1].trim()}</text></g></svg>`,
       }));
     window.mermaid = {
       initialize() {},
@@ -87,7 +96,7 @@ async function boot(t, body, opts = {}) {
   script.textContent = readFileSync(REVIEW_JS, 'utf8');
   window.document.body.appendChild(script);
   await new Promise((r) => setTimeout(r, 60));
-  return { window, calls };
+  return { window, calls, reconciled: seen };
 }
 
 const scriptSrcs = (window) => [...window.document.querySelectorAll('script[src]')]
@@ -284,6 +293,75 @@ test('a render that lands in time is applied as normal', async (t) => {
   const { window } = await boot(t, diagram(GOOD), { slowRenderMs: 30 });
   await new Promise((r) => setTimeout(r, 200));
   assert.equal(window.document.querySelector('pre').getAttribute('data-sf-mermaid'), 'rendered');
+});
+
+// ---- a diagram is one block ----
+//
+// Mermaid renders its labels as <p> and <span> inside a foreignObject, and <p>
+// is in BLOCK_SEL. Left alone, a rendered diagram quietly becomes several
+// commentable blocks: a reader clicking a node comments on a paragraph inside
+// the picture, and the block registry gains an entry per label that appears and
+// disappears with the render. Per-node comments are a non-goal in v1; these are
+// what make that true rather than merely intended.
+
+/** A stub SVG shaped like mermaid's: labels in a foreignObject, plus a style. */
+const SVG_WITH_LABELS = (id, label) => `<svg id="${id}">`
+  + `<style>#${id}{fill:#333}</style>`
+  + `<g class="node"><foreignObject><div class="labelBkg"><p>${label}</p></div></foreignObject></g>`
+  + '</svg>';
+
+const bootWithLabels = (t, opts = {}) => boot(t, diagram(GOOD), { ...opts, svg: SVG_WITH_LABELS });
+
+test('the labels inside a rendered diagram are not separate blocks', async (t) => {
+  const { window, reconciled } = await bootWithLabels(t, { reconcile: true });
+  const pre = window.document.querySelector('pre');
+  assert.equal(pre.getAttribute('data-sf-mermaid'), 'rendered');
+  assert.ok(pre.querySelector('p'), 'the fixture really does contain a <p>, as mermaid does');
+
+  // The reconcile is handed the page's own list of commentable blocks, so this
+  // is that list without exporting an internal function to see it.
+  //
+  // Array.from, not .filter: the array comes from the jsdom realm, and
+  // deepStrictEqual compares prototypes, so even two empty arrays differ.
+  assert.equal(reconciled.length, 1, 'the page reconciled once');
+  const blocks = Array.from(reconciled[0], (b) => `${b.tag}:${b.text}`);
+  const carrying = blocks.filter((b) => /A\[collector\]/.test(b));
+  assert.equal(carrying.length, 1, 'exactly one block carries the diagram text');
+  assert.match(carrying[0], /^PRE:/, 'and it is the diagram, not a paragraph inside it');
+  assert.equal(blocks.filter((b) => b.startsWith('P:')).length, 0, 'no label became a block');
+});
+
+test('clicking inside a diagram puts the comment on the diagram', async (t) => {
+  const { window, calls } = await bootWithLabels(t);
+  const pre = window.document.querySelector('pre');
+  const label = pre.querySelector('p');
+  assert.ok(label, 'there is a label to click');
+
+  // Through the real handler: a click inside the picture, then the composer.
+  label.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+  const ta = window.document.querySelector('.sf-bub-compose textarea');
+  assert.ok(ta, 'the composer opened');
+  ta.value = 'Is the retry queue bounded?';
+  window.document.querySelector('.sf-bub-compose .sf-primary')
+    .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+
+  const post = calls.find((c) => c.method === 'POST' && /comments$/.test(c.url));
+  assert.ok(post, 'the comment was posted');
+  assert.equal(post.body.anchor.block.tag, 'PRE', 'anchored to the diagram, not to a label inside it');
+});
+
+test("mermaid's stylesheet is moved out of the block", async (t) => {
+  const { window } = await bootWithLabels(t);
+  const pre = window.document.querySelector('pre');
+  // textContent is what the registry hashes and what the rail quotes. With the
+  // <style> left in, a diagram is identified by a kilobyte of generated CSS and
+  // re-identifies as a different block on any mermaid upgrade.
+  assert.equal(pre.querySelectorAll('style').length, 0, 'no stylesheet inside the block');
+  assert.doesNotMatch(pre.textContent, /fill:#333/, 'and none of it in the block text');
+  assert.equal(window.document.head.querySelectorAll('style[data-sf-mermaid-style]').length, 1,
+    'it is moved rather than dropped: some of those rules are layout');
 });
 
 // ---- the palette bridge ----
