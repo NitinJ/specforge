@@ -32,12 +32,27 @@ export function baseSpec(title = 'E2E Spec') {
 }
 
 /**
- * The newest cached chromium, or null.
+ * A chromium this Playwright can drive, or null.
  *
- * Sorted descending so a machine holding several builds uses the most recent
- * rather than whichever readdir happened to return first.
+ * Playwright's own answer first: it pins a chromium revision per release, and a
+ * build from a different release can fail to launch or speak a protocol this
+ * client does not. `executablePath()` is that pinned build, so when it is on
+ * disk it is the only correct choice.
+ *
+ * The cache scan is a fallback for the common developer state where some
+ * chromium is cached but not the pinned one (a Playwright upgrade downloads a
+ * new revision and leaves the old, and `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`
+ * leaves none). Newest first, because a revision near the pinned one is likelier
+ * to work than an old one. It is best-effort by construction: without it the
+ * choice is not "a safer browser" but "no browser".
  */
 export function findCachedChromium() {
+  try {
+    const pinned = chromium.executablePath();
+    if (pinned && existsSync(pinned)) return pinned;
+  } catch {
+    // Playwright throws when the browser was never registered; fall through.
+  }
   const base = join(homedir(), '.cache', 'ms-playwright');
   if (!existsSync(base)) return null;
   const dirs = readdirSync(base)
@@ -120,12 +135,20 @@ export async function computedAcrossThemes(page, selector, prop) {
   }, [selector, prop, theme]);
 
   const before = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
-  const light = await read('light');
-  const dark = await read('dark');
-  await page.evaluate((t) => {
-    if (t === null) document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', t);
-  }, before);
+  let light;
+  let dark;
+  try {
+    light = await read('light');
+    dark = await read('dark');
+  } finally {
+    // In `finally`, because a throwing probe is exactly when the caller is most
+    // likely to carry on with other assertions on this page. Leaving the flip
+    // half-applied would make those assertions read a theme nobody chose.
+    await page.evaluate((t) => {
+      if (t === null) document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', t);
+    }, before);
+  }
 
   return { light, dark, changed: light !== dark };
 }

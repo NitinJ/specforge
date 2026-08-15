@@ -65,6 +65,23 @@ test('computedAcrossThemes fails loudly on a selector that matches nothing', nee
   });
 });
 
+test('a failed probe still leaves the theme it found', needsChrome, async () => {
+  await withSpec({ html: probeSpec() }, async ({ page }) => {
+    // Deliberately dark. The probe's first read sets 'light' and then throws, so
+    // starting from light would make this test pass whether or not anything is
+    // restored: there would be nothing to observe.
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+
+    await assert.rejects(() => computedAcrossThemes(page, '#not-here', 'color'));
+
+    const after = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+    assert.equal(after, 'dark', 'a throwing probe must not strand the page on the theme it was mid-flip to');
+
+    const ok = await computedAcrossThemes(page, '#probe-token', 'color');
+    assert.ok(ok.changed, 'and the next probe on the same page still works');
+  });
+});
+
 test('the browser lookup prefers the newest cached build', () => {
   const exe = findCachedChromium();
   if (!exe) return; // nothing cached; the skip guard covers the rest of the file
