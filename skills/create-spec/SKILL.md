@@ -41,6 +41,9 @@ injects the review layer at serve time.
     every section from the use case. Reach for it only when no other type fits,
     never to avoid choosing.
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
+- Read the component rules: `${CLAUDE_PLUGIN_ROOT}/references/spec-components.md`.
+  34 components, each with the rule for when it applies. Pick by what a block
+  **asserts**, never by how it should look.
 
 ## 2. Scaffold into the store
 
@@ -69,6 +72,12 @@ topic calls for). Whatever sections you keep:
 - **Keep every `<section>` with a stable, unique `id`** (anchors + comments depend
   on them). Keep the theme CSS (light/dark vars, `[data-theme]`,
   `prefers-color-scheme`, `--maxw`) — the review layer drives theme + width.
+- **Leave the stamped component block alone.** The shell's `<style>` opens with
+  `/* specforge:components v1 start */ … /* specforge:components end */`. It is
+  generated; editing it is refused by `components sync` and overwritten by the
+  next build. Your own rules go after it and win. Use the library's classes
+  rather than restyling them: a notice is `<div class="callout decision">`, never
+  `<div class="callout warn">`.
 - **Color only via the canonical palette tokens** (`--bg --panel --panel2 --ink
   --muted --line --accent --green --amber --red --code --shadow --mono`) — the lint
   requires them and the review-layer theme variants re-tint by overriding exactly

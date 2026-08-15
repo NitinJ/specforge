@@ -44,7 +44,11 @@ const SPEC_BODY = `
 async function bootReviewLayer(t, opts = {}) {
   const body = opts.body || SPEC_BODY;
   const threadsJson = JSON.stringify({ threads: opts.threads || [] });
-  const meta = opts.meta || { id: 'test-spec', title: 'Test', status: 'draft', attachedSession: null };
+  // A session owns the spec unless a test says otherwise. That is the ordinary
+  // case — a spec is attached to the session that created it — and the action
+  // button distinguishes "the agent has it" from "nobody has it", so a fixture
+  // that left the owner out would put every state under test in the second one.
+  const meta = { id: 'test-spec', title: 'Test', status: 'draft', attachedSession: 's1', ...(opts.meta || {}) };
   const html = `<!doctype html><html><head></head><body>${body}</body></html>`;
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'http://localhost/' });
   const { window } = dom;
@@ -1617,7 +1621,9 @@ test('clicking the header CTA submits the batch', async (t) => {
 });
 
 test('the header CTA reports the agent working, disabled and spinning', async (t) => {
-  const meta = { status: 'draft', attachedSession: null, reviewProgress: 'working' };
+  // reviewProgress only advances when a session drains the batch, so a spec
+  // reporting one always has an owner.
+  const meta = { status: 'draft', attachedSession: 's1', reviewProgress: 'working' };
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
   const head = window.document.querySelector('#sf-titlebar .sf-act');
   assert.equal(head.getAttribute('data-state'), 'reviewing');
@@ -1635,8 +1641,21 @@ test('action button: submitted but unresolved → "Awaiting response" (disabled,
   assert.ok(btn.querySelector('.sf-spin'), 'a loading spinner shows while the agent is working');
 });
 
+// "Awaiting response" with a spinner over a spec nobody owns reports work in
+// flight on an empty queue: the batch is stored and delivered to no one, and
+// waiting will not change that. The header says No agent beside it; the button
+// must not contradict it.
+test('action button: submitted with no session on the spec → "No agent to answer"', async (t) => {
+  const meta = { status: 'draft', attachedSession: null };
+  const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
+  const btn = window.document.querySelector('.sf-act');
+  assert.match(btn.textContent, /No agent to answer/);
+  assert.ok(btn.disabled, 'there is nothing to press: the remedy is Connect, in the header');
+  assert.equal(btn.querySelector('.sf-spin'), null, 'and nothing is in flight');
+});
+
 test('action button: picked-up batch → "Picked up comments" (disabled)', async (t) => {
-  const meta = { status: 'draft', attachedSession: null, reviewProgress: 'picked_up' };
+  const meta = { status: 'draft', attachedSession: 's1', reviewProgress: 'picked_up' };
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'picked');
@@ -1646,7 +1665,7 @@ test('action button: picked-up batch → "Picked up comments" (disabled)', async
 });
 
 test('action button: working batch → "Working on comments" (disabled)', async (t) => {
-  const meta = { status: 'draft', attachedSession: null, reviewProgress: 'working' };
+  const meta = { status: 'draft', attachedSession: 's1', reviewProgress: 'working' };
   const { window } = await bootReviewLayer(t, { threads: SUBMITTED_OPEN_THREAD, meta });
   const btn = window.document.querySelector('.sf-act');
   assert.equal(btn.getAttribute('data-state'), 'reviewing');

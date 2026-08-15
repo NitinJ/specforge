@@ -151,9 +151,27 @@ sentence.
 
 ## Presentation
 
-Reuse the house components from the template: `.panel`, `.card`, `.tag`
-(`.accent/.good/.warn/.bad/.todo/.done`), `.callout`, tables, the sticky TOC.
-Prefer tables and short callouts over long paragraphs.
+Use the **component library**. Every spec carries its stylesheet as a stamped
+block, so the classes are available without importing anything.
+
+**The rules live in [`references/spec-components.md`](../references/spec-components.md)** —
+34 components, each with the rule for when it applies and what a well-formed one
+must contain. Read it before writing. It is generated from `components/`, so it
+is never out of date with what the stylesheet defines.
+
+The one rule worth repeating here: **pick a component by what the block
+asserts**, never by how it should look. A notice takes a type (`decision`,
+`assumption`, `risk`, `deviation`, `constraint`, `note`, `warning`, `danger`,
+`tip`, `success`, `example`, `quote`) and its tone follows from the type. A
+notice with no type, or with a tone class used directly, is a lint warning.
+
+Prefer tables and short notices over long paragraphs, and keep notices to about
+one per 400 words: emphasis everywhere is emphasis nowhere.
+
+**The stamped block is generated.** It sits between
+`/* specforge:components v1 start */` and `/* specforge:components end */` at the
+top of a spec's `<style>`. Do not edit it; a spec's own rules come after it and
+win. `specforge components sync <id>` brings a spec up to the current version.
 
 ## Code blocks
 

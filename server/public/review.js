@@ -136,7 +136,14 @@
   }
 
   // Elements that can carry a comment. The innermost match under the pointer wins.
-  var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,td,th,pre,blockquote,figure,.panel,.callout,.card,.stat,.loop .step,.matrix .q,.bar,.ns';
+  //
+  // The component library's block components are appended from the injected
+  // config rather than listed here. The lint tells an author a block component is
+  // commentable; if this list did not follow, that would be a promise the page
+  // could not keep, and text inside a .diff or a .flow would be uncommentable
+  // while the lint reported it as fine.
+  var BLOCK_SEL = 'h1,h2,h3,h4,h5,h6,p,li,tr,td,th,pre,blockquote,figure,.panel,.callout,.card,.stat,.loop .step,.matrix .q,.bar,.ns'
+    + ((window.SPECFORGE || {}).blocks || []).map(function (c) { return ',.' + c; }).join('');
   var INTERACTIVE = 'a,button,input,textarea,select,summary,label';
 
   var INIT_FILTER = (PREFS.filter === 'resolved' || PREFS.filter === 'all') ? PREFS.filter : 'open';
@@ -898,6 +905,12 @@
       // Awaiting response → Picked up comments → Working on comments — from the
       // batch progress the hooks + review-spec skill report via meta.reviewProgress.
       if (repliedAgentCount() >= unresolved) return { label: 'Review replies', state: 'replied', act: 'review' };
+      // Nobody owns the spec, so nothing is coming. "Awaiting response" with a
+      // spinner would report work in flight over an empty queue, and the header
+      // already says No agent with a Connect button beside it.
+      if (!(state.meta && state.meta.attachedSession)) {
+        return { label: 'No agent to answer', state: 'other', act: null };
+      }
       // Comments submitted, agent processing, not yet ready to review — one phase, so
       // all three steps carry the loading spinner (loading) to signal work in flight.
       var prog = state.meta && state.meta.reviewProgress;
