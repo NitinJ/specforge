@@ -149,7 +149,7 @@ test('every constant boot() reads is declared before boot() runs', () => {
   const bootAt = js.indexOf("if (document.readyState !== 'loading') boot();");
   assert.ok(bootAt > 0, 'the readyState check is where boot runs');
   const above = js.slice(0, bootAt);
-  for (const name of ['HIGHLIGHT_SRC', 'SLIDE_SEL', 'DECK_INSET']) {
+  for (const name of ['HIGHLIGHT_SRC', 'MERMAID_SRC', 'MERMAID_MAX_TEXT', 'MERMAID_LOAD_TIMEOUT', 'SLIDE_SEL', 'DECK_INSET']) {
     assert.match(above, new RegExp(`var ${name}\\s*=`), `${name} is assigned before boot() reads it`);
   }
 });
