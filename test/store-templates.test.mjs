@@ -11,6 +11,7 @@ import { readSpecHtml, writeSpecHtml } from '../lib/store.mjs';
 import {
   templateId, ensureTemplates, templateHtmlFor, TEMPLATE_COLLECTION,
 } from '../lib/store-templates.mjs';
+import { stripTemplateBlocks } from '../lib/rules/template-blocks.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -60,21 +61,22 @@ test('templateHtmlFor prefers the store template over the bundled shell', () => 
 });
 
 test('templateHtmlFor falls back to the bundled shell when the store template is missing or empty', () => {
-  // No seed at all → bundled shell (design uses the shared doc shell).
+  // A template now carries its type's rules and prompts on top of the shell, so
+  // the claim is which shell it fell back to, not byte equality with the file.
   const bundledDoc = readFileSync(join(ROOT, 'templates', 'spec-base-doc.html'), 'utf8');
-  assert.equal(templateHtmlFor('design'), bundledDoc);
+  assert.equal(stripTemplateBlocks(templateHtmlFor('design')), bundledDoc);
   // Seeded but emptied (a broken edit) → bundled shell, never an empty spec.
   ensureTemplates();
   writeSpecHtml(templateId('design'), '   ');
-  assert.equal(templateHtmlFor('design'), bundledDoc);
+  assert.equal(stripTemplateBlocks(templateHtmlFor('design')), bundledDoc);
 });
 
 test('a per-type bundled seed (spec-base-<type>.html) wins over the shared shell', () => {
   const research = readFileSync(join(ROOT, 'templates', 'spec-base-research.html'), 'utf8');
   const doc = readFileSync(join(ROOT, 'templates', 'spec-base-doc.html'), 'utf8');
   // research has its own shell now — not the design shell it used to clone.
-  assert.equal(templateHtmlFor('research'), research);
-  assert.notEqual(templateHtmlFor('research'), doc, 'research no longer clones the design shell');
+  assert.equal(stripTemplateBlocks(templateHtmlFor('research')), research);
+  assert.notEqual(stripTemplateBlocks(templateHtmlFor('research')), doc, 'research no longer clones the design shell');
   // and a fresh seed carries the research shape, not design's.
   ensureTemplates();
   assert.match(readSpecHtml(templateId('research')), /id="findings"/, 'research template has a Findings section');
@@ -82,7 +84,7 @@ test('a per-type bundled seed (spec-base-<type>.html) wins over the shared shell
 
 test('the general shell is chrome plus a TL;DR and nothing else', () => {
   const general = readFileSync(join(ROOT, 'templates', 'spec-base-general.html'), 'utf8');
-  assert.equal(templateHtmlFor('general'), general, 'general scaffolds from its own bundled shell');
+  assert.equal(stripTemplateBlocks(templateHtmlFor('general')), general, 'general scaffolds from its own bundled shell');
 
   const ids = [...general.matchAll(/<section\b[^>]*\bid="([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(ids, ['tldr'], 'exactly one section: the agent decides the rest');
