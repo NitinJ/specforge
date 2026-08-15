@@ -7,6 +7,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { chromium } from 'playwright';
 
 import { baseSpec, withSpec, computedAcrossThemes, needsChrome, findCachedChromium } from './harness.mjs';
 
@@ -82,9 +84,19 @@ test('a failed probe still leaves the theme it found', needsChrome, async () => 
   });
 });
 
-test('the browser lookup prefers the newest cached build', () => {
+test('the browser lookup prefers the build Playwright pinned', () => {
   const exe = findCachedChromium();
   if (!exe) return; // nothing cached; the skip guard covers the rest of the file
-  const version = Number(exe.match(/chromium-(\d+)/)[1]);
-  assert.ok(Number.isInteger(version) && version > 0, 'resolved a numbered chromium build');
+
+  let pinned = null;
+  try { pinned = chromium.executablePath(); } catch { /* never registered */ }
+
+  if (pinned && existsSync(pinned)) {
+    assert.equal(exe, pinned, 'with the pinned build on disk, nothing else may be chosen');
+    return;
+  }
+  // Fallback path: any resolved build must at least be a real executable under a
+  // numbered chromium directory, not a path that only looks plausible.
+  assert.ok(existsSync(exe), 'the fallback resolved a file that exists');
+  assert.match(exe, /chromium-\d+/);
 });

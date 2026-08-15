@@ -74,40 +74,52 @@ export const needsChrome = { skip: CHROME ? false : 'no cached chromium' };
  * Serve one spec from a throwaway store and open it in a real browser.
  *
  * The store is a temp dir pointed at by SPECFORGE_HOME, the daemon binds an
- * ephemeral port, and both are torn down even when the body throws.
+ * ephemeral port, and every one of them is torn down even when the body throws.
  *
- * @param {{html?:string, title?:string, wait?:string}} opts `wait` is the
- *   selector proving the review layer booted; the default is the launcher.
- * @param {(ctx:{page:object, base:string, id:string}) => Promise<any>} fn
+ * @param {object} opts
+ * @param {string} [opts.html] the spec's HTML; defaults to the base shell
+ * @param {string} [opts.title]
+ * @param {string} [opts.type] spec type recorded in meta
+ * @param {string} [opts.wait] selector proving the review layer booted
+ * @param {boolean} [opts.acceptDownloads] also hand the body a `downloads` dir
+ * @param {(ctx:{page:object, base:string, id:string, downloads:string|null}) => Promise<any>} fn
  */
 export async function withSpec(opts, fn) {
-  const { html = baseSpec(), title = 'E2E Spec', wait = '#sf-launcher' } = opts || {};
+  const {
+    html = baseSpec(), title = 'E2E Spec', type, wait = '#sf-launcher',
+    acceptDownloads = false,
+  } = opts || {};
+
   const home = mkdtempSync(join(tmpdir(), 'sf-e2e-'));
   const prevHome = process.env.SPECFORGE_HOME;
   process.env.SPECFORGE_HOME = home;
+  const downloads = acceptDownloads ? mkdtempSync(join(tmpdir(), 'sf-e2e-dl-')) : null;
 
-  let id;
   let server;
   let browser;
   try {
-    id = createSpec({ title, html });
+    const id = createSpec({ title, html, type });
     server = createDaemon();
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
     const base = `http://127.0.0.1:${server.address().port}`;
 
     browser = await chromium.launch({ executablePath: CHROME });
-    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const page = await browser.newPage({
+      viewport: { width: 1280, height: 900 },
+      acceptDownloads,
+    });
     // Not 'networkidle': the injected EventSource is a response that never
     // completes, so the network is never idle on a served spec.
     await page.goto(`${base}/spec/${id}`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector(wait);
-    return await fn({ page, base, id });
+    return await fn({ page, base, id, downloads });
   } finally {
     if (browser) await browser.close();
     if (server) await new Promise((r) => server.close(r));
     if (prevHome === undefined) delete process.env.SPECFORGE_HOME;
     else process.env.SPECFORGE_HOME = prevHome;
     rmSync(home, { recursive: true, force: true });
+    if (downloads) rmSync(downloads, { recursive: true, force: true });
   }
 }
 
