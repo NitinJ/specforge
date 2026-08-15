@@ -216,6 +216,18 @@ test('a blockless at-rule does not swallow the rule after it', () => {
   assert.doesNotMatch(assets[1].svg, /@charset|@import/);
 });
 
+test('a semicolon inside a selector does not truncate it', () => {
+  // Only a semicolon outside quotes ends a statement. Splitting on every one
+  // would cut `.svg-box[data-kind="a;b"]` down to `b"]`, which matches nothing,
+  // and the rule would be dropped from the file.
+  const html = fixture('diagrams')
+    .html()
+    .replace('.svg-box{', '.svg-box[data-kind="a;b"]{')
+    .replace('class="svg-box"', 'class="svg-box" data-kind="a;b"');
+  const { assets } = specToMarkdown(html, { exportedAt: EXPORTED_AT });
+  assert.match(assets[1].svg, /\.svg-box\[data-kind="a;b"\]\{fill:var\(--panel\)/);
+});
+
 test('a class name cannot drag its longer neighbour along', () => {
   // `.svg-box` must not match `.svg-box-a`: a diagram that uses only the plain
   // box would otherwise carry the accent variant too.
