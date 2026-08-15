@@ -58,8 +58,23 @@ figcaption{color:var(--muted);font-size:12.5px;margin-top:6px}`,
 </svg><figcaption>The lint runs on the stamped file, so what is checked is what is served.</figcaption></figure>`,
   },
   {
+    // No class of its own: the marker is the declared language, which the review
+    // layer, the highlighter and the markdown exporter already read. An
+    // element-kind entry keeps it out of componentClasses() and out of the
+    // stamped stylesheet, and carries the selector an author actually writes.
+    // The paint lives in review.css, because a diagram only exists where the
+    // review layer does.
+    name: 'mermaid', family: 'structure', kind: 'element', selector: 'pre[data-lang="mermaid"]', block: true,
+    rule: 'A graph: nodes and the relationships between them, where the layout follows from the relationships rather than from where you put things. Flowchart, sequence, state, ER, class.',
+    requires: ['mermaid source, and no hand-placed coordinates'],
+    example: `<pre data-lang="mermaid"><code>flowchart LR
+  A[collector] --&gt; B{queue full?}
+  B -- yes --&gt; C[retry queue]
+  B -- no --&gt; D[(store)]</code></pre>`,
+  },
+  {
     name: 'flow', family: 'structure', kind: 'class', block: true,
-    rule: 'A sequence of stages over time or through components. Inline SVG, nodes and edges from palette tokens.',
+    rule: 'A sequence of stages over time or through components, where the exact placement carries meaning. If the layout follows from the relationships, use mermaid instead. Inline SVG, nodes and edges from palette tokens.',
     requires: ['an aria-label saying what the diagram shows'],
     variants: ['svg-box', 'svg-box-a', 'svg-lbl', 'svg-lbl-m', 'svg-arrow'],
     css: `.flow{margin:18px 0}

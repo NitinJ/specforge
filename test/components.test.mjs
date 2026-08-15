@@ -76,11 +76,13 @@ test('every definition carries what all five consumers need', () => {
   }
 });
 
-test('the inventory matches the design spec: 34 components across 6 families', () => {
-  assert.equal(COMPONENTS.length, 34);
+// The count is pinned so it moves deliberately. It has moved once: the mermaid
+// spec added `pre[data-lang="mermaid"]` to structure, making 35 across 6.
+test('the inventory is 35 components across 6 families', () => {
+  assert.equal(COMPONENTS.length, 35);
   assert.deepEqual(
     FAMILIES.map((f) => [f, COMPONENTS.filter((c) => c.family === f).length]),
-    [['notice', 12], ['inline', 7], ['data', 4], ['code', 2], ['structure', 6], ['spec', 3]],
+    [['notice', 12], ['inline', 7], ['data', 4], ['code', 2], ['structure', 7], ['spec', 3]],
   );
 });
 
