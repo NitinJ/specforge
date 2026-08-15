@@ -612,6 +612,27 @@
    * both would also leave the block's text carrying the source, which is the one
    * text that must not be remembered.
    */
+  /**
+   * Move a rendered diagram's stylesheet out of the block.
+   *
+   * Mermaid injects its CSS as a <style> element INSIDE the SVG. Left there it
+   * is part of the block's textContent, and textContent is what the block
+   * registry hashes and what the comment rail quotes: a thread on a diagram
+   * would be identified by a kilobyte of generated CSS, would re-identify as a
+   * different block on any mermaid upgrade, and would quote `#sf-mmd-0{font-
+   * family:inherit...}` back at the reader.
+   *
+   * The rules are id-scoped, so they apply identically from <head>. Moving is
+   * preferred to deleting because some of them are layout, not colour.
+   */
+  function hoistDiagramStyle(pre, id) {
+    var styles = pre.querySelectorAll('style');
+    for (var i = 0; i < styles.length; i++) {
+      styles[i].setAttribute('data-sf-mermaid-style', id);
+      document.head.appendChild(styles[i]);
+    }
+  }
+
   function showMermaidError(pre, err) {
     var msg = String((err && err.message) || err || 'could not render');
     pre.textContent = '';
@@ -689,6 +710,7 @@
             // unreachable renderer and consistent with what was recorded.
             if (finished) return finish();
             pre.innerHTML = r.svg;
+            hoistDiagramStyle(pre, id);
             pre.setAttribute('data-sf-mermaid', 'rendered');
             finish();
           }, fail);
@@ -1527,13 +1549,35 @@
   }
 
   // ---------- block targeting ----------
+  //
+  // A rendered diagram is ONE block, and the block is the <pre> the source was
+  // written in. Mermaid renders its labels as <p> and <span> inside a
+  // foreignObject, and <p> is in BLOCK_SEL, so without this a diagram silently
+  // becomes several commentable blocks: clicking a node comments on a paragraph
+  // inside the picture, and the registry gains an entry per label that appears
+  // and disappears with the render. Per-node comments are a deliberate non-goal
+  // in v1; this is what makes that true rather than merely intended.
+  var DIAGRAM_SEL = '[data-sf-mermaid]';
+
+  /** The diagram a node belongs to, or null when it is not inside one. */
+  function diagramOf(el) {
+    return el && el.closest ? el.closest(DIAGRAM_SEL) : null;
+  }
+
   function commentableBlocks() {
-    return Array.prototype.filter.call(document.querySelectorAll(BLOCK_SEL), function (el) { return !inUI(el); });
+    return Array.prototype.filter.call(document.querySelectorAll(BLOCK_SEL), function (el) {
+      if (inUI(el)) return false;
+      var dia = diagramOf(el);
+      return !dia || dia === el;
+    });
   }
   function blockAt(node) {
     var el = node && node.nodeType === 1 ? node : node && node.parentElement;
     el = el && el.closest ? el.closest(BLOCK_SEL) : null;
-    return el && !inUI(el) ? el : null;
+    if (!el || inUI(el)) return null;
+    // Clicked inside a diagram: the diagram is what gets the comment.
+    var dia = diagramOf(el);
+    return dia || el;
   }
   // Section ancestry (innermost → outermost) so a thread can fall back to its
   // section — then the parent section — if the exact block is edited away/removed.
