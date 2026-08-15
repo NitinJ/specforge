@@ -4,20 +4,16 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { JSDOM, VirtualConsole } from 'jsdom';
 
 import { createDaemon, renderIndex } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
 import { attach, STALE_MS } from '../lib/attach.mjs';
 import { writeGlobalPrefs } from '../lib/global-prefs.mjs';
-
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const UI_JS = readFileSync(join(ROOT, 'server', 'public', 'ui.js'), 'utf8');
+import { loadIndex, tick } from './helpers/index-dom.mjs';
 
 const setCollection = (id, c) => { const m = readMeta(id); m.collection = c; writeMeta(id, m); };
 const setTags = (id, tags) => { const m = readMeta(id); m.tags = tags; writeMeta(id, m); };
@@ -132,37 +128,8 @@ test('GET/PUT /api/prefs persists the index theme', async () => {
 });
 
 // ---- inline page behavior in jsdom ----
-function loadIndex(t, opts) {
-  // location.reload is unforgeable in jsdom — it cannot be stubbed — but calling
-  // it raises a jsdomError, so that is how a reload is counted. Anything else on
-  // that channel is a real page error and is re-raised rather than swallowed.
-  const reloads = { n: 0 };
-  const virtualConsole = new VirtualConsole();
-  virtualConsole.on('jsdomError', (e) => {
-    if (/navigation to another Document/i.test(e.message)) reloads.n += 1;
-    else throw e;
-  });
-  // jsdom does not fetch external scripts, so the shared UI is inlined where the
-  // page asks for it. Same file, same order relative to the page's own script.
-  const html = renderIndex(opts).replace(
-    '<script src="/public/ui.js" defer></script>',
-    `<script>${UI_JS}</script>`,
-  );
-  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'http://localhost/', virtualConsole });
-  const { window } = dom;
-  t.after(() => window.close());
-  const calls = [];
-  window.fetch = (url, init) => {
-    const method = (init && init.method) || 'GET';
-    const body = init && init.body ? JSON.parse(init.body) : undefined;
-    calls.push({ method, url, body });
-    // Echo the patch back so the client's DOM updates (rename → d.title, tags → d.tags).
-    return Promise.resolve({ ok: true, json: () => Promise.resolve(Object.assign({ ok: true }, body || {})) });
-  };
-  return { window, calls, reloads };
-}
-
-const tick = (window) => new Promise((r) => window.setTimeout(r, 0));
+// loadIndex and tick live in test/helpers/index-dom.mjs, shared with the project
+// suite.
 
 test('theme toggle flips data-theme and PUTs the new theme', (t) => {
   createSpec({ title: 'Alpha', html: '<h1>A</h1>' });
