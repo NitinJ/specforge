@@ -6,7 +6,7 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -83,6 +83,36 @@ test('leave by an ambiguous name is refused, naming the tokens', () => {
   // By token still works, because a token names exactly one.
   assert.equal(mod.removeSubscription(b), true);
   assert.equal(mod.readSubscriptions().length, 1);
+});
+
+test('a held lock refuses the write rather than racing it', () => {
+  // Unlike the comments lock, which degrades to best-effort because its caller
+  // is a request handler, a CLI one-shot refuses: a re-run costs nothing, a
+  // silently dropped subscription costs someone their joined project.
+  mkdirSync(home, { recursive: true });
+  writeFileSync(`${subscriptionsPath()}.lock`, '');
+  try {
+    assert.throws(
+      () => mod.addSubscription({ name: 'Blocked', origin: 'https://x.example', token: TOK }),
+      /locked by another specforge process/,
+    );
+  } finally {
+    rmSync(`${subscriptionsPath()}.lock`, { force: true });
+  }
+  // And the lock file being gone restores normal service.
+  mod.addSubscription({ name: 'After', origin: 'https://x.example', token: TOK });
+  assert.equal(mod.readSubscriptions().length, 1);
+});
+
+test('a lock left by a dead process is reclaimed rather than wedging the file', () => {
+  mkdirSync(home, { recursive: true });
+  const lock = `${subscriptionsPath()}.lock`;
+  writeFileSync(lock, '');
+  // Backdate it past the staleness window.
+  const old = Date.now() - 60_000;
+  utimesSync(lock, old / 1000, old / 1000);
+  mod.addSubscription({ name: 'Reclaimed', origin: 'https://x.example', token: TOK });
+  assert.equal(mod.readSubscriptions()[0].name, 'Reclaimed');
 });
 
 test('a corrupt file reads as no subscriptions rather than throwing', () => {
