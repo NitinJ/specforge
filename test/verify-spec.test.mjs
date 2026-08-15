@@ -81,7 +81,10 @@ test('turning off a rule that does not exist is a no-op, not a crash', () => {
 
 test('a spec with no blocking rules left to judge is ok', () => {
   // Turn every blocking ask-rule off through the template, which is the same
-  // mechanism a real type uses, and the verdict flips.
+  // mechanism a real type uses, and the verdict flips. This is the ONLY way a
+  // real spec reaches ok: nothing is stored (D2), so the verifier never learns
+  // that the agent judged a pending rule, and re-running reports the same list.
+  // The loop ends in the agent's judgement and a handover, not in a green run.
   const r0 = verifySpec(cleanSpec(), 'design');
   addToTemplateRules('design', r0.pending
     .filter((p) => p.severity === 'blocking')
@@ -91,6 +94,16 @@ test('a spec with no blocking rules left to judge is ok', () => {
   const r = verifySpec(cleanSpec(), 'design');
   assert.equal(r.pending.filter((p) => p.severity === 'blocking').length, 0);
   assert.equal(r.ok, true);
+  assert.equal(r.exit, 0);
+});
+
+test('re-running an untouched spec reports the same pending list', () => {
+  // Stated as a test because the skill says "fix and re-run", and a reader could
+  // reasonably expect re-running to shrink the list. It does not, and the report
+  // says so in as many words.
+  const a = verifySpec(cleanSpec(), 'design');
+  const b = verifySpec(cleanSpec(), 'design');
+  assert.deepEqual(a.pending.map((p) => p.id), b.pending.map((p) => p.id));
 });
 
 test('the type decides the rule list', () => {
@@ -114,14 +127,29 @@ test('a rule that abstains is neither answered nor pending', () => {
   assert.equal(r.pending.some((p) => p.id === 'spec-components'), false);
 });
 
-test('duplicate rule ids are reported rather than silently resolved', () => {
+test('a template that lists a rule twice is told so', () => {
+  // Checked on the template's raw list. The merge is last-wins by id, so asking
+  // the merged list asks one the duplicate has already been erased from: it can
+  // never report one. An earlier version of this test asserted `duplicates` was
+  // empty and explained it away, which documented a broken feature rather than
+  // failing. Greptile on #173.
   addToTemplateRules('design', '<li data-sf-rule="twice">First.</li>\n<li data-sf-rule="twice">Second.</li>');
-  // mergeRules gives the last one the slot, so the earlier stopped being
-  // checked. That is a rule-authoring error, and the report says so.
   const r = verifySpec(cleanSpec(), 'design');
-  assert.equal(r.duplicates.length, 0, 'merge de-duplicates by id, so the list itself is clean');
-  assert.equal(r.pending.filter((p) => p.id === 'twice').length, 1);
+  assert.deepEqual(r.duplicates, ['twice'], 'the authoring error is reported');
+  assert.equal(r.pending.filter((p) => p.id === 'twice').length, 1, 'and the later one is what runs');
   assert.equal(r.pending.find((p) => p.id === 'twice').ask, 'Second.');
+});
+
+test('a template with no duplicates reports none', () => {
+  assert.deepEqual(verifySpec(cleanSpec(), 'design').duplicates, []);
+  assert.deepEqual(verifySpec(cleanSpec(), 'design-impl').duplicates, []);
+});
+
+test('the exit field separates a failure from work outstanding', () => {
+  // One non-zero code cannot tell a broken spec from an unjudged one, and they
+  // call for different things.
+  assert.equal(verifySpec(specWith('no-placeholders'), 'design').exit, 1);
+  assert.equal(verifySpec(cleanSpec(), 'design').exit, 2);
 });
 
 // ── The report ──────────────────────────────────────────────────────────────
@@ -140,20 +168,33 @@ test('the report names the rule and how to fix it', () => {
 
 test('the report never says PASS while a blocking judgement is outstanding', () => {
   const text = formatReport(verifySpec(cleanSpec(), 'design'));
-  assert.match(text, /verify: NOT DONE/);
+  assert.match(text, /verify: WORK OUTSTANDING/);
   assert.doesNotMatch(text, /verify: PASS/);
-  assert.match(text, /blocking judgement\(s\) outstanding/);
+  assert.match(text, /blocking judgement\(s\) are yours to make/);
+});
+
+test('the report says plainly that re-running will not clear the pending list', () => {
+  // The skill says "fix and re-run", and a reader could reasonably expect the
+  // list to shrink. Nothing is stored, so it does not.
+  const text = formatReport(verifySpec(cleanSpec(), 'design'));
+  assert.match(text, /Re-running does not clear these/);
+});
+
+test('the report distinguishes a failure from work outstanding', () => {
+  assert.match(formatReport(verifySpec(specWith('no-placeholders'), 'design')), /verify: FAILED/);
+  assert.match(formatReport(verifySpec(cleanSpec(), 'design')), /verify: WORK OUTSTANDING/);
 });
 
 test('the report says PASS when there is genuinely nothing left', () => {
-  const result = { ok: true, type: 'design', verdicts: [{ id: 'has-title', ok: true, severity: 'blocking', detail: 'present', fix: '' }], pending: [], failed: [], duplicates: [] };
+  const result = { ok: true, exit: 0, type: 'design', verdicts: [{ id: 'has-title', ok: true, severity: 'blocking', detail: 'present', fix: '' }], pending: [], failed: [], duplicates: [] };
   const text = formatReport(result);
   assert.match(text, /verify: PASS \(design\)/);
   assert.doesNotMatch(text, /PENDING/);
 });
 
-test('a duplicate id is called out at the top of the report', () => {
-  const result = { ok: false, type: 'design', verdicts: [], pending: [], failed: [], duplicates: ['twice'] };
+test('a duplicated template rule is called out at the top of the report', () => {
+  const result = { ok: false, exit: 2, type: 'design', verdicts: [], pending: [], failed: [], duplicates: ['twice'] };
   const text = formatReport(result);
-  assert.match(text, /duplicate rule ids: twice/);
+  assert.match(text, /template lists twice twice/);
+  assert.match(text, /Delete one/);
 });

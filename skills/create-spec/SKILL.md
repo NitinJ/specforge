@@ -173,8 +173,15 @@ against every rule its type carries and returns:
 - `pending` — the rules **no function can answer**, each with the sentence to
   judge and a `fix` hint. These are yours. A pending blocking rule keeps `ok`
   false, because reporting an unjudged rule as a pass manufactures assurance.
-- `ok` — true only when nothing blocking failed and nothing blocking is left
-  unjudged.
+- `ok` / `exit` — `exit` is `0` when nothing failed and nothing is outstanding,
+  `1` when a blocking rule failed, `2` when nothing mechanical is broken and the
+  judgements are yours.
+
+**Re-running does not clear `pending`.** Nothing is stored, so the verifier
+cannot learn that you judged a rule; it reports the same list every time. `exit
+2` is the normal end state of a real spec, not a failure. Re-run to confirm the
+*mechanical* half went green after your fixes, and close out the judged half
+yourself.
 
 **Judge the pending rules against the spec. If your harness can run a subagent,
 run this in one**, handing it only the spec path and the pending rules. A fresh
@@ -188,6 +195,10 @@ rule in three attempts is usually failing to understand the rule rather than the
 spec, and a fourth attempt turns a bad rule into a long silence. When the rounds
 run out, hand over anyway and say in one line which rules still fail — a rule you
 could not satisfy is a line in the report, not a reason to keep going.
+
+The loop always ends in a handover. It is finished when the mechanical half is
+green and you have read the spec against every pending rule, not when `verify`
+prints PASS: for most types it never will.
 
 The lint still exists and `verify` is a superset of it; run
 `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>` only when you want

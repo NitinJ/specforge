@@ -188,7 +188,10 @@ specforge verify <id> --json   # the same thing, for an agent
 
 An unjudged rule reports as **pending**, never as a pass. That third state is the
 point: a spec whose blocking rules nobody has judged is not verified, and saying
-otherwise would manufacture assurance.
+otherwise would manufacture assurance. Nothing is stored, so re-running reports
+the same pending list — it is a work list to read the spec against, not a
+checklist that empties. The exit code says which kind of attention is needed:
+`1` a rule failed, `2` the judgements are yours, `0` neither.
 
 A **type's own rules** live in its template, as a list of sentences you edit in
 SpecForge like anything else. Adding a rule is writing a sentence; a type can

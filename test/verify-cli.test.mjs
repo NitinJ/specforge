@@ -47,25 +47,33 @@ test('cmdVerify reads the type off the spec', async () => {
   assert.ok(r.pending.some((p) => p.id === 'findings-cite-sources'));
 });
 
-test('the CLI prints a human report and exits 1 while work is outstanding', () => {
+test('the CLI prints a human report and exits 2 while work is outstanding', () => {
   const id = seed();
   const { code, stdout } = run(['verify', id]);
-  assert.equal(code, 1, 'blocking judgements outstanding is not a pass');
+  assert.equal(code, 2, 'nothing is broken, but blocking judgements are outstanding');
   assert.match(stdout, /PENDING/);
-  assert.match(stdout, /verify: NOT DONE \(design\)/);
+  assert.match(stdout, /verify: WORK OUTSTANDING \(design\)/);
   assert.doesNotMatch(stdout, /^\{/, 'the default output is a report, not JSON');
 });
 
 test('--json gives a caller the same result as a parsable object', () => {
   const id = seed();
   const { code, stdout } = run(['verify', id, '--json']);
-  assert.equal(code, 1);
+  assert.equal(code, 2);
   const parsed = JSON.parse(stdout);
   assert.equal(parsed.id, id);
   assert.equal(parsed.ok, false);
+  assert.equal(parsed.exit, 2);
   assert.ok(Array.isArray(parsed.pending));
   assert.ok(parsed.pending.length > 0);
   assert.ok(parsed.pending[0].ask, 'the agent needs the sentence to judge');
+});
+
+test('a mechanical failure exits 1, a clean-but-unjudged spec exits 2', () => {
+  // One non-zero code cannot tell a broken spec from an unjudged one, and a
+  // harness gating on "did this need my attention" wants to know which.
+  assert.equal(run(['verify', seed(specWith('no-placeholders'))]).code, 1);
+  assert.equal(run(['verify', seed(cleanSpec())]).code, 2);
 });
 
 test('a mechanical failure is named in both output modes', () => {
@@ -90,8 +98,9 @@ test('verify is listed among the commands', () => {
 });
 
 test('the exit code is the whole contract for a harness', () => {
-  // The only way to exit 0 is for every blocking rule to have been answered.
-  // Two different specs, same reason for the same code.
-  assert.equal(run(['verify', seed(cleanSpec())]).code, 1);
+  // 0 is reachable only when every blocking rule has been answered, which for a
+  // real type means its template turned the judged ones off. Nothing is stored,
+  // so judging one does not change a later run.
+  assert.equal(run(['verify', seed(cleanSpec())]).code, 2);
   assert.equal(run(['verify', seed(specWith('has-title'))]).code, 1);
 });
