@@ -60,15 +60,34 @@ function tablesOf(body) {
   return out;
 }
 
+/**
+ * The language declared on one element, by the same rule both renderers use:
+ * `data-lang` first, then a `lang-`/`language-` class.
+ *
+ * This is the third implementation of that rule (lib/html-to-md.mjs and
+ * server/public/review.js are the others), and it read only the <code> class
+ * until a fixture declared `data-lang` on the <pre>. The round trip preserved
+ * the language correctly and this reported a difference, because it could not
+ * see the original's declaration. test/lang-precedence.test.mjs is where the
+ * two shipping implementations are held to one table; this one only has to
+ * agree with them about what the document says.
+ */
+function declaredIn(attrs) {
+  const explicit = (attrs.match(/data-lang\s*=\s*"([^"]*)"/) || [, ''])[1];
+  if (explicit) return explicit.trim().toLowerCase();
+  const cls = (attrs.match(/class\s*=\s*"([^"]*)"/) || [, ''])[1];
+  const m = cls.match(/(?:^|\s)lang(?:uage)?-([\w+#-]+)/);
+  return m ? m[1].toLowerCase() : '';
+}
+
 function codeBlocksOf(body) {
   const out = [];
-  const re = /<pre\b[^>]*>\s*<code\b([^>]*)>([\s\S]*?)<\/code>\s*<\/pre>/g;
+  const re = /<pre\b([^>]*)>\s*(?:<code\b([^>]*)>)?([\s\S]*?)(?:<\/code>)?\s*<\/pre>/g;
   let m;
   while ((m = re.exec(body))) {
-    const cls = (m[1].match(/class\s*=\s*"([^"]*)"/) || [, ''])[1];
-    const lang = (cls.match(/(?:lang|language)-([\w+-]+)/) || [, ''])[1] || '';
+    const lang = declaredIn(m[2] || '') || declaredIn(m[1] || '');
     // Only entities are decoded: indentation and newlines inside a code block are content.
-    out.push({ lang, body: decodeEntities(m[2]).replace(/^\n/, '').replace(/\s+$/, '') });
+    out.push({ lang, body: decodeEntities(m[3]).replace(/^\n/, '').replace(/\s+$/, '') });
   }
   return out;
 }

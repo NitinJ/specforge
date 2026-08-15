@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-sf-spec-status="draft">
+<head>
+<meta charset="utf-8">
+<title>Ingest topology, drawn — Spec</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
+    --line:#2a2f3a; --accent:#6ea8fe; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --code:#11151c; --shadow:0 8px 24px rgba(0,0,0,.28); --mono:ui-monospace,Menlo,monospace;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#fff; --panel2:#f5f3ee; --ink:#222629; --muted:#5f6873;
+    --line:#e4e0d7; --accent:#2563eb; --green:#15803d; --amber:#b45309; --red:#b91c1c;
+    --code:#f1efe9; --shadow:0 8px 24px rgba(0,0,0,.06); --mono:ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){ --bg:#fbfaf7; --ink:#222629; }
+  }
+  body{background:var(--bg);color:var(--ink)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <div class="brand"><span>Spec</span>Forge</div>
+  <a href="#tldr">TL;DR</a>
+  <a href="#architecture">1 · Architecture</a>
+  <a href="#lifecycle">2 · Lifecycle</a>
+</nav>
+<main>
+  <h1>Ingest topology, drawn</h1>
+  <p class="sub">Spec · 2026-08-15 · status: <span class="tag accent">draft</span> · owner: nitin</p>
+
+  <section id="tldr" data-sf-section>
+    <div class="panel">
+      <h4 style="margin-top:0">TL;DR</h4>
+      <p style="margin-bottom:0">Three mermaid diagrams and one ordinary code block. This fixture
+      exists to hold the markdown round trip to its promise: a diagram travels as its own source in
+      a fenced block, with no sidecar file, and a declared language survives in both directions.</p>
+    </div>
+  </section>
+
+  <section id="architecture" data-sf-section>
+    <h2>1 · Architecture</h2>
+    <pre data-lang="mermaid"><code>flowchart LR
+  A[collector] --&gt; B{queue full?}
+  B -- yes --&gt; C[retry queue]
+  B -- no --&gt; D[(store)]</code></pre>
+    <p>The collector batches on a 200ms timer, so a burst never opens more than five connections.</p>
+    <pre data-lang="python"><code>def collect(batch):
+    return batch.flush()</code></pre>
+  </section>
+
+  <section id="lifecycle" data-sf-section>
+    <h2>2 · Lifecycle</h2>
+    <pre data-lang="mermaid"><code>stateDiagram-v2
+  [*] --&gt; draft
+  draft --&gt; review
+  review --&gt; approved</code></pre>
+    <p>A spec is approved once, and approval is the end of the line.</p>
+    <pre data-lang="mermaid"><code>sequenceDiagram
+  participant Agent
+  participant Daemon
+  Agent-&gt;&gt;Daemon: create spec
+  Daemon--&gt;&gt;Agent: id + url</code></pre>
+    <pre><code>users/{src} to users/{dst}
+        (not a language, and left undeclared on purpose)</code></pre>
+  </section>
+</main>
+</div>
+</body>
+</html>
