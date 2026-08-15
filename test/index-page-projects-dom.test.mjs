@@ -258,6 +258,36 @@ test('renaming a project onto an existing one asks before merging them', async (
   assert.equal(patches(calls).length, 0, 'and nothing has moved while the question stands');
 });
 
+test('a name that only normalises onto an existing project still asks', async (t) => {
+  writeGlobalPrefs({ projects: ['figur', 'spec forge'] });
+  seedProjects({ figur: { UI: 1 }, 'spec forge': { Engineering: 1 } });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+
+  // The store collapses internal whitespace before writing, so this IS
+  // "spec forge". Comparing the raw text would have merged them silently.
+  clickMenuItem(window, document.querySelector('.prow[data-p="figur"] .kebab'), 'Rename');
+  answerPrompt(document, 'spec   forge');
+  await tick(window);
+
+  assert.ok(document.getElementById('sf-dc').hasAttribute('open'), 'the collision is seen');
+  assert.equal(patches(calls).length, 0);
+});
+
+test('a rename that normalises to the name it already has does nothing', async (t) => {
+  writeGlobalPrefs({ projects: ['spec forge'] });
+  seedProjects({ 'spec forge': { UI: 1 } });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+
+  clickMenuItem(window, document.querySelector('.prow[data-p="spec forge"] .kebab'), 'Rename');
+  answerPrompt(document, 'spec  forge');
+  await tick(window);
+
+  assert.equal(patches(calls).length, 0, 'not a rename, so not a fan-out');
+  assert.equal(prefPuts(calls).filter((c) => Array.isArray(c.body.projects)).length, 0);
+});
+
 test('cancelling the merge leaves both projects exactly as they were', async (t) => {
   writeGlobalPrefs({ projects: ['figur', 'specforge'] });
   seedProjects({ figur: { UI: 2 }, specforge: { Engineering: 1 } });

@@ -802,6 +802,16 @@ ${strip}
   // to carry its own of each, and the two disagreed on where a message appears
   // and whether it ever goes away.
   function askName(o){ SFUI.prompt(o); }
+  /**
+   * The name the store will actually hold for what was typed.
+   *
+   * sanitizeCollection / sanitizeProject collapse internal whitespace and cap at
+   * 60 characters before writing, so comparing raw input against the rail would
+   * miss "spec  forge" colliding with an existing "spec forge" — and a
+   * collision that slips past the check merges two groups with no warning.
+   * Mirrored here so the page decides identity the same way the server does.
+   */
+  function normName(s){ return String(s==null?'':s).replace(/\\s+/g,' ').trim().slice(0,60); }
   function askConfirm(o){ SFUI.confirm(o); }
 
   function paintChips(row,tags){
@@ -879,7 +889,9 @@ ${strip}
     if(items.length) items.push({sep:true});
     openMenu(btn,items.concat([
       {icon:'\\u270e',label:'Rename\\u2026',run:function(){
-        askName({title:'Rename collection',label:'Collection name',value:name,onOk:function(v){
+        askName({title:'Rename collection',label:'Collection name',value:name,onOk:function(raw){
+          var v=normName(raw);
+          if(!v||v===name) return;
           // The order is a list of names, so a rename has to be applied to it too
           // — and before the reload the move fans out into, or the collection
           // reappears at the bottom under its new name.
@@ -961,7 +973,9 @@ ${strip}
     if(items.length) items.push({sep:true});
     openMenu(btn,items.concat([
       {icon:'\\u270e',label:'Rename\\u2026',run:function(){
-        askName({title:'Rename project',label:'Project name',value:name,onOk:function(v){
+        askName({title:'Rename project',label:'Project name',value:name,onOk:function(raw){
+          var v=normName(raw);
+          if(!v||v===name) return;
           var rename=function(){
             projRail.putThen(projRail.order().map(function(p){return p===name?v:p;}),function(){
               setProj(membersOfProject(name),v,'some are still in "'+name+'"');
@@ -1360,8 +1374,12 @@ ${strip}
   // a project looks like rather than two that must agree.
   var projnew=document.getElementById('projnew');
   if(projnew) projnew.onclick=function(){
-    askName({title:'New project',label:'Project name',value:'',ok:'Create',onOk:function(v){
+    askName({title:'New project',label:'Project name',value:'',ok:'Create',onOk:function(raw){
+      var v=normName(raw);
+      if(!v) return;
       var next=projRail.order();
+      // A name that normalises onto an existing project is that project, so it
+      // is selected rather than added a second time.
       if(next.indexOf(v)===-1) next.push(v);
       projRail.putThen(next,function(){
         fetch('/api/prefs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:v})})
