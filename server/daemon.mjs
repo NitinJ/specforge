@@ -242,6 +242,10 @@ export function createDaemon() {
       if (method === 'PUT') {
         return readJsonBody(req)
           .then((b) => handleGlobalPrefsPut(b, res))
+          // Deleting a project edits the prefs registry, which can be the last
+          // thing keeping an empty published project in existence. The sweep
+          // runs behind the response; nobody waits on it.
+          .then(() => { publications.sweepProjects(); })
           .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });
@@ -340,6 +344,9 @@ export function createDaemon() {
       if (method !== 'PATCH') return sendJson(res, 405, { error: 'method not allowed' });
       return readJsonBody(req)
         .then((b) => handleOrganize(organize[1], b, res))
+        // Moving a spec can empty a published project (a rename is N of these
+        // moves). The sweep retires such shares without waiting for a restart.
+        .then(() => { publications.sweepProjects(); })
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
     const det = path.match(/^\/api\/spec\/([\w-]+)\/detach$/);

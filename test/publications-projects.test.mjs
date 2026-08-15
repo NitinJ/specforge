@@ -201,6 +201,39 @@ test('listProjects carries the live spec count, so an emptied share is visible',
   assert.equal(pubs.listProjects()[0].specs, 0);
 });
 
+test('a live rename kills the token on the next request, no restart needed', async () => {
+  seed('a1', 'specforge');
+  const { pubs } = mkPubs();
+  const share = await pubs.shareProject('specforge');
+  assert.equal(pubs.resolveProject(share.token), 'specforge');
+  writeFileSync(join(specDir('a1'), 'meta.json'),
+    JSON.stringify({ id: 'a1', title: 'a1', status: 'draft', project: 'renamed' }));
+  assert.equal(pubs.resolveProject(share.token), null);
+});
+
+test('sweepProjects unshares emptied projects and retires the tunnel', async () => {
+  seed('a1', 'specforge');
+  const { pubs } = mkPubs();
+  await pubs.shareProject('specforge');
+  writeFileSync(join(specDir('a1'), 'meta.json'),
+    JSON.stringify({ id: 'a1', title: 'a1', status: 'draft', project: 'renamed' }));
+  await pubs.sweepProjects();
+  assert.deepEqual(pubs.listProjects(), []);
+  assert.equal(pubs.origin(), null, 'nothing left to hold the tunnel');
+  // The token still survives, on the same reasoning as every other unshare.
+  assert.ok(readProjectShareToken('specforge'));
+});
+
+test('sweepProjects leaves an empty-but-registered project alone', async () => {
+  mkdirSync(home, { recursive: true });
+  writeFileSync(globalUiPath(), JSON.stringify({ projects: ['fresh project'] }));
+  const { pubs } = mkPubs();
+  const share = await pubs.shareProject('fresh project');
+  await pubs.sweepProjects();
+  assert.equal(pubs.resolveProject(share.token), 'fresh project',
+    'a UI-created project awaiting its first spec is real');
+});
+
 test('restore() does not resurrect an unshared project', async () => {
   seed('a1', 'specforge');
   const first = mkPubs();
