@@ -17,9 +17,10 @@
 //   PATCH /api/spec/<id>/comments/<tid>/comment/<cid> → edit an unsubmitted comment
 //   POST /api/spec/<id>/comments/<tid>/resolve  → resolve a thread (human)
 //   GET/PUT  /api/spec/<id>/prefs               → per-spec UI prefs (theme/width/filter)
-//   GET/PUT  /api/prefs                         → store-wide UI prefs (index theme)
+//   GET/PUT  /api/prefs                         → store-wide UI prefs (index theme,
+//                                                  project list, selected project)
 //   POST /api/spec/<id>/rename                  → set title (meta + spec <h1>/<title>)
-//   PATCH /api/spec/<id>/organize               → set tags / collection
+//   PATCH /api/spec/<id>/organize               → set tags / collection / project
 //
 // ensureServer() (below) is the singleton entrypoint every v2 command calls:
 // bind the port, or find out who already has it. Holding the port IS being the
