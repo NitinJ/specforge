@@ -124,6 +124,31 @@ test('a selection that arrived in the URL is persisted, so the store agrees with
   assert.equal(put.body.project, 'specforge');
 });
 
+test('a stale ?project= link does not clear the selection it could not honour', async (t) => {
+  writeGlobalPrefs({ projects: ['figur'], project: 'figur' });
+  seedProjects({ figur: { UI: 1 } });
+  // Following a chip on a spec whose project has since been deleted: the page
+  // falls back to All projects to show something, but storing that fallback
+  // would wipe a selection the user still wants, and outlive the page.
+  const { window, calls } = loadIndex(
+    t, { project: 'deleted-elsewhere' }, { url: 'http://localhost/?project=deleted-elsewhere' },
+  );
+  await tick(window);
+
+  assert.equal(window.document.getElementById('htitle').textContent, 'All specs', 'shown as All projects');
+  assert.equal(prefPuts(calls).length, 0, 'and nothing is written');
+});
+
+test('?project= naming No project is honoured and stored', async (t) => {
+  writeGlobalPrefs({ projects: ['figur'], project: 'figur' });
+  seedProjects({ figur: { UI: 1 }, '': { '': 1 } });
+  const { window, calls } = loadIndex(t, { project: '' }, { url: 'http://localhost/?project=' });
+  await tick(window);
+
+  assert.equal(window.document.getElementById('htitle').textContent, 'No project');
+  assert.equal(prefPuts(calls).at(-1).body.project, '', 'the empty selection is a real one');
+});
+
 test('a plain load does not re-write the selection it was already given', async (t) => {
   writeGlobalPrefs({ projects: ['figur'], project: 'figur' });
   seedProjects({ figur: { UI: 1 } });

@@ -1523,7 +1523,16 @@ ${strip}
   // of side effects, and stops the stored selection disagreeing with the screen,
   // which would make "specforge create" file into a project you are not looking
   // at.
-  if(/[?&]project=/.test(location.search)) putSelection();
+  //
+  // Only when the ask was honoured. A name that no longer exists falls back to
+  // All projects for display, and storing THAT would let a stale link silently
+  // clear a selection the user still wants — a worse outcome than the stale link
+  // itself, because it outlives the page.
+  (function(){
+    if(!/[?&]project=/.test(location.search)) return;
+    var asked=new URLSearchParams(location.search).get('project');
+    if(asked===fproj) putSelection();
+  })();
 })();
 </script>
 </body></html>`;
