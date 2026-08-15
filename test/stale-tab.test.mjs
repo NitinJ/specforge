@@ -65,6 +65,35 @@ test('the owner page still reloads on its stream', () => {
   assert.match(owner, /location\.reload\(\)/);
 });
 
+// The page is baselined against the file it was RENDERED from, not against
+// whatever the first poll happens to find. An owner writing between the
+// response and that first request would otherwise be recorded as already-seen:
+// the page would show the old document, believe itself current, and go on
+// reporting paragraphs the owner had just rewritten.
+test('the baseline is the served version, stamped at serve time', async () => {
+  const { createSpec, specHtmlPath } = await import('../lib/store.mjs');
+  const { writeFileSync, statSync, utimesSync } = await import('node:fs');
+  const id = createSpec({ title: 'Served', html: '<p>first</p>' });
+
+  const first = injectReviewLayer(SPEC, { specId: id, transport: 'poll', api: '/s/tok/api' });
+  const servedAt = statSync(specHtmlPath(id)).mtimeMs;
+  assert.ok(first.includes(`var last=${JSON.stringify(servedAt)}`),
+    'the page carries the mtime of the bytes it was built from');
+  assert.doesNotMatch(first, /last===null/, 'and never baselines from a later poll');
+
+  // The owner writes; a page served after that carries the newer stamp, so two
+  // readers who loaded either side of the write disagree, correctly. The mtime
+  // is set explicitly rather than left to the clock: two writes inside one
+  // filesystem tick share an mtime, which would make this pass or fail on
+  // timing rather than on behaviour.
+  writeFileSync(specHtmlPath(id), '<p>second</p>');
+  const later = (Date.now() + 5000) / 1000;
+  utimesSync(specHtmlPath(id), later, later);
+  const second = injectReviewLayer(SPEC, { specId: id, transport: 'poll', api: '/s/tok/api' });
+  assert.ok(!second.includes(`var last=${JSON.stringify(servedAt)}`),
+    'a later response carries a later baseline');
+});
+
 // An agent mid-round writes a section at a time. Announcing staleness per write
 // would flash the bar repeatedly through one round of review.
 test('staleness waits for the agent to finish its round', () => {

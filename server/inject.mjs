@@ -8,6 +8,7 @@ import { renderLiveTracker } from '../lib/tracker.mjs';
 import { blockComponents } from '../components/index.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
+import { readPublicationState } from '../lib/publication-state.mjs';
 
 /** Absolute path to the CLI, for the Reconnect prompt an agent is meant to run. */
 const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
@@ -145,11 +146,17 @@ function sseWatcher(id) {
  * section at a time, so staleness waits for the round to finish rather than
  * announcing itself once per section.
  */
-function pollWatcher(api, interval) {
+function pollWatcher(api, interval, servedAt) {
   // Off the api base, never the origin root: every route a publication has lives
   // under its token, so a root path is served by nothing and every poll fails.
+  //
+  // `last` starts at the mtime of the file THIS PAGE was rendered from, stamped
+  // at serve time, rather than at whatever the first poll happens to find. An
+  // owner writing between the response and that first request would otherwise
+  // be baselined as already-seen: the page would show the old document, believe
+  // itself current, and go on reporting paragraphs the owner had just rewritten.
   return `  var statePath=${JSON.stringify(`${api}/state`)};
-  var last=null, misses=0, held=false;
+  var last=${JSON.stringify(servedAt)}, misses=0, held=false;
   function goStale(){
     if(window.SPECFORGE) window.SPECFORGE.stale=true;
     if(stale) stale.hidden=false;
@@ -165,7 +172,8 @@ function pollWatcher(api, interval) {
     }).then(function(s){
       misses=0;
       if(!(window.SPECFORGE||{}).stale) connected();
-      if(last===null){ last=s.spec; return; }
+      // No baselining branch: the baseline is the served version from the
+      // start, so the very first response can already report a page as behind.
       if(s.spec!==last){ last=s.spec; held=true; }
       if(held && !s.busy){ held=false; goStale(); }
     }).catch(function(){ if(++misses>1) disconnected(); });
@@ -196,7 +204,11 @@ function reviewSnippet(specId, prefs, transport, api) {
     blocks: blockComponents(),
     ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
   });
-  const watcher = transport === 'poll' ? pollWatcher(base, POLL_INTERVAL_MS) : sseWatcher(id);
+  // The mtime of the file this response was rendered from. Read here rather
+  // than by the page, because only this side knows which bytes it sent.
+  const watcher = transport === 'poll'
+    ? pollWatcher(base, POLL_INTERVAL_MS, readPublicationState(specId).spec)
+    : sseWatcher(id);
   // The stale bar exists only where a page can go stale: a published copy is a
   // reader's, and reloading it is theirs to choose. The owner's own tabs
   // live-reload, because the owner is who caused the change.
