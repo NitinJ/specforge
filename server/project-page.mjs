@@ -9,6 +9,7 @@
 // reviewer's write surface is a spec page's comments, never the listing.
 
 import { listSpecs } from '../lib/meta.mjs';
+import { listContributions } from '../lib/store-project-shares.mjs';
 
 function esc(s) {
   return String(s ?? '')
@@ -42,13 +43,26 @@ export function projectSpecs(name) {
  * @param {string} token rides into each spec link, which is scoped to it
  */
 export function renderProjectPage(name, token) {
-  const rows = projectSpecs(name).map((m) => `
+  const local = projectSpecs(name).map((m) => `
     <li class="row">
       <a class="title" href="/p/${token}/spec/${m.id}">${esc(m.title || 'Untitled')}</a>
       <span class="type">${esc(m.type || '')}</span>
       <span class="status s-${esc(m.status || 'draft')}">${esc(m.status || 'draft')}</span>
       <span class="upd">${esc(relativeTime(m.updated))}</span>
-    </li>`).join('');
+    </li>`);
+
+  // Contributed rows link OFF this origin, to the machine that owns the spec.
+  // Nothing about them is served from here: the title and owner are the
+  // metadata their contributor registered, and the link is theirs to answer.
+  const contributed = listContributions(name).map((e) => `
+    <li class="row">
+      <a class="title" href="${esc(`${e.origin}/s/${e.token}`)}" target="_blank" rel="noopener">${esc(e.title)}</a>
+      <span class="by">${esc(e.owner)}</span>
+      <span class="elsewhere" title="Served from ${esc(e.origin)}">elsewhere</span>
+      <span class="upd">${esc(relativeTime(Date.parse(e.addedAt) || 0))}</span>
+    </li>`);
+
+  const rows = [...local, ...contributed].join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -79,6 +93,9 @@ export function renderProjectPage(name, token) {
   .status{font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:999px;
     border:1px solid var(--line);white-space:nowrap}
   .s-approved{color:var(--green)} .s-review{color:var(--amber)} .s-draft{color:var(--muted)}
+  .by{color:var(--muted);font-size:12px;white-space:nowrap}
+  .elsewhere{font-size:11.5px;color:var(--muted);border:1px dashed var(--line);
+    border-radius:999px;padding:1px 8px;white-space:nowrap}
   .upd{color:var(--muted);font-size:12px;white-space:nowrap}
   .empty{color:var(--muted);padding:24px 0}
 </style>
