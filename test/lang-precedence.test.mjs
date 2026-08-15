@@ -42,6 +42,11 @@ const TABLE = [
   { name: 'data-lang beats the class on the same element', html: '<pre><code data-lang="yaml" class="language-sql">a: 1</code></pre>', lang: 'yaml' },
   // The wrapper, which the house rules document. No spec uses it today.
   { name: 'data-lang on the wrapping block', html: '<div class="codeblock" data-lang="yaml"><pre><code>a: 1</code></pre></div>', lang: 'yaml' },
+  // ...and no further. declaredLang() looks at the pre's IMMEDIATE parent and
+  // stops, so an intervening container ends the declaration. Without this the
+  // exporter labelled every descendant of a declaring ancestor, however deep,
+  // and wrote fences the review layer would then read as undeclared.
+  { name: 'a wrapper does not reach past one level', html: '<div data-lang="yaml"><div class="panel"><pre><code>a: 1</code></pre></div></div>', lang: '' },
 ];
 
 // ---- the Node side: what export-md writes ----
