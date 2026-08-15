@@ -962,8 +962,23 @@ ${strip}
     openMenu(btn,items.concat([
       {icon:'\\u270e',label:'Rename\\u2026',run:function(){
         askName({title:'Rename project',label:'Project name',value:name,onOk:function(v){
-          projRail.putThen(projRail.order().map(function(p){return p===name?v:p;}),function(){
-            setProj(membersOfProject(name),v,'some are still in "'+name+'"');
+          var rename=function(){
+            projRail.putThen(projRail.order().map(function(p){return p===name?v:p;}),function(){
+              setProj(membersOfProject(name),v,'some are still in "'+name+'"');
+            });
+          };
+          // Renaming onto a name already in use is not a rename, it is a merge:
+          // both sets of specs end up under one name and the other project stops
+          // existing. That may well be what was wanted, so it is offered rather
+          // than refused — but not silently, because nothing here undoes it.
+          if(projRail.order().indexOf(v)===-1){ rename(); return; }
+          var mine=membersOfProject(name).length, theirs=membersOfProject(v).length;
+          askConfirm({
+            title:'Merge projects',
+            body:'"'+v+'" already exists. Its '+theirs+' spec'+(theirs===1?'':'s')+' and "'+name+'"\\u2019s '+mine+' will end up in one project called "'+v+'", and "'+name+'" will be gone.',
+            ok:'Merge',
+            danger:false,
+            onOk:rename,
           });
         }});
       }},

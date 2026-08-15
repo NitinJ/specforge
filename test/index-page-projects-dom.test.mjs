@@ -239,6 +239,61 @@ test('renaming a project writes the list first, then moves its specs', async (t)
   assert.ok(calls.indexOf(put) < calls.indexOf(p[0]), 'the list is written before the fan-out');
 });
 
+test('renaming a project onto an existing one asks before merging them', async (t) => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'] });
+  seedProjects({ figur: { UI: 2 }, specforge: { Engineering: 1 } });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+
+  clickMenuItem(window, document.querySelector('.prow[data-p="figur"] .kebab'), 'Rename');
+  answerPrompt(document, 'specforge');
+  await tick(window);
+
+  // Nothing has moved yet: the name is taken, so this is a merge and it is asked
+  // about first.
+  assert.ok(document.getElementById('sf-dc').hasAttribute('open'), 'it asks');
+  const body = document.getElementById('sf-dc-body').textContent;
+  assert.match(body, /already exists/);
+  assert.match(body, /"figur" will be gone/);
+  assert.equal(patches(calls).length, 0, 'and nothing has moved while the question stands');
+});
+
+test('cancelling the merge leaves both projects exactly as they were', async (t) => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'] });
+  seedProjects({ figur: { UI: 2 }, specforge: { Engineering: 1 } });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+
+  clickMenuItem(window, document.querySelector('.prow[data-p="figur"] .kebab'), 'Rename');
+  answerPrompt(document, 'specforge');
+  document.getElementById('sf-dc-cancel').click();
+  await tick(window);
+
+  assert.equal(patches(calls).length, 0, 'no spec moved');
+  assert.equal(prefPuts(calls).filter((c) => Array.isArray(c.body.projects)).length, 0, 'and the list is untouched');
+});
+
+test('confirming the merge moves only the renamed project’s specs', async (t) => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'] });
+  const store = seedProjects({ figur: { UI: 2 }, specforge: { Engineering: 1 } });
+  const { window, calls } = loadIndex(t);
+  const { document } = window;
+
+  clickMenuItem(window, document.querySelector('.prow[data-p="figur"] .kebab'), 'Rename');
+  answerPrompt(document, 'specforge');
+  document.getElementById('sf-dc-ok').click();
+  await tick(window);
+  await tick(window);
+
+  const p = patches(calls);
+  assert.equal(p.length, 2, "figur's two specs, not specforge's one as well");
+  assert.ok(p.every((c) => c.body.project === 'specforge'));
+  const moved = p.map((c) => c.url.match(/\/api\/spec\/([^/]+)\//)[1]).sort();
+  assert.deepEqual(moved, store.at('figur', 'UI').slice().sort());
+  assert.deepEqual(prefPuts(calls).find((c) => Array.isArray(c.body.projects)).body.projects,
+    ['specforge', 'specforge'], 'the list is deduped on the way in');
+});
+
 test('deleting a project unfiles its specs and never deletes one', async (t) => {
   writeGlobalPrefs({ projects: ['figur'] });
   seedProjects({ figur: { UI: 2 } });
