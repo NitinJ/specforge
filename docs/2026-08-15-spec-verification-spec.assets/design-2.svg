@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 190" width="760" role="img" aria-label="The verification loop: verify, judge, fix, re-verify, capped at three rounds"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}.svg-arrow{stroke:var(--muted);stroke-width:1.4;fill:none}</style>
+        <rect class="svg-box" x="8" y="60" width="120" height="46" rx="8"/>
+        <text class="svg-lbl" x="22" y="80">spec written</text>
+        <text class="svg-lbl-m" x="22" y="96">create-spec <a href="#goals">§3</a></text>
+
+        <rect class="svg-box-a" x="164" y="60" width="130" height="46" rx="8"/>
+        <text class="svg-lbl" x="178" y="80">verify --json</text>
+        <text class="svg-lbl-m" x="178" y="96">checks answered</text>
+
+        <rect class="svg-box-a" x="330" y="60" width="130" height="46" rx="8"/>
+        <text class="svg-lbl" x="344" y="80">judge pending</text>
+        <text class="svg-lbl-m" x="344" y="96">subagent if any</text>
+
+        <rect class="svg-box-a" x="496" y="60" width="120" height="46" rx="8"/>
+        <text class="svg-lbl" x="510" y="80">fix the spec</text>
+        <text class="svg-lbl-m" x="510" y="96">edit htmlPath</text>
+
+        <rect class="svg-box" x="652" y="60" width="100" height="46" rx="8" stroke="var(--green)" stroke-width="1.5"/>
+        <text class="svg-lbl" x="666" y="80">hand over</text>
+        <text class="svg-lbl-m" x="666" y="96">url + report</text>
+
+        <path class="svg-arrow" d="M128 83 L164 83"/>
+        <path class="svg-arrow" d="M294 83 L330 83"/>
+        <path class="svg-arrow" d="M460 83 L496 83"/>
+        <path class="svg-arrow" d="M616 83 L652 83"/>
+        <text class="svg-lbl-m" x="622" y="76">clean</text>
+
+        <path class="svg-arrow" d="M556 106 L556 140 L229 140 L229 106" stroke-dasharray="5 4"/>
+        <text class="svg-lbl-m" x="330" y="156">something still failing, and fewer than 3 rounds spent</text>
+
+        <path class="svg-arrow" d="M556 40 L556 22 L700 22 L700 60"/>
+        <text class="svg-lbl-m" x="470" y="18">3 rounds spent: hand over anyway, naming what still fails</text>
+      </svg>

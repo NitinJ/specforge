@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" width="760" role="img" aria-label="Architecture: the rule registry, the runner, and who answers which kind of rule"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}.svg-arrow{stroke:var(--muted);stroke-width:1.4;fill:none}</style>
+        <text class="svg-lbl-m" x="8" y="16">RULES (new)</text>
+        <rect class="svg-box" x="8" y="26" width="176" height="52" rx="8" stroke="var(--green)" stroke-width="1.5"/>
+        <text class="svg-lbl" x="22" y="48">lib/rules/global.mjs</text>
+        <text class="svg-lbl-m" x="22" y="65">32 rules, both kinds</text>
+        <rect class="svg-box" x="8" y="88" width="176" height="52" rx="8" stroke="var(--green)" stroke-width="1.5"/>
+        <text class="svg-lbl" x="22" y="110">lib/rules/index.mjs</text>
+        <text class="svg-lbl-m" x="22" y="127">registry + merge</text>
+        <rect class="svg-box-a" x="8" y="150" width="176" height="52" rx="8"/>
+        <text class="svg-lbl" x="22" y="172">template-&lt;type&gt;</text>
+        <text class="svg-lbl-m" x="22" y="189">data-sf-rules block</text>
+
+        <text class="svg-lbl-m" x="232" y="16">RUNNER</text>
+        <rect class="svg-box" x="232" y="26" width="190" height="62" rx="8" stroke="var(--green)" stroke-width="1.5"/>
+        <text class="svg-lbl" x="246" y="48">lib/verify-spec.mjs</text>
+        <text class="svg-lbl-m" x="246" y="65">runs every check-rule,</text>
+        <text class="svg-lbl-m" x="246" y="79">collects the ask-rules</text>
+        <rect class="svg-box-a" x="232" y="98" width="190" height="52" rx="8"/>
+        <text class="svg-lbl" x="246" y="120">lib/lint-spec.mjs</text>
+        <text class="svg-lbl-m" x="246" y="137">wrapper, same output</text>
+        <rect class="svg-box-a" x="232" y="160" width="190" height="52" rx="8"/>
+        <text class="svg-lbl" x="246" y="182">specforge-cli.mjs</text>
+        <text class="svg-lbl-m" x="246" y="199">verify + create strip</text>
+
+        <text class="svg-lbl-m" x="470" y="16">ANSWERED BY</text>
+        <rect class="svg-box" x="470" y="26" width="120" height="62" rx="8"/>
+        <text class="svg-lbl" x="484" y="48">Node</text>
+        <text class="svg-lbl-m" x="484" y="65">check-rules,</text>
+        <text class="svg-lbl-m" x="484" y="79">free + offline</text>
+        <rect class="svg-box" x="470" y="98" width="120" height="62" rx="8"/>
+        <text class="svg-lbl" x="484" y="120">the agent</text>
+        <text class="svg-lbl-m" x="484" y="137">ask-rules,</text>
+        <text class="svg-lbl-m" x="484" y="151">via the skill</text>
+
+        <text class="svg-lbl-m" x="636" y="16">OUTPUT</text>
+        <rect class="svg-box" x="636" y="26" width="116" height="134" rx="8"/>
+        <text class="svg-lbl" x="650" y="48">one report</text>
+        <text class="svg-lbl-m" x="650" y="66">id · ok ·</text>
+        <text class="svg-lbl-m" x="650" y="80">severity ·</text>
+        <text class="svg-lbl-m" x="650" y="94">detail</text>
+        <text class="svg-lbl-m" x="650" y="118">fix, re-run,</text>
+        <text class="svg-lbl-m" x="650" y="132">at most 3</text>
+        <text class="svg-lbl-m" x="650" y="146">rounds</text>
+
+        <path class="svg-arrow" d="M184 52 L232 50"/>
+        <path class="svg-arrow" d="M184 114 L232 62"/>
+        <path class="svg-arrow" d="M184 176 L232 74"/>
+        <path class="svg-arrow" d="M422 50 L470 52"/>
+        <path class="svg-arrow" d="M422 68 L470 120"/>
+        <path class="svg-arrow" d="M590 56 L636 70"/>
+        <path class="svg-arrow" d="M590 128 L636 96"/>
+
+        <text class="svg-lbl-m" x="8" y="240">create --type design</text>
+        <rect class="svg-box-a" x="8" y="250" width="176" height="46" rx="8"/>
+        <text class="svg-lbl-m" x="22" y="270">templateHtmlFor(type)</text>
+        <text class="svg-lbl-m" x="22" y="285">then stripTemplateBlocks(html)</text>
+        <path class="svg-arrow" d="M184 273 L250 273"/>
+        <text class="svg-lbl-m" x="258" y="268">the new spec carries no rules block and no prompts,</text>
+        <text class="svg-lbl-m" x="258" y="284">and both came from its type on the way in</text>
+      </svg>
