@@ -28,7 +28,7 @@ const BAD = 'flowchart LR\n  BOOM ][';
  *   as far as deciding whether to write
  */
 async function boot(t, body, opts = {}) {
-  const { mermaid = 'ok', reconcile = false } = opts;
+  const { mermaid = 'ok', reconcile = false, slowRenderMs = 0, fastTimeout = false } = opts;
   const dom = new JSDOM(`<!doctype html><html><head></head><body>${body}</body></html>`, {
     runScripts: 'dangerously',
     pretendToBeVisual: true,
@@ -36,6 +36,14 @@ async function boot(t, body, opts = {}) {
   });
   const { window } = dom;
   t.after(() => window.close());
+
+  // Shorten the renderer's load timeout by controlling the page's clock, rather
+  // than by adding a production knob that exists only for a test. Only the long
+  // timer is touched; the rail's own poll interval is a different function.
+  if (fastTimeout) {
+    const real = window.setTimeout;
+    window.setTimeout = (fn, ms, ...rest) => real(fn, ms >= 10000 ? 5 : ms, ...rest);
+  }
 
   window.SPECFORGE = { specId: 'test-spec', prefs: {}, transport: 'sse' };
 
@@ -62,13 +70,16 @@ async function boot(t, body, opts = {}) {
   }
 
   if (mermaid !== 'absent') {
+    const answer = (id, src) => (mermaid === 'fail' || /BOOM/.test(src)
+      ? Promise.reject(new Error('Parse error on line 2:\n  BOOM ]['))
+      : Promise.resolve({
+        svg: `<svg id="${id}"><g class="node"><text>${src.split('\n')[1].trim()}</text></g></svg>`,
+      }));
     window.mermaid = {
       initialize() {},
-      render: (id, src) => (mermaid === 'fail' || /BOOM/.test(src)
-        ? Promise.reject(new Error('Parse error on line 2:\n  BOOM ]['))
-        : Promise.resolve({
-          svg: `<svg id="${id}"><g class="node"><text>${src.split('\n')[1].trim()}</text></g></svg>`,
-        })),
+      render: (id, src) => (slowRenderMs
+        ? new Promise((res, rej) => setTimeout(() => answer(id, src).then(res, rej), slowRenderMs))
+        : answer(id, src)),
     };
   }
 
@@ -205,6 +216,59 @@ test('a spec with no diagram writes the registry exactly as before', async (t) =
   const { calls } = await boot(t, '<main><p>Prose.</p></main>', { mermaid: 'absent', reconcile: true });
   const puts = calls.filter((c) => c.method === 'PUT' && /\/blocks$/.test(c.url));
   assert.equal(puts.length, 1, '120 of 120 specs in the store take this path');
+});
+
+// ---- a render that finishes after the page gave up on it ----
+//
+// The load timeout exists so the comment rail is never held hostage by a request
+// that neither completes nor fails. It creates a second race in exchange: the
+// reconcile runs against the source text, and a render resolving afterwards
+// would replace the block, leaving every comment on the page anchored to text
+// that is no longer in it. So a late render is dropped.
+
+/**
+ * Deliver the renderer after the page has already given up waiting for it.
+ *
+ * The timer is armed when the script is appended, so this only reproduces with
+ * the bundle genuinely absent at boot: install it, then fire the load event the
+ * browser would have fired, and let the slow render land afterwards.
+ */
+async function deliverRendererLate(window, renderMs) {
+  const s = window.document.querySelector('script[src="/public/mermaid.js"]');
+  assert.ok(s, 'the renderer was requested');
+  window.mermaid = {
+    initialize() {},
+    render: (id) => new Promise((res) => setTimeout(
+      () => res({ svg: `<svg id="${id}"><g class="node"><text>late</text></g></svg>` }),
+      renderMs,
+    )),
+  };
+  s.dispatchEvent(new window.Event('load'));
+  await new Promise((r) => setTimeout(r, renderMs + 80));
+}
+
+test('a render that lands after the page settled does not touch the block', async (t) => {
+  // fastTimeout shortens the 15s load timer to 5ms, so it has already fired by
+  // the time boot() returns and the renderer is delivered.
+  const { window, calls } = await boot(t, diagram(GOOD), {
+    mermaid: 'absent', reconcile: true, fastTimeout: true,
+  });
+  await deliverRendererLate(window, 60);
+
+  const pre = window.document.querySelector('pre');
+  assert.notEqual(pre.getAttribute('data-sf-mermaid'), 'rendered',
+    'the block must not change after the reconcile has run against it');
+  assert.match(pre.textContent, /flowchart LR/, 'it stays as its source until the next load');
+
+  const puts = calls.filter((c) => c.method === 'PUT' && /\/blocks$/.test(c.url));
+  assert.equal(puts.length, 0, 'and the page that timed out is still not written');
+});
+
+test('a render that lands in time is applied as normal', async (t) => {
+  // The other side of the same switch: slow, but with no timeout to lose to.
+  const { window } = await boot(t, diagram(GOOD), { slowRenderMs: 30 });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(window.document.querySelector('pre').getAttribute('data-sf-mermaid'), 'rendered');
 });
 
 // ---- the boot-order trap this file has hit before ----

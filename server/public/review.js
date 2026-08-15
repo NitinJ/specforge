@@ -669,14 +669,25 @@
         var finish = function () {
           // Mermaid measures in a temporary element and leaves it behind when a
           // render throws. Unremoved it is a stray block on the page and another
-          // entry the reconcile has to account for.
+          // entry the reconcile has to account for. Cleaned up even after the
+          // page has settled, because removing a stray is never the wrong move.
           var junk = document.getElementById('d' + id);
           if (junk && junk.parentNode) junk.parentNode.removeChild(junk);
           after();
         };
-        var fail = function (err) { showMermaidError(pre, err); finish(); };
+        var fail = function (err) {
+          if (!finished) showMermaidError(pre, err);
+          finish();
+        };
         try {
           m.render(id, src).then(function (r) {
+            // The page may have settled without this one: a render slower than
+            // MERMAID_LOAD_TIMEOUT lets the reconcile run against the source
+            // text, and changing the block now would leave every comment on this
+            // page anchored to text that is no longer in it. The diagram stays
+            // as its source until the next load, which is the same outcome as an
+            // unreachable renderer and consistent with what was recorded.
+            if (finished) return finish();
             pre.innerHTML = r.svg;
             pre.setAttribute('data-sf-mermaid', 'rendered');
             finish();
