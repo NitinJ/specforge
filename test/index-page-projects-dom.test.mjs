@@ -202,6 +202,102 @@ test('a view and a project narrow together rather than replacing each other', (t
     'choosing a view does not drop you out of the project');
 });
 
+// ---- the two levels are visually distinguishable ----
+// The fault this guards against shipped once: a project heading at 13px and a
+// collection heading at 11px, both weight 650, is a level change carried by two
+// pixels and a case change.
+//
+// Asserted through computed style rather than by matching the stylesheet text,
+// so reformatting the CSS cannot break the test and flattening the hierarchy
+// cannot slip past it. Only properties with literal values are checked: jsdom
+// does not resolve var(), so the rule under the heading and the count pill are
+// verified in a browser instead.
+
+test('a project heading outweighs the collection headings under it', (t) => {
+  writeGlobalPrefs({ projects: ['figur'] });
+  seedProjects({ figur: { UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+
+  const style = (el) => window.getComputedStyle(el);
+  const ph = document.querySelector('.pgrp .ph');
+  const ch = document.querySelector('.grp h2');
+  const phSize = parseFloat(style(ph).fontSize);
+  const chSize = parseFloat(style(ch).fontSize);
+
+  assert.ok(phSize >= chSize + 4,
+    `project ${phSize}px vs collection ${chSize}px: too close to read as a level change`);
+  assert.notEqual(style(ph).textTransform, style(ch).textTransform,
+    'and the two are not both uppercase, which would flatten them again');
+});
+
+test('the top-of-list spacing follows the first shown project, not the first in the DOM', (t) => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'] });
+  seedProjects({ figur: { UI: ['Wardrobe grid'] }, specforge: { Engineering: ['Markdown interop'] } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const lead = () => [].slice.call(document.querySelectorAll('.pgrp.lead')).map((p) => p.getAttribute('data-p'));
+
+  assert.deepEqual(lead(), ['figur'], 'the first one to begin with');
+
+  // Filter figur out of the page. specforge is now the first thing a reader
+  // sees, so the tight top spacing has to move to it; leaving it on the hidden
+  // section would drop specforge below a gap meant to separate two projects.
+  const search = document.getElementById('search');
+  search.value = 'markdown';
+  search.dispatchEvent(new window.Event('input'));
+
+  assert.equal(document.querySelector('.pgrp[data-p="figur"]').style.display, 'none');
+  assert.deepEqual(lead(), ['specforge']);
+});
+
+test('reordering projects moves the spacing to the one that becomes first', async (t) => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'] });
+  seedProjects({ figur: { UI: 1 }, specforge: { Engineering: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const lead = () => [].slice.call(document.querySelectorAll('.pgrp.lead')).map((p) => p.getAttribute('data-p'));
+
+  assert.deepEqual(lead(), ['figur']);
+
+  // A reorder is a DOM move with no filter pass behind it, so the marker has to
+  // be refreshed there too or it stays on whatever used to be first.
+  clickMenuItem(window, document.querySelector('.prow[data-p="specforge"] .kebab'), 'Move up');
+  await tick(window);
+
+  assert.deepEqual(lead(), ['specforge']);
+});
+
+test('reordering collections moves the spacing inside the project', async (t) => {
+  writeGlobalPrefs({ projects: ['figur'], collectionOrder: ['Product', 'UI'] });
+  seedProjects({ figur: { Product: 1, UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const lead = () => [].slice.call(document.querySelectorAll('.grp.lead')).map((g) => g.getAttribute('data-coll'));
+
+  assert.deepEqual(lead(), ['Product']);
+
+  clickMenuItem(window, collRow(document, 'UI').querySelector('.kebab'), 'Move up');
+  await tick(window);
+
+  assert.deepEqual(lead(), ['UI']);
+});
+
+test('the same holds for the first shown collection inside a project', (t) => {
+  writeGlobalPrefs({ projects: ['figur'] });
+  seedProjects({ figur: { Product: ['Garment model'], UI: ['Wardrobe grid'] } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const lead = () => [].slice.call(document.querySelectorAll('.grp.lead')).map((g) => g.getAttribute('data-coll'));
+
+  assert.deepEqual(lead(), ['Product']);
+
+  const search = document.getElementById('search');
+  search.value = 'wardrobe';
+  search.dispatchEvent(new window.Event('input'));
+  assert.deepEqual(lead(), ['UI']);
+});
+
 // ---- moving specs ----
 
 test('a row can be moved into a project from its menu', async (t) => {

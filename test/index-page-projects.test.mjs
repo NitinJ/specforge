@@ -23,8 +23,10 @@ function railProjects(html) {
 
 /** The project sections, in render order, as [projectKey, [collectionKey, ...]]. */
 function groupTree(html) {
-  return [...html.matchAll(/<section class="pgrp" data-p="([^"]*)">([\s\S]*?)(?=<section class="pgrp"|<\/div>\n<div id="nohits")/g)]
-    .map(([, p, body]) => [p, [...body.matchAll(/<section class="grp" data-p="[^"]*" data-coll="([^"]*)"/g)].map((m) => m[1])]);
+  // The class list carries `lead` on whichever section is shown first, so match
+  // it loosely; the data attribute is what identifies the section.
+  return [...html.matchAll(/<section class="pgrp[^"]*" data-p="([^"]*)"[^>]*>([\s\S]*?)(?=<section class="pgrp|<\/div>\n<div id="nohits")/g)]
+    .map(([, p, body]) => [p, [...body.matchAll(/<section class="grp[^"]*" data-p="[^"]*" data-coll="([^"]*)"/g)].map((m) => m[1])]);
 }
 
 test('with no projects anywhere the page reads exactly as it did before', () => {
@@ -151,7 +153,8 @@ test('a selection hides the other projects in the markup, not only in script', (
 
   // The header and the counts already say "figur". The sections have to agree
   // before any script runs, or the page contradicts itself on first paint.
-  assert.match(html, /<section class="pgrp" data-p="figur">/, 'the selected one is shown');
+  assert.match(html, /<section class="pgrp lead" data-p="figur">/,
+    'the selected one is shown, and carries the top-of-list spacing');
   assert.match(html, /<section class="pgrp" data-p="specforge" style="display:none">/);
   assert.match(html, /<section class="pgrp" data-p="" style="display:none">/);
   assert.match(html, /<body class="inproj">/, 'and the project headings give way to the page header');
@@ -220,7 +223,7 @@ test('templates stay outside every project group and render once', async () => {
   assert.equal(html.match(/<section class="tpls">/g).length, 1);
   // The strip sits after the project groups, never inside one.
   for (const [, colls] of groupTree(html)) assert.ok(!colls.includes('Templates'));
-  assert.ok(html.indexOf('<section class="tpls">') > html.lastIndexOf('<section class="pgrp"'));
+  assert.ok(html.indexOf('<section class="tpls">') > html.lastIndexOf('<section class="pgrp'));
 });
 
 test('the project rail offers a way to make a new one', () => {

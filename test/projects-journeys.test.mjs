@@ -54,7 +54,7 @@ test('journey: file a body of work into a project', async () => {
   assert.equal(projectOf(seeded.first('', 'UI')), null, 'nothing else moved');
 
   const html = renderIndex();
-  assert.match(html, /<section class="pgrp" data-p="shopify">/);
+  assert.match(html, /<section class="pgrp[^"]*" data-p="shopify">/);
   assert.match(html, /data-p="shopify" data-coll="Research">\s*<h2>Research <span class="gcount">3<\/span>/);
 });
 
@@ -151,8 +151,8 @@ test('journey: a store that has never used a project renders as it always did', 
 
   // The no-migration guarantee, stated as an assertion: one pseudo-project, the
   // collections inside it, and no selection to explain.
-  assert.equal((html.match(/<section class="pgrp"/g) || []).length, 1);
-  assert.match(html, /<section class="pgrp" data-p="">/);
+  assert.equal((html.match(/<section class="pgrp/g) || []).length, 1);
+  assert.match(html, /<section class="pgrp lead" data-p="">/);
   assert.match(html, /<body>/, 'not scoped to a project');
   assert.match(html, /id="htitle">All specs</);
   assert.equal(html.includes('style="display:none"'), false, 'nothing hidden');
@@ -178,7 +178,7 @@ test('journey: templates stay reachable from inside every project', async () => 
 
   const html = renderIndex();
   assert.equal((html.match(/<section class="tpls">/g) || []).length, 1);
-  assert.equal(html.indexOf('<section class="tpls">') > html.lastIndexOf('<section class="pgrp"'), true);
+  assert.equal(html.indexOf('<section class="tpls">') > html.lastIndexOf('<section class="pgrp'), true);
   // And a template cannot be filed into one.
   const { templateId } = await import('../lib/store-templates.mjs');
   assert.equal((await organize(templateId('design'), { project: 'figur' })).status, 403);
