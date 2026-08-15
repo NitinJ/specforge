@@ -53,6 +53,36 @@ function relativeTime(ms, now = Date.now()) {
  * takes a position on it. Uncollected is always last: it is the absence of a
  * collection, not one you can place.
  */
+/**
+ * Working specs grouped by project: named projects, then No project.
+ *
+ * The ranking rule is groupByCollection's, one level up. The difference is that
+ * a name in `ranked` with no specs is still a group: a project is created before
+ * anything is filed into it, and one you cannot see is one you cannot drop a
+ * spec into. A collection has no such moment — it comes into being by having a
+ * member — so groupByCollection has nothing to add.
+ *
+ * No project is always last and always present, even at zero, because it is
+ * where a spec goes when it is taken out of everything else.
+ */
+function groupByProject(specs, ranked = []) {
+  const groups = new Map();
+  for (const m of specs) {
+    const key = m.project || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  }
+  for (const name of ranked) if (name && !groups.has(name)) groups.set(name, []);
+  const rank = new Map(ranked.map((name, i) => [name, i]));
+  const at = (k) => (rank.has(k) ? rank.get(k) : Number.MAX_SAFE_INTEGER);
+  const named = [...groups.keys()].filter((k) => k !== '')
+    .sort((a, b) => at(a) - at(b) || a.toLowerCase().localeCompare(b.toLowerCase()));
+  return {
+    order: [...named, ''].map((k) => ({ key: k, specs: groups.get(k) || [] })),
+    named,
+  };
+}
+
 function groupByCollection(specs, ranked = []) {
   const groups = new Map();
   for (const m of specs) {
@@ -115,7 +145,8 @@ function rowHtml(m, sig) {
   const att = attachedLabel(m);
   const tags = Array.isArray(m.tags) ? m.tags : [];
   const coll = m.collection || '';
-  const key = esc(`${m.id} ${titleRaw} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'} ${tags.join(' ')} ${coll}`.toLowerCase());
+  const proj = m.project || '';
+  const key = esc(`${m.id} ${titleRaw} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'} ${tags.join(' ')} ${coll} ${proj}`.toLowerCase());
   const chips = tags.map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}<button class="x" type="button" title="Remove tag" aria-label="Remove tag">×</button></span>`).join('');
   // "Connected" is a beating watcher, not merely an attached session — see
   // specConnected. A spec whose session closed reads disconnected within 30s
@@ -126,7 +157,7 @@ function rowHtml(m, sig) {
       : '<span class="off" title="' + att + '">○ disconnected</span>')
     : '';
   const edge = m.attachedSession ? (isLive ? ' edge-live' : ' edge-off') : '';
-  return `<li class="row${edge}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}">
+  return `<li class="row${edge}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}">
   <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
     <a class="title" href="/spec/${id}" title="${title}">${title}</a>
@@ -172,6 +203,29 @@ function collRowHtml(key, count) {
   </div>`;
 }
 
+/** The label a project key reads as. '' is the absence of one, never a name. */
+const NO_PROJECT = 'No project';
+
+/**
+ * One project in the rail.
+ *
+ * All projects and No project are neither draggable nor menued, for the reason
+ * Uncollected is not: neither is a project anyone named, so there is nothing to
+ * rename, nothing to delete, and nowhere to put them but first and last.
+ * `kind` is 'all' | 'none' | 'named'.
+ */
+function projRowHtml(key, count, kind, selected) {
+  const on = selected ? ' on' : '';
+  const label = kind === 'all' ? 'All projects' : kind === 'none' ? NO_PROJECT : esc(key);
+  const attr = kind === 'all' ? 'data-all="1"' : `data-p="${esc(key)}"`;
+  const acts = kind === 'named' ? kebabHtml(`Actions for ${key}`) : '';
+  const drag = kind === 'named' ? ' draggable="true"' : '';
+  return `<div class="prow" ${attr}${drag}>
+    <button class="pnav${on}" type="button" ${attr}><span class="pname">${label}</span><span class="nc">${count}</span></button>
+    ${acts}
+  </div>`;
+}
+
 /**
  * @param {object} [opts]
  * @param {(id:string) => {url:string|null, live:boolean}|null} [opts.shareInfo]
@@ -188,7 +242,19 @@ export function renderIndex({ shareInfo } = {}) {
   const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, shareInfo, m)]));
   const sigOf = (m) => sigs.get(m.id);
 
+  const projOrder = groupByProject(specs, prefs.projects).order;
+  // A selection naming a project that no longer exists is not an error worth
+  // reporting: it happens whenever a project is deleted with the page open
+  // elsewhere. It falls back to All projects, which shows everything, rather
+  // than to an empty pane that looks like the store lost the specs.
+  const known = new Set(projOrder.map((p) => p.key));
+  const selected = typeof prefs.project === 'string' && known.has(prefs.project) ? prefs.project : null;
+  // The collections rail is one row per distinct name across the whole store,
+  // not one per (project, collection) pair. The order is a flat list of names
+  // shared across projects, so a name has one row and one rank wherever it is
+  // used; the client hides the rows the selected project has no members of.
   const { order, named } = groupByCollection(specs, prefs.collectionOrder);
+  const inView = selected === null ? specs : specs.filter((m) => (m.project || '') === selected);
 
   const counts = Object.fromEntries(STATUSES.map((s) => [s, specs.filter((m) => (m.status || 'draft') === s).length]));
   const chipsBar = ['all', ...STATUSES].map((s) => {
@@ -206,12 +272,39 @@ export function renderIndex({ shareInfo } = {}) {
     ['shared', 'Shared', nPub],
   ].map(([v, text, c]) => `<button class="nav${v === 'all' ? ' on' : ''}" type="button" data-view="${v}">${text}<span class="nc">${c}</span></button>`).join('');
 
-  const collRows = order.map(({ key, specs: list }) => collRowHtml(key, list.length)).join('\n');
+  // Counted within the selected project, which is what the rail is filtering.
+  const collRows = order.map(({ key }) => collRowHtml(
+    key,
+    inView.filter((m) => (m.collection || '') === key).length,
+  )).join('\n');
 
-  const groups = order.map(({ key, specs: list }) => `<section class="grp" data-coll="${esc(key)}">
+  const projRows = [
+    projRowHtml('', n, 'all', selected === null),
+    ...projOrder.map(({ key, specs: list }) => projRowHtml(
+      key, list.length, key === '' ? 'none' : 'named', selected === key,
+    )),
+  ].join('\n');
+
+  // Groups are keyed by the pair: a project section holding one collection
+  // section per collection IN THAT PROJECT. An empty project gets a rail row but
+  // no section, because there is nothing to head.
+  //
+  // Every project's section is rendered, because switching between them is a DOM
+  // pass rather than a request. The ones the selection excludes are rendered
+  // already hidden, so the page the server sends agrees with the header and the
+  // counts it also sends — with no script, or before it runs, a selected project
+  // must not show another project's specs.
+  const groups = projOrder.filter(({ specs: list }) => list.length).map(({ key: pk, specs: plist }) => {
+    const inner = groupByCollection(plist, prefs.collectionOrder).order.map(({ key, specs: list }) => `<section class="grp" data-p="${esc(pk)}" data-coll="${esc(key)}">
   <h2>${key === '' ? 'Uncollected' : esc(key)} <span class="gcount">${list.length}</span></h2>
   <div class="card"><ul class="rows">${list.map((m) => rowHtml(m, sigOf(m))).join('\n')}</ul></div>
 </section>`).join('\n');
+    const off = selected !== null && selected !== pk ? ' style="display:none"' : '';
+    return `<section class="pgrp" data-p="${esc(pk)}"${off}>
+  <h2 class="ph">${pk === '' ? NO_PROJECT : esc(pk)} <span class="gcount">${plist.length}</span></h2>
+${inner}
+</section>`;
+  }).join('\n');
 
   const strip = tpls.length ? `<section class="tpls">
   <h2>Templates <span class="gcount">${tpls.length}</span></h2>
@@ -256,22 +349,32 @@ export function renderIndex({ shareInfo } = {}) {
          text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
   .shint{padding:2px 8px 0;font-size:11.5px;color:var(--faint);line-height:1.45}
 
-  .nav,.cnav{display:flex;align-items:center;gap:8px;width:100%;height:29px;padding:0 8px;border:none;border-radius:7px;
+  .nav,.cnav,.pnav{display:flex;align-items:center;gap:8px;width:100%;height:29px;padding:0 8px;border:none;border-radius:7px;
              background:none;color:var(--muted);font-size:13px;text-align:left;cursor:pointer;transition:background .12s,color .12s}
-  .nav:hover,.cnav:hover{background:var(--surface2);color:var(--ink)}
-  .nav.on,.cnav.on{background:var(--accent-soft);color:var(--accent);font-weight:560}
+  .nav:hover,.cnav:hover,.pnav:hover{background:var(--surface2);color:var(--ink)}
+  .nav.on,.cnav.on,.pnav.on{background:var(--accent-soft);color:var(--accent);font-weight:560}
   .nc{margin-left:auto;font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
-  .nav.on .nc,.cnav.on .nc{color:inherit;opacity:.7}
-  .cname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nav.on .nc,.cnav.on .nc,.pnav.on .nc{color:inherit;opacity:.7}
+  .cname,.pname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  .crow{display:flex;align-items:center;gap:2px;border-radius:7px}
-  .crow .cnav{min-width:0}
-  .crow[draggable="true"]{cursor:grab}
-  .crow.dragging{opacity:.4;cursor:grabbing}
+  .crow,.prow{display:flex;align-items:center;gap:2px;border-radius:7px}
+  .crow .cnav,.prow .pnav{min-width:0}
+  .crow[draggable="true"],.prow[draggable="true"]{cursor:grab}
+  .crow.dragging,.prow.dragging{opacity:.4;cursor:grabbing}
   /* While a drag is in flight the rail is a list you are rearranging, not a set
      of filters — the hover highlight would read as "click me". */
-  .colls.rearranging .cnav:hover{background:none;color:var(--muted)}
-  .colls.rearranging .crow:not(.dragging){box-shadow:inset 0 0 0 1px transparent}
+  .colls.rearranging .cnav:hover,.projs.rearranging .pnav:hover{background:none;color:var(--muted)}
+  .colls.rearranging .crow:not(.dragging),.projs.rearranging .prow:not(.dragging){box-shadow:inset 0 0 0 1px transparent}
+  /* A collection the selected project has no members of is not a filter that
+     leads anywhere, so it leaves the rail rather than sitting there at zero. */
+  .crow[hidden]{display:none}
+
+  /* "+ New project" is an action, not a filter, so it does not wear the rail's
+     selected treatment. Named .projnew rather than .pnew because the collection
+     picker already owns that name for its "create this one" button. */
+  .projnew{display:block;width:100%;height:26px;margin-top:2px;padding:0 8px;border:none;border-radius:7px;
+        background:none;color:var(--faint);font-size:12.5px;text-align:left;cursor:pointer}
+  .projnew:hover{background:var(--surface2);color:var(--ink)}
 
   /* ── sticky top: search + toolbar ─────────────────────────────────── */
   .top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);
@@ -304,8 +407,17 @@ export function renderIndex({ shareInfo } = {}) {
   .wrap{max-width:1180px;margin:0 auto;padding:0 28px 96px}
   @media(max-width:960px){.wrap{padding:0 18px 96px}}
 
-  /* ── collection groups ────────────────────────────────────────────── */
+  /* ── project + collection groups ──────────────────────────────────── */
+  /* The project heading only earns its line when more than one project is on
+     screen. Inside a project the page header already names it, so body.inproj
+     takes it away rather than repeating it. */
+  .pgrp{margin:26px 0 0}
+  .ph{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:650;letter-spacing:-.01em;
+      color:var(--ink);text-transform:none;margin:0 0 2px 2px;padding:4px 2px}
+  body.inproj .ph{display:none}
+  body.inproj .pgrp{margin-top:0}
   .grp{margin:22px 0 0}
+  .pgrp .grp:first-of-type{margin-top:8px}
   .grp h2,.tpls h2{display:flex;align-items:center;gap:5px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:650;margin:0 0 7px 2px}
   /* the collection you are inside stays named while you scroll it */
   .grp h2{position:sticky;top:94px;z-index:5;background:var(--bg);padding:5px 2px;margin:0 0 3px;cursor:pointer;user-select:none}
@@ -454,10 +566,14 @@ export function renderIndex({ shareInfo } = {}) {
     .crow{width:auto}
     .tags,.id,.upd{display:none}
   }
-</style></head><body>
+</style></head><body${selected === null ? '' : ' class="inproj"'}>
 <div class="app">
 <aside class="side">
   <span class="brand"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2l1.2 2.6L14 5.8l-2.8 1.2L10 9.6 8.8 7 6 5.8l2.8-1.2z"/><rect x="4" y="11" width="12" height="3.4" rx="1.2"/><rect x="6" y="15.4" width="8" height="2.6" rx="1"/></svg>SpecForge</span>
+  <div class="shead">Projects</div>
+  <nav class="projs" id="projs" aria-label="Projects">${projRows}</nav>
+  <button class="projnew" id="projnew" type="button">+ New project</button>
+  <div class="shead">Views</div>
   <nav class="views" id="views" aria-label="Views">${views}</nav>
   <div class="shead">Collections</div>
   <nav class="colls" id="colls" aria-label="Collections">${collRows}</nav>
@@ -466,7 +582,7 @@ export function renderIndex({ shareInfo } = {}) {
 <main class="pane">
 <div class="top"><div class="topin">
 <header>
-  <span class="htitle" id="htitle">All specs</span>
+  <span class="htitle" id="htitle">${selected === null ? 'All specs' : selected === '' ? NO_PROJECT : esc(selected)}</span>
   <span class="spacer"></span>
   <span class="searchbox"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6" cy="6" r="4.2"/><path d="M9.2 9.2L12.5 12.5"/></svg><input class="search" id="search" type="search" placeholder="Search specs, tags, collections…" autocomplete="off" aria-label="Search"><span class="skey">/</span></span>
   <button class="toggle" id="theme" type="button" aria-label="Toggle theme" title="Toggle theme">${theme === 'dark'
