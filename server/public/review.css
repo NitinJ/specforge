@@ -1324,6 +1324,26 @@ html[data-sf-toc="hidden"] #sf-tocbtn { transform: translate(0, -50%); }
   body.sf-side-open #sf-launcher, body.sf-side-open #sf-menu, body.sf-side-open #sf-top, body.sf-side-open #sf-titlebar { display: none; }
 }
 
+/* a template's rules block. It ships `hidden` so that if a spec ever carries one
+   by accident it stays out of the reader's way; the review layer shows it,
+   because a template is edited through exactly this surface and a block you can
+   only edit by knowing it is there is not editable. Marked visually as
+   scaffolding rather than content, since it never reaches a spec. */
+section[data-sf-rules][hidden] {
+  display: block;
+  border: 1px dashed var(--sf-line);
+  border-radius: var(--sf-r-lg, 12px);
+  padding: 14px 18px;
+  margin: 32px 0 0;
+  background: color-mix(in srgb, var(--sf-accent) 4%, transparent);
+}
+section[data-sf-rules] > h2 {
+  font-size: 15px; letter-spacing: .02em; text-transform: uppercase;
+  color: var(--sf-muted); margin: 0 0 8px;
+}
+section[data-sf-rules] li { margin: 6px 0; }
+section[data-sf-rules] li:not([data-sf-rule]) { color: var(--sf-muted); }
+
 /* print / "Export PDF": drop all injected review chrome so the PDF is just the
    spec, and keep atomic blocks from splitting across pages. The spec's own CSS
    (and the print dialog's "Background graphics" toggle) drive the look. */
