@@ -28,11 +28,34 @@ point: a notice takes a type, and its tone follows from the type.
 | Something that will break if ignored | `callout danger` |
 | Something to be careful about | `callout warning` |
 | Context, no claim | `callout note` |
+| Nodes and the relationships between them | `pre[data-lang="mermaid"]` |
+| A picture where the exact placement carries meaning | `flow or figure, inline SVG` |
+| Anything that must reflow at the reader’s width | `table, grid, card, steps` |
 | None of the above | `a paragraph` |
 
 **Density.** A component is emphasis, and emphasis is a budget. No more than
 one notice per 400 words of a section, and never two notices in immediate
 succession: two adjacent notices are a table with two rows.
+
+## Drawing
+
+Three ways, and the choice is not about how the result looks.
+
+| If the diagram is | Use | Because |
+|---|---|---|
+| A graph: nodes and the relationships between them. Flowchart, sequence, state, ER, class. | `pre[data-lang="mermaid"]` | The relationships are the content and the position is not. Editable in one line, and it survives markdown as source. |
+| A picture where position carries meaning: a timeline to scale, a screen layout, an annotated arrangement, or anything with no matching mermaid diagram type. | `.flow` or `figure` with inline SVG | Mermaid computes layout and will not honour a specific placement. Costs a sidecar file on export. |
+| Not a diagram: a comparison, a grid of peer items, a UI mock, anything that must reflow at the reader’s width. | `table`, `.grid`, `.card`, `.steps` | A diagram of a table is a table drawn badly, and these reflow, which no SVG does. |
+
+**Mermaid is the default for a graph.** An inline SVG of the same graph costs a coordinate for every node and every edge endpoint, has to be recomputed to move one box, and leaves the spec as a linked `.svg` file on export. A mermaid diagram is the same text at both ends and renders natively on GitHub.
+
+**Past about 15 nodes a mermaid diagram stops being readable** at a spec’s column width. Split it, or say the same thing in a table. Asserted from the content width, not measured against readers.
+
+**`mermaid` is the one declared language that is never highlighted**, and the one case where declaring a language on a block that is not code is correct. The rule against declaring a language on ASCII diagrams and pseudo-code is unchanged: those stay undeclared.
+
+**A diagram is one comment target.** A reviewer comments on the diagram, not on a node inside it, so a picture carrying several separate claims is several diagrams or a table.
+
+**It renders where the review layer runs**: the daemon and a published copy. From `file://` a diagram shows its source as a code block, the same trade the themes and the highlighter already make.
 
 ## Notices
 
@@ -340,9 +363,22 @@ Must contain: a figcaption.
 </svg><figcaption>The lint runs on the stamped file, so what is checked is what is served.</figcaption></figure>
 ```
 
+### `pre[data-lang="mermaid"]`
+
+A graph: nodes and the relationships between them, where the layout follows from the relationships rather than from where you put things. Flowchart, sequence, state, ER, class.
+
+Must contain: mermaid source, and no hand-placed coordinates.
+
+```html
+<pre data-lang="mermaid"><code>flowchart LR
+  A[collector] --&gt; B{queue full?}
+  B -- yes --&gt; C[retry queue]
+  B -- no --&gt; D[(store)]</code></pre>
+```
+
 ### `.flow`
 
-A sequence of stages over time or through components. Inline SVG, nodes and edges from palette tokens.
+A sequence of stages over time or through components, where the exact placement carries meaning. If the layout follows from the relationships, use mermaid instead. Inline SVG, nodes and edges from palette tokens.
 
 Must contain: an aria-label saying what the diagram shows.
 

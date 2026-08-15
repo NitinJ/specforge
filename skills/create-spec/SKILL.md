@@ -42,8 +42,16 @@ injects the review layer at serve time.
     never to avoid choosing.
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
 - Read the component rules: `${CLAUDE_PLUGIN_ROOT}/references/spec-components.md`.
-  34 components, each with the rule for when it applies. Pick by what a block
-  **asserts**, never by how it should look.
+  35 components, each with the rule for when it applies. Pick by what a block
+  **asserts**, never by how it should look. Its **Drawing** section is the choice
+  between the three ways to draw; read it before writing any diagram, because the
+  cheapest option and the most powerful one are different choices:
+  - a graph (flowchart, sequence, state, ER, class) is
+    `<pre data-lang="mermaid">`, and states the relationships rather than any
+    coordinates;
+  - a picture where exact placement carries meaning is inline SVG;
+  - a comparison, peer items, or anything that must reflow is a table or a grid,
+    not a diagram at all.
 
 ## 2. Scaffold into the store
 

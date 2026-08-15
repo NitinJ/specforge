@@ -155,7 +155,7 @@ Use the **component library**. Every spec carries its stylesheet as a stamped
 block, so the classes are available without importing anything.
 
 **The rules live in [`references/spec-components.md`](../references/spec-components.md)** —
-34 components, each with the rule for when it applies and what a well-formed one
+35 components, each with the rule for when it applies and what a well-formed one
 must contain. Read it before writing. It is generated from `components/`, so it
 is never out of date with what the stylesheet defines.
 
@@ -195,9 +195,47 @@ colours a box-drawing character as an operator and a comment as a string, which
 reads worse than no highlighting at all. Leave them undeclared; that is the
 supported way to say "this is not a language".
 
+**`mermaid` is the one exception, and the only declared language never
+highlighted.** A diagram is not code, but it is declared, because the declaration
+is what tells the review layer to render it. See Diagrams below. Nothing else
+changes: an ASCII sketch stays undeclared.
+
 Highlighting is a review-layer feature, so it applies to a spec the daemon serves
 and to a published copy. A spec opened straight from `file://` shows plain code,
 the same trade the theme variants and the comment rail already make.
+
+## Diagrams
+
+Three ways to draw, and the choice is about what the diagram *is*, not how it
+should look. The full rule with the reasoning is in
+[`references/spec-components.md`](../references/spec-components.md) → Drawing.
+
+| If the diagram is | Use |
+|---|---|
+| A graph: nodes and the relationships between them (flowchart, sequence, state, ER, class) | `<pre data-lang="mermaid">` |
+| A picture where the exact placement carries meaning, or something mermaid has no type for | `.flow` / `figure` with inline SVG |
+| Not a diagram: a comparison, peer items, anything that must reflow | `table`, `.grid`, `.card`, `.steps` |
+
+```html
+<pre data-lang="mermaid"><code>flowchart LR
+  A[collector] --&gt; B{queue full?}
+  B -- yes --&gt; C[retry queue]</code></pre>
+```
+
+**Mermaid is the default for a graph.** An inline SVG of the same graph costs a
+coordinate per node and per edge endpoint, has to be recomputed to move one box,
+and leaves the spec as a linked `.svg` file on export. A mermaid diagram is the
+same text at both ends and renders natively on GitHub.
+
+Rendering is a review-layer feature, like highlighting: it applies to a spec the
+daemon serves and to a published copy. From `file://` a diagram shows its source
+as a code block. A source that will not parse shows the error instead, because a
+reader cannot act on mermaid source and the author who can is looking at the file.
+
+A diagram is **one comment target**. A reviewer comments on the diagram, not on a
+node inside it, so a picture carrying several separate claims is several diagrams
+or a table. Past about 15 nodes a diagram stops being readable at a spec's column
+width; split it or use a table.
 
 ## Naming
 

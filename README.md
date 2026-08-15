@@ -192,8 +192,11 @@ spec on their own.
 A spec goes **out** as GitHub-flavoured markdown, from the action menu in the
 review UI or with `/specforge:export-md`. It renders correctly on GitHub with no
 plugins: headings, tables, fenced code, and the implementation plan as task
-lists you can tick. Diagrams travel beside it as SVG files, because every
-markdown renderer strips inline SVG, so a spec with diagrams downloads as a zip.
+lists you can tick. Hand-drawn SVG diagrams travel beside it as files, because
+every markdown renderer strips inline SVG, so a spec carrying them downloads as
+a zip. A **mermaid** diagram needs none of that: it goes out as a plain
+` ```mermaid ` fence, comes back as the same text, and renders natively on
+GitHub.
 
 Any `.md` comes **in** with `/specforge:convert <file>`. The conversion is
 mechanical first, so the same file always produces the same spec, and the agent
