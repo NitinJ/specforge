@@ -3372,6 +3372,42 @@ test('a reviewer can still choose the agent, which is the whole point of the chi
   assert.equal(p.body.body, '@agent please add a rollback plan');
 });
 
+// Resolving is the owner's verdict, and the gateway serves no route for it.
+// A button that 404s is worse than no button, so the published copy does not
+// carry one — in the rail card, in the bubble composer, or as Resolve all.
+test('a published copy offers no way to resolve a thread', async (t) => {
+  const threads = [{
+    id: 't1',
+    state: 'open',
+    anchor: { block: { index: 0, tag: 'P', text: 'alpha' } },
+    comments: [{ id: 'c1', author: 'Mira', kind: 'human', body: 'is this still true?' }],
+  }];
+  const { window } = await bootReviewLayer(t, { ...reviewer, threads });
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  const labels = [...window.document.querySelectorAll('#sf-rail button, #sf-sidebar button')]
+    .map((b) => b.textContent.trim());
+  assert.ok(labels.includes('Reply'), 'replying is a reviewer’s whole job');
+  assert.ok(!labels.includes('Resolve'), 'and resolving is not offered');
+
+  const all = window.document.querySelector('.sf-resolve-all');
+  assert.ok(!all || !all.classList.contains('show'), 'nor Resolve all');
+});
+
+test('the owner still gets the resolve controls', async (t) => {
+  const threads = [{
+    id: 't1',
+    state: 'open',
+    anchor: { block: { index: 0, tag: 'P', text: 'alpha' } },
+    comments: [{ id: 'c1', author: 'Mira', kind: 'human', body: 'is this still true?' }],
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  await new Promise((r) => window.setTimeout(r, 0));
+  const labels = [...window.document.querySelectorAll('#sf-rail button, #sf-sidebar button')]
+    .map((b) => b.textContent.trim());
+  assert.ok(labels.includes('Resolve'));
+});
+
 test('choosing discussion removes a mention already typed', async (t) => {
   // Otherwise the chip reads "discussion" and the comment still reaches the
   // agent, because the text is what routes it.

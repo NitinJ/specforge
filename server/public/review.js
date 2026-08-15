@@ -1195,7 +1195,13 @@
     }
     // A human discussion nobody resolved is still unfinished business, and an
     // approval granted over it would be revoked by the next comment anyway.
-    if (unresolvedCount() > 0) return { label: 'Resolve to approve', state: 'other', act: null };
+    // On a published copy the instruction names something the reader cannot do
+    // — resolving is the owner's — so it says whose move it is instead.
+    if (unresolvedCount() > 0) {
+      return isPublishedCopy()
+        ? { label: 'With the owner', state: 'other', act: null }
+        : { label: 'Resolve to approve', state: 'other', act: null };
+    }
     // A status from before the lifecycle was cut to two — done, implementing,
     // closed — on a store nobody has migrated. Show it; never offer to approve
     // over the top of it, which would erase what it recorded.
@@ -1218,7 +1224,9 @@
       if (d > 0) parts.push(d + (d === 1 ? ' discussion' : ' discussions'));
       els.footCaption.textContent = parts.join(' · ');
     }
-    if (els.resolveAll) els.resolveAll.classList.toggle('show', !!unresolvedCount());
+    if (els.resolveAll) {
+      els.resolveAll.classList.toggle('show', !!unresolvedCount() && !isPublishedCopy());
+    }
   }
   function applyAction(btn, s) {
     if (!btn) return;
@@ -1981,7 +1989,10 @@
       var replyBtn = create('button', {}, 'Reply');
       replyBtn.onclick = function (e) { e.stopPropagation(); openReply(card, t); };
       acts.appendChild(replyBtn);
-      if (t.state !== 'resolved') {
+      // Resolving is the owner's verdict on whether their spec answered the
+      // thread, so a published copy does not offer it: the route is not on the
+      // gateway, and a button that 404s is worse than no button.
+      if (t.state !== 'resolved' && !isPublishedCopy()) {
         var resolveBtn = create('button', {}, 'Resolve');
         resolveBtn.onclick = function (e) { e.stopPropagation(); postJSON(API + '/' + t.id + '/resolve').then(load); };
         acts.appendChild(resolveBtn);
@@ -2483,7 +2494,10 @@
         load();
       }).catch(function () { flashErr('Could not resolve the thread.'); });
     };
-    row.appendChild(res); row.appendChild(send);
+    // Same rule as the sidebar card: a reader of a published copy replies, and
+    // the owner closes.
+    if (!isPublishedCopy()) row.appendChild(res);
+    row.appendChild(send);
     b.appendChild(ta); b.appendChild(aud.el); b.appendChild(row);
     wireInput(ta, submit);
     wireBubbleHover(b, el);
