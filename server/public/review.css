@@ -586,6 +586,24 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
   padding: 7px 13px; font-size: 12px; white-space: nowrap;
 }
 
+/* Which body of work this spec belongs to. Sits before the title, quiet and in
+   the muted colour, because it is context for the name rather than a second
+   name: it should be readable at a glance and never compete with the title. It
+   is a link into the home page filtered to that project. flex:0 0 auto with a
+   max-width keeps a long project name from pushing the title off the bar. */
+.sf-tb-proj {
+  flex: 0 0 auto; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11.5px; font-weight: 600; letter-spacing: .2px; text-decoration: none;
+  padding: 3px 9px; border-radius: 999px;
+  color: var(--sf-muted, #5f6873);
+  border: 1px solid var(--sf-line, #e4e0d7);
+  background: color-mix(in srgb, var(--sf-ink, #222629) 4%, transparent);
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease);
+}
+.sf-tb-proj:hover { color: var(--sf-accent); border-color: color-mix(in srgb, var(--sf-accent) 45%, transparent); }
+.sf-tb-proj:focus-visible { outline: none; box-shadow: var(--sf-ring); }
+.sf-tb-proj[hidden] { display: none; }
+
 /* A live publication has no expiry, so it has to be visible without running a
    command. Sits next to the CTA, quiet but permanent while the share is up. */
 .sf-tb-shared {

@@ -55,6 +55,33 @@ test('create without a session scaffolds unattached (graceful degrade)', async (
   assert.equal(readMeta(r.id).attachedSession, null);
 });
 
+test('create files a spec into the project named on the flag', async () => {
+  const r = await cmdCreate({ title: 'A', project: '  figur design studio ' }, deps());
+  assert.equal(readMeta(r.id).project, 'figur design studio', 'sanitized like any other project name');
+  assert.equal(r.project, 'figur design studio', 'and reported back, so the agent can say where it went');
+});
+
+test('create with no flag files into the project the home page is showing', async () => {
+  const { writeGlobalPrefs } = await import('../lib/global-prefs.mjs');
+  writeGlobalPrefs({ projects: ['figur'], project: 'figur' });
+  const r = await cmdCreate({ title: 'A' }, deps());
+  assert.equal(readMeta(r.id).project, 'figur');
+});
+
+test('create with an empty flag files nowhere, whatever is selected', async () => {
+  const { writeGlobalPrefs } = await import('../lib/global-prefs.mjs');
+  writeGlobalPrefs({ projects: ['figur'], project: 'figur' });
+  const r = await cmdCreate({ title: 'A', project: '' }, deps());
+  assert.equal(readMeta(r.id).project, null, 'an explicit empty overrides the selection');
+});
+
+test('create files nowhere while All projects is showing', async () => {
+  const { writeGlobalPrefs } = await import('../lib/global-prefs.mjs');
+  writeGlobalPrefs({ projects: ['figur'] }); // no selection stored = All projects
+  const r = await cmdCreate({ title: 'A' }, deps());
+  assert.equal(readMeta(r.id).project, null);
+});
+
 test('create defaults to general and scaffolds the chrome-only shell (no tracker)', async () => {
   const r = await cmdCreate({ title: 'D' }, deps());
   assert.equal(r.type, 'general');

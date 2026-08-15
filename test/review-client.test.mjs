@@ -3012,6 +3012,42 @@ test('a published spec shows a Shared badge; an unpublished one does not', async
 });
 
 
+// ---- the project chip ----
+
+test('a spec in a project names it in the header, and links home filtered to it', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', title: 'T', status: 'draft', project: 'figur-design-studio' },
+  });
+  const chip = window.document.querySelector('.sf-tb-proj');
+  assert.ok(chip, 'the chip exists');
+  assert.equal(chip.hasAttribute('hidden'), false);
+  assert.equal(chip.textContent, 'figur-design-studio');
+  assert.equal(chip.getAttribute('href'), '/?project=figur-design-studio',
+    'the next question after "which project" is "what else is in it"');
+});
+
+test('a spec in no project shows no chip', async (t) => {
+  const { window } = await bootReviewLayer(t, { meta: { id: 'test-spec', title: 'T', status: 'draft', project: null } });
+  assert.equal(window.document.querySelector('.sf-tb-proj').hasAttribute('hidden'), true);
+});
+
+test('meta with no project key at all shows no chip', async (t) => {
+  // What a spec written before the field looks like, and what a published copy
+  // is served: the reader's meta subset does not carry it.
+  const { window } = await bootReviewLayer(t, { meta: { id: 'test-spec', title: 'T', status: 'draft' } });
+  assert.equal(window.document.querySelector('.sf-tb-proj').hasAttribute('hidden'), true);
+});
+
+test('a project name is escaped into the chip and encoded into its link', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: { id: 'test-spec', title: 'T', status: 'draft', project: 'a&b <img src=x>' },
+  });
+  const chip = window.document.querySelector('.sf-tb-proj');
+  assert.equal(chip.textContent, 'a&b <img src=x>', 'set as text, so markup cannot execute');
+  assert.equal(chip.querySelector('img'), null);
+  assert.equal(chip.getAttribute('href'), '/?project=' + encodeURIComponent('a&b <img src=x>'));
+});
+
 const discussionThread = (id) => ({
   id, state: 'open', comments: [{ author: 'lavee', body: 'why 40 bits?' }],
   anchor: { block: { index: 0, tag: 'P', text: 'The quick brown fox.', sectionPath: [] } },

@@ -112,6 +112,26 @@ test('the selection is persisted, so the next load opens where you left off', as
   assert.equal(prefPuts(calls).at(-1).body.project, null, 'All projects stores null');
 });
 
+test('a selection that arrived in the URL is persisted, so the store agrees with the screen', async (t) => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'], project: 'figur' });
+  seedProjects({ figur: { UI: 1 }, specforge: { Engineering: 1 } });
+  const { window, calls } = loadIndex(t, { project: 'specforge' }, { url: 'http://localhost/?project=specforge' });
+  await tick(window);
+
+  assert.equal(window.document.getElementById('htitle').textContent, 'specforge');
+  const put = prefPuts(calls).at(-1);
+  assert.ok(put, 'the arriving selection is written');
+  assert.equal(put.body.project, 'specforge');
+});
+
+test('a plain load does not re-write the selection it was already given', async (t) => {
+  writeGlobalPrefs({ projects: ['figur'], project: 'figur' });
+  seedProjects({ figur: { UI: 1 } });
+  const { window, calls } = loadIndex(t);
+  await tick(window);
+  assert.equal(prefPuts(calls).length, 0, 'nothing to converge, so nothing is sent');
+});
+
 test('the collections rail narrows to the selected project, with its own counts', (t) => {
   writeGlobalPrefs({ projects: ['figur', 'specforge'] });
   seedProjects({ figur: { UI: 3 }, specforge: { UI: 1, Engineering: 4 } });

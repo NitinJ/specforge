@@ -44,22 +44,29 @@ export function loadIndex(t, opts, hostOpts = {}) {
     '<script src="/public/ui.js" defer></script>',
     `<script>${UI_JS}</script>`,
   );
+  // Installed in beforeParse, not after construction: the page's own script runs
+  // during parsing and can fetch there (it persists a selection that arrived in
+  // the URL), so a stub attached afterwards would miss the call and the test
+  // would read as a missing feature.
+  const calls = [];
+  const stub = (window) => {
+    window.fetch = (url, init) => {
+      const method = (init && init.method) || 'GET';
+      const body = init && init.body ? JSON.parse(init.body) : undefined;
+      const call = { method, url, body };
+      calls.push(call);
+      const json = hostOpts.respond ? hostOpts.respond(call) : Object.assign({ ok: true }, body || {});
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(json) });
+    };
+  };
   const dom = new JSDOM(html, {
     runScripts: 'dangerously',
     url: hostOpts.url || 'http://localhost/',
     virtualConsole,
+    beforeParse: stub,
   });
   const { window } = dom;
   t.after(() => window.close());
-  const calls = [];
-  window.fetch = (url, init) => {
-    const method = (init && init.method) || 'GET';
-    const body = init && init.body ? JSON.parse(init.body) : undefined;
-    const call = { method, url, body };
-    calls.push(call);
-    const json = hostOpts.respond ? hostOpts.respond(call) : Object.assign({ ok: true }, body || {});
-    return Promise.resolve({ ok: true, json: () => Promise.resolve(json) });
-  };
   return { window, calls, reloads };
 }
 

@@ -166,6 +166,35 @@ test('All projects renders every section visible and no inproj flag', () => {
   assert.match(html, /<body>/);
 });
 
+test('?project= selects a project for this render, over what is stored', () => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'], project: 'figur' });
+  seedProjects({ figur: { UI: 1 }, specforge: { Engineering: 1 } });
+
+  const html = renderIndex({ project: 'specforge' });
+  assert.match(html, /<button class="pnav on"[^>]*data-p="specforge"/);
+  assert.match(html, /id="htitle">specforge</);
+  assert.match(html, /<section class="pgrp" data-p="figur" style="display:none">/);
+});
+
+test('?project= naming nothing that exists falls back to All projects', () => {
+  writeGlobalPrefs({ projects: ['figur'], project: 'figur' });
+  seedProjects({ figur: { UI: 1 } });
+  assert.match(renderIndex({ project: 'deleted-elsewhere' }), /<button class="pnav on"[^>]*data-all="1"/);
+});
+
+test('?project= with an empty value selects No project, not All projects', () => {
+  writeGlobalPrefs({ projects: ['figur'], project: 'figur' });
+  seedProjects({ figur: { UI: 1 }, '': { '': 1 } });
+  assert.match(renderIndex({ project: '' }), /<button class="pnav on"[^>]*data-p=""/);
+});
+
+test('no ?project= leaves the stored selection alone', () => {
+  writeGlobalPrefs({ projects: ['figur'], project: 'figur' });
+  seedProjects({ figur: { UI: 1 } });
+  assert.match(renderIndex({ project: null }), /<button class="pnav on"[^>]*data-p="figur"/);
+  assert.match(renderIndex(), /<button class="pnav on"[^>]*data-p="figur"/);
+});
+
 test('a selection naming a project that no longer exists falls back to All projects', () => {
   writeGlobalPrefs({ project: 'deleted-elsewhere' });
   seedProjects({ figur: { UI: 1 } });

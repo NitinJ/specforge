@@ -404,8 +404,15 @@ export function createDaemon() {
       // The index shows a Shared marker per spec; the registry, not the record
       // on disk, decides whether that link actually answers.
       if (path === '/') {
+        // ?project= is how a spec page's header chip opens the home page on the
+        // project that spec is in. It overrides the stored selection for this
+        // render only; the page persists it the same way a rail click does, so
+        // the GET stays free of side effects.
         return send(res, 200, 'text/html; charset=utf-8',
-          renderIndex({ shareInfo: (id) => publications.shareInfo(id) }));
+          renderIndex({
+            shareInfo: (id) => publications.shareInfo(id),
+            project: url.searchParams.get('project'),
+          }));
       }
       if (path === '/events') return serveEvents(url.searchParams.get('spec') || '', req, res);
       // The same mtimes a published copy polls. A spec tab that let go of its

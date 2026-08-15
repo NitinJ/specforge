@@ -231,8 +231,12 @@ function projRowHtml(key, count, kind, selected) {
  * @param {(id:string) => {url:string|null, live:boolean}|null} [opts.shareInfo]
  *   from the daemon's publications registry. The record on disk holds only a
  *   token, so the public URL is composed by whoever knows the current origin.
+ * @param {string|null} [opts.project] the ?project= override, from a spec page's
+ *   header chip. Wins over the stored selection for this render; the page then
+ *   persists it the way a rail click does, so the two converge without the GET
+ *   itself writing anything.
  */
-export function renderIndex({ shareInfo } = {}) {
+export function renderIndex({ shareInfo, project } = {}) {
   const prefs = readGlobalPrefs();
   const theme = prefs.theme === 'dark' ? 'dark' : 'light';
   const all = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
@@ -248,7 +252,8 @@ export function renderIndex({ shareInfo } = {}) {
   // elsewhere. It falls back to All projects, which shows everything, rather
   // than to an empty pane that looks like the store lost the specs.
   const known = new Set(projOrder.map((p) => p.key));
-  const selected = typeof prefs.project === 'string' && known.has(prefs.project) ? prefs.project : null;
+  const asked = typeof project === 'string' ? project : prefs.project;
+  const selected = typeof asked === 'string' && known.has(asked) ? asked : null;
   // The collections rail is one row per distinct name across the whole store,
   // not one per (project, collection) pair. The order is a flat list of names
   // shared across projects, so a name has one row and one rank wherever it is
@@ -1513,6 +1518,12 @@ ${strip}
   // with it — the rail narrowed, the counts scoped, the project headings gone.
   paintNav();
   applyFilters();
+  // A selection that arrived in the URL (a spec page's header chip) has not been
+  // stored yet. Persisting it here rather than on the GET keeps the request free
+  // of side effects, and stops the stored selection disagreeing with the screen,
+  // which would make "specforge create" file into a project you are not looking
+  // at.
+  if(/[?&]project=/.test(location.search)) putSelection();
 })();
 </script>
 </body></html>`;
