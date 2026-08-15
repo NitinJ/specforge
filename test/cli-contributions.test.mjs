@@ -139,6 +139,48 @@ test('withdraw refuses a spec that was never shared', async (t) => {
   });
 });
 
+test('withdrawal survives a rotate: the registered token is what is named', async (t) => {
+  // Rotating a share mints a new spec token so the old link dies. The entry on
+  // the creator's side is keyed by the token that was registered, so the
+  // current one would name nothing.
+  const id = createSpec({ title: 'Rotated later', html: '<h1>x</h1>' });
+  const registered = newToken();
+  const afterRotate = newToken();
+  const { rememberContribution } = await import('../lib/store-contributed.mjs');
+  const { writeShare } = await import('../lib/store-share.mjs');
+
+  await withCreator(t, {}, async (creator, seen) => {
+    rememberContribution({
+      origin: creator, token: PTOK, specId: id, specToken: registered,
+    });
+    // ... and then the contributor rotates, so share.json now holds a different token.
+    writeShare(id, { specId: id, token: afterRotate, createdAt: 'x' });
+
+    await cmdWithdraw({ id, url: `${creator}/p/${PTOK}` }, {});
+    const del = seen.find((s) => s.method === 'DELETE');
+    assert.equal(del.url, `/p/${PTOK}/contribute/${registered}`,
+      'the token the entry is keyed by, not the spec’s current one');
+  });
+});
+
+test('re-contributing after a rotate retires the entry left under the old token', async (t) => {
+  const id = createSpec({ title: 'Rotates', html: '<h1>x</h1>' });
+  const old = newToken();
+  const { rememberContribution } = await import('../lib/store-contributed.mjs');
+
+  await withOwnDaemon(t, async (deps, fresh) => {
+    await withCreator(t, {}, async (creator, seen) => {
+      rememberContribution({ origin: creator, token: PTOK, specId: id, specToken: old });
+      const out = await cmdContribute({ id, url: `${creator}/p/${PTOK}` }, deps);
+      assert.equal(out.replaced, old);
+      assert.equal(out.token, fresh);
+      const del = seen.find((s) => s.method === 'DELETE');
+      assert.ok(del, 'the stale entry was retired');
+      assert.equal(del.url, `/p/${PTOK}/contribute/${old}`);
+    });
+  });
+});
+
 test('prune drops an entry from the creator’s own store, no network', async () => {
   writeProjectShare('atelier', { token: PTOK, createdAt: 'x' });
   const theirs = newToken();
