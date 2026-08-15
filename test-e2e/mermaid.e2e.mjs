@@ -224,6 +224,69 @@ test('a state diagram start marker is solid ink, not the node fill', needsChrome
   });
 });
 
+// The defect every other test here missed, because they all assert colour and
+// structure and none of them asks whether the words fit.
+//
+// Mermaid measures each label to size the box around it, and it measures in the
+// font its config names. Passing `fontFamily: 'inherit'` measured in a fallback
+// and the CSS then painted in the spec's reading font, so "collector" was drawn
+// as "collecto" inside a box sized for a narrower font.
+test('a node label fits inside the box mermaid drew for it', needsChrome, async () => {
+  // With a WIDE reading font, which is the condition that exposed this. The
+  // defect is invisible under the shell's default sans, because that is close
+  // enough to mermaid's own fallback that nothing overflows. A reader with a
+  // serif reading font selected saw every label clipped.
+  const wide = specWith(FLOWCHART).replace(
+    '<div class="layout">',
+    '<div class="layout" data-sf-font="serif" style="--sf-reading-font: Georgia, \'Times New Roman\', serif">',
+  );
+
+  await withSpec({ html: wide }, async ({ page }) => {
+    await page.waitForSelector('pre[data-sf-mermaid="rendered"]', { timeout: 30000 });
+
+    const tight = await page.evaluate(() => {
+      const out = [];
+      document.querySelectorAll('pre[data-sf-mermaid] g.node').forEach((node) => {
+        // Against the foreignObject, which is the width mermaid computed for
+        // this text, not against the shape. The shape carries padding, so a
+        // label can overflow its own slot and still sit inside the box.
+        const slot = node.querySelector('foreignObject');
+        const label = node.querySelector('.nodeLabel');
+        if (!slot || !label) return;
+        const s = slot.getBoundingClientRect().width;
+        const l = label.getBoundingClientRect().width;
+        if (l > s + 1) {
+          out.push(`"${node.textContent.trim()}" is ${Math.round(l)}px of text in a ${Math.round(s)}px slot`
+            + ` (${getComputedStyle(label).fontFamily.split(',')[0]})`);
+        }
+      });
+      return out;
+    });
+
+    assert.deepEqual(tight, [], 'labels overflow: mermaid measured in one font and painted in another');
+  });
+});
+
+test('a diagram keeps its font when the reader changes the reading font', needsChrome, async () => {
+  // A rendered diagram is a measured artefact. Its boxes were sized around text
+  // in one font, so it has to keep that font: inheriting would resize the glyphs
+  // inside boxes that cannot resize with them.
+  await withSpec({ html: specWith(FLOWCHART) }, async ({ page }) => {
+    await page.waitForSelector('pre[data-sf-mermaid="rendered"]', { timeout: 30000 });
+    const sel = 'pre[data-sf-mermaid] .nodeLabel, pre[data-sf-mermaid] g.node text';
+
+    const before = await page.evaluate((s) => getComputedStyle(document.querySelector(s)).fontFamily, sel);
+    await page.evaluate(() => {
+      const c = document.querySelector('.layout') || document.body;
+      c.setAttribute('data-sf-font', 'serif');
+      c.style.setProperty('--sf-reading-font', '"EB Garamond", Georgia, serif');
+    });
+    const after = await page.evaluate((s) => getComputedStyle(document.querySelector(s)).fontFamily, sel);
+
+    assert.equal(after, before, 'the diagram is pinned to the font it was measured in');
+  });
+});
+
 test('a rendered diagram sheds the code block chrome', needsChrome, async () => {
   await withSpec({ html: specWith(FLOWCHART) }, async ({ page }) => {
     await page.waitForSelector('pre[data-sf-mermaid="rendered"]', { timeout: 30000 });

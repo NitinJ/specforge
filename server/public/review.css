@@ -274,7 +274,6 @@
   padding: 0 !important;
   margin: 18px 0;
   overflow-x: auto;
-  font-family: inherit !important;
   line-height: normal;
 }
 [data-sf-mermaid] svg { max-width: 100%; height: auto; display: block; }
@@ -295,6 +294,12 @@
    leaves the child's own colour in place, which is how a sequence diagram's
    actor names stayed dark grey on a dark page while the computed style of the
    <text> above them read as correct. So the leaves are named too. */
+/* Colour only. The FONT is deliberately left to mermaid, which was told the
+   page's real family before it measured: a label's box is sized around its text,
+   so forcing a different family afterwards draws glyphs that no longer fit, and
+   "collector" came out as "collecto". Pinning the font at render time also means
+   a later change of reading font cannot resize text inside boxes that cannot
+   resize with it. */
 [data-sf-mermaid="rendered"] text,
 [data-sf-mermaid="rendered"] tspan,
 [data-sf-mermaid="rendered"] .nodeLabel,
@@ -303,7 +308,6 @@
 [data-sf-mermaid="rendered"] foreignObject span {
   color: var(--ink) !important;
   fill: var(--ink) !important;
-  font-family: inherit !important;
 }
 /* A foreignObject <p> is a paragraph in the document's flow rules, so it arrives
    with the spec's own margins and pushes the label off its edge. */
@@ -341,7 +345,6 @@
 [data-sf-mermaid="rendered"] .messageText tspan {
   color: var(--muted) !important;
   fill: var(--muted) !important;
-  font-family: inherit !important;
 }
 /* The plate the label sits on, so an edge does not run through the words. It is
    the <p> that carries it in mermaid 11, not the div named for the job. */
@@ -369,7 +372,6 @@
 [data-sf-mermaid="rendered"] text.actor,
 [data-sf-mermaid="rendered"] .actor-box {
   fill: var(--ink) !important;
-  font-family: inherit !important;
 }
 
 /* state diagrams: the start and end markers are solid by design, so they take
