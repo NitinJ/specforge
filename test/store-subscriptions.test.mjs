@@ -6,7 +6,7 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, utimesSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, utimesSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -104,15 +104,35 @@ test('a held lock refuses the write rather than racing it', () => {
   assert.equal(mod.readSubscriptions().length, 1);
 });
 
-test('a lock left by a dead process is reclaimed rather than wedging the file', () => {
+test("a refused call leaves the other process's lock alone", () => {
+  // Stale reclamation means a lock can change hands, so release is conditional
+  // on still owning it. A call that never acquired must not delete the lock it
+  // waited on: doing so would let a third process in alongside the real holder.
   mkdirSync(home, { recursive: true });
   const lock = `${subscriptionsPath()}.lock`;
-  writeFileSync(lock, '');
-  // Backdate it past the staleness window.
+  writeFileSync(lock, 'someone-else');
+  try {
+    assert.throws(() => mod.addSubscription({
+      name: 'Blocked', origin: 'https://x.example', token: TOK,
+    }), /locked by another specforge process/);
+    assert.equal(readFileSync(lock, 'utf8'), 'someone-else', "the holder's lock survives");
+  } finally {
+    rmSync(lock, { force: true });
+  }
+});
+
+test('a reclaimed stale lock is retaken under our own id and released', () => {
+  mkdirSync(home, { recursive: true });
+  const lock = `${subscriptionsPath()}.lock`;
+  writeFileSync(lock, 'a-dead-process');
   const old = Date.now() - 60_000;
   utimesSync(lock, old / 1000, old / 1000);
+
   mod.addSubscription({ name: 'Reclaimed', origin: 'https://x.example', token: TOK });
   assert.equal(mod.readSubscriptions()[0].name, 'Reclaimed');
+  // Released, because by then the lock carried our id rather than the dead
+  // holder's — the release is conditional, not unconditional.
+  assert.throws(() => readFileSync(lock, 'utf8'), /ENOENT/);
 });
 
 test('a corrupt file reads as no subscriptions rather than throwing', () => {
