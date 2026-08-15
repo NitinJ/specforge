@@ -242,6 +242,10 @@ export function createDaemon() {
       if (method === 'PUT') {
         return readJsonBody(req)
           .then((b) => handleGlobalPrefsPut(b, res))
+          // Deleting a project edits the prefs registry, which can be the last
+          // thing keeping an empty published project in existence. The sweep
+          // runs behind the response; nobody waits on it.
+          .then(() => { publications.sweepProjects(); })
           .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });
@@ -340,6 +344,9 @@ export function createDaemon() {
       if (method !== 'PATCH') return sendJson(res, 405, { error: 'method not allowed' });
       return readJsonBody(req)
         .then((b) => handleOrganize(organize[1], b, res))
+        // Moving a spec can empty a published project (a rename is N of these
+        // moves). The sweep retires such shares without waiting for a restart.
+        .then(() => { publications.sweepProjects(); })
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
     const det = path.match(/^\/api\/spec\/([\w-]+)\/detach$/);
@@ -361,7 +368,31 @@ export function createDaemon() {
         origin: publications.origin(),
         localPort: publications.localPort(),
         shares: publications.list(),
+        projects: publications.listProjects(),
       });
+    }
+    // A project name arrives URL-encoded (names carry spaces); decoded before it
+    // reaches the registry, which normalizes it the way the store does.
+    const pshareR = path.match(/^\/api\/project\/([^/]+)\/share$/);
+    if (pshareR) {
+      let name;
+      try {
+        name = decodeURIComponent(pshareR[1]);
+      } catch {
+        return sendJson(res, 400, { error: 'malformed project name' });
+      }
+      if (method === 'POST') {
+        return readJsonBody(req).catch(() => ({}))
+          .then((b) => publications.shareProject(name, { rotate: !!(b && b.rotate) }))
+          .then((share) => sendJson(res, 201, { ok: true, share }))
+          .catch((e) => sendJson(res, 400, { error: e.message }));
+      }
+      if (method === 'DELETE') {
+        return publications.unshareProject(name)
+          .then((was) => sendJson(res, 200, { ok: true, wasPublished: was }))
+          .catch((e) => sendJson(res, 400, { error: e.message }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
     }
     const shareR = path.match(/^\/api\/spec\/([\w-]+)\/share$/);
     if (shareR) {
@@ -391,6 +422,9 @@ export function createDaemon() {
       // share committing anywhere inside it would leave a public URL serving a
       // spec that no longer exists, with nothing on disk left to find it by.
       return publications.unshareThen(specRes[1], () => handleDelete(specRes[1], res))
+        // Deleting the last spec of a published project empties it, the same
+        // way an organize move can. Swept behind the response, like the others.
+        .then(() => { publications.sweepProjects(); })
         .catch((e) => sendJson(res, 500, { error: e.message }));
     }
 
