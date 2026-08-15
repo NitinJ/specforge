@@ -17,7 +17,7 @@ import { specHtmlPath, specDir } from '../lib/store-paths.mjs';
 import { optedIn, readBlock } from '../lib/components-stamp.mjs';
 import { checkComponents } from '../lib/components-lint.mjs';
 import {
-  RENAMES, codemod, ambiguousBlocks, classify, migrateSpec, reportPath, readReport,
+  RENAMES, codemod, ambiguousBlocks, classify, migrateSpec, reportPath, readReport, rawRanges,
 } from '../lib/components-migrate.mjs';
 
 let home;
@@ -175,6 +175,29 @@ test('raw text is protected in any casing', () => {
   }
   const upper = `<SCRIPT>el.innerHTML = "<div class='callout warn'>Never read this</div>";</SCRIPT>`;
   assert.equal(ambiguousBlocks(codemod(upper).html).length, 0, 'and it offers no blocks');
+});
+
+// The body's offset is the opening tag's length, not the result of searching the
+// match for the body text. Searching lands on an attribute that happens to hold
+// the same string, and the range then covers the attribute while leaving the body
+// reachable — the opposite of what the protection is for.
+//
+// Asserted on rawRanges directly rather than through codemod: reaching it end to
+// end needs an attribute whose value equals a body containing markup, which means
+// a `>` inside an attribute, and no tag matcher here parses that anyway. The
+// invariant is still worth holding, because the next reader of this function has
+// no reason to know that.
+test('a raw-text range covers the body, not an attribute that repeats it', () => {
+  const html = `<p>before</p><script data-echo="ABC">ABC</script><p>after</p>`;
+  const [[from, to]] = rawRanges(html);
+  assert.equal(html.slice(from, to), 'ABC');
+  assert.equal(from, html.indexOf('>ABC</script>') + 1, 'the body, not the attribute copy');
+  assert.ok(from > html.indexOf('data-echo'), 'past the opening tag entirely');
+});
+
+test('raw-text ranges are found for every kind, in any casing', () => {
+  const html = '<SCRIPT>a</script><style>b</style><textarea>c</TEXTAREA><title>d</title>';
+  assert.deepEqual(rawRanges(html).map(([f, t]) => html.slice(f, t)), ['a', 'b', 'c', 'd']);
 });
 
 test('a callout written inside a script is not in the work list', () => {
