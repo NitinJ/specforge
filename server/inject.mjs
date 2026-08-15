@@ -8,13 +8,21 @@ import { renderLiveTracker } from '../lib/tracker.mjs';
 import { blockComponents } from '../components/index.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
+import { readPublicationState } from '../lib/publication-state.mjs';
 
 /** Absolute path to the CLI, for the Reconnect prompt an agent is meant to run. */
 const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
 
 /**
  * @param {string} html raw spec HTML read from disk
- * @param {{specId:string, transport?:'sse'|'poll', api?:string}} opts
+ * @param {{specId:string, transport?:'sse'|'poll', api?:string, servedAt?:number}} opts
+ *   `servedAt` is the spec's mtime as the CALLER observed it, and it must be
+ *   read BEFORE the html it accompanies. Read after, a write landing between
+ *   the two pairs old bytes with a new mtime, and the page believes itself
+ *   current forever. Read before, the same write pairs new bytes with an old
+ *   mtime, which costs one spurious "new version" notice and no anchors.
+ *   Omitted, it is read here, which is correct for a caller that has not read
+ *   the html yet and adequate for one that never polls.
  *   `transport` says how this page learns the spec changed. The daemon holds an
  *   event stream; a publication cannot (measured: Cloudflare's edge returns the
  *   response headers of an SSE response and then buffers every body byte), so
@@ -24,7 +32,7 @@ const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'spe
  *   publication.
  * @returns {string} HTML with the live tracker + review layer injected
  */
-export function injectReviewLayer(html, { specId, transport = 'sse', api } = {}) {
+export function injectReviewLayer(html, { specId, transport = 'sse', api, servedAt } = {}) {
   let out = renderLiveTracker(html);
 
   // ui.css first: review.css is the layer's own chrome, and where the two speak
@@ -42,7 +50,7 @@ export function injectReviewLayer(html, { specId, transport = 'sse', api } = {})
     ...(font ? { font } : {}),
     ...(mono ? { mono } : {}),
     ...readPrefs(specId),
-  }, transport, api);
+  }, transport, api, servedAt);
   if (out.includes('</body>')) {
     out = out.replace('</body>', `${layer}\n</body>`);
   } else {
@@ -125,31 +133,56 @@ function sseWatcher(id) {
 }
 
 /**
- * Live-reload by asking: the published case.
+ * Go stale by asking: the published case.
  *
- * Reloads when the spec file's mtime moves. The comments mtime is returned too
- * and deliberately ignored here, because the rail refetches comments on its own
- * and a full reload on every comment would throw away whatever the reader was
- * typing.
+ * When the spec file's mtime moves, the page does NOT reload itself. It goes
+ * **stale**: it stops reporting which paragraphs exist, and offers the reader a
+ * reload to take when they choose (spec 82f5dabccf, D11).
  *
- * `busy` says an agent is part-way through answering a batch. Its writes land
- * one section at a time, so they are remembered and taken as a single reload
- * once the round finishes — the same hold the event stream applies.
+ * Both halves matter. Comments anchor to paragraphs, and every open page helps
+ * the store track which paragraphs still exist; a page showing an old version
+ * would report paragraphs the owner has since rewritten as deleted, detaching
+ * their comments. And a reader mid-sentence is not someone to yank the document
+ * out from under — the owner's own tabs live-reload because the owner is the one
+ * who just caused the change.
+ *
+ * The comments mtime is returned too and deliberately ignored: the rail refetches
+ * comments on its own, and going stale for a comment would be noise.
+ *
+ * `busy` says an agent is part-way through answering a batch. Its writes land one
+ * section at a time, so staleness waits for the round to finish rather than
+ * announcing itself once per section.
  */
-function pollWatcher(api, interval) {
+function pollWatcher(api, interval, servedAt) {
   // Off the api base, never the origin root: every route a publication has lives
   // under its token, so a root path is served by nothing and every poll fails.
+  //
+  // `last` starts at the mtime of the file THIS PAGE was rendered from, stamped
+  // at serve time, rather than at whatever the first poll happens to find. An
+  // owner writing between the response and that first request would otherwise
+  // be baselined as already-seen: the page would show the old document, believe
+  // itself current, and go on reporting paragraphs the owner had just rewritten.
   return `  var statePath=${JSON.stringify(`${api}/state`)};
-  var last=null, misses=0, held=false;
+  var last=${JSON.stringify(servedAt)}, misses=0, held=false;
+  function goStale(){
+    if(window.SPECFORGE) window.SPECFORGE.stale=true;
+    if(stale) stale.hidden=false;
+    set('● new version','#d29922');
+    // Anything listening for it — the review layer stops reporting block
+    // identity the moment this fires, so a stale tab cannot retire a paragraph.
+    try { document.dispatchEvent(new CustomEvent('sf-stale')); } catch(e){}
+  }
   function poll(){
     fetch(statePath, { cache: 'no-store' }).then(function(r){
       if(!r.ok) throw new Error('state '+r.status);
       return r.json();
     }).then(function(s){
-      misses=0; connected();
-      if(last===null){ last=s.spec; return; }
+      misses=0;
+      if(!(window.SPECFORGE||{}).stale) connected();
+      // No baselining branch: the baseline is the served version from the
+      // start, so the very first response can already report a page as behind.
       if(s.spec!==last){ last=s.spec; held=true; }
-      if(held && !s.busy){ location.reload(); }
+      if(held && !s.busy){ held=false; goStale(); }
     }).catch(function(){ if(++misses>1) disconnected(); });
   }
   poll();
@@ -159,7 +192,7 @@ function pollWatcher(api, interval) {
 /** How often a published page asks whether the spec moved. */
 const POLL_INTERVAL_MS = 5000;
 
-function reviewSnippet(specId, prefs, transport, api) {
+function reviewSnippet(specId, prefs, transport, api, servedAt) {
   const id = JSON.stringify(specId);
   // Embed the persisted prefs (store-wide theme/font + per-spec width/…) so
   // review.js applies them on boot with no flash and no extra round-trip.
@@ -178,19 +211,34 @@ function reviewSnippet(specId, prefs, transport, api) {
     blocks: blockComponents(),
     ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
   });
-  const watcher = transport === 'poll' ? pollWatcher(base, POLL_INTERVAL_MS) : sseWatcher(id);
+  // The mtime of the file this response was rendered from. The caller's
+  // reading is preferred because only it knows when it read the bytes; falling
+  // back to reading it here is for callers that have not read them yet.
+  const stamp = typeof servedAt === 'number' ? servedAt : readPublicationState(specId).spec;
+  const watcher = transport === 'poll'
+    ? pollWatcher(base, POLL_INTERVAL_MS, stamp)
+    : sseWatcher(id);
+  // The stale bar exists only where a page can go stale: a published copy is a
+  // reader's, and reloading it is theirs to choose. The owner's own tabs
+  // live-reload, because the owner is who caused the change.
+  const staleBar = transport === 'poll' ? `
+<div id="sf-stale" class="sf-stale" role="status" hidden>
+  <span class="sf-stale-msg">The owner has updated this spec.</span>
+  <button type="button" class="sf-stale-reload" onclick="location.reload()">Show the new version</button>
+</div>` : '';
   return `<!-- specforge:review-layer -->
 <div id="sf-live" class="sf-live">● live</div>
 <div id="sf-disconnected" class="sf-disconnected" role="alert" hidden>
   <span class="sf-dc-dot"></span>
   <span class="sf-dc-msg">Live connection lost. This spec may be stale, and new comments will not save until it reconnects.</span>
   <button type="button" class="sf-dc-reload" onclick="location.reload()">Reload</button>
-</div>
+</div>${staleBar}
 <script>window.SPECFORGE = ${cfg};</script>
 <script>
 (function(){
   var pill=document.getElementById('sf-live');
   var banner=document.getElementById('sf-disconnected');
+  var stale=document.getElementById('sf-stale');
   var timer=null, GRACE=4000;
   function set(t,c){ if(pill){pill.textContent=t; pill.style.color=c;} }
   function showBanner(){ if(banner){ banner.hidden=false; } }

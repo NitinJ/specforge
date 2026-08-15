@@ -1770,9 +1770,19 @@
   // Skipping leaves bidByEl null, so every thread resolves by content: exactly
   // the path that predates the registry, which is the worst case this was always
   // designed to degrade to.
+  /** True once this page is known to be showing an older version of the spec. */
+  function isStale() {
+    return !!(window.SPECFORGE || {}).stale;
+  }
+
   function syncBlocks(done, settled) {
     if (!window.SFReconcile) return done();
     if (settled === false) return done();
+    // A page showing an old version would report paragraphs the owner has since
+    // rewritten as deleted, detaching their comments. Retirement is durable, so
+    // this is the difference between a stale tab being harmless and it costing
+    // someone their anchors (spec D11).
+    if (isStale()) return done();
     fetch(SPEC_API + '/blocks')
       .then(function (r) { return r.json(); })
       .catch(function () { return null; })
@@ -1780,6 +1790,10 @@
         var registry = body && body.registry;
         var out = reconcileBlocks(registry);
         if (!out || !out.changed) return done();
+        // Re-checked at the commit point: the poll can land while this request
+        // is in flight, and a PUT computed from a page that has since gone
+        // stale is exactly what this is meant to prevent.
+        if (isStale()) return done();
         var payload = out.registry;
         payload.baseVersion = registry && typeof registry.version === 'number' ? registry.version : 0;
         return fetch(SPEC_API + '/blocks', {
