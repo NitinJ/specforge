@@ -6,66 +6,23 @@
 // as a download with the filename the server asked for. A fetch() test proves
 // the bytes; only a browser proves the button.
 //
-// Run with `npm run test:e2e`. Uses whatever chromium is already cached under
-// ~/.cache/ms-playwright, so it never triggers a download; with none present it
-// skips rather than failing.
+// Run with `npm run test:e2e`. Store, server and browser come from
+// ./harness.mjs, so this file cannot pick a different chromium than the rest of
+// the suite; it used to carry its own lookup and could.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync, readdirSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve, join } from 'node:path';
-import { tmpdir, homedir } from 'node:os';
-import { chromium } from 'playwright';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+import { withSpec, needsChrome } from './harness.mjs';
+import { fixture } from '../test/fixtures/md/index.mjs';
 
-function findCachedChromium() {
-  const base = join(homedir(), '.cache', 'ms-playwright');
-  if (!existsSync(base)) return null;
-  const dirs = readdirSync(base).filter((d) => /^chromium-\d+$/.test(d)).sort();
-  for (const d of dirs.reverse()) {
-    const exe = join(base, d, 'chrome-linux64', 'chrome');
-    if (existsSync(exe)) return exe;
-  }
-  return null;
-}
-
-const CHROME = findCachedChromium();
-const skip = CHROME ? false : 'no cached chromium';
-
-/** A daemon over a throwaway store, with one spec in it. */
-async function withSpec(fixtureName, title, fn) {
-  const home = mkdtempSync(join(tmpdir(), 'sf-e2e-md-'));
-  const prevHome = process.env.SPECFORGE_HOME;
-  process.env.SPECFORGE_HOME = home;
-
-  // Imported after SPECFORGE_HOME is set: the store reads it at call time, but
-  // the daemon seeds templates on construction.
-  const { createSpec } = await import('../lib/store.mjs');
-  const { createDaemon } = await import('../server/daemon.mjs');
-  const { fixture } = await import('../test/fixtures/md/index.mjs');
-
-  const id = createSpec({ html: fixture(fixtureName).html(), title, type: 'design' });
-  const server = createDaemon();
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  const base = `http://127.0.0.1:${server.address().port}`;
-
-  const downloads = mkdtempSync(join(tmpdir(), 'sf-e2e-dl-'));
-  const browser = await chromium.launch({ executablePath: CHROME });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
-  try {
-    await page.goto(`${base}/spec/${id}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#sf-launcher');
-    return await fn({ page, base, id, downloads });
-  } finally {
-    await browser.close();
-    await new Promise((r) => server.close(r));
-    rmSync(home, { recursive: true, force: true });
-    rmSync(downloads, { recursive: true, force: true });
-    if (prevHome === undefined) delete process.env.SPECFORGE_HOME;
-    else process.env.SPECFORGE_HOME = prevHome;
-  }
+/** One of the markdown fixtures, served and opened with downloads enabled. */
+function withFixture(name, title, fn) {
+  return withSpec({
+    html: fixture(name).html(), title, type: 'design', acceptDownloads: true,
+  }, fn);
 }
 
 async function openMenu(page) {
@@ -73,8 +30,8 @@ async function openMenu(page) {
   await page.waitForSelector('.sf-menu-row');
 }
 
-test('the download row is in the menu and saves a .md for a spec with no diagrams', { skip }, async () => {
-  await withSpec('design', 'Retry policy', async ({ page, downloads }) => {
+test('the download row is in the menu and saves a .md for a spec with no diagrams', needsChrome, async () => {
+  await withFixture('design', 'Retry policy', async ({ page, downloads }) => {
     await openMenu(page);
     const link = page.locator('a.sf-doc-link', { hasText: 'Download markdown' });
     assert.equal(await link.count(), 1, 'exactly one download row');
@@ -94,8 +51,8 @@ test('the download row is in the menu and saves a .md for a spec with no diagram
   });
 });
 
-test('a spec with diagrams saves a .zip instead', { skip }, async () => {
-  await withSpec('diagrams', 'Topology', async ({ page, downloads }) => {
+test('a spec with diagrams saves a .zip instead', needsChrome, async () => {
+  await withFixture('diagrams', 'Topology', async ({ page, downloads }) => {
     await openMenu(page);
     const [download] = await Promise.all([
       page.waitForEvent('download'),

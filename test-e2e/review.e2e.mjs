@@ -3,64 +3,18 @@
 // control and is clickable) and the full comment round-trip driven through real
 // clicks + the HTTP API. Run with `npm run test:e2e`.
 //
-// Uses whatever chromium build is already cached under ~/.cache/ms-playwright
-// (via executablePath) so it never triggers a browser download; if none is
-// present the suite skips rather than failing.
+// The store, the server and the browser all come from ./harness.mjs. This file
+// used to boot them itself through `server/app.mjs` and `lib/paths.mjs`, which
+// the v2 store replaced; nothing noticed, because the suite is not part of
+// `npm test` and an import error reads as one failing file.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdtempSync, readdirSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve, join } from 'node:path';
-import { tmpdir, homedir } from 'node:os';
-import { chromium } from 'playwright';
 
-import { createApp } from '../server/app.mjs';
-import { buildIndex } from '../lib/paths.mjs';
+import { withSpec, needsChrome } from './harness.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const TEMPLATE = readFileSync(join(ROOT, 'templates', 'spec-base.html'), 'utf8');
-
-function findCachedChromium() {
-  const base = join(homedir(), '.cache', 'ms-playwright');
-  if (!existsSync(base)) return null;
-  const dir = readdirSync(base).find((d) => /^chromium-\d+$/.test(d));
-  if (!dir) return null;
-  const exe = join(base, dir, 'chrome-linux64', 'chrome');
-  return existsSync(exe) ? exe : null;
-}
-
-const CHROME = findCachedChromium();
-
-function makeSpecsDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'sf-e2e-'));
-  const file = join(dir, '2026-06-02-e2e-spec.html');
-  writeFileSync(file, TEMPLATE.replace('{{TITLE}}', 'E2E Spec'));
-  return { dir, file };
-}
-
-async function withServerAndPage(fn) {
-  const { dir } = makeSpecsDir();
-  const id = buildIndex(dir)[0].id;
-  const server = createApp({ specsDir: dir });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch({ executablePath: CHROME });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  try {
-    // The injected SSE EventSource keeps the network busy, so 'networkidle'
-    // would never fire — wait for DOM + the review chrome instead.
-    await page.goto(`${base}/spec/${id}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#sf-launcher');
-    return await fn({ page, base, id });
-  } finally {
-    await browser.close();
-    await new Promise((r) => server.close(r));
-  }
-}
-
-test('the launcher is the single floating control, is clickable, and opens the menu with the review rows', { skip: CHROME ? false : 'no cached chromium' }, async () => {
-  await withServerAndPage(async ({ page }) => {
+test('the launcher is the single floating control, is clickable, and opens the menu with the review rows', needsChrome, async () => {
+  await withSpec({}, async ({ page }) => {
     assert.equal(await page.locator('#sf-launcher').count(), 1, 'exactly one launcher');
     assert.equal(await page.locator('#sf-sidebar').count(), 1, 'exactly one sidebar');
     // The spec no longer ships its own theme/width controls — those are gone.
@@ -87,8 +41,8 @@ test('the launcher is the single floating control, is clickable, and opens the m
   });
 });
 
-test('comment round-trip: hover block → click → compose → submit persists and renders', { skip: CHROME ? false : 'no cached chromium' }, async () => {
-  await withServerAndPage(async ({ page, base, id }) => {
+test('comment round-trip: hover block → click → compose → submit persists and renders', needsChrome, async () => {
+  await withSpec({}, async ({ page, base, id }) => {
     const block = page.locator('#overview p').first();
     const blockText = (await block.innerText()).replace(/\s+/g, ' ').trim();
 
@@ -97,9 +51,11 @@ test('comment round-trip: hover block → click → compose → submit persists 
     await page.waitForFunction(() => !!document.querySelector('.sf-hover'));
 
     // Clicking the block opens the composer for that block — no text selection.
+    // The composer is a bubble in the rail; it was a standalone #sf-compose panel
+    // when this test was written.
     await block.click();
-    await page.locator('#sf-compose textarea').fill('E2E block comment');
-    await page.locator('#sf-compose').getByText('Comment', { exact: true }).click();
+    await page.locator('.sf-bub-compose textarea').fill('E2E block comment');
+    await page.locator('.sf-bub-compose .sf-primary').click();
 
     // The comment must persist through the HTTP API with a block anchor.
     let threads = [];
@@ -111,7 +67,9 @@ test('comment round-trip: hover block → click → compose → submit persists 
     assert.equal(threads.length, 1, 'one thread persisted via the API');
     assert.equal(threads[0].anchor.block.tag, 'P', 'anchored to the clicked block');
     assert.equal(threads[0].anchor.block.text, blockText, 'anchor carries the block text');
-    assert.equal(threads[0].comments[0].body, 'E2E block comment');
+    // The audience chip defaults to the agent, so the stored body carries the
+    // mention that makes this thread part of a review batch.
+    assert.equal(threads[0].comments[0].body, '@agent E2E block comment');
     assert.equal(threads[0].comments[0].author, 'human');
 
     // ...and render in the sidebar, marking the block in the document.
