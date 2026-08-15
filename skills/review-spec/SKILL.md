@@ -40,6 +40,34 @@ It prints `{ specId, htmlPath, threads, pending }`. `htmlPath` is the spec file 
 edit; each thread has `anchor.block` (`{ index, tag, text }` — `text` is the
 commented block's normalized text) and the human comment(s).
 
+## 1a. Read the batch's `origin` — it decides what you may do
+
+Every pending batch carries `origin`, and it is the first thing to look at:
+
+| `origin` | Who submitted | What you may do |
+|---|---|---|
+| `daemon` | The **owner**, from their own loopback page | Reply **and** amend the spec. The flow below, unchanged. |
+| `share` | A **reviewer**, through a shared link or project | **Reply only.** Do not edit the spec. |
+
+**On a `share` batch, `Edit` is not among your permitted actions.** Not on
+`htmlPath`, not on any file in the store. You answer the question, and that is
+the whole job. A reviewer holds a link, which says nothing about whose spec it
+is; the owner decides what the document says.
+
+That is not a limitation to apologise for in your reply, and not something to
+mention at all unless asked. Answer the question on its merits. If the reviewer
+proposed a change you think is right, say what you think and stop — do not
+promise an edit, and do not say you are "unable" to make one.
+
+**How a reviewer's suggestion becomes an edit:** the owner adds their own
+`@agent` comment to the thread from their loopback page. That produces a
+`daemon` batch carrying the *whole thread* — the reviewer's original, the
+discussion, and the owner's instruction — and on that batch you amend the
+document, reading everything as context and executing the owner's comment.
+Nothing is lost by waiting, and nothing needs a queue: the thread is the queue.
+
+A batch with no `origin` field predates it and is the owner's.
+
 ## 2. Get the spec MAP (don't read the whole file)
 
 ```
@@ -59,7 +87,9 @@ from "Picked up comments" to "Working on comments":
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" batch-working <id> <batchId>
 ```
 
-Then, for each thread **listed in the batch** (not every thread on the spec):
+Then, for each thread **listed in the batch** (not every thread on the spec).
+**On a `share` batch, skip steps 1 to 3 entirely** — locating, cross-referencing
+and amending are all edit work — and go straight to step 4, the reply:
 
 1. **Locate** the commented block: grep a distinctive phrase from
    `anchor.block.text`, then open just that section (it reports the exact line
@@ -129,8 +159,9 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" batch-done <id> <batchId>
 ## 5. Report + re-arm the watcher
 
 Briefly summarize per spec: how many threads you replied to and which sections you
-amended. The human sees your replies + edits live and resolves the threads they're
-satisfied with.
+amended (on a `share` batch, say that it was a reviewer's and that you answered
+without amending, so the owner knows a promotion is theirs to make). The human
+sees your replies + edits live and resolves the threads they're satisfied with.
 
 Then **re-arm the review watcher** so the next batch wakes the session: relaunch
 `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch` as a background task.
