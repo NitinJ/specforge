@@ -373,9 +373,17 @@
 }
 
 /* state diagrams: the start and end markers are solid by design, so they take
-   the ink colour rather than the panel colour the other nodes get. */
-[data-sf-mermaid="rendered"] .state-start,
-[data-sf-mermaid="rendered"] .state-end circle { fill: var(--ink) !important; stroke: var(--ink) !important; }
+   the ink colour rather than the panel colour the other nodes get.
+
+   Qualified with g.node deliberately. The marker is a circle INSIDE g.node, so
+   the generic `g.node circle` rule above is specificity 0-2-2 and a bare
+   `.state-start` is 0-2-0: the marker came out panel-on-panel, invisible, while
+   every automated check passed because --panel is a perfectly good palette
+   token. Right palette, wrong role, which is the one thing a sweep for literal
+   colours cannot see. */
+[data-sf-mermaid="rendered"] g.node circle.state-start,
+[data-sf-mermaid="rendered"] g.node .state-end circle,
+[data-sf-mermaid="rendered"] g.node circle.state-end { fill: var(--ink) !important; stroke: var(--ink) !important; }
 
 /* class diagrams rule off their sections */
 [data-sf-mermaid="rendered"] .divider line,

@@ -165,7 +165,11 @@ test('nothing visible in a rendered diagram is painted off-palette', needsChrome
         // Each term is scoped individually: a selector list only applies the
         // prefix to its first term, so `pre[x] text, tspan` also matches every
         // tspan on the page, and this swept up the review chrome the first time.
-        const PAINTS = ['text', 'tspan', 'p', 'span', 'div', 'rect', 'circle', 'polygon', 'ellipse'];
+        // `line` and `path` included: sequence lifelines are lines and every
+        // flowchart edge is a path, so leaving them out let a whole class of
+        // regression through.
+        const PAINTS = ['text', 'tspan', 'p', 'span', 'div', 'rect', 'circle',
+          'polygon', 'ellipse', 'line', 'path'];
         const scoped = PAINTS.map((tag) => `pre[data-sf-mermaid] ${tag}`).join(',');
         const out = [];
         document.querySelectorAll(scoped).forEach((el) => {
@@ -184,6 +188,38 @@ test('nothing visible in a rendered diagram is painted off-palette', needsChrome
       }, theme);
 
       assert.deepEqual(stray, [], `off-palette paint in ${theme}; these will not re-theme`);
+    }
+  });
+});
+
+// The sweep above cannot catch this one, and that is worth stating: a start
+// marker painted --panel on a --panel page is invisible, and every check for
+// literal colours passes, because --panel is a perfectly good palette token.
+// Right palette, wrong role. It needs an assertion about which token.
+test('a state diagram start marker is solid ink, not the node fill', needsChrome, async () => {
+  const html = specWith(`<pre data-lang="mermaid"><code>stateDiagram-v2
+  [*] --&gt; draft
+  draft --&gt; review</code></pre>`);
+
+  await withSpec({ html }, async ({ page }) => {
+    await page.waitForSelector('pre[data-sf-mermaid="rendered"]', { timeout: 30000 });
+
+    for (const theme of ['light', 'dark']) {
+      const seen = await page.evaluate((t) => {
+        document.documentElement.setAttribute('data-theme', t);
+        const probe = document.createElement('span');
+        document.body.appendChild(probe);
+        const resolve = (v) => { probe.style.color = v; return getComputedStyle(probe).color; };
+        const ink = resolve('var(--ink)');
+        const panel = resolve('var(--panel)');
+        probe.remove();
+        const marker = document.querySelector('pre[data-sf-mermaid] circle.state-start');
+        return { found: !!marker, fill: marker && getComputedStyle(marker).fill, ink, panel };
+      }, theme);
+
+      assert.ok(seen.found, 'mermaid still spells it .state-start');
+      assert.equal(seen.fill, seen.ink, `the marker is ink in ${theme}`);
+      assert.notEqual(seen.fill, seen.panel, 'not the node fill, which would be invisible');
     }
   });
 });
