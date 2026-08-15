@@ -2,9 +2,13 @@
 
 The conventions every SpecForge spec follows. `create-spec` reads this when
 authoring; the **enforced** subset (required sections, theme contract, plan
-structure) is checked by `lib/lint-spec.mjs`. The machine-readable defaults live
-in `lib/config.mjs` and can be overridden per project at
-`<project>/.specforge/config.json`.
+structure) is checked by `lib/lint-spec.mjs`, and the full rule list — the
+mechanical checks plus the ones only a reader can answer — by
+`specforge verify <id>`. A rule that applies to one spec type lives in that
+type's template spec, as a sentence you edit in SpecForge; see
+`lib/rules/template-defaults.mjs` for what each type starts with. The
+machine-readable defaults live in `lib/config.mjs` and can be overridden per
+project at `<project>/.specforge/config.json`.
 
 ## Format
 
