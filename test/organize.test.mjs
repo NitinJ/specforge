@@ -7,10 +7,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { sanitizeTitle, sanitizeTags, sanitizeCollection } from '../lib/organize.mjs';
+import { sanitizeTitle, sanitizeTags, sanitizeCollection, sanitizeProject } from '../lib/organize.mjs';
 import { setTitle } from '../lib/spec.mjs';
 import { createSpec, renameSpec, readSpecHtml } from '../lib/store.mjs';
-import { readMeta } from '../lib/meta.mjs';
+import { readMeta, writeMeta } from '../lib/meta.mjs';
 
 let home;
 let prevHome;
@@ -43,6 +43,24 @@ test('sanitizeCollection → single trimmed name or null', () => {
   assert.equal(sanitizeCollection(undefined), null);
 });
 
+test('sanitizeProject → single trimmed name or null', () => {
+  assert.equal(sanitizeProject('  figur   design studio '), 'figur design studio');
+  assert.equal(sanitizeProject('   '), null);
+  assert.equal(sanitizeProject(undefined), null);
+  assert.equal(sanitizeProject(null), null);
+  assert.equal(sanitizeProject(7), null);
+});
+
+test('sanitizeProject caps a name at 60 characters', () => {
+  assert.equal(sanitizeProject('p'.repeat(200)), 'p'.repeat(60));
+});
+
+test('sanitizeProject collapses newlines and tabs, like a collection name', () => {
+  assert.equal(sanitizeProject('a\n\tb'), 'a b');
+  // The two levels validate identically; a name legal for one is legal for the other.
+  assert.equal(sanitizeProject('  Launch  Q3 '), sanitizeCollection('  Launch  Q3 '));
+});
+
 test('setTitle rewrites the <title> and the first <h1>, escaping', () => {
   const html = '<html><head><title>Old</title></head><body><h1>Old</h1><h1>keep</h1></body></html>';
   const out = setTitle(html, 'New & Shiny');
@@ -72,9 +90,21 @@ test('renameSpec returns null for an unknown spec', () => {
   assert.equal(renameSpec('deadbeef00', 'x'), null);
 });
 
-test('a new spec defaults to empty tags and no collection', () => {
+test('a new spec defaults to empty tags, no collection and no project', () => {
   const id = createSpec({ title: 'A', html: '<h1>A</h1>' });
   const m = readMeta(id);
   assert.deepEqual(m.tags, []);
   assert.equal(m.collection, null);
+  assert.equal(m.project, null);
+});
+
+test('a spec written before the project field reads as unfiled, and stays that way', () => {
+  const id = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  const legacy = readMeta(id);
+  delete legacy.project;
+  writeMeta(id, legacy);
+
+  // Absent is the same state as null: nothing repairs it, nothing needs to.
+  assert.equal(readMeta(id).project, undefined);
+  assert.equal(readMeta(id).project || null, null);
 });

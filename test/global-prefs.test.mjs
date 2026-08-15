@@ -49,3 +49,59 @@ test('sanitize accepts a named font and drops invalid ones', () => {
 test('sanitize drops per-spec + unknown keys', () => {
   assert.deepEqual(sanitizeGlobalPrefs({ width: 9, filter: 'all', fit: true, junk: 1 }), {});
 });
+
+// ---- projects: the ordered name list, and which one is selected ----
+
+test('sanitize keeps an ordered project list, deduped and trimmed', () => {
+  assert.deepEqual(
+    sanitizeGlobalPrefs({ projects: ['  figur  ', 'specforge', 'figur', '', 7, 'figur '] }).projects,
+    ['figur', 'specforge'],
+  );
+});
+
+test('sanitize drops a projects value that is not an array', () => {
+  assert.equal('projects' in sanitizeGlobalPrefs({ projects: 'figur' }), false);
+});
+
+test('the project list is capped at 200 names, like the collection order', () => {
+  const many = Array.from({ length: 250 }, (_, i) => `p${i}`);
+  assert.equal(sanitizeGlobalPrefs({ projects: many }).projects.length, 200);
+});
+
+test('a project name is capped at 60 characters in the list', () => {
+  assert.equal(sanitizeGlobalPrefs({ projects: ['p'.repeat(200)] }).projects[0], 'p'.repeat(60));
+});
+
+test('the selection round-trips through its three states', () => {
+  // null = All projects, '' = No project, a name = that project.
+  assert.equal(writeGlobalPrefs({ project: 'figur' }).project, 'figur');
+  assert.equal(readGlobalPrefs().project, 'figur');
+  assert.equal(writeGlobalPrefs({ project: '' }).project, '');
+  assert.equal(readGlobalPrefs().project, '');
+  assert.equal(writeGlobalPrefs({ project: null }).project, null);
+  assert.equal(readGlobalPrefs().project, null);
+});
+
+test('a selection that is neither a string nor null is dropped', () => {
+  assert.equal('project' in sanitizeGlobalPrefs({ project: 7 }), false);
+  assert.equal('project' in sanitizeGlobalPrefs({ project: {} }), false);
+});
+
+test('a blank selection is the No-project pseudo-project, not All projects', () => {
+  // '   ' trims to '', which is a real selection. Conflating it with null would
+  // send a click on "No project" to "All projects" instead.
+  assert.equal(sanitizeGlobalPrefs({ project: '   ' }).project, '');
+});
+
+test('an empty project list is stored, so deleting the last project sticks', () => {
+  writeGlobalPrefs({ projects: ['figur'] });
+  assert.deepEqual(writeGlobalPrefs({ projects: [] }).projects, []);
+  assert.deepEqual(readGlobalPrefs().projects, []);
+});
+
+test('projects and collectionOrder are independent lists', () => {
+  writeGlobalPrefs({ projects: ['figur'], collectionOrder: ['UI', 'Product'] });
+  const p = readGlobalPrefs();
+  assert.deepEqual(p.projects, ['figur']);
+  assert.deepEqual(p.collectionOrder, ['UI', 'Product']);
+});
