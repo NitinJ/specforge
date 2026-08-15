@@ -94,6 +94,42 @@ test('the baseline is the served version, stamped at serve time', async () => {
     'a later response carries a later baseline');
 });
 
+// The stamp is the caller's reading, taken before it read the bytes. A write
+// landing between the two then pairs NEW bytes with an OLD stamp: one spurious
+// notice, no lost anchors. The other order pairs old bytes with a new stamp,
+// and the page believes itself current forever.
+test('the gateway stamps the mtime it read before the bytes', async () => {
+  const { createGatewayServer } = await import('../lib/gateway.mjs');
+  const { createSpec, specHtmlPath } = await import('../lib/store.mjs');
+  const { newToken } = await import('../lib/tokens.mjs');
+  const { statSync, utimesSync } = await import('node:fs');
+
+  const id = createSpec({ title: 'Served', html: '<p>first</p>' });
+  const tok = newToken();
+  const server = createGatewayServer((t) => (t === tok ? id : null));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const page = await (await fetch(`${base}/s/${tok}`)).text();
+    assert.ok(page.includes(`var last=${JSON.stringify(statSync(specHtmlPath(id)).mtimeMs)}`),
+      'the stamp is this spec’s current mtime, not a placeholder');
+
+    // The owner writes. The next reader is stamped later, so an earlier
+    // reader's page is the one that goes stale, which is the point.
+    const stampOf = (html) => html.match(/var last=([\d.]+)/)[1];
+    const before = stampOf(page);
+    const later = (Date.now() + 5000) / 1000;
+    utimesSync(specHtmlPath(id), later, later);
+
+    const after = stampOf(await (await fetch(`${base}/s/${tok}`)).text());
+    assert.equal(after, String(statSync(specHtmlPath(id)).mtimeMs),
+      'a later response carries the later stamp');
+    assert.notEqual(after, before, 'and the two readers disagree, correctly');
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
 // An agent mid-round writes a section at a time. Announcing staleness per write
 // would flash the bar repeatedly through one round of review.
 test('staleness waits for the agent to finish its round', () => {

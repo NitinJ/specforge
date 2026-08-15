@@ -15,7 +15,14 @@ const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'spe
 
 /**
  * @param {string} html raw spec HTML read from disk
- * @param {{specId:string, transport?:'sse'|'poll', api?:string}} opts
+ * @param {{specId:string, transport?:'sse'|'poll', api?:string, servedAt?:number}} opts
+ *   `servedAt` is the spec's mtime as the CALLER observed it, and it must be
+ *   read BEFORE the html it accompanies. Read after, a write landing between
+ *   the two pairs old bytes with a new mtime, and the page believes itself
+ *   current forever. Read before, the same write pairs new bytes with an old
+ *   mtime, which costs one spurious "new version" notice and no anchors.
+ *   Omitted, it is read here, which is correct for a caller that has not read
+ *   the html yet and adequate for one that never polls.
  *   `transport` says how this page learns the spec changed. The daemon holds an
  *   event stream; a publication cannot (measured: Cloudflare's edge returns the
  *   response headers of an SSE response and then buffers every body byte), so
@@ -25,7 +32,7 @@ const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'spe
  *   publication.
  * @returns {string} HTML with the live tracker + review layer injected
  */
-export function injectReviewLayer(html, { specId, transport = 'sse', api } = {}) {
+export function injectReviewLayer(html, { specId, transport = 'sse', api, servedAt } = {}) {
   let out = renderLiveTracker(html);
 
   // ui.css first: review.css is the layer's own chrome, and where the two speak
@@ -43,7 +50,7 @@ export function injectReviewLayer(html, { specId, transport = 'sse', api } = {})
     ...(font ? { font } : {}),
     ...(mono ? { mono } : {}),
     ...readPrefs(specId),
-  }, transport, api);
+  }, transport, api, servedAt);
   if (out.includes('</body>')) {
     out = out.replace('</body>', `${layer}\n</body>`);
   } else {
@@ -185,7 +192,7 @@ function pollWatcher(api, interval, servedAt) {
 /** How often a published page asks whether the spec moved. */
 const POLL_INTERVAL_MS = 5000;
 
-function reviewSnippet(specId, prefs, transport, api) {
+function reviewSnippet(specId, prefs, transport, api, servedAt) {
   const id = JSON.stringify(specId);
   // Embed the persisted prefs (store-wide theme/font + per-spec width/…) so
   // review.js applies them on boot with no flash and no extra round-trip.
@@ -204,10 +211,12 @@ function reviewSnippet(specId, prefs, transport, api) {
     blocks: blockComponents(),
     ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
   });
-  // The mtime of the file this response was rendered from. Read here rather
-  // than by the page, because only this side knows which bytes it sent.
+  // The mtime of the file this response was rendered from. The caller's
+  // reading is preferred because only it knows when it read the bytes; falling
+  // back to reading it here is for callers that have not read them yet.
+  const stamp = typeof servedAt === 'number' ? servedAt : readPublicationState(specId).spec;
   const watcher = transport === 'poll'
-    ? pollWatcher(base, POLL_INTERVAL_MS, readPublicationState(specId).spec)
+    ? pollWatcher(base, POLL_INTERVAL_MS, stamp)
     : sseWatcher(id);
   // The stale bar exists only where a page can go stale: a published copy is a
   // reader's, and reloading it is theirs to choose. The owner's own tabs
