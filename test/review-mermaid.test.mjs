@@ -286,6 +286,61 @@ test('a render that lands in time is applied as normal', async (t) => {
   assert.equal(window.document.querySelector('pre').getAttribute('data-sf-mermaid'), 'rendered');
 });
 
+// ---- the palette bridge ----
+//
+// Its whole purpose is that a diagram re-tints with the theme. A literal colour
+// in this block would look right in a screenshot and be frozen in every theme
+// but the one it was picked in, which is exactly the defect the Prism mapping
+// exists to avoid.
+
+/** The mermaid section of review.css, as selector/declaration pairs. */
+function mermaidRules() {
+  const css = readFileSync(new URL('../server/public/review.css', import.meta.url), 'utf8');
+  const start = css.indexOf('/* mermaid diagrams');
+  assert.ok(start > 0, 'the mermaid section exists');
+  const block = css.slice(start, css.indexOf('/* live-status pill', start));
+  assert.ok(block.length > 500, 'and it is not a stub');
+  // Comments carry selectors and property names in prose; parsing them as rules
+  // would flag the explanation rather than the CSS.
+  const bare = block.replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...bare.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+    .map((m) => ({ sel: m[1].trim(), decl: m[2] }));
+  assert.ok(rules.length >= 10, 'the rules are there to check');
+  return rules;
+}
+
+test('every diagram colour is a palette token, so it follows the theme', () => {
+  for (const { sel, decl } of mermaidRules()) {
+    const literal = [...decl.matchAll(/(?:^|[\s:(])(#[0-9a-f]{3,8}\b|rgb\(|hsl\()/gi)].map((m) => m[1]);
+    assert.deepEqual(literal, [], `a literal colour would not follow the theme: ${sel}`);
+  }
+});
+
+test('the override is strong enough to beat mermaid, which scopes by id', () => {
+  // Mermaid emits `#<id> .node rect { fill: ... }`, specificity 1-1-1. A
+  // class-scoped rule loses to that, so every paint declaration aimed at
+  // mermaid's own output has to say !important.
+  //
+  // .sf-mermaid-err is exempt and has to be: it is our element, mermaid has
+  // never heard of it, and there is nothing to outrank.
+  const weak = [];
+  for (const { sel, decl } of mermaidRules()) {
+    if (/sf-mermaid-err/.test(sel)) continue;
+    for (const m of decl.matchAll(/(?:^|;)\s*(fill|stroke|background|color)\s*:\s*([^;]+)/g)) {
+      if (!/!important/.test(m[2])) weak.push(`${sel} { ${m[1]}: ${m[2].trim()} }`);
+    }
+  }
+  assert.deepEqual(weak, [], 'these would be outranked by mermaid own style block');
+});
+
+test('a rendered diagram is not still wearing the code block chrome', () => {
+  const chrome = mermaidRules().find((r) => r.sel === '[data-sf-mermaid]');
+  assert.ok(chrome, 'the block itself is restyled');
+  for (const prop of ['background', 'border', 'padding', 'font-family']) {
+    assert.match(chrome.decl, new RegExp(`${prop}\\s*:[^;]*!important`), `${prop} is neutralised`);
+  }
+});
+
 // ---- the boot-order trap this file has hit before ----
 
 test('the diagram constants are declared before boot() runs', () => {
