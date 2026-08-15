@@ -780,6 +780,13 @@
       render();
     }
 
+    // Armed before either path, not just the fetch. It is the guarantee that the
+    // comment rail is never held hostage by this, and there are now two ways to
+    // wait: for the script, and for the fonts. A page that already has mermaid
+    // skips the fetch entirely and can still wait on document.fonts.ready
+    // forever, which armed nothing when the timer lived below.
+    setTimeout(function () { settle(false); }, MERMAID_LOAD_TIMEOUT);
+
     if (window.mermaid) return renderWhenFontsReady();
     var s = document.createElement('script');
     s.src = MERMAID_SRC;
@@ -789,7 +796,6 @@
     // error state: the blocks stay as the source, shown as code.
     s.onerror = function () { settle(false); };
     document.head.appendChild(s);
-    setTimeout(function () { settle(false); }, MERMAID_LOAD_TIMEOUT);
   }
 
   // ---------- data ----------

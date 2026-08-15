@@ -328,6 +328,27 @@ test('rendering waits for the page fonts', async (t) => {
     'and it renders once they have arrived');
 });
 
+test('a font that never settles does not hold the comment rail', async (t) => {
+  // The rail loads behind the render, and there are two ways to wait: for the
+  // script, and for the fonts. A page that already has mermaid skips the fetch,
+  // so a timer armed only on the fetch path armed nothing here.
+  const { window, calls } = await boot(t, diagram(GOOD), {
+    reconcile: true,
+    fastTimeout: true,
+    beforeScript: (w) => {
+      Object.defineProperty(w.document, 'fonts', {
+        value: { ready: new Promise(() => {}) }, configurable: true,
+      });
+    },
+  });
+  await new Promise((r) => setTimeout(r, 120));
+
+  assert.equal(window.document.querySelector('pre').getAttribute('data-sf-mermaid'), null,
+    'the diagram never rendered, because its font never arrived');
+  assert.ok(calls.some((c) => /comments/.test(c.url)),
+    'but the page settled anyway and the rail loaded');
+});
+
 test('a font that never loads does not withhold the diagram', async (t) => {
   const { window } = await boot(t, diagram(GOOD), {
     beforeScript: (w) => {
