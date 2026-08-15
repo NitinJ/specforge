@@ -124,3 +124,65 @@ test('organize endpoints 404 for an unknown spec', async () => {
   assert.equal((await send('POST', '/api/spec/deadbeef00/rename', { title: 'x' })).status, 404);
   assert.equal((await send('PATCH', '/api/spec/deadbeef00/organize', { tags: [] })).status, 404);
 });
+
+// ---- projects ----
+
+test('PATCH /organize sets the project (sanitized) and returns it', async () => {
+  const r = await send('PATCH', `/api/spec/${specId}/organize`, { project: '  figur   design studio ' });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).project, 'figur design studio');
+  assert.equal(readMeta(specId).project, 'figur design studio');
+});
+
+test('a project-only PATCH leaves tags and collection alone', async () => {
+  await send('PATCH', `/api/spec/${specId}/organize`, { tags: ['x'], collection: 'Research' });
+  await send('PATCH', `/api/spec/${specId}/organize`, { project: 'specforge' });
+  const m = readMeta(specId);
+  assert.deepEqual(m.tags, ['x'], 'tags untouched');
+  assert.equal(m.collection, 'Research', 'collection untouched');
+  assert.equal(m.project, 'specforge');
+});
+
+test('a spec moved between projects keeps its collection', async () => {
+  await send('PATCH', `/api/spec/${specId}/organize`, { project: 'a', collection: 'Research' });
+  await send('PATCH', `/api/spec/${specId}/organize`, { project: 'b' });
+  const m = readMeta(specId);
+  assert.equal(m.project, 'b');
+  assert.equal(m.collection, 'Research', 'the address moves one half at a time');
+});
+
+test('an empty or null project clears it back to unfiled', async () => {
+  await send('PATCH', `/api/spec/${specId}/organize`, { project: 'a' });
+  await send('PATCH', `/api/spec/${specId}/organize`, { project: '' });
+  assert.equal(readMeta(specId).project, null);
+  await send('PATCH', `/api/spec/${specId}/organize`, { project: 'a' });
+  await send('PATCH', `/api/spec/${specId}/organize`, { project: null });
+  assert.equal(readMeta(specId).project, null);
+});
+
+test('a collection-only PATCH leaves the project alone', async () => {
+  await send('PATCH', `/api/spec/${specId}/organize`, { project: 'a', collection: 'c' });
+  await send('PATCH', `/api/spec/${specId}/organize`, { collection: '' });
+  const m = readMeta(specId);
+  assert.equal(m.project, 'a', 'project untouched');
+  assert.equal(m.collection, null);
+});
+
+test('a template spec cannot be filed into a project (403)', async () => {
+  const { ensureTemplates, templateId } = await import('../lib/store-templates.mjs');
+  ensureTemplates();
+  const tid = templateId('design');
+  assert.equal((await send('PATCH', `/api/spec/${tid}/organize`, { project: 'figur' })).status, 403);
+  assert.equal(readMeta(tid).project ?? null, null, 'template stays outside every project');
+});
+
+test('GET /api/spec/:id/meta carries the project for the owner', async () => {
+  await send('PATCH', `/api/spec/${specId}/organize`, { project: 'figur' });
+  const meta = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(meta.project, 'figur');
+});
+
+test('owner meta reports an unfiled spec as null, not undefined', async () => {
+  const meta = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
+  assert.equal(meta.project, null);
+});

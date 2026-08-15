@@ -89,6 +89,29 @@ test('theme + font are store-wide via /api/prefs and reach every served spec', a
   }
 });
 
+test('the project list and the selection round-trip through /api/prefs', async () => {
+  const r = await put('/api/prefs', { projects: ['figur', 'specforge'], project: 'figur' });
+  assert.equal(r.status, 200);
+  const { prefs } = await r.json();
+  assert.deepEqual(prefs.projects, ['figur', 'specforge']);
+  assert.equal(prefs.project, 'figur');
+
+  // A later PUT of one key must not drop the other, since the rail writes the
+  // selection far more often than it rewrites the list.
+  await put('/api/prefs', { project: '' });
+  const after = await (await fetch(`${base}/api/prefs`)).json();
+  assert.deepEqual(after.prefs.projects, ['figur', 'specforge'], 'list survives a selection-only write');
+  assert.equal(after.prefs.project, '', 'No project is a selection, not an absence');
+});
+
+test('a published spec is never handed the project list or the selection', async () => {
+  await put('/api/prefs', { projects: ['figur'], project: 'figur' });
+  const html = await (await fetch(`${base}/spec/${specId}`)).text();
+  const { prefs } = injectedConfig(html);
+  assert.equal('projects' in prefs, false, 'spec pages take prefs by name, never the whole object');
+  assert.equal('project' in prefs, false);
+});
+
 test('the served spec merges store-wide theme/font with per-spec width', async () => {
   await put('/api/prefs', { theme: 'nord' });
   await put(`/api/spec/${specId}/prefs`, { width: 1300 });

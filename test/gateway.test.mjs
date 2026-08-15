@@ -227,6 +227,24 @@ test('the meta route serves what a reader reads by, and withholds the owner half
   }
 });
 
+// How the author has organised their store is not part of what a shared spec
+// discloses, which is the same reason spec pages take theme and font by name
+// rather than the whole prefs object. Asserted with the project actually set, so
+// the absence is the route withholding it rather than there being nothing to
+// withhold.
+test('a published copy is never told which project the spec is in', async () => {
+  const { readMeta, writeMeta } = await import('../lib/meta.mjs');
+  const meta = readMeta('alpha');
+  meta.project = 'figur-design-studio';
+  writeMeta('alpha', meta);
+  assert.equal(readMeta('alpha').project, 'figur-design-studio', 'set on the owner side first');
+
+  const r = await fetch(`${base}/s/${tokAlpha}/api/meta`);
+  const body = await r.text();
+  assert.equal(!('project' in JSON.parse(body)), true, 'the field is absent from the reader payload');
+  assert.equal(body.includes('figur-design-studio'), false, 'and the name appears nowhere in it');
+});
+
 test('the API is not reachable without a token', async () => {
   const r = await fetch(`${base}/api/comments`);
   assert.equal(r.status, 404);
