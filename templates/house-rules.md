@@ -173,6 +173,32 @@ one per 400 words: emphasis everywhere is emphasis nowhere.
 top of a spec's `<style>`. Do not edit it; a spec's own rules come after it and
 win. `specforge components sync <id>` brings a spec up to the current version.
 
+## Code blocks
+
+**Declare the language on a block that is code in one.** The review layer
+highlights it; a block with no language is served exactly as written.
+
+```html
+<pre data-lang="python"><code>…</code></pre>
+<div class="codeblock" data-lang="yaml">…</div>   <!-- on the wrapper works too -->
+<pre><code class="language-sql">…</code></pre>  <!-- so does Prism's own class -->
+```
+
+Built-in: `python`, `yaml`, `json`, `javascript`, `typescript`, `bash`, `sql`,
+`diff`, `markup` (HTML), `css`. Anything else is left as plain text rather than
+guessed at.
+
+**Do not declare one on a block that is not code.** About half the code blocks in
+the store are ASCII data-flow diagrams, pseudo-code carrying prose annotations, or
+structural sketches that resemble JSON without being it. Highlighting those
+colours a box-drawing character as an operator and a comment as a string, which
+reads worse than no highlighting at all. Leave them undeclared; that is the
+supported way to say "this is not a language".
+
+Highlighting is a review-layer feature, so it applies to a spec the daemon serves
+and to a published copy. A spec opened straight from `file://` shows plain code,
+the same trade the theme variants and the comment rail already make.
+
 ## Naming
 
 `{date}-{slug}-spec.html` (e.g. `2026-06-02-payment-retries-spec.html`), written

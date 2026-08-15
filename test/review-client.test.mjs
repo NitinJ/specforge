@@ -2606,18 +2606,130 @@ test('the Font dropdown groups 3 fonts per category and applies + persists a pic
   const sel = rowByLabel(document, 'Font').querySelector('select.sf-font-select');
   assert.ok(sel, 'Font dropdown present');
   const groups = sel.querySelectorAll('optgroup');
-  assert.equal(groups.length, 4, 'Sans / Serif / Mono / Presentation groups');
+  assert.equal(groups.length, 3, 'Sans / Serif / Presentation groups');
   Array.prototype.forEach.call(groups, (g) => assert.equal(g.children.length, 3, g.label + ' has 3 fonts'));
   assert.ok(sel.querySelector('option[value="default"]'), 'a Default option');
 
-  sel.value = 'jetbrains-mono';
+  sel.value = 'lora';
   sel.dispatchEvent(new window.Event('change'));
   const c = document.querySelector('main');
-  assert.equal(c.getAttribute('data-sf-font'), 'mono', 'a mono pick sets the mono category');
-  assert.match(c.style.getPropertyValue('--sf-reading-font'), /JetBrains Mono/, 'family applied');
-  assert.ok(document.querySelector('head link[href*="JetBrains"]'), 'JetBrains Mono loaded from Google on pick');
-  assert.equal(localPrefs(window, 'sf-prefs').font, 'jetbrains-mono', 'the font id is stored for every spec');
+  assert.equal(c.getAttribute('data-sf-font'), 'serif', 'the pick sets its category');
+  assert.match(c.style.getPropertyValue('--sf-reading-font'), /Lora/, 'family applied');
+  assert.ok(document.querySelector('head link[href*="Lora"]'), 'Lora loaded from Google on pick');
+  assert.equal(localPrefs(window, 'sf-prefs').font, 'lora', 'the font id is stored for every spec');
   assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'nothing written to the store');
+});
+
+// ---------- code font ----------
+// A monospace face is not a reading font. It answers "what does code look like",
+// which is a different question from "what does prose look like", so it is a
+// different control and the two compose.
+test('the reading Font dropdown offers no monospace face', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const sel = rowByLabel(document, 'Font').querySelector('select.sf-font-select');
+  const labels = [].map.call(sel.querySelectorAll('optgroup'), (g) => g.label);
+  assert.ok(!labels.includes('Mono'), 'Mono is not a reading-font group');
+  for (const id of ['jetbrains-mono', 'fira-code', 'ibm-plex-mono']) {
+    assert.equal(sel.querySelector(`option[value="${id}"]`), null, `${id} is not offered as a reading font`);
+  }
+});
+
+test('the Code font dropdown sets the monospace face and leaves the reading font alone', async (t) => {
+  const { window, puts } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+
+  const fsel = rowByLabel(document, 'Font').querySelector('select.sf-font-select');
+  fsel.value = 'inter';
+  fsel.dispatchEvent(new window.Event('change'));
+
+  const sel = rowByLabel(document, 'Code font').querySelector('select.sf-mono-select');
+  assert.ok(sel, 'Code font dropdown present');
+  assert.equal(sel.querySelectorAll('option').length, 4, 'Default plus the three monos');
+  sel.value = 'jetbrains-mono';
+  sel.dispatchEvent(new window.Event('change'));
+
+  const c = document.querySelector('main');
+  assert.match(c.style.getPropertyValue('--mono'), /JetBrains Mono/, 'the monospace token is the picked face');
+  assert.match(c.style.getPropertyValue('--sf-reading-font'), /Inter/, 'and the reading font is untouched');
+  assert.equal(c.getAttribute('data-sf-font'), 'sans', 'the category still describes the reading font');
+  assert.ok(document.querySelector('head link[href*="JetBrains"]'), 'loaded from Google on pick');
+  assert.equal(localPrefs(window, 'sf-prefs').mono, 'jetbrains-mono', 'stored for every spec, like the reading font');
+  assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'nothing written to the store');
+});
+
+test('a saved code font is applied on boot, with no reading font of its own', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { mono: 'fira-code' } });
+  const c = window.document.querySelector('main');
+  assert.match(c.style.getPropertyValue('--mono'), /Fira Code/);
+  assert.equal(c.style.getPropertyValue('--sf-reading-font'), '', 'prose keeps the spec\'s own font');
+  assert.equal(c.getAttribute('data-sf-font'), null, 'and no reading-font category is claimed');
+  assert.ok(window.document.querySelector('head link[href*="Fira"]'), 'loaded on boot');
+});
+
+test('picking Default for the code font restores the spec\'s own monospace', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { mono: 'ibm-plex-mono' } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const sel = rowByLabel(document, 'Code font').querySelector('select.sf-mono-select');
+  assert.equal(sel.value, 'ibm-plex-mono', 'the dropdown shows the stored face');
+  sel.value = 'default';
+  sel.dispatchEvent(new window.Event('change'));
+  assert.equal(document.querySelector('main').style.getPropertyValue('--mono'), '',
+    'the override is removed, so var(--mono) falls back to the spec\'s own');
+});
+
+// A pref saved before the split named a mono in the reading-font slot. Applying
+// it as a reading font is the behaviour this change exists to end, so it is read
+// as what it always meant: that face, for code.
+test('a mono saved under the old single-dropdown pref becomes the code font', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { font: 'jetbrains-mono' } });
+  const { document } = window;
+  const c = document.querySelector('main');
+  assert.match(c.style.getPropertyValue('--mono'), /JetBrains Mono/, 'applied as the monospace face');
+  assert.equal(c.style.getPropertyValue('--sf-reading-font'), '', 'not as the reading font');
+
+  document.getElementById('sf-launcher').click();
+  assert.equal(rowByLabel(document, 'Code font').querySelector('select.sf-mono-select').value, 'jetbrains-mono',
+    'and the Code font dropdown shows it');
+  assert.equal(rowByLabel(document, 'Font').querySelector('select.sf-font-select').value, 'default',
+    'while the reading font reads as Default');
+});
+
+// The migration must not outlive the choice that replaces it. An upgraded reader
+// who picks Default has a legacy mono still sitting under `font`, and re-reading
+// it would hand the old face back on every load.
+test('choosing Default for the code font sticks, even with a legacy mono still stored', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { font: 'jetbrains-mono', mono: 'default' } });
+  const c = window.document.querySelector('main');
+  assert.equal(c.style.getPropertyValue('--mono'), '', 'the stored Default wins over the migration');
+  assert.equal(c.getAttribute('data-sf-mono'), null);
+
+  window.document.getElementById('sf-launcher').click();
+  assert.equal(window.document.querySelector('select.sf-mono-select').value, 'default',
+    'and the dropdown agrees');
+});
+
+test('the two axes compose and persist independently', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { font: 'merriweather', mono: 'fira-code' } });
+  const c = window.document.querySelector('main');
+  assert.equal(c.getAttribute('data-sf-font'), 'serif');
+  assert.match(c.style.getPropertyValue('--sf-reading-font'), /Merriweather/);
+  assert.match(c.style.getPropertyValue('--mono'), /Fira Code/);
+});
+
+// The rule that carries the fix: code is monospace under every reading font, and
+// which monospace is whatever --mono resolves to.
+test('code is monospace under every reading font', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../server/public/review.css', import.meta.url), 'utf8');
+  const rule = css.match(/\[data-sf-font\][^{]*\bpre\b[\s\S]*?\}/);
+  assert.ok(rule, 'a rule targets pre/code under a reading font');
+  assert.ok(!/:not\(\[data-sf-font="mono"\]\)/.test(rule[0]),
+    'it is not exempted for one category: every reading font keeps code monospace');
+  assert.match(rule[0], /var\(--mono/, 'and it resolves through --mono, which the Code font picker sets');
 });
 
 test('the Presentation group offers display fonts that keep code monospace', async (t) => {

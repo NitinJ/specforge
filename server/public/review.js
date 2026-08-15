@@ -92,8 +92,8 @@
   //
   // The server values are still read once, as the starting point for a browser
   // that has none. Nothing writes them back.
-  var GLOBAL_PREF_KEYS = { theme: 1, font: 1 };
-  var GLOBAL_STORE_KEY = 'sf-prefs';          // theme + font: every spec
+  var GLOBAL_PREF_KEYS = { theme: 1, font: 1, mono: 1 };
+  var GLOBAL_STORE_KEY = 'sf-prefs';          // theme + font + mono: every spec
   var SPEC_STORE_KEY = 'sf-prefs:' + SPEC;    // width, fit, toc, filter: this spec
 
   function readLocal(key) {
@@ -174,9 +174,26 @@
     { id: 'space-grotesk', name: 'Space Grotesk', cat: 'presentation', google: 'Space+Grotesk:wght@400;600;700', stack: '"Space Grotesk", system-ui, sans-serif' },
     { id: 'fraunces', name: 'Fraunces', cat: 'presentation', google: 'Fraunces:wght@400;600;700', stack: '"Fraunces", Georgia, serif' },
   ];
-  var FONT_CATS = ['sans', 'serif', 'mono', 'presentation'];
+  // Two axes, because they answer two questions. A reading font is what prose
+  // looks like; a monospace face is what code looks like. Picking JetBrains Mono
+  // used to set the whole document in it, which is the one thing nobody choosing
+  // a code font is asking for.
+  var FONT_CATS = ['sans', 'serif', 'presentation'];
   function fontById(id) { return FONTS.filter(function (f) { return f.id === id; })[0] || null; }
-  function initFont() { return fontById(PREFS.font) ? PREFS.font : 'default'; }
+  function isMono(id) { var f = fontById(id); return !!f && f.cat === 'mono'; }
+  function initFont() {
+    return (fontById(PREFS.font) && !isMono(PREFS.font)) ? PREFS.font : 'default';
+  }
+  // A pref saved before the split named a mono in the reading-font slot. Read it
+  // as what it always meant: that face, for code.
+  //
+  // A stored 'default' is a choice, not an absence. Without that first test, an
+  // upgraded reader who picks Default gets the legacy value migrated over their
+  // pick on the next load, and the old face comes back every time.
+  function initMono() {
+    if (PREFS.mono === 'default' || isMono(PREFS.mono)) return PREFS.mono;
+    return isMono(PREFS.font) ? PREFS.font : 'default';
+  }
 
   // Inject the Google Fonts stylesheet for a font once, the first time it's picked.
   var _loadedFonts = {};
@@ -243,6 +260,12 @@
   var SLIDE_SEL = 'main > section[data-sf-section]';
   var DECK_INSET = 16;
 
+  // The vendored highlighter's path. Up here for the same reason as the three
+  // above: initHighlight() runs from boot(), at the readyState check below, and
+  // declared beside its own section it is still `undefined` there — which appends
+  // <script src="undefined">, a 404, and no highlighting, silently.
+  var HIGHLIGHT_SRC = '/public/prism.js';
+
   var booted = false;
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState !== 'loading') boot();
@@ -261,7 +284,9 @@
     }
     // The floating "Contents" TOC + its collapse state are owned by the #sf-toc
     // injector (the second IIFE below), which builds after this chrome.
-    applyFont(initFont()); // reading font — persisted choice (or sans) on load
+    applyFont(initFont()); // reading font — persisted choice (or the spec's own) on load
+    applyMono(initMono()); // the monospace face, which is a separate choice
+    initHighlight();       // and colour the code blocks whose author named a language
     buildChrome();
     // Establish block identity before the first render, so comments resolve by
     // id rather than by guessing at content. Non-blocking on failure.
@@ -410,20 +435,124 @@
   // applyWidth) and the attr lands there — the chrome is still safe because every
   // chrome root (#sf-sidebar/#sf-menu/#sf-launcher/#sf-compose/#sf-toc) declares its
   // own font-family, so the reading font can't inherit in. Code stays monospace
-  // unless the whole doc is set to mono.
+  // under every reading font; which monospace is applyMono's business.
   function applyFont(id) {
     var c = widthContainer();
     var f = fontById(id);
-    if (!f) { // 'default' / unknown → spec's own font, no override, no fetch
+    if (!f || f.cat === 'mono') { // 'default' / unknown / a code font → no override, no fetch
       c.removeAttribute('data-sf-font');
       c.style.removeProperty('--sf-reading-font');
       return;
     }
     loadGoogleFont(f);
-    // data-sf-font carries the CATEGORY (sans/serif/mono) — review.css keys the
-    // code-block exemption off it; the actual family is the inline --sf-reading-font.
+    // data-sf-font carries the CATEGORY (sans/serif/presentation) — review.css keys
+    // the code exemption off its presence; the family is the inline --sf-reading-font.
     c.setAttribute('data-sf-font', f.cat);
     c.style.setProperty('--sf-reading-font', f.stack);
+  }
+
+  /**
+   * The monospace face, wherever the document uses one.
+   *
+   * Sets --mono, the canonical palette token every spec already writes its code
+   * and pre rules against, so the pick reaches .kw, .diff, .codeblock's filename
+   * and a deck's slide numbers without review.css naming any of them. The
+   * attribute is for the specs that hardcoded a stack instead of the token; the
+   * rule keyed on it puts them back on --mono.
+   */
+  function applyMono(id) {
+    var c = widthContainer();
+    var f = isMono(id) ? fontById(id) : null;
+    if (!f) {
+      c.removeAttribute('data-sf-mono');
+      c.style.removeProperty('--mono');
+      return;
+    }
+    loadGoogleFont(f);
+    c.setAttribute('data-sf-mono', f.id);
+    c.style.setProperty('--mono', f.stack);
+  }
+
+  // ---------- syntax highlighting (review-layer owned) ----------
+  //
+  // Declared, never detected. Measured across the 117 specs in the store: 0 of
+  // 133 code blocks name a language, and about half of them are not a language
+  // at all — ASCII data-flow diagrams, pseudo-code carrying prose annotations,
+  // structural sketches that look like JSON and are not. Guessing would colour a
+  // box-drawing diagram as if it were code, and a wrong highlight reads worse
+  // than none, so a block is highlighted when its author says what it is.
+  //
+  // An author may write the language where it falls naturally: `data-lang` on the
+  // block, the pre or the code, or Prism's own `class="language-x"`. They all end
+  // up as that class on the element Prism reads.
+  //
+  // HIGHLIGHT_SRC is declared with the other boot-time constants near the top,
+  // not here: boot() runs before this line would execute.
+
+  /** The element to highlight and the language it declares, or null. */
+  function declaredLang(pre) {
+    var code = pre.querySelector('code') || pre;
+    var from = [code, pre, pre.parentNode];
+    for (var i = 0; i < from.length; i++) {
+      var el = from[i];
+      if (!el || !el.getAttribute) continue;
+      var attr = el.getAttribute('data-lang');
+      if (attr) return { el: code, lang: attr.toLowerCase() };
+      var m = /(?:^|\s)lang(?:uage)?-([\w+#-]+)/.exec(el.className || '');
+      if (m) return { el: code, lang: m[1].toLowerCase() };
+    }
+    return null;
+  }
+
+  /** Every code block whose author declared a language. */
+  function declaredBlocks() {
+    var out = [];
+    var pres = document.querySelectorAll('pre');
+    for (var i = 0; i < pres.length; i++) {
+      // The review chrome writes no code blocks; this is belt and braces for a
+      // spec that nests one inside a comment rail's markup.
+      if (pres[i].closest && pres[i].closest('#sf-sidebar,#sf-menu,#sf-compose')) continue;
+      var d = declaredLang(pres[i]);
+      if (d) out.push(d);
+    }
+    return out;
+  }
+
+  function highlightAll(blocks) {
+    if (!window.Prism || !window.Prism.languages) return;
+    blocks.forEach(function (b) {
+      // No grammar means the vendored build does not carry that language. Leaving
+      // it as plain text is the honest outcome; Prism would otherwise emit one
+      // undifferentiated token and the block would look highlighted and not be.
+      if (!window.Prism.languages[b.lang]) return;
+      if (!/(?:^|\s)language-/.test(b.el.className || '')) {
+        b.el.className = (b.el.className ? b.el.className + ' ' : '') + 'language-' + b.lang;
+      }
+      try { window.Prism.highlightElement(b.el); } catch (e) { /* a bad grammar is not a broken page */ }
+    });
+  }
+
+  /**
+   * Load the highlighter, once, and only for a spec that has something to
+   * highlight. A spec of prose and diagrams fetches nothing, which is the same
+   * bargain the reading fonts make.
+   */
+  function initHighlight() {
+    var blocks = declaredBlocks();
+    if (!blocks.length) return;
+    // The class has to land before Prism runs, so the markup is normalised first
+    // and the highlight follows whenever the script is ready.
+    blocks.forEach(function (b) {
+      if (!/(?:^|\s)language-/.test(b.el.className || '')) {
+        b.el.className = (b.el.className ? b.el.className + ' ' : '') + 'language-' + b.lang;
+      }
+    });
+    if (window.Prism) { highlightAll(blocks); return; }
+    var s = document.createElement('script');
+    s.src = HIGHLIGHT_SRC;
+    s.async = true;
+    s.onload = function () { highlightAll(blocks); };
+    document.head.appendChild(s);
   }
 
   // ---------- data ----------
@@ -925,6 +1054,7 @@
 
     // Font — sans/serif/mono reading font, persisted.
     els.menu.appendChild(fontRow());
+    els.menu.appendChild(monoRow());
 
     // Export — open the print dialog (pick "Save as PDF"); the review chrome is
     // hidden by the print stylesheet so the PDF is just the spec.
@@ -1037,8 +1167,9 @@
     row.appendChild(grid);
     return row;
   }
-  // Font — a dropdown of reading fonts grouped Sans/Serif/Mono; applies live and
-  // persists the pick. "Default" leaves the spec's own font alone.
+  // Font — a dropdown of reading fonts grouped Sans/Serif/Presentation; applies
+  // live and persists the pick. "Default" leaves the spec's own font alone. The
+  // monospace faces are not here: they are the Code font row below.
   function fontRow() {
     var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
     row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">A</span><span>Font</span></span>';
@@ -1053,6 +1184,21 @@
     });
     sel.value = initFont();
     sel.onchange = function () { applyFont(sel.value); putPref({ font: sel.value }); };
+    row.appendChild(sel);
+    return row;
+  }
+  // Code font — the monospace face, everywhere the document uses one. Composes
+  // with the reading font rather than replacing it.
+  function monoRow() {
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">&#123;&#125;</span><span>Code font</span></span>';
+    var sel = create('select', { class: 'sf-mono-select', 'aria-label': 'Code font' });
+    sel.appendChild(create('option', { value: 'default' }, 'Default'));
+    FONTS.filter(function (f) { return f.cat === 'mono'; }).forEach(function (f) {
+      sel.appendChild(create('option', { value: f.id }, f.name));
+    });
+    sel.value = initMono();
+    sel.onchange = function () { applyMono(sel.value); putPref({ mono: sel.value }); };
     row.appendChild(sel);
     return row;
   }
