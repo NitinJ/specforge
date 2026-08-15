@@ -422,7 +422,7 @@ export function createDaemon() {
       const sm = path.match(/^\/spec\/([\w-]+)$/);
       if (sm) return serveSpec(sm[1], res);
       const pub = path.match(/^\/public\/([\w.-]+)$/);
-      if (pub) return serveStatic(pub[1], res);
+      if (pub) return serveStatic(pub[1], res, req);
     }
 
     return send(res, 404, 'text/plain; charset=utf-8', 'not found');
