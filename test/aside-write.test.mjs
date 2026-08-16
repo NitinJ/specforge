@@ -49,6 +49,25 @@ test('a second aside on the same section counts up', () => {
   );
 });
 
+test('the block the action was asked for on is recorded, when the caller has it', () => {
+  // The bid from the comment's anchor. It is what puts the marker on that
+  // paragraph rather than at the top of the section.
+  const { html } = writeAside(SPEC, { section: 'two', action: 'visualize', body: BODY, block: 'b7' });
+  assert.match(html, /data-sf-aside="two" data-sf-block="b7" data-sf-action="visualize"/);
+});
+
+test('no block is fine, and a bid-shaped nothing is refused', () => {
+  // A registry that could not be read means no bid, and an aside with no marker
+  // target is still reachable through its section. Anything not bid-shaped is
+  // dropped rather than written into an attribute the client will not resolve.
+  const plain = writeAside(SPEC, { section: 'two', action: 'visualize', body: BODY });
+  assert.equal(/data-sf-block/.test(plain.html), false);
+  for (const junk of ['', null, 'p3', 'b', '../x', 'b3 onclick=1']) {
+    const out = writeAside(SPEC, { section: 'two', action: 'visualize', body: BODY, block: junk });
+    assert.equal(/data-sf-block/.test(out.html), false, `expected ${JSON.stringify(junk)} to be dropped`);
+  }
+});
+
 test('a section id holding regex metacharacters is handled as a literal', () => {
   // Section ids are author-written and nothing stops one carrying a dot. An
   // unescaped `v1.2` also matches `v1x2`, so a second aside on v1.2 would be

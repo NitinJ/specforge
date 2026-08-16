@@ -198,14 +198,19 @@ rather than inferring from the label.
 
   ```
   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" aside <specId> \
-    --section <sourceSectionId> --action <actionId> --file <path-to-your-html>
+    --section <sourceSectionId> --action <actionId> \
+    --block <anchor.block.bid> --file <path-to-your-html>
   ```
 
-  It places the section, numbers the id and writes the two attributes the review
-  layer reads. **Do not hand-write that markup.** Getting any of the three wrong
+  It places the section, numbers the id and writes the attributes the review
+  layer reads. **Do not hand-write that markup.** Getting any of them wrong
   produces a draft the reader cannot see or answer, and this has already happened
   once: a Visualize run wrote its diagram straight into the section, with no
   wrapper and no way to reject it.
+
+  `--block` is the `bid` from the thread's `anchor.block`, and it is what puts
+  the marker on the paragraph the reader asked about rather than at the top of
+  the section. Pass it whenever the thread has one; omit it when it does not.
 
   What you write is the body only: the content, in the spec's own component
   vocabulary. The command adds the wrapper and the heading. An aside gets **no
