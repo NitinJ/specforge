@@ -148,7 +148,12 @@
 
   var INIT_FILTER = (PREFS.filter === 'resolved' || PREFS.filter === 'all') ? PREFS.filter : 'open';
   // composeEl: the block a new-thread composer is currently open on (rail), or null.
-  var state = { threads: [], filter: INIT_FILTER, active: null, meta: null, composeEl: null };
+  var state = {
+    threads: [], filter: INIT_FILTER, active: null, meta: null, composeEl: null,
+    // What the composer's textarea starts with. Only ever set by the context
+    // menu, and only for one composer.
+    composeSeed: '',
+  };
   var els = {};
 
   // Reading-font catalog (review-layer owned) — the famous reader/blog fonts, 3 per
@@ -892,6 +897,8 @@
     els.sidebar.querySelector('.sf-foot-action').appendChild(els.footAction);
 
     buildLauncher();
+    buildCtxMenu();
+    buildAsides();
     buildTop();
     buildTitleBar();
     buildRail();
@@ -1296,6 +1303,182 @@
   function inMenu(t) {
     while (t) { if (t === els.menu || t === els.launcher) return true; t = t.parentElement; }
     return false;
+  }
+
+  // ---------- context menu ----------
+  // Right-click a block, pick an action, and the composer opens holding it. The
+  // menu writes a comment and nothing else: no agent is called from here, no job
+  // is queued, and the spec file is not touched. See §9 of the design.
+  //
+  // The list is injected by the server (window.SPECFORGE.actions). A page served
+  // before this existed carries none, and every right-click on it falls through
+  // to the browser's own menu, which is the behaviour it had.
+  function menuActionList() {
+    var a = (window.SPECFORGE || {}).actions;
+    return a && a.length ? a : null;
+  }
+  function ctxTargetOf(node) {
+    if (inUI(node) || inMenu(node)) return null;
+    return blockAt(node);
+  }
+  function buildCtxMenu() {
+    els.ctx = create('div', { id: 'sf-ctx', class: 'sf-ctx', role: 'menu' });
+    document.body.appendChild(els.ctx);
+
+    document.addEventListener('contextmenu', function (e) {
+      var actions = menuActionList();
+      if (!actions) return;
+      // Review chrome answers neither menu: a spec-wide action offered over the
+      // launcher is nonsense, and so is "explain this simply".
+      if (inUI(e.target) || inMenu(e.target)) return;
+      var el = ctxTargetOf(e.target);
+      // Nothing commentable under the pointer means the reader hit the page
+      // itself, which is the scope of the whole document.
+      var scope = el ? 'local' : 'global';
+      var anchor = el || specAnchorEl();
+      if (!anchor) return; // a document with nothing in it: no menu to offer
+      e.preventDefault(); // or the browser's menu opens on top of this one
+      openCtxMenu(anchor, actions, e.clientX, e.clientY, scope);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeCtxMenu();
+    });
+    document.addEventListener('click', function () { closeCtxMenu(); });
+    // A menu placed at a pointer position is in the wrong place the moment the
+    // page moves under it, and there is no position worth recomputing: you
+    // scrolled because you were looking at something else.
+    window.addEventListener('scroll', function () { closeCtxMenu(); }, true);
+  }
+  /**
+   * What a spec-wide action anchors to.
+   *
+   * The title, because the scope is the document and the anchor should say so
+   * rather than recording whatever the reader happened to be standing near. An
+   * imported spec may have no h1, so the first commentable block stands in: a
+   * menu that throws on right-click is worse than one anchored a line off.
+   */
+  function specAnchorEl() {
+    var h1 = document.querySelector('h1');
+    if (h1 && !inUI(h1)) return h1;
+    return commentableBlocks()[0] || null;
+  }
+  function openCtxMenu(el, actions, x, y, scope) {
+    els.ctx.innerHTML = '';
+    actions.forEach(function (a) {
+      if (a.scope !== scope) return;
+      els.ctx.appendChild(menuRow(a.icon, a.label, function (ev) {
+        ev.stopPropagation();
+        closeCtxMenu();
+        runAction(a, el);
+      }));
+    });
+    els.ctx.style.left = x + 'px';
+    els.ctx.style.top = y + 'px';
+    els.ctx.classList.add('open');
+    // Placed at the pointer, then pulled back inside the viewport. Right-click
+    // near the bottom or the right edge and the menu would otherwise run off it,
+    // and a row that falls outside cannot be clicked at all.
+    var r = els.ctx.getBoundingClientRect();
+    var pad = 8;
+    var maxL = Math.max(pad, window.innerWidth - r.width - pad);
+    var maxT = Math.max(pad, window.innerHeight - r.height - pad);
+    els.ctx.style.left = Math.max(pad, Math.min(x, maxL)) + 'px';
+    els.ctx.style.top = Math.max(pad, Math.min(y, maxT)) + 'px';
+  }
+  function closeCtxMenu() {
+    if (els.ctx) els.ctx.classList.remove('open');
+  }
+  /** Copy link is the only action the browser answers by itself. */
+  function runAction(a, el) {
+    if (a.id === 'copy_link') return copyAnchorLink(el);
+    // Whatever is already in the composer for this block rides along. You are
+    // mid-thought and decide the agent should draw it; losing the sentence you
+    // typed is the wrong answer, and the action reading first is the right
+    // order anyway. Picking a second action keeps the first, which is how two
+    // actions travel in one comment.
+    var draft = openDraftFor(el);
+    openRailCompose(el, '@' + a.id + ' ' + draft);
+  }
+  /**
+   * What is typed in the composer, if one is open on THIS block.
+   *
+   * A composer open on a different block is left behind with its text, which is
+   * what clicking that other block has always done: a composer belongs to one
+   * block and moving it drops what was in it. Carrying the text across would be
+   * worse, since it was written about the block you left.
+   */
+  function openDraftFor(el) {
+    if (state.composeEl !== el || !els.rail) return '';
+    var ta = els.rail.querySelector('.sf-bub-compose textarea');
+    return ta && ta.value ? ta.value.trim() : '';
+  }
+  // ---------- asides ----------
+  // An aside is a section of the spec carrying data-sf-aside, placed directly
+  // after the section it came from. It renders in the flow and is filtered from
+  // nothing: it exports, it travels on a shared link, and the gate reads it.
+  //
+  // What the layer adds is a header strip: which action wrote this, a way to
+  // fold it out of the way, and the two buttons that answer it. The strip is
+  // chrome, so it is not commentable and clicking it is not a page click.
+  function buildAsides() {
+    var list = document.querySelectorAll('section[data-sf-aside]');
+    for (var i = 0; i < list.length; i++) decorateAside(list[i]);
+  }
+  function decorateAside(sec) {
+    if (sec.querySelector(':scope > .sf-aside-head')) return; // built once
+    sec.classList.add('sf-aside');
+    var a = actionByIdClient(sec.getAttribute('data-sf-action'));
+
+    var head = create('div', { class: 'sf-aside-head' });
+    // An aside written under an action id that has since been renamed keeps its
+    // buttons and loses only its label: it is still a draft awaiting an answer.
+    var toggle = create('button', {
+      class: 'sf-aside-toggle', type: 'button', 'aria-expanded': 'true',
+      title: 'Fold this draft away',
+    });
+    toggle.innerHTML = '<span class="sf-aside-ic">' + esc(a ? a.icon : '◇') + '</span>' +
+      '<span class="sf-aside-label">' + esc(a ? a.label : 'Aside') + '</span>';
+    toggle.onclick = function (e) {
+      e.stopPropagation();
+      var shut = sec.classList.toggle('sf-aside-shut');
+      toggle.setAttribute('aria-expanded', shut ? 'false' : 'true');
+    };
+    head.appendChild(toggle);
+
+    var acts = create('span', { class: 'sf-aside-acts' });
+    asideActions().forEach(function (act) {
+      var b = create('button', { class: 'sf-aside-act', type: 'button' }, act.label);
+      b.onclick = function (e) { e.stopPropagation(); runAction(act, sec); };
+      acts.appendChild(b);
+    });
+    head.appendChild(acts);
+    sec.insertBefore(head, sec.firstChild);
+  }
+  function actionByIdClient(id) {
+    var all = (window.SPECFORGE || {}).actions || [];
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+    return null;
+  }
+  function asideActions() {
+    return ((window.SPECFORGE || {}).actions || []).filter(function (a) {
+      return a.scope === 'aside';
+    });
+  }
+
+  function copyAnchorLink(el) {
+    // The section, not the block: a block has an id only in SpecForge's own
+    // registry, and a URL naming that is meaningless to anyone you send it to.
+    var section = sectionPathOf(el)[0];
+    var url = location.origin + location.pathname + (section ? '#' + section : '');
+    var failed = function () { flash('Could not copy the link', 'err'); };
+    var p;
+    try {
+      p = navigator.clipboard && navigator.clipboard.writeText(url);
+    } catch (e) { return failed(); }
+    // writeText resolves; it does not return. Saying "copied" before it settles
+    // reports a success that a denied permission never delivered.
+    if (!p || !p.then) return failed();
+    p.then(function () { flash('Link copied'); }, failed);
   }
   // Which view the menu is showing, as a counter. Bumped by every rebuild and
   // every close, so an async request started for one view can tell that the
@@ -2531,6 +2714,11 @@
     b.querySelector('.sf-bub-x').onclick = function (e) { e.stopPropagation(); cancelCompose(); };
 
     var ta = create('textarea', { class: 'sf-input', placeholder: 'Add a comment…', rows: '2' });
+    // Opened from the context menu, the composer starts holding the action:
+    // `@visualize `, with the space, so a qualifier can be typed straight on.
+    // The `@agent` in front of it comes from the audience chip below, which
+    // already meant "route this to the agent" before this feature existed.
+    if (state.composeSeed) ta.value = state.composeSeed;
     var row = create('div', { class: 'sf-compose-foot' });
     var aud = audienceChips(ta);
     var save = create('button', { class: 'sf-primary', type: 'button' }, 'Comment');
@@ -2552,16 +2740,20 @@
     setTimeout(function () { try { ta.focus(); } catch (e) {} }, 0);
     return b;
   }
-  function openRailCompose(el) {
+  function openRailCompose(el, seed) {
     state.active = null;      // a composer and an expanded thread are exclusive
     setSidebar(false);        // composing claims the gutter; the drawer would hide the rail
     state.composeEl = el;
+    // Cleared rather than left alone: a plain click on a block after an action
+    // must open an empty composer, not the last action you picked.
+    state.composeSeed = seed || '';
     ensureAnchorVisible(el);
     render();
   }
   function cancelCompose() {
     if (!state.composeEl) return;
     state.composeEl = null;
+    state.composeSeed = '';
     render();
   }
 
@@ -3081,7 +3273,12 @@
     while (t) {
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
           t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-top' ||
-          t.id === 'sf-titlebar' || t.id === 'sf-rail' || t.id === 'sf-tocbtn') return true;
+          t.id === 'sf-titlebar' || t.id === 'sf-rail' || t.id === 'sf-tocbtn' ||
+          t.id === 'sf-ctx') return true;
+      // An aside's header strip is chrome sitting inside a section of the
+      // document. The section is commentable; the strip that folds it away and
+      // the buttons that answer it are not.
+      if (t.classList && t.classList.contains('sf-aside-head')) return true;
       t = t.parentElement;
     }
     return false;
@@ -3390,7 +3587,11 @@
       if (out.length >= 2) return dropNested(out);
     }
     var byId = [], seen = {};
-    var secs = document.querySelectorAll('section[id]');
+    // An aside is a section, and it is deliberately not in the outline: it lives
+    // until the reader imports or dismisses it, so listing it would rewrite the
+    // contents every time an action runs. A spec with its own nav.toc excludes
+    // asides by construction, since nothing links them; this is the other path.
+    var secs = document.querySelectorAll('section[id]:not([data-sf-aside])');
     if (secs.length >= 3) {
       Array.prototype.forEach.call(secs, function (s) {
         var h = s.querySelector('h1,h2,h3'); if (h) byId.push({ id: s.id, text: txt(h) });

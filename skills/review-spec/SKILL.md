@@ -148,6 +148,93 @@ and amending are all edit work — and go straight to step 4, the reply:
 
 Do **not** resolve threads — only the human resolves (which closes them).
 
+## Actions
+
+A comment can name an **action**: a menu entry the reader picked instead of
+typing the same request again. It looks like `@agent @visualize`, and the reader
+may have typed a qualifier after it. Every action carries a **standing
+instruction** — a written standard you apply every time — and that instruction
+is what you execute. The words on the button are the label, not the ask.
+
+Read the list, with the instructions, from the registry:
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" actions            # all of them
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" actions <id>       # one
+```
+
+**Read it; do not remember it.** The instructions are edited, and a copy of one
+in your head is the version that was true last month.
+
+| id | Where the result goes |
+|---|---|
+| `@explain_simply` | aside |
+| `@visualize` | aside |
+| `@go_deeper` | aside |
+| `@verify_against_code` | aside |
+| `@help_me_decide` | aside |
+| `@show_an_example` | aside |
+| `@restructure` | in-place |
+| `@tighten` | in-place |
+| `@fix_the_naming` | in-place, whole spec |
+| `@consistency_pass` | in-place, whole spec |
+| `@canonicalize` | in-place, whole spec |
+| `@import` | in-place, on an aside |
+| `@dismiss` | in-place, on an aside |
+| `@copy_link` | never reaches you; the browser answers it |
+
+**The rule the table follows**: an action edits **in-place** when it changes the
+form of content that is already there, and writes an **aside** when it produces
+content that is not there yet. Each record carries its `kind`, so read that
+rather than inferring from the label.
+
+- **in-place** — edit the commented block or section directly, following the
+  instruction. `@restructure` and `@canonicalize` rewrite everything in scope and
+  nothing keeps the old version, so re-read what you are replacing before you
+  replace it.
+- **aside** — the output is a draft the reader decides on, not a claim the spec
+  makes yet. Write it as a new section placed **immediately after** the section
+  the comment sits in:
+
+  ```html
+  <section id="<sourceSectionId>-aside-<n>" data-sf-aside="<sourceSectionId>" data-sf-action="<actionId>">
+    <h3>Aside: <action label></h3>
+    …your output…
+  </section>
+  ```
+
+  `<n>` counts up from 1 per source section, so several asides can stack. The
+  review layer reads `data-sf-action` to draw the header strip and its two
+  buttons; it does not read the heading. An aside gets **no entry in the table of
+  contents**: it lives until the reader imports or dismisses it, and the outline
+  is the document's, not the drafts'.
+
+  Everything else about it is an ordinary section. It is commentable, it exports,
+  and the verification gate reads its prose, so hold it to the same language
+  contract as the rest of the spec.
+- **whole spec** — scope is the document, not the block the comment sits on.
+  These arrive from a right-click on the page background and anchor to the
+  title, so the anchor is a place to hang the thread rather than the thing to
+  change. Read the whole spec before you start: a consistency pass that has read
+  one section has not done the work its name claims.
+- **on an aside** — `@import` and `@dismiss` arrive from the two buttons on an
+  aside, so the comment is anchored inside one. Act on the aside the anchor sits
+  in, and on nothing else.
+
+**Deleting a section deletes its asides with it.** They are drafts about that
+section, and one left behind attaches itself to whatever section now precedes it.
+
+**Two actions carry `needsDetail`**: `@verify_against_code` and
+`@fix_the_naming`. Neither can run on its instruction alone — one needs the claim
+to check and where to look, the other needs both terms of the rename. If the
+comment carries nothing beyond the action, **say what you would have done and
+ask**. A confident verification of the wrong claim, or a rename inferred from
+the prose, is worse than a question.
+
+Everything else in this skill still applies: an action arrives as a comment,
+`origin` still decides whether you may edit, and the thread still gets a reply
+saying what you did.
+
 ## 4. Mark the batch done
 
 When every thread in a batch has a reply:

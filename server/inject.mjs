@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { renderLiveTracker } from '../lib/tracker.mjs';
 import { blockComponents } from '../components/index.mjs';
+import { menuActions } from '../lib/actions/all.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
@@ -209,7 +210,16 @@ function reviewSnippet(specId, prefs, transport, api, servedAt) {
     // lint's idea of what is commentable drift apart, and the lint silences a
     // warning about text nobody can actually comment on.
     blocks: blockComponents(),
-    ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
+    // The context menu, without the instructions: the client shows a label and
+    // writes an id, and the agent resolves that id against the registry. A page
+    // carrying no `actions` opens no menu and leaves the browser's own alone,
+    // which is what a page served before this existed does.
+    //
+    // Omitted from a published copy for the same reason `cli` is. A reviewer has
+    // no agent: their composer defaults to discussion, so an action picked there
+    // would post a comment nothing ever reads, which is a menu entry that
+    // silently does nothing.
+    ...(transport === 'poll' ? {} : { actions: menuActions(), cli: CLI_PATH }),
   });
   // The mtime of the file this response was rendered from. The caller's
   // reading is preferred because only it knows when it read the bytes; falling
