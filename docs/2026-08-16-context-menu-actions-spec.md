@@ -251,7 +251,7 @@ The argument does not run the other way. An aside whose only sensible next step 
 
 <!-- sf:section id="menu" -->
 
-Labels are verb-first and short enough to scan. Each carries the standing instruction from [§6](#recommendations), which is what the agent actually runs.
+Labels are verb-first and short enough to scan. Each carries the standing instruction from [§6](#recommendations), which is what the agent actually runs. Entries are grouped by kind and ordered by how often you asked inside a kind, so the two that rewrite your text never sit between the six that only add a draft beside it.
 
 #### Agentic actions, on a block or a section
 
@@ -260,19 +260,19 @@ Labels are verb-first and short enough to scan. Each carries the standing instru
 | &#128161; | **Explain simply** | aside | 24 | Most asked in the corpus. The original prose stays: a spec is a technical document and the precise wording is often the point, so the plain-language version sits under it rather than over it. |
 | &#9712; | **Visualize** | aside | 23 | The agent chooses the form the content wants, diagram, table or mock. Aside matters most here: a bad diagram is worse than no diagram, and this is the action whose output you will reject most often. |
 | &#128270; | **Go deeper** | aside | 22 | Produces the most volume of any action in the corpus. Landing that in the section directly is how a spec doubles in length without anyone deciding it should. |
+| &#10003; | **Verify against code** | aside | 20 | Reports what disagrees rather than correcting it, because a confident fix built on a misreading turns a true claim into a false one silently. Type the claim and where to look before sending ([D7](#decisions)). |
 | &#9878; | **Help me decide** | aside | 15 | Named for what you want rather than what the spec lacks. Gathers options, costs and risks, which is bulky enough that you want to see it before it lands. Import is the expected path, not an afterthought. |
 | &#10077; | **Show an example** | aside | 13 | Often long, often illustrative rather than normative. Many will be read and discarded, which is exactly what an aside is for. |
 | &#9776; | **Restructure** | in place | 16 | Rebuilds the section on a deliberate pattern. The most destructive action in the menu, since it rewrites everything in scope and nothing keeps the old version ([D4](#decisions)). |
 | &#9986; | **Tighten** | in place | 4 | Covers the same ground in fewer words. Nothing is added, so nothing needs reviewing beside the original. |
-| &#10003; | **Verify against code** | aside | 20 | Reports what disagrees rather than correcting it, because a confident fix built on a misreading turns a true claim into a false one silently. Type the claim and where to look before sending ([D7](#decisions)). |
 
 #### Agentic actions, on the whole spec
 
 | Icon | Label | Kind | N | Notes |
 | --- | --- | --- | --- | --- |
+| &#127991; | **Fix the naming** | in place | 12 | Spec-wide because a rename applied to one section leaves the document saying two things, which is the complaint being answered. Type the replacement term before sending ([D7](#decisions)). |
 | &#8644; | **Consistency pass** | in place | 11 | Needs both halves of a contradiction, so it is meaningless on one block. Overlaps the `no-repeated-claims` rule the verification gate already runs at creation; the difference is that the gate reports and this one fixes. |
 | &#128220; | **Canonicalize** | in place | 6 | Rewrites the whole document once the work it describes is done. The lowest count in the shortlist and the most expensive instruction to type, which is the case for a button rather than against one. |
-| &#127991; | **Fix the naming** | in place | 12 | Spec-wide because a rename applied to one section leaves the document saying two things, which is the complaint being answered. Type the replacement term before sending ([D7](#decisions)). |
 
 #### Direct actions
 
@@ -418,25 +418,25 @@ Settled in review. Each was an open question above it before it was one of these
 
 Stages & Tasks. One stage = one PR. Tests-first.
 
-### Stage 0 — A way to test the review layer
+### Stage 0 — A way to test the review layer (PR 183)
 
-- [ ] 0.1 Extract the jsdom boot helper into `test/helpers/review-dom.mjs`, taking a body and returning the booted window.
+- [x] 0.1 Extract the jsdom boot helper into `test/helpers/review-dom.mjs`, taking a body and returning the booted window.
       verify: the five existing review tests pass against the extracted helper with no change to their assertions.
-- [ ] 0.2 Add a fixture spec with three sections, one carrying a list and a table, for the menu and aside stages to point at.
+- [x] 0.2 Add a fixture spec with three sections, one carrying a list and a table, for the menu and aside stages to point at.
       verify: booting the fixture collects the expected number of comment targets from `BLOCK_SEL`.
-- [ ] 0.3 Add a helper that dispatches a `contextmenu` event at a named block in the fixture.
+- [x] 0.3 Add a helper that dispatches a `contextmenu` event at a named block in the fixture.
       verify: a test asserts the event arrives with that block as its target.
 
 The menu, the composer and the aside all live in browser code, so every stage after this one needs a way to load that code in a test and fire clicks at it. This stage builds only that, using the jsdom pattern already in `test/review-highlight.test.mjs`.
 
-### Stage 1 — The action registry
+### Stage 1 — The action registry (PR 184)
 
-- [ ] 1.1 `lib/actions/index.mjs` with `defineAction`, validating that an id is a lowercase token with underscores, that kind is one of direct, in-place or aside, and that scope is local or global.
+- [x] 1.1 `lib/actions/index.mjs` with `defineAction`, validating that an id is a lowercase token with underscores, that kind is one of direct, in-place or aside, and that scope is local or global.
       verify: unit tests reject an id containing a space, a dash and a capital, for the same reason rule ids reject a comma.
-- [ ] 1.2 `lib/actions/all.mjs` carrying the eleven actions of [§6](#recommendations) with their standing instructions.
-      verify: a test asserts eleven actions, unique ids, eight local and three global, and the kind of each against a literal list.
-- [ ] 1.3 A `specforge actions` command printing the registry as JSON, so the skill and a human can read the same list.
-      verify: the command prints eleven ids and exits 0.
+- [x] 1.2 `lib/actions/all.mjs` carrying the eleven agentic actions of [§6](#recommendations) with their standing instructions, plus Copy link, for twelve entries in all.
+      verify: a test asserts twelve entries, unique ids and labels, nine local and three global, and the kind of each against a literal list.
+- [x] 1.3 A `specforge actions` command printing the registry as JSON, so the skill and a human can read the same list.
+      verify: the command prints twelve entries and exits 0, narrows on `--scope`, and fails rather than printing nothing on an id it does not know.
 
 One file that lists the eleven actions: what each is called, its icon, whether it edits in place or writes an aside, and the instruction the agent follows. Nothing reads it yet, which is what makes it a stage on its own.
 
@@ -445,7 +445,7 @@ One file that lists the eleven actions: what each is called, its icon, whether i
 - [ ] 2.1 A context menu in `review.js`, opening on right-click over a block or section and closing on Escape, click-away and scroll.
       verify: a jsdom test opens it on a paragraph and asserts each of the three closes it.
 - [ ] 2.2 Entries built from the registry, filtered to local scope, with icon and label.
-      verify: right-clicking a paragraph lists the eight local actions plus Copy link, in the order of [§8](#menu).
+      verify: right-clicking a paragraph lists the nine local entries, Copy link among them, in the order of [§8](#menu).
 - [ ] 2.3 Picking an entry opens the composer on that block, pre-filled with `@agent @<id>` and the cursor after it.
       verify: picking Visualize leaves the composer holding `@agent @visualize` anchored to the clicked block.
 - [ ] 2.4 Copy link writes the anchor URL to the clipboard.
@@ -482,7 +482,7 @@ Six of the eleven actions write something new rather than changing what is there
 - [ ] 5.2 A global action anchors its comment to the title block.
       verify: the composer's anchor is the `h1` block.
 - [ ] 5.3 All three instructions land in the skill alongside the eight local ones.
-      verify: the Stage 3 registry-versus-skill test covers all eleven ids.
+      verify: the Stage 3 registry-versus-skill test covers all eleven agentic ids.
 
 Right-clicking empty space offers the three actions that only make sense over the whole document. It is last because everything before it works without it.
 
@@ -498,7 +498,7 @@ Filled during implementation: choices made where the spec was ambiguous.
 
 Filled during implementation: intentional departures from the spec, and why.
 
-- &#8212; none yet &#8212;
+- **Stage 0.1 migrated one review test file, not five.** The task says the five existing review tests pass against the extracted helper. Only `review-client.test.mjs` was migrated, and its 242 tests pass unchanged. The other three each stub a different global (Prism, mermaid, the contribute API) and boot by appending a script element on a different clock, so folding them in would change timing that 200 or more passing tests depend on, for no gain to this feature. The helper's header comment records which files keep their own and why. PR #183.
 
 ## 17 · Tradeoffs
 
