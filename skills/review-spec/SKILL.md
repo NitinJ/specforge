@@ -193,21 +193,23 @@ rather than inferring from the label.
   nothing keeps the old version, so re-read what you are replacing before you
   replace it.
 - **aside** — the output is a draft the reader decides on, not a claim the spec
-  makes yet. Write it as a new section placed **immediately after** the section
-  the comment sits in:
+  makes yet. **Do not edit the section the comment sits on.** Write your output
+  to a file and run:
 
-  ```html
-  <section id="<sourceSectionId>-aside-<n>" data-sf-aside="<sourceSectionId>" data-sf-action="<actionId>">
-    <h3>Aside: <action label></h3>
-    …your output…
-  </section>
+  ```
+  node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" aside <specId> \
+    --section <sourceSectionId> --action <actionId> --file <path-to-your-html>
   ```
 
-  `<n>` counts up from 1 per source section, so several asides can stack. The
-  review layer reads `data-sf-action` to draw the header strip and its two
-  buttons; it does not read the heading. An aside gets **no entry in the table of
-  contents**: it lives until the reader imports or dismisses it, and the outline
-  is the document's, not the drafts'.
+  It places the section, numbers the id and writes the two attributes the review
+  layer reads. **Do not hand-write that markup.** Getting any of the three wrong
+  produces a draft the reader cannot see or answer, and this has already happened
+  once: a Visualize run wrote its diagram straight into the section, with no
+  wrapper and no way to reject it.
+
+  What you write is the body only: the content, in the spec's own component
+  vocabulary. The command adds the wrapper and the heading. An aside gets **no
+  entry in the table of contents** and needs none added.
 
   Everything else about it is an ordinary section. It is commentable, it exports,
   and the verification gate reads its prose, so hold it to the same language

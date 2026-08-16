@@ -18,20 +18,48 @@ const HTML = baseSpec('Asides e2e').replace(
   + '<h3>Aside: Visualize</h3><p id="ap">A diagram the agent drafted.</p></section>',
 );
 
-test('the aside renders offset from the section above it', { skip: !CHROME }, async () => {
+/** Open the panel and wait for the slide to settle, not just for the class. */
+async function openPanel(page) {
+  await page.click('#target .sf-aside-mark');
+  await page.waitForSelector('#sf-asides.open');
+  await page.waitForFunction(() => {
+    const r = document.getElementById('sf-asides').getBoundingClientRect();
+    return r.right <= innerWidth + 1 && r.left < innerWidth - 40;
+  });
+}
+
+test('the aside renders inside the panel, beside its source section', { skip: !CHROME }, async () => {
+  // Was: offset from the section above it, in the flow. The model still stores
+  // the aside after its source; only the rendering moved.
   await withSpec({ html: HTML }, async ({ page }) => {
+    await openPanel(page);
+    // The panel overlays the page rather than reflowing it, which is what the
+    // comments drawer has always done. Inventing a different behaviour for this
+    // one panel would be the inconsistency, not the overlay.
     const geom = await page.evaluate(() => {
-      const src = document.getElementById('target').getBoundingClientRect();
+      const panel = document.getElementById('sf-asides').getBoundingClientRect();
       const aside = document.getElementById('target-aside-1').getBoundingClientRect();
-      return { srcLeft: src.left, asideLeft: aside.left, asideTop: aside.top, srcBottom: src.bottom };
+      const drawer = document.getElementById('sf-sidebar').getBoundingClientRect();
+      return {
+        panelLeft: panel.left, panelRight: panel.right, panelW: panel.width,
+        asideLeft: aside.left, asideRight: aside.right, drawerW: drawer.width, vw: innerWidth,
+      };
     });
-    assert.ok(geom.asideLeft > geom.srcLeft, 'indented, so it reads as attached rather than next');
-    assert.ok(geom.asideTop >= geom.srcBottom - 1, 'and it sits below its source');
+    assert.ok(geom.asideLeft >= geom.panelLeft - 1, 'the aside is inside the panel');
+    assert.ok(geom.asideRight <= geom.panelRight + 1, 'and does not spill out of it');
+    assert.ok(Math.abs(geom.panelRight - geom.vw) < 2, 'the panel is pinned to the right edge');
+    // Within a pixel, not exactly: both are transformed elements and
+    // getBoundingClientRect returns sub-pixel floats that differ by 6e-5.
+    assert.ok(
+      Math.abs(geom.panelW - geom.drawerW) < 1,
+      `panel ${geom.panelW} vs drawer ${geom.drawerW}: they share --sf-side-w`,
+    );
   });
 });
 
 test('folding the aside actually hides its body', { skip: !CHROME }, async () => {
   await withSpec({ html: HTML }, async ({ page }) => {
+    await openPanel(page);
     assert.equal(await page.locator('#ap').isVisible(), true);
     await page.click('#target-aside-1 .sf-aside-toggle');
     assert.equal(await page.locator('#ap').isVisible(), false, 'hidden');
@@ -50,6 +78,7 @@ test('the aside re-themes, so its colours come from the palette', { skip: !CHROM
 
 test('Import opens the composer, anchored inside the aside', { skip: !CHROME }, async () => {
   await withSpec({ html: HTML }, async ({ page }) => {
+    await openPanel(page);
     await page.locator('#target-aside-1 .sf-aside-act', { hasText: 'Import' }).click();
     await page.waitForSelector('#sf-rail .sf-bub-compose textarea');
     assert.equal(

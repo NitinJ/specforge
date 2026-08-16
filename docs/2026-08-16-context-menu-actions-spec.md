@@ -19,7 +19,7 @@ The largest bucket is **Structure** at 71 instances (29%): organising the inform
 
 **An action is a comment** ([§9](#how-it-runs)). Picking one from the menu fills the comment box with `@agent @visualize` and you send it like any other comment, so the feature adds no channel to the agent and no way for the browser to write the spec.
 
-Where the result lands follows from one rule ([§7](#types)): an action edits **in place** when it changes the form of content already there, and opens an **aside** when it produces content that is not there yet. Restructure, Tighten and the two spec-wide actions edit; the other five write an aside into the document directly under the section, which you import or dismiss.
+Where the result lands follows from one rule ([§7](#types)): an action edits **in place** when it changes the form of content already there, and opens an **aside** when it produces content that is not there yet. Restructure, Tighten and the two spec-wide actions edit; the other five write an aside, a section of the spec stored after the one it came from and shown in a panel beside the document, which you import or dismiss.
 
 - **318**human comments mined
 - **242**action instances in 212 of them
@@ -227,7 +227,7 @@ Right-clicking a block, a section, or the page background opens a menu. What lan
 | --- | --- | --- | --- |
 | **Direct** | the browser | nowhere in the spec | Operations with no judgement in them that also do not change the document. One survives review: Copy link. No round trip, no agent, no waiting. |
 | **Agentic, in place** | the agent | the spec, replacing what was there | The content is right and its form is wrong. The result supersedes the input, so there is nothing to keep alongside. |
-| **Agentic, aside** | the agent | a section of the spec, directly under the one it came from | Something that does not exist yet: an explanation, a diagram, an example, the material behind a decision. You read it, comment on it if you want, and import it if it earns a place in the document's argument. See [§10](#asides). |
+| **Agentic, aside** | the agent | a section of the spec, stored after the one it came from and shown in a panel beside it | Something that does not exist yet: an explanation, a diagram, an example, the material behind a decision. You read it, comment on it if you want, and import it if it earns a place in the document's argument. See [§10](#asides). |
 
 #### The rule that decides which
 
@@ -342,20 +342,21 @@ An action is as slow as a comment round trip. There is no immediate feedback: yo
 
 ## 10 · Asides
 
-An **aside** is a section of the spec carrying `data-sf-aside="<sourceSectionId>"`, placed in the document immediately after the section it was produced from. It renders in the flow, offset and tinted, under a header strip naming the action that wrote it. Nothing filters it out of anything.
+An **aside** is a section of the spec carrying `data-sf-aside="<sourceSectionId>"`, placed in the document immediately after the section it was produced from. That is the model, and nothing filters it. The review layer *renders* it somewhere else: lifted out of the flow into a panel beside the document.
 
 <!-- sf:callout variant="decision" -->
 
-> An aside is a section in its ordinary place. Position does the work that filtering would have done: the draft sits next to what it is about, in the live document, in the markdown export and on a shared link, until you import it or dismiss it.
+> **Modelled as a section, rendered in a panel.** The two are separate decisions and only the second is about presentation. In the file, in the markdown export and to the verification gate, an aside is a section sitting after its source. On screen it is a panel, because a draft you have not accepted should not push the document you are reading down the page.
 
 | Property | Behaviour |
 | --- | --- |
-| Stored as | A `<section data-sf-aside="…">` in the spec file, with id `<sourceSectionId>-aside-<n>` and an `<h3>` reading *Aside: \<action label>*. Persistence, live reload and survival across sessions are behaviours sections already have. |
+| Stored as | A `<section data-sf-aside="…" data-sf-action="…">` in the spec file, with id `<sourceSectionId>-aside-<n>` and an `<h3>` reading *Aside: \<action label>*. Persistence, live reload and survival across sessions are behaviours sections already have. |
 | Placed | Immediately after the closing tag of its source section. Several asides on one section stack in the order they were run, one per run. |
-| Rendered | In the flow, with a left border in `--accent` and a `--panel2` ground, so it reads as attached to the section above rather than as the next part of the argument. The header strip carries the action's icon and label from [§8](#menu), and toggles the body closed. An aside opens expanded on every load: it is a draft awaiting a decision, and a collapsed one you forget about is the failure mode worth designing against. |
-| Commentable | Yes, like any section. "This diagram has the arrow backwards" is worth saying about an aside, and without it the only available replies are import and discard. |
+| Rendered | Moved at boot into `#sf-asides`, a right-hand panel. The move is a DOM relocation of the same nodes, not a copy, so there is one aside and not two. Each carries a header strip with the action's icon and label from [§8](#menu) and its two buttons. |
+| How you know one exists | A marker at the top right of the source section, carrying the icon of each aside attached to it. Clicking it opens the panel at that aside. The marker is a direct child of the section rather than part of any block, because a comment anchors to a block's text and chrome inside one would change that text and orphan the threads already on it. |
+| Commentable | Yes, in the panel. The nodes moved but they are still the document, so `querySelectorAll(BLOCK_SEL)` still finds them. The panel's own chrome is excluded and its content is not, which is the distinction `inUI()` already draws everywhere else. |
 | Actions on it | **&#8592; Import into spec** and **Dismiss**, in the header strip. Both are comments, like every other action ([§9](#how-it-runs)): they send `@agent @import` and `@agent @dismiss` on the aside. |
-| Import | Merges the content into the section above and deletes the aside. The originating action's instruction decides the form, so Visualize imports as a figure and Explain simply as a callout. Threads on the imported blocks travel with them, because they anchor to blocks rather than to the aside. |
+| Import | Merges the content into the source section and deletes the aside. The originating action's instruction decides the form, so Visualize imports as a figure and Explain simply as a callout. Threads on the imported blocks travel with them, because they anchor to blocks rather than to the aside. |
 | Dismiss | Deletes the section and its threads. Same as deleting any section that has been commented on. |
 | If its section is deleted | The aside goes with it. An aside is about the section above it, and one left behind attaches itself to whatever section happens to precede it, which is worse than losing a draft you had not imported. |
 
@@ -363,28 +364,29 @@ An **aside** is a section of the spec carrying `data-sf-aside="<sourceSectionId>
 
 > **Import goes through the agent rather than the browser.** A button that merged the aside itself would be the browser writing the spec file, which nothing does today and which [§9](#how-it-runs) exists to avoid. The cost is that accepting a draft takes a round trip rather than being instant. The gain beyond the write path is that the agent places the content, so an imported diagram lands as a figure in the right part of the section instead of being appended to the end of it.
 
-#### What the placement buys
+#### The panel shares the right gutter
 
-Three surfaces pick an aside up with no code written for them, because each already walks the spec's sections in document order.
+SpecForge already puts two things there: the comments rail and the comments drawer, and they already take turns, since `railShouldShow()` returns false while the drawer is open. The asides panel joins that rule rather than inventing a third region to fight over the same 340px. Opening it hides the rail, closing it brings the rail back and re-measures, which is the behaviour the drawer has had all along.
+
+#### What the placement still buys
+
+The rendering moved; the model did not. These three still hold, and none of them needed code written for them.
 
 | Surface | What happens |
 | --- | --- |
-| Markdown export | `html-to-md.mjs` iterates `getSectionIds(html)` in document order, so the aside exports as an `##` section directly under the one it belongs to. The exporter is unchanged. |
-| A shared link | A visitor reads the aside where it sits. This is the cost of not filtering: an unimported draft is visible to whoever you send the link to, and dismissing or importing before sharing is the only thing between them. |
-| The verification gate | Rules run over the aside's prose like any section's. An aside that is a stub or contradicts the document fails the gate, which is the behaviour you want from content that is going to travel with the spec anyway. |
+| Markdown export | `html-to-md.mjs` iterates `getSectionIds(html)` in document order, so the aside exports as an `##` section directly under the one it belongs to. The exporter is unchanged, and a test asserts the heading order to keep it that way. |
+| A shared link | A visitor reads the aside. This is the cost of not filtering: an unimported draft is visible to whoever you send the link to, and dismissing or importing before sharing is the only thing between them. |
+| The verification gate | Rules run over the aside's prose like any section's. An aside that is a stub or contradicts the document fails the gate, which is the behaviour you want from content that travels with the spec. |
 
-#### The one rule that has to change
+#### The two rules that have to change
 
-`toc-in-sync` is blocking, and it reads every `<section id="…">` in the file (`lib/rules/global.mjs` line 132, via `getSectionIds` in `lib/spec.mjs` line 16). An aside is a section with an id, so the rule reports it as *sections not linked* and the gate fails on a spec that is otherwise finished.
+`toc-in-sync` is blocking and reads every `<section id="…">` in the file, so it reports an aside as *sections not linked* and fails the gate on a finished spec. The floating contents drawer builds itself from `section[id]` on a spec that has no curated table of contents of its own, so an aside appears in it there. Both skip `data-sf-aside`, and asides get no entry in either: an aside lives until you import or dismiss it, and rewriting the outline on every action run is not what a table of contents is for.
 
-The rule skips sections carrying `data-sf-aside`, and asides get no entry in the floating table of contents. The table of contents is the document's outline; a draft that exists until you click one of two buttons does not belong in it, and putting it there would rewrite the outline on every action run.
+#### The design this replaced
 
-#### Two designs this replaced
+A separate store for agent output, rendered by its own code and deliberately not commentable. It is rejected: everything an aside needs already exists for sections, and "not commentable" is *more* work rather than less. The review layer collects comment targets with `querySelectorAll(BLOCK_SEL)` over the whole document, so a section of paragraphs and figures is commentable by default and stopping it means writing an exclusion. Building a parallel system to avoid a behaviour you get for free is wrong in both directions.
 
-| Considered | Why it lost |
-| --- | --- |
-| A separate store for agent output, rendered by its own code, deliberately not commentable | Everything an aside needs already exists for sections. The review layer collects comment targets with `querySelectorAll(BLOCK_SEL)` over the whole document, so a section of paragraphs and figures is commentable by default and stopping it means writing an exclusion. A parallel system built to avoid a behaviour you get for free is wrong in both directions. |
-| A right-hand region with *Comments* and *Asides* tabs | Cost a second rendering path, a reveal affordance on the source section to tell you an aside existed at all, and a filter on each of the three surfaces above. Placement in the flow removes all three: you find an aside by reading past the section, which is where you already are when you asked for it. |
+Rendering the aside inline, in the flow under its source section, shipped first and was wrong. It reads as the next part of the argument rather than as a draft awaiting a decision, and a long one pushes the document you are reading off the screen. The panel is what "a differently rendered section" meant.
 
 ## 11 · Decisions
 
@@ -397,7 +399,7 @@ Settled in review. Each was an open question above it before it was one of these
 | D3 | **Explain simply is one menu entry.** It writes an aside; the spec is untouched until you import it. | Two entries that sound alike is the pair people pick wrong. Import gives you the in-place outcome in one more click. | The "just rewrite it clearly" case takes two steps rather than one. |
 | D4 | **In-place actions edit the spec directly.** Restructure and Tighten rewrite the section with no preview and no stored previous version. | Specs are files. Adding versioning to the store for two actions is a larger feature than the one being built. | A rewrite you dislike is not recoverable inside SpecForge. Real, and accepted. |
 | D5 | **An aside is deleted with its section.** [§10](#asides) | An aside is about the section above it. One left behind attaches itself to whatever section happens to precede it. | Deleting a section silently discards drafts you had not imported. |
-| D6 | **An aside is a section in the flow, filtered from nothing.** It sits directly under its source and travels into the export and shared links. [§10](#asides) | Position does the work filtering would have done, and it removes a second rendering path, a reveal affordance and three filters. | A link shared mid-draft shows drafts you have not imported. |
+| D6 | **An aside is modelled as a section and rendered in a panel.** It is stored after its source and filtered from nothing, so it travels into the export and shared links; the review layer lifts it into `#sf-asides` to read. [§10](#asides) | Storing it as a section means export, anchoring, comments and the gate all work with no code written for them. Rendering it in a panel means a draft you have not accepted does not push the document you are reading down the page. | A link shared mid-draft shows drafts you have not imported, and the panel takes the right gutter from the comments rail while it is open. |
 | D7 | **The two actions that need a detail from you are in the menu.** Verify against code and Fix the naming pre-fill the comment box like any action; you type the claim or the replacement term before sending. [§8](#menu) | They are the second and third most asked things that were left out, worth 32 instances, and D1 already gives them the field they were missing. Nothing is built for this beyond two more menu entries. | Two entries that do something unhelpful if sent bare. Their instructions have to ask rather than guess. |
 
 ## 12 · Open questions
@@ -488,6 +490,21 @@ Six of the eleven actions write something new rather than changing what is there
 
 Right-clicking empty space offers the three actions that only make sense over the whole document. It is last because everything before it works without it.
 
+### Stage 6 — Render asides in a panel, and make the agent write one
+
+- [x] 6.1 Move `section[data-sf-aside]` into `#sf-asides`, a right-hand panel that joins the rail-and-drawer turn-taking rather than inventing a third region.
+      verify: the aside's nodes are inside the panel and not in the flow, opening the panel hides the comments rail, and closing it brings the rail back.
+- [x] 6.2 A marker at the top right of the source section carrying the icon of each aside on it, opening the panel at that one. A direct child of the section, never inside a block.
+      verify: a section with two asides shows two icons; the marker is not a comment target; and the source section's blocks keep the normalized text their threads anchor to.
+- [x] 6.3 Aside content stays commentable inside the panel, and the panel's own chrome does not.
+      verify: clicking a paragraph in the panel opens a composer anchored to it, and clicking the header strip does not.
+- [x] 6.4 A `specforge aside` command that writes the section: correct attributes, correct id, correct placement. The agent runs it instead of hand-writing markup it can get wrong.
+      verify: the command places the section after its source, numbers a second aside on the same section `-aside-2`, refuses an unknown action or section, and the spec still passes the gate afterwards.
+- [x] 6.5 The skill points at that command and states the rule that an aside action never edits the source section.
+      verify: a test asserts the skill names the command, and that every aside-kind action is listed as writing one.
+
+Two defects found by using the thing. An aside renders in the document instead of beside it, and nothing makes an agent produce one at all: the first Visualize run wrote its diagram straight into the spec with no way to reject it.
+
 ## 15 · Design decisions (implementation time)
 
 <!-- sf:section id="impl-decisions" -->
@@ -504,6 +521,8 @@ Filled during implementation: choices made where the spec was ambiguous.
 - **Import and Dismiss are registry actions at a new `aside` scope.** They could have been buttons that write a fixed string, but then two of the fourteen instructions the agent follows would live outside the one place instructions live. The scope keeps them out of every menu without a special case: the context menu already filters by scope.
 - **One menu, aimed by what is under the pointer.** [§8](#menu) describes a block menu and a background menu as two lists without saying whether they are two objects. They are one: the right-click handler asks for a commentable block, and the absence of one is what makes the scope global. A second menu would need its own open, close, position and clamp, all of which already exist.
 - **A spec-wide action anchors to the title.** The comment has to hang somewhere, and the place the reader was standing is not the thing being changed. A spec with no `h1` falls back to the first commentable block: a menu that throws on right-click is worse than one anchored a line off.
+- **The panel overlays the document rather than reflowing it.** Same as the comments drawer, which is fixed at the right edge and has never pushed the page. Giving this one panel a different behaviour would be the inconsistency; the two now share `--sf-side-w`, and a test asserts they measure the same width.
+- **An open composer overrides the panel, the way it already overrides the width rule.** The rail hides while the panel is open, and the composer lives in the rail, so commenting on an aside was a dead end: an open panel and no way to say anything about it. The composer now brings the rail back and CSS shifts it clear of the panel. Found by a browser test, because in jsdom the click resolved and nothing was measurably wrong.
 
 ## 16 · Deviations
 
@@ -511,6 +530,8 @@ Filled during implementation: intentional departures from the spec, and why.
 
 - **Stage 0.1 migrated one review test file, not five.** The task says the five existing review tests pass against the extracted helper. Only `review-client.test.mjs` was migrated, and its 242 tests pass unchanged. The other three each stub a different global (Prism, mermaid, the contribute API) and boot by appending a script element on a different clock, so folding them in would change timing that 200 or more passing tests depend on, for no gain to this feature. The helper's header comment records which files keep their own and why. PR #183.
 - **Stage 2 gained a fifth task.** Viewport clamping and treating the menu as review chrome are not in the plan. Both came out of running the thing: the menu is nine rows tall, so a right-click in the last 300px of a page put rows off screen where they could not be clicked, and because the document click handler runs in the capture phase, picking a row was also collapsing whatever thread was open. Every jsdom test passed on the first, which is what the browser tier is for. PR #185.
+- **Asides shipped rendered inline, which was a misreading.** "An aside is just a differently rendered section" meant the section is the model and the panel is the rendering. It was read as "render it in the flow", and the panel was deleted along with the reveal affordance. Stage 6 puts the rendering back; the model was right all along and does not change.
+- **The first real Visualize wrote its diagram straight into the spec.** On spec `c8fb987ad0`, comment `@agent @visualize`, the agent produced the figure in place with no `data-sf-aside` wrapper and no way to reject it. Prose in a skill is not a mechanism: stage 6.4 adds a command that writes the section, so the markup cannot be got wrong by an agent that skims.
 - **The contents drawer needed the aside exemption too.** [§10](#asides) names one rule that has to change, `toc-in-sync`. The floating drawer the review layer injects builds itself from `section[id]` when a spec has no curated table of contents of its own, so an aside appeared in it on exactly those specs. Same exemption, second place. Found by writing the browser test rather than by reading. PR #187.
 
 ## 17 · Tradeoffs
