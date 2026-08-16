@@ -43,9 +43,13 @@ export function projectSpecs(name) {
  * @param {string} token rides into each spec link, which is scoped to it
  */
 export function renderProjectPage(name, token) {
+  // The collection is a label, not a filter: it says which group of the owner's
+  // the spec sits in, and nothing on this page acts on it (spec f081f883da).
+  // Absent when the spec has none, because an empty chip claims a blank name.
   const local = projectSpecs(name).map((m) => `
     <li class="row">
       <a class="title" href="/p/${token}/spec/${m.id}">${esc(m.title || 'Untitled')}</a>
+      ${m.collection ? `<span class="coll">${esc(m.collection)}</span>` : ''}
       <span class="type">${esc(m.type || '')}</span>
       <span class="status s-${esc(m.status || 'draft')}">${esc(m.status || 'draft')}</span>
       <span class="upd">${esc(relativeTime(m.updated))}</span>
@@ -90,6 +94,14 @@ export function renderProjectPage(name, token) {
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .title:hover{color:var(--accent)}
   .type{color:var(--muted);font-size:12px;white-space:nowrap}
+  /* Squared, so it does not read as a second status pill; bordered, so it does
+     not run into the type beside it as one muted string.
+     flex:none is load-bearing: the title is the flexible item, so without it the
+     chip absorbs the squeeze and one collection renders at a different width on
+     every row, which reads as several different collections. */
+  .coll{flex:none;color:var(--muted);font-size:11.5px;border:1px solid var(--line);
+    border-radius:6px;padding:1px 8px;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:220px}
   .status{font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:999px;
     border:1px solid var(--line);white-space:nowrap}
   .s-approved{color:var(--green)} .s-review{color:var(--amber)} .s-draft{color:var(--muted)}
