@@ -18,7 +18,7 @@ const run = (...args) => execFileSync(process.execPath, [CLI, ...args], { encodi
 
 test('actions prints every action as JSON, and exits 0', () => {
   const out = JSON.parse(run('actions'));
-  assert.equal(out.actions.length, 12);
+  assert.equal(out.actions.length, 14, 'nine local, three global, two on an aside');
   assert.equal(out.actions[0].id, 'explain_simply');
   assert.ok(out.actions[0].instruction.length > 40, 'the instruction is printed, not just the id');
 });
@@ -26,7 +26,8 @@ test('actions prints every action as JSON, and exits 0', () => {
 test('actions --scope narrows to one surface', () => {
   const local = JSON.parse(run('actions', '--scope', 'local'));
   const global = JSON.parse(run('actions', '--scope', 'global'));
-  assert.equal(local.actions.length + global.actions.length, 12);
+  const aside = JSON.parse(run('actions', '--scope', 'aside'));
+  assert.equal(local.actions.length + global.actions.length + aside.actions.length, 14);
   assert.equal(
     global.actions.map((a) => a.id).join(' '),
     'fix_the_naming consistency_pass canonicalize',

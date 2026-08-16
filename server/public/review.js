@@ -898,6 +898,7 @@
 
     buildLauncher();
     buildCtxMenu();
+    buildAsides();
     buildTop();
     buildTitleBar();
     buildRail();
@@ -1391,6 +1392,59 @@
     var ta = els.rail.querySelector('.sf-bub-compose textarea');
     return ta && ta.value ? ta.value.trim() : '';
   }
+  // ---------- asides ----------
+  // An aside is a section of the spec carrying data-sf-aside, placed directly
+  // after the section it came from. It renders in the flow and is filtered from
+  // nothing: it exports, it travels on a shared link, and the gate reads it.
+  //
+  // What the layer adds is a header strip: which action wrote this, a way to
+  // fold it out of the way, and the two buttons that answer it. The strip is
+  // chrome, so it is not commentable and clicking it is not a page click.
+  function buildAsides() {
+    var list = document.querySelectorAll('section[data-sf-aside]');
+    for (var i = 0; i < list.length; i++) decorateAside(list[i]);
+  }
+  function decorateAside(sec) {
+    if (sec.querySelector(':scope > .sf-aside-head')) return; // built once
+    sec.classList.add('sf-aside');
+    var a = actionByIdClient(sec.getAttribute('data-sf-action'));
+
+    var head = create('div', { class: 'sf-aside-head' });
+    // An aside written under an action id that has since been renamed keeps its
+    // buttons and loses only its label: it is still a draft awaiting an answer.
+    var toggle = create('button', {
+      class: 'sf-aside-toggle', type: 'button', 'aria-expanded': 'true',
+      title: 'Fold this draft away',
+    });
+    toggle.innerHTML = '<span class="sf-aside-ic">' + esc(a ? a.icon : '◇') + '</span>' +
+      '<span class="sf-aside-label">' + esc(a ? a.label : 'Aside') + '</span>';
+    toggle.onclick = function (e) {
+      e.stopPropagation();
+      var shut = sec.classList.toggle('sf-aside-shut');
+      toggle.setAttribute('aria-expanded', shut ? 'false' : 'true');
+    };
+    head.appendChild(toggle);
+
+    var acts = create('span', { class: 'sf-aside-acts' });
+    asideActions().forEach(function (act) {
+      var b = create('button', { class: 'sf-aside-act', type: 'button' }, act.label);
+      b.onclick = function (e) { e.stopPropagation(); runAction(act, sec); };
+      acts.appendChild(b);
+    });
+    head.appendChild(acts);
+    sec.insertBefore(head, sec.firstChild);
+  }
+  function actionByIdClient(id) {
+    var all = (window.SPECFORGE || {}).actions || [];
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+    return null;
+  }
+  function asideActions() {
+    return ((window.SPECFORGE || {}).actions || []).filter(function (a) {
+      return a.scope === 'aside';
+    });
+  }
+
   function copyAnchorLink(el) {
     // The section, not the block: a block has an id only in SpecForge's own
     // registry, and a URL naming that is meaningless to anyone you send it to.
@@ -3201,6 +3255,10 @@
           t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-top' ||
           t.id === 'sf-titlebar' || t.id === 'sf-rail' || t.id === 'sf-tocbtn' ||
           t.id === 'sf-ctx') return true;
+      // An aside's header strip is chrome sitting inside a section of the
+      // document. The section is commentable; the strip that folds it away and
+      // the buttons that answer it are not.
+      if (t.classList && t.classList.contains('sf-aside-head')) return true;
       t = t.parentElement;
     }
     return false;
@@ -3509,7 +3567,11 @@
       if (out.length >= 2) return dropNested(out);
     }
     var byId = [], seen = {};
-    var secs = document.querySelectorAll('section[id]');
+    // An aside is a section, and it is deliberately not in the outline: it lives
+    // until the reader imports or dismisses it, so listing it would rewrite the
+    // contents every time an action runs. A spec with its own nav.toc excludes
+    // asides by construction, since nothing links them; this is the other path.
+    var secs = document.querySelectorAll('section[id]:not([data-sf-aside])');
     if (secs.length >= 3) {
       Array.prototype.forEach.call(secs, function (s) {
         var h = s.querySelector('h1,h2,h3'); if (h) byId.push({ id: s.id, text: txt(h) });

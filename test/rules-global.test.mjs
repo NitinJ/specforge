@@ -183,6 +183,32 @@ test('toc-in-sync catches an unlisted section as well as a stale link', () => {
   assert.match(v.detail, /sections not linked: late/);
 });
 
+test('toc-in-sync ignores an aside, and stops ignoring it the moment it is not one', () => {
+  // An aside is a section, so the rule would report it as unlisted and fail the
+  // gate on a finished spec. It gets no entry in the outline because it exists
+  // until you click one of two buttons, and rewriting the outline on every
+  // action run is not what a table of contents is for.
+  const aside = '<section id="two-aside-1" data-sf-aside="two" data-sf-action="visualize">'
+    + '<h3>Aside: Visualize</h3><p>A draft the agent produced.</p></section>';
+  const withAside = cleanSpec().replace('</body>', `${aside}</body>`);
+  assert.equal(verdictFor(withAside, 'toc-in-sync').ok, true, 'an aside is not an unlisted section');
+
+  const withoutAttr = withAside.replace(' data-sf-aside="two"', '');
+  const v = verdictFor(withoutAttr, 'toc-in-sync');
+  assert.equal(v.ok, false, 'the same section without the attribute is a real omission');
+  assert.match(v.detail, /sections not linked: two-aside-1/);
+});
+
+test('an aside is still a real section everywhere else', () => {
+  // The exemption is one rule wide. An aside that is empty, or whose id collides,
+  // is a defect in the document like any other section's would be.
+  const empty = cleanSpec().replace(
+    '</body>',
+    '<section id="two-aside-1" data-sf-aside="two"><h3>Aside: Visualize</h3></section></body>',
+  );
+  assert.equal(verdictFor(empty, 'no-empty-sections').ok, false, 'an empty aside still fails');
+});
+
 test('no-empty-sections counts a diagram or a table as content', () => {
   for (const body of ['<svg viewBox="0 0 1 1"></svg>', '<table><tr><td>a</td></tr></table>']) {
     const html = cleanSpec({

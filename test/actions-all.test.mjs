@@ -28,6 +28,9 @@ const EXPECTED = [
   ['fix_the_naming', 'in-place', 'global'],
   ['consistency_pass', 'in-place', 'global'],
   ['canonicalize', 'in-place', 'global'],
+  // Not in any menu: these render as buttons on an aside.
+  ['import', 'in-place', 'aside'],
+  ['dismiss', 'in-place', 'aside'],
 ];
 
 test('the registry is exactly the shortlist, in menu order', () => {
@@ -69,6 +72,11 @@ test('forScope splits local from global, and direct actions ride with local', ()
   assert.equal(
     forScope('global').map((a) => a.id).join(' '),
     'fix_the_naming consistency_pass canonicalize',
+  );
+  assert.equal(
+    forScope('aside').map((a) => a.id).join(' '),
+    'import dismiss',
+    'the aside scope never reaches a menu; the context menu filters to local',
   );
 });
 
