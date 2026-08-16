@@ -90,6 +90,26 @@ test('picking an action opens the composer holding it', { skip: !CHROME }, async
   });
 });
 
+test('right-clicking the margin opens the spec-wide menu', { skip: !CHROME }, async () => {
+  // The real gesture: the content column is centred, so the margin beside it is
+  // where a reader's right-click lands when they mean "the whole document".
+  // jsdom cannot tell margin from content, because it has no layout.
+  await withSpec({ html: HTML }, async ({ page }) => {
+    const x = await page.evaluate(() => {
+      const main = document.querySelector('main').getBoundingClientRect();
+      return Math.max(8, Math.round(main.left / 2));
+    });
+    await page.mouse.move(x, 400);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.up({ button: 'right' });
+    await page.waitForSelector('#sf-ctx.open');
+    const rows = await page.locator('#sf-ctx .sf-menu-row').allTextContents();
+    assert.equal(rows.length, 3, 'the three spec-wide actions');
+    assert.match(rows.join(' '), /Consistency pass/);
+    assert.equal(/Tighten/.test(rows.join(' ')), false, 'and nothing block-scoped');
+  });
+});
+
 test('the menu re-themes, so its colours come from the palette', { skip: !CHROME }, async () => {
   // A hard-coded background looks right in one theme and wrong in the other,
   // and a screenshot of either would pass.

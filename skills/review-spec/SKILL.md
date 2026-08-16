@@ -212,8 +212,11 @@ rather than inferring from the label.
   Everything else about it is an ordinary section. It is commentable, it exports,
   and the verification gate reads its prose, so hold it to the same language
   contract as the rest of the spec.
-- **whole spec** — scope is the document, not the block the comment sits on. The
-  anchor says where the reader was standing, not what to change.
+- **whole spec** — scope is the document, not the block the comment sits on.
+  These arrive from a right-click on the page background and anchor to the
+  title, so the anchor is a place to hang the thread rather than the thing to
+  change. Read the whole spec before you start: a consistency pass that has read
+  one section has not done the work its name claims.
 - **on an aside** — `@import` and `@dismiss` arrive from the two buttons on an
   aside, so the comment is anchored inside one. Act on the aside the anchor sits
   in, and on nothing else.

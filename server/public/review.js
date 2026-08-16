@@ -1328,10 +1328,17 @@
     document.addEventListener('contextmenu', function (e) {
       var actions = menuActionList();
       if (!actions) return;
+      // Review chrome answers neither menu: a spec-wide action offered over the
+      // launcher is nonsense, and so is "explain this simply".
+      if (inUI(e.target) || inMenu(e.target)) return;
       var el = ctxTargetOf(e.target);
-      if (!el) return; // the page background is its own scope, and not this stage
+      // Nothing commentable under the pointer means the reader hit the page
+      // itself, which is the scope of the whole document.
+      var scope = el ? 'local' : 'global';
+      var anchor = el || specAnchorEl();
+      if (!anchor) return; // a document with nothing in it: no menu to offer
       e.preventDefault(); // or the browser's menu opens on top of this one
-      openCtxMenu(el, actions, e.clientX, e.clientY);
+      openCtxMenu(anchor, actions, e.clientX, e.clientY, scope);
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') closeCtxMenu();
@@ -1342,10 +1349,23 @@
     // scrolled because you were looking at something else.
     window.addEventListener('scroll', function () { closeCtxMenu(); }, true);
   }
-  function openCtxMenu(el, actions, x, y) {
+  /**
+   * What a spec-wide action anchors to.
+   *
+   * The title, because the scope is the document and the anchor should say so
+   * rather than recording whatever the reader happened to be standing near. An
+   * imported spec may have no h1, so the first commentable block stands in: a
+   * menu that throws on right-click is worse than one anchored a line off.
+   */
+  function specAnchorEl() {
+    var h1 = document.querySelector('h1');
+    if (h1 && !inUI(h1)) return h1;
+    return commentableBlocks()[0] || null;
+  }
+  function openCtxMenu(el, actions, x, y, scope) {
     els.ctx.innerHTML = '';
     actions.forEach(function (a) {
-      if (a.scope !== 'local') return;
+      if (a.scope !== scope) return;
       els.ctx.appendChild(menuRow(a.icon, a.label, function (ev) {
         ev.stopPropagation();
         closeCtxMenu();

@@ -464,7 +464,7 @@ Right-clicking a block opens a list of actions. Picking one puts the action's sh
 
 A comment arrives saying `@agent @visualize`. This stage is what turns that token into the instruction the agent follows. In-place actions work end to end after it; the ones that write an aside have nowhere to put it until stage 4, and say so in their reply.
 
-### Stage 4 — Asides
+### Stage 4 — Asides (PR 187)
 
 - [x] 4.1 Render `section[data-sf-aside]` inline with its header strip, action icon, label and collapse toggle. The action is named by `data-sf-action` on the section, not read out of the heading.
       verify: a fixture with an aside renders the strip, the toggle hides the body without removing it, and an aside naming a renamed action keeps its buttons and loses only its label.
@@ -479,12 +479,12 @@ Six of the eleven actions write something new rather than changing what is there
 
 ### Stage 5 — The three spec-wide actions
 
-- [ ] 5.1 Right-click on the page background opens a menu of global-scope actions only.
-      verify: the background menu lists Consistency pass, Canonicalize and Fix the naming and nothing block-scoped.
-- [ ] 5.2 A global action anchors its comment to the title block.
-      verify: the composer's anchor is the `h1` block.
-- [ ] 5.3 All three instructions land in the skill alongside the eight local ones.
-      verify: the Stage 3 registry-versus-skill test covers all eleven agentic ids.
+- [x] 5.1 Scope comes from what is under the pointer: a block gives the local list, and nothing commentable gives the spec-wide one. One menu, re-aimed.
+      verify: the background menu lists Fix the naming, Consistency pass and Canonicalize and nothing block-scoped; a browser test drives the real gesture, a right-click in the margin beside the content column.
+- [x] 5.2 A spec-wide action anchors its comment to the title, falling back to the first commentable block on a spec that has no `h1`.
+      verify: the composer's anchor is the `h1`, and a spec with the `h1` removed still opens a composer rather than throwing.
+- [x] 5.3 The skill says a spec-wide action is scoped to the document and that its anchor is a place to hang the thread rather than the thing to change.
+      verify: the Stage 3 registry-versus-skill test covers all fourteen ids.
 
 Right-clicking empty space offers the three actions that only make sense over the whole document. It is last because everything before it works without it.
 
@@ -501,7 +501,9 @@ Filled during implementation: choices made where the spec was ambiguous.
 - **Reading an action back out reuses the `@agent` mention rule.** `parseActions` is built on `mentionNames()` rather than its own regex, which buys the property that matters most: a mention inside code is quotation, not addressing. This spec documents its own syntax, and so do the pull requests implementing it, so an action named inside backticks must not queue work.
 - **One qualifier serves every action in a comment.** Splitting the typed text between two actions would need to know which words belong to which, and nothing in the body says. `@visualize @go_deeper on the retry path` applies to both.
 - **An aside names its action in `data-sf-action`, not in its heading.** [§10](#asides) specifies the heading as *Aside: \<action label>* without saying where the review layer reads the action from. Parsing a label out of prose would break on a heading the reader edited, and the heading has its own job: it is what the markdown export shows, where there is no header strip. So both exist, and the attribute is the one the code reads.
-- **Import and Dismiss are registry actions at a new `aside` scope.** They could have been buttons that write a fixed string, but then two of the fourteen instructions the agent follows would live outside the one place instructions live. The scope keeps them out of every menu without a special case: the context menu already filters to `local`.
+- **Import and Dismiss are registry actions at a new `aside` scope.** They could have been buttons that write a fixed string, but then two of the fourteen instructions the agent follows would live outside the one place instructions live. The scope keeps them out of every menu without a special case: the context menu already filters by scope.
+- **One menu, aimed by what is under the pointer.** [§8](#menu) describes a block menu and a background menu as two lists without saying whether they are two objects. They are one: the right-click handler asks for a commentable block, and the absence of one is what makes the scope global. A second menu would need its own open, close, position and clamp, all of which already exist.
+- **A spec-wide action anchors to the title.** The comment has to hang somewhere, and the place the reader was standing is not the thing being changed. A spec with no `h1` falls back to the first commentable block: a menu that throws on right-click is worse than one anchored a line off.
 
 ## 16 · Deviations
 
