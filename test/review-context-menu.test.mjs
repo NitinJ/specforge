@@ -122,6 +122,7 @@ test('Copy link writes the anchor and opens no composer', async (t) => {
         configurable: true,
         value: { writeText: (s) => { written.push(s); return Promise.resolve(); } },
       });
+      w.SFUI = { snack: () => {} };
     },
   });
   rightClick(window, 'p.p-two');
@@ -148,6 +149,112 @@ test('a page served before the feature existed has no menu at all', async (t) =>
   const ev = rightClick(window, 'p.p-two').event;
   assert.equal(isOpen(window), false, 'nothing to show, so nothing opens');
   assert.equal(ev.defaultPrevented, false, 'and the browser menu is left working');
+});
+
+test('an action adds to a draft in progress rather than replacing it', async (t) => {
+  // You are mid-thought on a block and decide the agent should draw it. Losing
+  // the sentence you had already typed is the wrong answer, and the right one
+  // reads correctly too: the action goes first, your words follow.
+  const { window } = await boot(t);
+  window.document.querySelector('p.p-two').dispatchEvent(
+    new window.MouseEvent('click', { bubbles: true }),
+  );
+  await tick(window);
+  const first = window.document.querySelector('#sf-rail .sf-bub-compose textarea');
+  first.value = 'the retry path is the confusing bit';
+
+  rightClick(window, 'p.p-two');
+  rowByLabel(window, 'Visualize').click();
+  await tick(window);
+
+  assert.equal(
+    window.document.querySelector('#sf-rail .sf-bub-compose textarea').value,
+    '@visualize the retry path is the confusing bit',
+  );
+});
+
+test('the menu is review chrome, so clicking it does not act as a page click', async (t) => {
+  // The document click handler runs in the capture phase, so a row's own
+  // stopPropagation is too late to stop it. Unless the menu is chrome, picking
+  // an action first collapses whatever thread was open and cancels whatever was
+  // being composed, and only then runs the action.
+  const { window } = await boot(t);
+  window.document.querySelector('p.p-one').dispatchEvent(
+    new window.MouseEvent('click', { bubbles: true }),
+  );
+  await tick(window);
+  assert.ok(window.document.querySelector('#sf-rail .sf-bub-compose'), 'a composer is open');
+
+  rightClick(window, 'p.p-one');
+  rowByLabel(window, 'Tighten').click();
+  await tick(window);
+
+  const card = window.document.querySelector('#sf-rail .sf-bub-compose');
+  assert.ok(card, 'still open, on the same block');
+  assert.equal(card.querySelector('textarea').value, '@tighten ');
+});
+
+test('two actions on one block ride in one comment', async (t) => {
+  const { window } = await boot(t);
+  rightClick(window, 'p.p-two');
+  rowByLabel(window, 'Go deeper').click();
+  await tick(window);
+  rightClick(window, 'p.p-two');
+  rowByLabel(window, 'Visualize').click();
+  await tick(window);
+
+  assert.equal(
+    window.document.querySelector('#sf-rail .sf-bub-compose textarea').value,
+    '@visualize @go_deeper',
+  );
+});
+
+test('a published copy gets no action menu at all', async (t) => {
+  // A reviewer has no agent. Their composer defaults to discussion, so an
+  // action picked here would post a comment no agent ever reads: a menu entry
+  // that silently does nothing. Omitted server-side, the same way the Reconnect
+  // path already is.
+  const { window } = await boot(t, { transport: 'poll', actions: [] });
+  const ev = rightClick(window, 'p.p-two').event;
+  assert.equal(isOpen(window), false);
+  assert.equal(ev.defaultPrevented, false, 'and the browser menu still works');
+});
+
+test('a clipboard that rejects says so rather than claiming success', async (t) => {
+  const said = [];
+  const { window } = await boot(t, {
+    preBoot: (w) => {
+      Object.defineProperty(w.navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: () => Promise.reject(new Error('denied')) },
+      });
+      w.SFUI = { snack: (msg, opts) => said.push({ msg, tone: opts && opts.tone }) };
+    },
+  });
+  rightClick(window, 'p.p-two');
+  rowByLabel(window, 'Copy link').click();
+  await tick(window);
+  await tick(window);
+
+  assert.equal(said.length, 1, 'said one thing, not "copied" and then "failed"');
+  assert.match(said[0].msg, /not copy/i);
+  assert.equal(said[0].tone, 'err');
+});
+
+test('a browser with no clipboard API says so too', async (t) => {
+  const said = [];
+  const { window } = await boot(t, {
+    preBoot: (w) => {
+      Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: undefined });
+      w.SFUI = { snack: (msg, opts) => said.push({ msg, tone: opts && opts.tone }) };
+    },
+  });
+  rightClick(window, 'p.p-two');
+  rowByLabel(window, 'Copy link').click();
+  await tick(window);
+
+  assert.equal(said.length, 1);
+  assert.match(said[0].msg, /not copy/i);
 });
 
 test('right-clicking inside the review chrome leaves it alone', async (t) => {

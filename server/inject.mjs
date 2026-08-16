@@ -212,10 +212,14 @@ function reviewSnippet(specId, prefs, transport, api, servedAt) {
     blocks: blockComponents(),
     // The context menu, without the instructions: the client shows a label and
     // writes an id, and the agent resolves that id against the registry. A page
-    // served before this existed carries no `actions`, and the client leaves the
-    // browser's own menu alone rather than opening an empty one.
-    actions: menuActions(),
-    ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
+    // carrying no `actions` opens no menu and leaves the browser's own alone,
+    // which is what a page served before this existed does.
+    //
+    // Omitted from a published copy for the same reason `cli` is. A reviewer has
+    // no agent: their composer defaults to discussion, so an action picked there
+    // would post a comment nothing ever reads, which is a menu entry that
+    // silently does nothing.
+    ...(transport === 'poll' ? {} : { actions: menuActions(), cli: CLI_PATH }),
   });
   // The mtime of the file this response was rendered from. The caller's
   // reading is preferred because only it knows when it read the bytes; falling

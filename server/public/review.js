@@ -1370,17 +1370,34 @@
   /** Copy link is the only action the browser answers by itself. */
   function runAction(a, el) {
     if (a.id === 'copy_link') return copyAnchorLink(el);
-    openRailCompose(el, '@' + a.id + ' ');
+    // Whatever is already in the composer for this block rides along. You are
+    // mid-thought and decide the agent should draw it; losing the sentence you
+    // typed is the wrong answer, and the action reading first is the right
+    // order anyway. Picking a second action keeps the first, which is how two
+    // actions travel in one comment.
+    var draft = openDraftFor(el);
+    openRailCompose(el, '@' + a.id + ' ' + draft);
+  }
+  /** What is typed in the composer, if one is open on this block. */
+  function openDraftFor(el) {
+    if (state.composeEl !== el || !els.rail) return '';
+    var ta = els.rail.querySelector('.sf-bub-compose textarea');
+    return ta && ta.value ? ta.value.trim() : '';
   }
   function copyAnchorLink(el) {
     // The section, not the block: a block has an id only in SpecForge's own
     // registry, and a URL naming that is meaningless to anyone you send it to.
     var section = sectionPathOf(el)[0];
     var url = location.origin + location.pathname + (section ? '#' + section : '');
+    var failed = function () { flash('Could not copy the link', 'err'); };
+    var p;
     try {
-      navigator.clipboard.writeText(url);
-      if (window.SFUI && SFUI.snack) SFUI.snack('Link copied');
-    } catch (e) { /* no clipboard: the menu closed, and nothing was lost */ }
+      p = navigator.clipboard && navigator.clipboard.writeText(url);
+    } catch (e) { return failed(); }
+    // writeText resolves; it does not return. Saying "copied" before it settles
+    // reports a success that a denied permission never delivered.
+    if (!p || !p.then) return failed();
+    p.then(function () { flash('Link copied'); }, failed);
   }
   // Which view the menu is showing, as a counter. Bumped by every rebuild and
   // every close, so an async request started for one view can tell that the
@@ -3175,7 +3192,8 @@
     while (t) {
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
           t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-top' ||
-          t.id === 'sf-titlebar' || t.id === 'sf-rail' || t.id === 'sf-tocbtn') return true;
+          t.id === 'sf-titlebar' || t.id === 'sf-rail' || t.id === 'sf-tocbtn' ||
+          t.id === 'sf-ctx') return true;
       t = t.parentElement;
     }
     return false;
