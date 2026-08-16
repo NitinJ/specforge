@@ -440,16 +440,18 @@ The menu, the composer and the aside all live in browser code, so every stage af
 
 One file that lists the eleven actions: what each is called, its icon, whether it edits in place or writes an aside, and the instruction the agent follows. Nothing reads it yet, which is what makes it a stage on its own.
 
-### Stage 2 — The menu, and what clicking does
+### Stage 2 — The menu, and what clicking does (PR 185)
 
-- [ ] 2.1 A context menu in `review.js`, opening on right-click over a block or section and closing on Escape, click-away and scroll.
+- [x] 2.1 A context menu in `review.js`, opening on right-click over a block or section and closing on Escape, click-away and scroll.
       verify: a jsdom test opens it on a paragraph and asserts each of the three closes it.
-- [ ] 2.2 Entries built from the registry, filtered to local scope, with icon and label.
+- [x] 2.2 Entries built from the registry, filtered to local scope, with icon and label.
       verify: right-clicking a paragraph lists the nine local entries, Copy link among them, in the order of [§8](#menu).
-- [ ] 2.3 Picking an entry opens the composer on that block, pre-filled with `@agent @<id>` and the cursor after it.
-      verify: picking Visualize leaves the composer holding `@agent @visualize` anchored to the clicked block.
-- [ ] 2.4 Copy link writes the anchor URL to the clipboard.
-      verify: the written string is the spec URL plus `#<sectionId>`.
+- [x] 2.3 Picking an entry opens the composer on that block, pre-filled with `@<id>` and the cursor after it. The `@agent` is added by the audience chip on send, not written here.
+      verify: picking Visualize leaves the composer holding `@visualize ` anchored to the clicked block, and sending it posts `@agent @visualize`.
+- [x] 2.4 Copy link writes the anchor URL to the clipboard.
+      verify: the written string is the spec URL plus `#<sectionId>`, and a clipboard that rejects reports the failure instead of a success.
+- [x] 2.5 The menu is clamped inside the viewport, and counts as review chrome so that picking a row is not also a page click.
+      verify: a browser test opens it at the bottom-right corner and asserts every row is on screen and hit-testable; a jsdom test asserts an open composer survives picking an action.
 
 Right-clicking a block opens a list of actions. Picking one puts the action's shorthand into the comment box on that block, and you send it yourself like any other comment.
 
@@ -492,19 +494,25 @@ Right-clicking empty space offers the three actions that only make sense over th
 
 Filled during implementation: choices made where the spec was ambiguous.
 
-- &#8212; none yet &#8212;
+- **The menu writes `@<id>`, not `@agent @<id>`.** [§9](#how-it-runs) describes the comment as `@agent @visualize` without saying which half writes the mention. The composer already carries an audience chip that prepends `@agent` and is the single thing deciding routing, so the menu seeds the action alone and lets the chip do what it already did. A comment addressed to a person still behaves like one. PR #185.
+- **The seed carries a trailing space, and an open draft rides along.** Picking an action while the composer already holds text prepends the action rather than replacing it, so `@visualize the retry path is the confusing bit`. Picking a second action keeps the first, which is how two actions travel in one comment. Not in the spec; the alternative silently discarded a sentence you had typed. PR #185.
+- **Spec-wide actions are omitted from a published copy.** A reviewer's composer defaults to discussion rather than the agent, so an action picked on a shared link would post a comment nothing ever reads. The injected list is omitted for the `poll` transport, the same way the Reconnect path already is, and a page with no list opens no menu at all. PR #185.
+- **The registry holds twelve entries, not eleven.** The eleven agentic actions of [§6](#recommendations) plus Copy link, which [§8](#menu) lists but the shortlist never did. PR #184.
 
 ## 16 · Deviations
 
 Filled during implementation: intentional departures from the spec, and why.
 
 - **Stage 0.1 migrated one review test file, not five.** The task says the five existing review tests pass against the extracted helper. Only `review-client.test.mjs` was migrated, and its 242 tests pass unchanged. The other three each stub a different global (Prism, mermaid, the contribute API) and boot by appending a script element on a different clock, so folding them in would change timing that 200 or more passing tests depend on, for no gain to this feature. The helper's header comment records which files keep their own and why. PR #183.
+- **Stage 2 gained a fifth task.** Viewport clamping and treating the menu as review chrome are not in the plan. Both came out of running the thing: the menu is nine rows tall, so a right-click in the last 300px of a page put rows off screen where they could not be clicked, and because the document click handler runs in the capture phase, picking a row was also collapsing whatever thread was open. Every jsdom test passed on the first, which is what the browser tier is for. PR #185.
 
 ## 17 · Tradeoffs
 
 Filled during implementation: alternatives considered and why the chosen path won.
 
-- &#8212; none yet &#8212;
+- **Inject the action list, or fetch it.** The list goes into `window.SPECFORGE` at serve time, beside the block components that were already injected the same way, rather than reaching the client through an endpoint. It costs a few hundred bytes on every page and saves a round trip and an error path on every open of the menu. The instructions are left behind: the client never reads them, they are several kilobytes of prose, and a client-side copy could drift from the one the agent runs.
+- **Reuse `.sf-menu-row`, or give the context menu its own row style.** Reused. An action row and a launcher row are both "pick a thing from a list", and the two menus appearing on the same page in different clothes is a cost with nothing on the other side. Only the container is new, because it is placed at a pointer rather than anchored to a corner.
+- **Show a reduced menu on a published copy, or none.** None. Copy link would have worked for a reviewer, but a one-entry menu that appears where a nine-entry one appears for the owner reads as breakage, and the code to build it is code to maintain for one row.
 
 ## Sources
 
