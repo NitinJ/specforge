@@ -186,12 +186,14 @@ specforge verify <id>          # the report, for reading
 specforge verify <id> --json   # the same thing, for an agent
 ```
 
-An unjudged rule reports as **pending**, never as a pass. That third state is the
-point: a spec whose blocking rules nobody has judged is not verified, and saying
-otherwise would manufacture assurance. Nothing is stored, so re-running reports
-the same pending list — it is a work list to read the spec against, not a
-checklist that empties. The exit code says which kind of attention is needed:
-`1` a rule failed, `2` the judgements are yours, `0` neither.
+It is a **gate, not a report**: PASS or FAIL, and the spec is not finished until
+it passes. On FAIL it names every rule the spec breaks and what to do about each.
+The agent fixes them, runs it again, and repeats.
+
+A rule nobody has judged counts against you exactly like a broken one, because
+otherwise nobody judges it. The agent reports what it judged with `--judged`,
+which lasts one run and is written nowhere. Claiming to have judged a spec never
+papers over a defect a function found.
 
 A **type's own rules** live in its template, as a list of sentences you edit in
 SpecForge like anything else. Adding a rule is writing a sentence; a type can
