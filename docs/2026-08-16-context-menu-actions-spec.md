@@ -457,12 +457,12 @@ Right-clicking a block opens a list of actions. Picking one puts the action's sh
 
 ### Stage 3 — Teaching the agent what an action means
 
-- [ ] 3.1 `parseActions(body)` returning the action ids in a comment body and ignoring everything else.
-      verify: tests cover a bare action, an action with typed text after it, two actions in one comment, and a comment with none.
-- [ ] 3.2 The review-spec skill resolves each id to its instruction, applies the in-place versus aside rule from [§7](#types), and replies saying so when an id is not in the registry.
-      verify: a test reads the skill and the registry and asserts every id appears in both.
+- [x] 3.1 `parseActions(body)` returning the actions a comment names, each with its standing instruction and whatever the reader typed alongside it. Built on `mentionNames()`, so an action inside code is quotation rather than a request.
+      verify: tests cover a bare action, an action with typed text after it, two actions in one comment, a repeat, a person's name, a comment with none, and both forms of code.
+- [x] 3.2 The review-spec skill reads the registry rather than carrying its own copy of the instructions, and states the in-place versus aside rule from [§7](#types) and what to do when a `needsDetail` action arrives bare.
+      verify: a test asserts the skill names every id, names none the registry lacks, and restates no instruction; that last one is what stops the two drifting.
 
-A comment arrives saying `@agent @visualize`. This stage is what turns that token into the instruction the agent follows, and it is where the feature becomes usable end to end.
+A comment arrives saying `@agent @visualize`. This stage is what turns that token into the instruction the agent follows. In-place actions work end to end after it; the ones that write an aside have nowhere to put it until stage 4, and say so in their reply.
 
 ### Stage 4 — Asides
 
@@ -498,6 +498,8 @@ Filled during implementation: choices made where the spec was ambiguous.
 - **The seed carries a trailing space, and an open draft rides along.** Picking an action while the composer already holds text prepends the action rather than replacing it, so `@visualize the retry path is the confusing bit`. Picking a second action keeps the first, which is how two actions travel in one comment. Not in the spec; the alternative silently discarded a sentence you had typed. PR #185.
 - **Spec-wide actions are omitted from a published copy.** A reviewer's composer defaults to discussion rather than the agent, so an action picked on a shared link would post a comment nothing ever reads. The injected list is omitted for the `poll` transport, the same way the Reconnect path already is, and a page with no list opens no menu at all. PR #185.
 - **The registry holds twelve entries, not eleven.** The eleven agentic actions of [§6](#recommendations) plus Copy link, which [§8](#menu) lists but the shortlist never did. PR #184.
+- **Reading an action back out reuses the `@agent` mention rule.** `parseActions` is built on `mentionNames()` rather than its own regex, which buys the property that matters most: a mention inside code is quotation, not addressing. This spec documents its own syntax, and so do the pull requests implementing it, so an action named inside backticks must not queue work.
+- **One qualifier serves every action in a comment.** Splitting the typed text between two actions would need to know which words belong to which, and nothing in the body says. `@visualize @go_deeper on the retry path` applies to both.
 
 ## 16 · Deviations
 

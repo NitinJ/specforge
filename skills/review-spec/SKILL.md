@@ -148,6 +148,66 @@ and amending are all edit work — and go straight to step 4, the reply:
 
 Do **not** resolve threads — only the human resolves (which closes them).
 
+## Actions
+
+A comment can name an **action**: a menu entry the reader picked instead of
+typing the same request again. It looks like `@agent @visualize`, and the reader
+may have typed a qualifier after it. Every action carries a **standing
+instruction** — a written standard you apply every time — and that instruction
+is what you execute. The words on the button are the label, not the ask.
+
+Read the list, with the instructions, from the registry:
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" actions            # all of them
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" actions <id>       # one
+```
+
+**Read it; do not remember it.** The instructions are edited, and a copy of one
+in your head is the version that was true last month.
+
+| id | Where the result goes |
+|---|---|
+| `@explain_simply` | aside |
+| `@visualize` | aside |
+| `@go_deeper` | aside |
+| `@verify_against_code` | aside |
+| `@help_me_decide` | aside |
+| `@show_an_example` | aside |
+| `@restructure` | in-place |
+| `@tighten` | in-place |
+| `@fix_the_naming` | in-place, whole spec |
+| `@consistency_pass` | in-place, whole spec |
+| `@canonicalize` | in-place, whole spec |
+| `@copy_link` | never reaches you; the browser answers it |
+
+**The rule the table follows**: an action edits **in-place** when it changes the
+form of content that is already there, and writes an **aside** when it produces
+content that is not there yet. Each record carries its `kind`, so read that
+rather than inferring from the label.
+
+- **in-place** — edit the commented block or section directly, following the
+  instruction. `@restructure` and `@canonicalize` rewrite everything in scope and
+  nothing keeps the old version, so re-read what you are replacing before you
+  replace it.
+- **aside** — the output is a draft the reader decides on, not a claim the spec
+  makes yet. Until the aside mechanism ships, write the output in your **reply**
+  and say plainly that it is a draft rather than an edit; do not put it in the
+  document.
+- **whole spec** — scope is the document, not the block the comment sits on. The
+  anchor says where the reader was standing, not what to change.
+
+**Two actions carry `needsDetail`**: `@verify_against_code` and
+`@fix_the_naming`. Neither can run on its instruction alone — one needs the claim
+to check and where to look, the other needs both terms of the rename. If the
+comment carries nothing beyond the action, **say what you would have done and
+ask**. A confident verification of the wrong claim, or a rename inferred from
+the prose, is worse than a question.
+
+Everything else in this skill still applies: an action arrives as a comment,
+`origin` still decides whether you may edit, and the thread still gets a reply
+saying what you did.
+
 ## 4. Mark the batch done
 
 When every thread in a batch has a reply:
