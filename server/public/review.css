@@ -1137,6 +1137,45 @@ body.sf-side-open #sf-launcher { right: calc(var(--sf-side-w) + 18px); }
   #sf-menu { transition: opacity var(--sf-dur-fast) linear, visibility 0s linear; transform: none !important; }
 }
 body.sf-side-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
+/* asides — a section of the spec that renders attached to the one above it
+   rather than as the next part of the argument. Offset, tinted, and hung off a
+   left border in the accent, so the eye reads it as a note in the margin that
+   happens to be in the flow. Nothing here hides it: it exports and it travels
+   on a shared link exactly as it renders. */
+.sf-aside {
+  border-left: 3px solid var(--sf-accent);
+  background: var(--sf-panel2);
+  border-radius: 0 var(--sf-r-md) var(--sf-r-md) 0;
+  padding: 4px 16px 10px;
+  margin: 18px 0 22px 12px;
+}
+.sf-aside-head {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 -6px 2px; padding: 4px 6px;
+  font: 12.5px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.sf-aside-toggle {
+  display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0;
+  background: none; border: none; padding: 4px 4px; margin: 0;
+  color: var(--sf-muted); font: inherit; text-align: left; cursor: pointer;
+  border-radius: var(--sf-r-sm);
+}
+.sf-aside-toggle:hover { color: var(--sf-ink); }
+.sf-aside-toggle:focus-visible { outline: none; box-shadow: var(--sf-ring); }
+.sf-aside-label { letter-spacing: .02em; text-transform: uppercase; font-size: 11.5px; }
+.sf-aside-acts { display: flex; gap: 6px; flex: none; }
+.sf-aside-act {
+  background: none; border: 1px solid var(--sf-hairline); color: var(--sf-muted);
+  border-radius: var(--sf-r-sm); padding: 3px 9px; font: inherit; cursor: pointer;
+  transition: background var(--sf-dur-fast) var(--sf-ease), color var(--sf-dur-fast) var(--sf-ease);
+}
+.sf-aside-act:hover { background: var(--sf-panel); color: var(--sf-ink); }
+.sf-aside-act:focus-visible { outline: none; box-shadow: var(--sf-ring); }
+/* Folded away: everything but the strip. The content stays in the document,
+   because it is a section of the spec and the fold is a reading preference. */
+.sf-aside-shut > *:not(.sf-aside-head) { display: none; }
+.sf-aside-shut { padding-bottom: 4px; }
+
 /* context menu — the same glass as the launcher popover, but placed at the
    pointer rather than anchored to a corner, and opening downward from it. It
    reuses .sf-menu-row, so an action row and a launcher row are the same object

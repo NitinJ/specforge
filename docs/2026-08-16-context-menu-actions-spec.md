@@ -455,7 +455,7 @@ One file that lists the eleven actions: what each is called, its icon, whether i
 
 Right-clicking a block opens a list of actions. Picking one puts the action's shorthand into the comment box on that block, and you send it yourself like any other comment.
 
-### Stage 3 — Teaching the agent what an action means
+### Stage 3 — Teaching the agent what an action means (PR 186)
 
 - [x] 3.1 `parseActions(body)` returning the actions a comment names, each with its standing instruction and whatever the reader typed alongside it. Built on `mentionNames()`, so an action inside code is quotation rather than a request.
       verify: tests cover a bare action, an action with typed text after it, two actions in one comment, a repeat, a person's name, a comment with none, and both forms of code.
@@ -466,14 +466,14 @@ A comment arrives saying `@agent @visualize`. This stage is what turns that toke
 
 ### Stage 4 — Asides
 
-- [ ] 4.1 Render `section[data-sf-aside]` inline with its header strip, action icon, label and collapse toggle.
-      verify: a fixture with an aside renders the strip, and the toggle hides the body without removing it.
-- [ ] 4.2 `toc-in-sync` skips sections carrying `data-sf-aside`.
-      verify: a spec with an aside passes the rule, and the same spec with the attribute removed fails it.
-- [ ] 4.3 Import and Dismiss send `@agent @import` and `@agent @dismiss` anchored to the aside.
-      verify: clicking Import leaves the composer holding the right body and anchor.
-- [ ] 4.4 The skill gains the import and dismiss instructions, including deleting an aside with its source section ([D5](#decisions)).
-      verify: exporting a spec with an aside places it directly after its source section in the markdown.
+- [x] 4.1 Render `section[data-sf-aside]` inline with its header strip, action icon, label and collapse toggle. The action is named by `data-sf-action` on the section, not read out of the heading.
+      verify: a fixture with an aside renders the strip, the toggle hides the body without removing it, and an aside naming a renamed action keeps its buttons and loses only its label.
+- [x] 4.2 `toc-in-sync` skips sections carrying `data-sf-aside`, and so does the floating contents drawer when it is built from sections.
+      verify: a spec with an aside passes the rule, the same spec with the attribute removed fails it, and a browser test on a spec with no curated table of contents asserts the drawer lists the sections and not the aside.
+- [x] 4.3 `import` and `dismiss` join the registry at a new `aside` scope, and render as buttons on the aside rather than in any menu.
+      verify: clicking Import leaves the composer holding `@import ` anchored inside the aside, and sending it posts `@agent @import`.
+- [x] 4.4 The skill gains the markup an aside is written in, the import and dismiss instructions, and the rule that deleting a section deletes its asides ([D5](#decisions)).
+      verify: exporting a spec with an aside places it directly after its source section in the markdown, with the exporter unchanged.
 
 Six of the eleven actions write something new rather than changing what is there. That output lands in a section directly under the one you clicked, with two buttons on it: import it, or throw it away.
 
@@ -500,6 +500,8 @@ Filled during implementation: choices made where the spec was ambiguous.
 - **The registry holds twelve entries, not eleven.** The eleven agentic actions of [§6](#recommendations) plus Copy link, which [§8](#menu) lists but the shortlist never did. PR #184.
 - **Reading an action back out reuses the `@agent` mention rule.** `parseActions` is built on `mentionNames()` rather than its own regex, which buys the property that matters most: a mention inside code is quotation, not addressing. This spec documents its own syntax, and so do the pull requests implementing it, so an action named inside backticks must not queue work.
 - **One qualifier serves every action in a comment.** Splitting the typed text between two actions would need to know which words belong to which, and nothing in the body says. `@visualize @go_deeper on the retry path` applies to both.
+- **An aside names its action in `data-sf-action`, not in its heading.** [§10](#asides) specifies the heading as *Aside: \<action label>* without saying where the review layer reads the action from. Parsing a label out of prose would break on a heading the reader edited, and the heading has its own job: it is what the markdown export shows, where there is no header strip. So both exist, and the attribute is the one the code reads.
+- **Import and Dismiss are registry actions at a new `aside` scope.** They could have been buttons that write a fixed string, but then two of the fourteen instructions the agent follows would live outside the one place instructions live. The scope keeps them out of every menu without a special case: the context menu already filters to `local`.
 
 ## 16 · Deviations
 
@@ -507,6 +509,7 @@ Filled during implementation: intentional departures from the spec, and why.
 
 - **Stage 0.1 migrated one review test file, not five.** The task says the five existing review tests pass against the extracted helper. Only `review-client.test.mjs` was migrated, and its 242 tests pass unchanged. The other three each stub a different global (Prism, mermaid, the contribute API) and boot by appending a script element on a different clock, so folding them in would change timing that 200 or more passing tests depend on, for no gain to this feature. The helper's header comment records which files keep their own and why. PR #183.
 - **Stage 2 gained a fifth task.** Viewport clamping and treating the menu as review chrome are not in the plan. Both came out of running the thing: the menu is nine rows tall, so a right-click in the last 300px of a page put rows off screen where they could not be clicked, and because the document click handler runs in the capture phase, picking a row was also collapsing whatever thread was open. Every jsdom test passed on the first, which is what the browser tier is for. PR #185.
+- **The contents drawer needed the aside exemption too.** [§10](#asides) names one rule that has to change, `toc-in-sync`. The floating drawer the review layer injects builds itself from `section[id]` when a spec has no curated table of contents of its own, so an aside appeared in it on exactly those specs. Same exemption, second place. Found by writing the browser test rather than by reading. PR #187.
 
 ## 17 · Tradeoffs
 

@@ -179,6 +179,8 @@ in your head is the version that was true last month.
 | `@fix_the_naming` | in-place, whole spec |
 | `@consistency_pass` | in-place, whole spec |
 | `@canonicalize` | in-place, whole spec |
+| `@import` | in-place, on an aside |
+| `@dismiss` | in-place, on an aside |
 | `@copy_link` | never reaches you; the browser answers it |
 
 **The rule the table follows**: an action edits **in-place** when it changes the
@@ -191,11 +193,33 @@ rather than inferring from the label.
   nothing keeps the old version, so re-read what you are replacing before you
   replace it.
 - **aside** — the output is a draft the reader decides on, not a claim the spec
-  makes yet. Until the aside mechanism ships, write the output in your **reply**
-  and say plainly that it is a draft rather than an edit; do not put it in the
-  document.
+  makes yet. Write it as a new section placed **immediately after** the section
+  the comment sits in:
+
+  ```html
+  <section id="<sourceSectionId>-aside-<n>" data-sf-aside="<sourceSectionId>" data-sf-action="<actionId>">
+    <h3>Aside: <action label></h3>
+    …your output…
+  </section>
+  ```
+
+  `<n>` counts up from 1 per source section, so several asides can stack. The
+  review layer reads `data-sf-action` to draw the header strip and its two
+  buttons; it does not read the heading. An aside gets **no entry in the table of
+  contents**: it lives until the reader imports or dismisses it, and the outline
+  is the document's, not the drafts'.
+
+  Everything else about it is an ordinary section. It is commentable, it exports,
+  and the verification gate reads its prose, so hold it to the same language
+  contract as the rest of the spec.
 - **whole spec** — scope is the document, not the block the comment sits on. The
   anchor says where the reader was standing, not what to change.
+- **on an aside** — `@import` and `@dismiss` arrive from the two buttons on an
+  aside, so the comment is anchored inside one. Act on the aside the anchor sits
+  in, and on nothing else.
+
+**Deleting a section deletes its asides with it.** They are drafts about that
+section, and one left behind attaches itself to whatever section now precedes it.
 
 **Two actions carry `needsDetail`**: `@verify_against_code` and
 `@fix_the_naming`. Neither can run on its instruction alone — one needs the claim
