@@ -1,7 +1,7 @@
 ---
 title: "Context menu actions: what I actually ask agents to do"
 type: design-impl
-status: draft
+status: approved
 specforge_id: 257ae73195
 ---
 
@@ -477,7 +477,7 @@ A comment arrives saying `@agent @visualize`. This stage is what turns that toke
 
 Six of the eleven actions write something new rather than changing what is there. That output lands in a section directly under the one you clicked, with two buttons on it: import it, or throw it away.
 
-### Stage 5 — The three spec-wide actions
+### Stage 5 — The three spec-wide actions (PR 188)
 
 - [x] 5.1 Scope comes from what is under the pointer: a block gives the local list, and nothing commentable gives the spec-wide one. One menu, re-aimed.
       verify: the background menu lists Fix the naming, Consistency pass and Canonicalize and nothing block-scoped; a browser test drives the real gesture, a right-click in the margin beside the content column.
