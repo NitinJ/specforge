@@ -1,13 +1,14 @@
-// The collection label on a shared project page's rows.
+// Collection sections on a shared project page.
 //
-// A reviewer holding a project link sees title, type, status and an update
-// stamp. The collection a spec is filed under is on its meta and was not
-// rendered, so the grouping the owner works with was invisible to the reader.
-// Spec f081f883da, level 1: show the label. Filtering, a rail and grouping are
-// deferred there and deliberately absent here.
+// A reviewer holding a project link saw one flat list. The collection a spec is
+// filed under is on its meta, so the grouping the owner works with was
+// invisible: 20 specs over 6 collections read as 20 undifferentiated rows.
 //
-// A contributed row is a spec another machine serves. This machine holds no
-// meta for it, so it carries no collection label rather than a blank one.
+// The page now groups under collection headings, which is what the owner sees
+// for the same project on their own home page. Ordering is groupByCollection's,
+// shared with the home page (lib/collections.mjs) so the two cannot disagree.
+//
+// Spec f081f883da. Filtering and a clickable rail are deferred there.
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,6 +35,7 @@ const { renderProjectPage } = await import('../server/project-page.mjs');
 const { createSpec } = await import('../lib/store.mjs');
 const { readMeta, writeMeta } = await import('../lib/meta.mjs');
 const { writeProjectShare, addContribution } = await import('../lib/store-project-shares.mjs');
+const { writeGlobalPrefs } = await import('../lib/global-prefs.mjs');
 
 const TOK = 'c'.repeat(32);
 
@@ -46,32 +48,64 @@ function seed(title, collection = null, project = 'Atelier') {
   return id;
 }
 
-/** The markup of the one row whose title matches, so page-wide regexes can't lie. */
-function rowFor(html, title) {
-  const rows = html.match(/<li class="row">[\s\S]*?<\/li>/g) || [];
-  const hit = rows.find((r) => r.includes(title));
-  assert.ok(hit, `a row for ${title}`);
+/** The heading text of each section, in the order they appear. */
+function headings(html) {
+  return [...html.matchAll(/<h2>([^<]*)</g)].map((m) => m[1].trim())
+    .filter((h) => h && h !== 'Add to my SpecForge');
+}
+
+/** The markup of the section whose heading matches, so page-wide regexes can't lie. */
+function sectionFor(html, heading) {
+  const secs = html.match(/<section class="grp">[\s\S]*?<\/section>/g) || [];
+  const hit = secs.find((s) => new RegExp(`<h2>${heading}\\b`).test(s));
+  assert.ok(hit, `a section headed ${heading}`);
   return hit;
 }
 
-test('a collected spec shows its collection name', () => {
-  seed('Widget themes', 'Data models');
-  const row = rowFor(renderProjectPage('Atelier', TOK), 'Widget themes');
-  assert.match(row, /Data models/, 'the collection name is on the row');
-});
-
-test('an uncollected spec shows no collection markup at all', () => {
-  seed('Loose spec', null);
-  const row = rowFor(renderProjectPage('Atelier', TOK), 'Loose spec');
-  assert.doesNotMatch(row, /class="coll"/, 'no empty chip where a name would be');
-});
-
-test('the label is the spec’s own collection, not another row’s', () => {
-  seed('Filed', 'Data models');
-  seed('Unfiled', null);
+test('specs are grouped under their collection', () => {
+  seed('Object model', 'Data models');
+  seed('Widget themes', 'UX');
   const html = renderProjectPage('Atelier', TOK);
-  assert.match(rowFor(html, 'Filed'), /Data models/);
-  assert.doesNotMatch(rowFor(html, 'Unfiled'), /Data models/);
+  assert.match(sectionFor(html, 'Data models'), /Object model/);
+  assert.match(sectionFor(html, 'UX'), /Widget themes/);
+  assert.doesNotMatch(sectionFor(html, 'UX'), /Object model/, 'and not under another');
+});
+
+test('each heading carries the count of what is under it', () => {
+  seed('One', 'Data models');
+  seed('Two', 'Data models');
+  seed('Three', 'UX');
+  const html = renderProjectPage('Atelier', TOK);
+  assert.match(sectionFor(html, 'Data models'), /<span class="gcount">2</);
+  assert.match(sectionFor(html, 'UX'), /<span class="gcount">1</);
+});
+
+test('uncollected specs sit in their own group, last', () => {
+  seed('Filed', 'Data models');
+  seed('Loose', null);
+  const heads = headings(renderProjectPage('Atelier', TOK));
+  assert.deepEqual(heads, ['Data models', 'Uncollected']);
+});
+
+test('a project with no collections at all gets no headings', () => {
+  // specforge is this case in the real store: 23 specs, 0 collections. One
+  // heading over every row would name nothing.
+  seed('Alpha', null);
+  seed('Beta', null);
+  const html = renderProjectPage('Atelier', TOK);
+  assert.deepEqual(headings(html), []);
+  assert.match(html, /Alpha/);
+  assert.match(html, /Beta/);
+});
+
+test('group order follows the owner’s arrangement, then alphabetical', () => {
+  writeGlobalPrefs({ collectionOrder: ['Zulu'] });
+  seed('z', 'Zulu');
+  seed('a', 'Alpha');
+  seed('m', 'Mike');
+  // Zulu is ranked, so it leads despite sorting last alphabetically; the rest
+  // follow A-Z. Same rule as the home page (lib/collections.mjs).
+  assert.deepEqual(headings(renderProjectPage('Atelier', TOK)), ['Zulu', 'Alpha', 'Mike']);
 });
 
 test('a collection name is escaped, not injected', () => {
@@ -81,7 +115,8 @@ test('a collection name is escaped, not injected', () => {
   assert.match(html, /&lt;img src=x/, 'it is escaped instead');
 });
 
-test('a contributed row carries no collection label', () => {
+test('contributed specs are their own group, after the collections', () => {
+  seed('Mine', 'Data models');
   writeProjectShare('Atelier', { token: TOK, createdAt: new Date().toISOString() });
   addContribution('Atelier', {
     origin: 'https://elsewhere.example',
@@ -89,6 +124,18 @@ test('a contributed row carries no collection label', () => {
     title: 'Their spec',
     owner: 'someone',
   });
-  const row = rowFor(renderProjectPage('Atelier', TOK), 'Their spec');
-  assert.doesNotMatch(row, /class="coll"/, 'this machine holds no collection for it');
+  const html = renderProjectPage('Atelier', TOK);
+  // This machine holds no collection for a spec another machine serves, so
+  // filing it under one of the owner's groups would claim something untrue.
+  assert.deepEqual(headings(html), ['Data models', 'From other machines']);
+  assert.match(sectionFor(html, 'From other machines'), /Their spec/);
+  assert.doesNotMatch(sectionFor(html, 'Data models'), /Their spec/);
+});
+
+test('the row itself no longer repeats the collection name', () => {
+  seed('Object model', 'Data models');
+  const html = renderProjectPage('Atelier', TOK);
+  const row = (html.match(/<li class="row">[\s\S]*?<\/li>/) || [''])[0];
+  assert.doesNotMatch(row, /Data models/,
+    'the heading says it once; on the row it would say it per spec');
 });

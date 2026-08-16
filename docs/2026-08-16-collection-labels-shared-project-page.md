@@ -1,17 +1,17 @@
 ---
-title: Collection labels on the shared project page
+title: "Sections, placement and theme on the shared project page"
 type: design-impl
 status: draft
 specforge_id: f081f883da
 ---
 
-# Collection labels on the shared project page
+# Sections, placement and theme on the shared project page
 
 ## TL;DR
 
 <!-- sf:box class="panel" -->
 
-Each row on the public project page shows the spec's collection name, and the "Add to my SpecForge" block moves from under the list to above it. No filtering, no rail, no grouping: those are recorded in [§5](#deferred) and not built. Scope set by the owner on 2026-08-16 after a three-level option table.
+The public project page groups its specs under collection headings, the way the owner sees the same project on their own home page. The "Add to my SpecForge" block moves above the list, and the page gains a light/dark toggle. All of it is server-rendered markup plus one small script for the toggle. Filtering and a clickable rail stay deferred ([§5](#deferred)): those need browser code per control, and grouping does not.
 
 ## 1 · Overview
 
@@ -28,8 +28,10 @@ Two projects hold collections today: `Figur design studio` distributes 20 specs 
 #### Goals
 
 - A spec's collection name is visible on its row on the page served at `/p/<token>`.
-- A spec with no collection renders no label rather than an empty box.
+- Specs are grouped under their collection, in the same order the owner's home page uses.
+- A project with no collections renders the flat list it renders today.
 - A reader meets the "Add to my SpecForge" block without scrolling.
+- A reader can choose light or dark against their OS preference, and the choice survives a reload.
 - No row overflows its width down to 420px.
 
 #### Non-goals
@@ -44,25 +46,47 @@ Two projects hold collections today: `Figur design studio` distributes 20 specs 
 
 ## 3 · Design
 
-The local-spec row gains one span between the title and the type. It reads `m.collection` from the meta the page already loads through `listSpecs()`, and renders nothing when that is null.
+The page partitions a project's specs by collection and emits a section per group: a heading carrying the collection name and a count, then the rows. The row itself is unchanged, and carries no collection label, because the heading states it once for every row beneath it.
 
-#### Row anatomy
+Rendering is entirely server-side. The page gains no browser code, which is what separates this from the deferred levels in [§5](#deferred): a section is markup, a filter is markup plus a script that decides which rows to hide.
 
-| Position | Field | Change |
+#### Page anatomy
+
+| Position | Block | Change |
 | --- | --- | --- |
-| 1 | Title, linking to the spec under the same token | unchanged |
-| 2 | Collection | added muted, squared chip; absent when the spec has no collection |
-| 3 | Type | unchanged |
-| 4 | Status | unchanged |
-| 5 | Relative updated | unchanged |
+| 1 | Project name and subtitle | unchanged |
+| 2 | "Add to my SpecForge" panel | unchanged (moved above the list earlier in this stage) |
+| 3 | One section per collection: heading, count, rows | added |
+| 4 | Uncollected section | added last, and only when something is in it |
+| 5 | "From other machines" section | added the contributed rows, always last |
+
+#### Group order
+
+Groups come out of `groupByCollection`, which moves from `server/index-page.mjs` to `lib/collections.mjs` and is now imported by both pages. Named collections rank by the owner's arranged order (`collectionOrder` in global prefs), then alphabetically for anything unranked; `Uncollected` is always last and appears only when a spec has no collection.
+
+The extraction is 12 lines and exists for one reason: a reader looking at a shared project and the owner looking at that project selected on their own home page must see the same groups in the same order. Two copies of the rule would disagree the first time either was tuned.
+
+#### Projects with no collections
+
+A project where no spec carries a collection renders the flat list it renders today, with no heading. One heading over every row names nothing. Project `specforge` is in this state: 23 specs, 0 collections.
+
+#### Contributed rows
+
+A contributed entry carries title, owner, origin, token and `addedAt`, and no collection. Its rows form a section headed "From other machines", placed after every collection. Filing them under one of the owner's groups would assert a collection this machine does not hold.
 
 #### What crosses the wire
 
-The page already serves title, type, status and update time for every spec in the project. It now also serves the collection name for those specs. Nothing else is added, and no collection name that has no member in this project can appear, because the page renders only this project's specs.
+The page already serves title, type, status and update time for every spec in the project. It now also serves the collection names of the specs in this project, as headings. No collection name that has no member in this project can appear, because the page renders only this project's specs.
 
-#### Styling
+#### Theme
 
-A 6px-radius chip with a 1px border in `--line` and text in `--muted`, distinguishing it from the status pill, which is a 999px-radius chip that carries colour. Two muted plain-text spans side by side (collection and type) would read as one run-on string.
+The page followed `prefers-color-scheme` with no way to disagree with it. A toggle now sits at the top right, beside the project name.
+
+Three states, in the order the cascade needs them: `:root` carries dark as the base, `@media (prefers-color-scheme: light)` supplies light through `:root:not([data-theme="dark"])`, and `:root[data-theme="light"]` wins over both. The guard on the media query is what lets an explicit dark choice survive a light OS; without it the toggle would work in one direction only.
+
+The choice is stored in the reader's own `localStorage` under `sf-theme`, and applied by a snippet in `<head>` so a reader who chose light does not see a dark flash first. The button's icon shows the theme in force, not the one a click would produce: with nothing stored it asks `matchMedia` what the browser actually resolved to, because the attribute is absent in that state.
+
+With nothing stored the CSS follows the OS live, so the icon subscribes to the same `prefers-color-scheme` change event and repaints. An OS that switches at sunset would otherwise repaint the page and leave the icon naming a theme no longer in force. Once a choice is stored the subscription is a no-op, because the attribute answers first. Raised in review of PR #182.
 
 ## 4 · Decisions
 
@@ -71,7 +95,10 @@ A 6px-radius chip with a 1px border in `--line` and text in `--muted`, distingui
 | D1 | How far to take the shared project page | Display the collection label only. | Owner decision, 2026-08-16, taken against a three-level option table. Level 1 costs a span and a CSS rule; level 2 (search, status, type, sort, count) and level 3 (rail plus grouping) each cost a PR with browser code and tests per control. |
 | D2 | A spec with no collection | Render nothing. | An empty chip asserts that a spec has a collection whose name is blank. 1 of 20 specs in `Figur design studio` and 23 of 23 in `specforge` are uncollected, so the empty case is the common one. |
 | D3 | Contributed rows | No collection label. | This machine holds no meta for a spec another machine serves. Inventing a blank label there would read as "no collection" rather than "not known here". |
-| D4 | Chip rather than plain text | Bordered chip, muted. | Collection and type would otherwise be two adjacent muted strings with no visual boundary. |
+| D4 | Sections rather than a label per row | Group under headings; the row carries no collection. | Owner decision, 2026-08-16, after seeing the label shipped. A label on every row leaves the reader to sort 20 rows into 6 groups by eye; a heading does it once. It is also what the owner's home page does for the same project, so the two now read alike. |
+| D5 | Where the grouping rule lives | `lib/collections.mjs`, imported by both pages. | 12 lines. A reader on a shared project and the owner on that project selected must see the same groups in the same order; two copies would disagree the first time either was tuned. |
+| D6 | Where a reader's theme choice is stored | The reader's own `localStorage`. | The page makes no writes off the browser (spec `82f5dabccf`, R9), and a colour preference is not worth being the exception. It also means two readers of the same link can disagree, which a store-side setting could not express. |
+| D7 | Which theme the toggle's icon shows | The one in force. | The convention is ambiguous, so the page picks one and states it: a sun means the page is light now, not that a click makes it light. It matches the home page's toggle (`index-page.mjs`), which shows a moon in dark. With nothing stored the attribute is absent, so the current theme comes from `matchMedia` rather than from a default. |
 
 ## 5 · Deferred
 
@@ -110,6 +137,10 @@ One stage, one PR. Test first, then the change.
       verify: `Figur design studio` shows a chip per collected row; `specforge` shows rows with no chip and no gap where one would be
 - [x] 1.4 Move the join block above the list and shed row fields at narrow widths.
       verify: a test asserts the block precedes the first row and fails against the old order; screenshots at 1000px, 640px and 420px show no row overflowing
+- [x] 1.5 Replace the per-row label with collection sections, moving `groupByCollection` to `lib/collections.mjs`.
+      verify: 8 tests over grouping, counts, order, the no-collections case and contributed rows; the home page renders the same groups in the same order as the shared page, checked by screenshot of both
+- [x] 1.6 Add the light/dark toggle.
+      verify: 6 tests over flipping, persistence, head-order and the no-write guarantee; screenshots under both OS schemes, each toggled, confirm the choice overrides the OS in both directions
 
 **Testing:** row markup for the collected, uncollected and contributed cases · unit test over the rendered string, run red first
 
@@ -134,6 +165,14 @@ Collection and type both answer "what is this"; status and the update stamp answ
 Narrow viewports shed the type first, then the collection
 
 The chip does not shrink and the type, status and stamp never wrap, so below about 640px the title was the only item left to give and collapsed toward an ellipsis. The page carried no media query before this change. Two breakpoints now drop fields in order of how little they carry: `type` at 640px, the collection at 460px. Title, status and recency survive to the narrowest width, because those are what a row is scanned for. Raised in review of PR #181.
+
+The label shipped, then was replaced by sections
+
+Level 1 was scoped as a label on each row and shipped that way in PR #181. Seen rendered, a label per row still left a reader sorting 20 rows into 6 groups by eye. Sections were then costed properly: the earlier estimate bundled grouping with a clickable rail, but grouping alone is server-rendered markup with no browser code, and the browser code was what made the rail expensive. The label is now removed, because a heading states the collection once for every row under it.
+
+An invalid nesting the tests and the browser both tolerated
+
+The page wrapped its row markup in a `<ul>` at the call site. Once rows became `<section>` elements each holding their own `<ul>`, that produced `<ul><section>…</section></ul>`. Every test passed and both screenshots looked correct, because browsers recover from it. Found while restructuring the header. The call site now emits the markup as built.
 
 "Add to my SpecForge" moved above the list
 
