@@ -30,6 +30,15 @@ function attachedLabel(meta) {
   return meta.attachedSession ? esc(sessionDisplay(meta)) : 'free';
 }
 
+/** The hostname of a share URL, which is the part worth showing in a strip. */
+function prettyHost(url) {
+  try {
+    return new URL(url).hostname.replace(/\.trycloudflare\.com$/, '');
+  } catch {
+    return String(url || '');
+  }
+}
+
 /** Compact "x ago" for the updated stamp (empty when unknown). */
 function relativeTime(ms, now = Date.now()) {
   if (!ms) return '';
@@ -230,14 +239,20 @@ function subRowHtml(s) {
   </a>`;
 }
 
-function projRowHtml(key, count, kind, selected) {
+function projRowHtml(key, count, kind, selected, share) {
   const on = selected ? ' on' : '';
   const label = kind === 'all' ? 'All projects' : kind === 'none' ? NO_PROJECT : esc(key);
   const attr = kind === 'all' ? 'data-all="1"' : `data-p="${esc(key)}"`;
   const acts = kind === 'named' ? kebabHtml(`Actions for ${key}`) : '';
   const drag = kind === 'named' ? ' draggable="true"' : '';
-  return `<div class="prow" ${attr}${drag}>
-    <button class="pnav${on}" type="button" ${attr}><span class="projname">${label}</span><span class="nc">${count}</span></button>
+  // The URL rides on the row so the header can read it off the selection
+  // without a second request, and so a menu built later already knows. Only
+  // when the tunnel actually answers: advertising a link that does not serve
+  // is worse than showing none, which is the rule the spec badge follows.
+  const url = share && share.live && share.url ? ` data-share-url="${esc(share.url)}"` : '';
+  const mark = url ? `<span class="pshared" title="Shared">${ICON_SHARE}</span>` : '';
+  return `<div class="prow" ${attr}${drag}${url}>
+    <button class="pnav${on}" type="button" ${attr}><span class="projname">${label}</span>${mark}<span class="nc">${count}</span></button>
     ${acts}
   </div>`;
 }
@@ -252,7 +267,7 @@ function projRowHtml(key, count, kind, selected) {
  *   persists it the way a rail click does, so the two converge without the GET
  *   itself writing anything.
  */
-export function renderIndex({ shareInfo, project } = {}) {
+export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   const prefs = readGlobalPrefs();
   const subs = readSubscriptions();
   const theme = prefs.theme === 'dark' ? 'dark' : 'light';
@@ -300,12 +315,18 @@ export function renderIndex({ shareInfo, project } = {}) {
     inView.filter((m) => (m.collection || '') === key).length,
   )).join('\n');
 
+  const pShare = typeof projectShareInfo === 'function' ? projectShareInfo : () => null;
   const projRows = [
     projRowHtml('', n, 'all', selected === null),
     ...projOrder.map(({ key, specs: list }) => projRowHtml(
       key, list.length, key === '' ? 'none' : 'named', selected === key,
+      key === '' ? null : pShare(key),
     )),
   ].join('\n');
+  // The header's share control, for the project currently on screen. Its state
+  // is re-derived client-side on every selection change, from the rail row.
+  const selShare = selected ? pShare(selected) : null;
+  const selLive = !!(selShare && selShare.live && selShare.url);
 
   // Groups are keyed by the pair: a project section holding one collection
   // section per collection IN THAT PROJECT. An empty project gets a rail row but
@@ -430,6 +451,29 @@ ${inner}
   @media(max-width:960px){.topin{padding:0 18px}}
   header{display:flex;align-items:center;gap:16px;height:56px}
   .htitle{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* Sharing the project you are looking at, from where you are looking at it.
+     Quiet until used: a plain control beside the title, replaced by the link
+     itself once the project is public. */
+  .pshare{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;height:26px;padding:0 10px;
+    border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--muted);
+    font-size:12.5px;cursor:pointer;white-space:nowrap}
+  .pshare:hover{color:var(--ink);border-color:var(--line2)}
+  .pshare[hidden]{display:none}
+  .pshare-on{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}
+  .pshare-on[hidden]{display:none}
+  .pshare-link{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;
+    border:1px solid color-mix(in srgb,var(--live) 35%,var(--line));border-radius:7px;
+    background:color-mix(in srgb,var(--live) 8%,transparent);color:var(--live);
+    font-size:12.5px;text-decoration:none;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+  .pshare-link[hidden]{display:none}
+  .pshare-link:hover{filter:brightness(1.08)}
+  .pshare-act{height:26px;padding:0 9px;border:1px solid var(--line);border-radius:7px;
+    background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap}
+  .pshare-act:hover{color:var(--ink);border-color:var(--line2)}
+  /* The rail's own marker, so a shared project reads as shared from the list. */
+  .pshared{display:inline-flex;align-items:center;color:var(--live);margin-left:5px}
+  @media(max-width:760px){ .pshare-act,.pshare span{display:none} }
   .spacer{flex:1}
   .searchbox{position:relative;display:flex;align-items:center}
   .searchbox svg{position:absolute;left:10px;color:var(--faint);pointer-events:none}
@@ -651,6 +695,12 @@ ${inner}
 <div class="top"><div class="topin">
 <header>
   <span class="htitle" id="htitle">${selected === null ? 'All specs' : selected === '' ? NO_PROJECT : esc(selected)}</span>
+  <button class="pshare" id="pshare" type="button"${selected && !selLive ? '' : ' hidden'}>${ICON_SHARE}<span>Share project</span></button>
+  <span class="pshare-on" id="pshare-on"${selLive ? '' : ' hidden'}>
+    <a class="pshare-link" id="pshare-link" target="_blank" rel="noopener"${selLive ? ` href="${esc(selShare.url)}"` : ''}${selLive ? '' : ' hidden'}>${ICON_SHARE}<span id="pshare-host">${selLive ? esc(prettyHost(selShare.url)) : ''}</span></a>
+    <button class="pshare-act" id="pshare-copy" type="button" title="Copy the link">Copy</button>
+    <button class="pshare-act" id="pshare-off" type="button" title="Stop sharing this project">Unshare</button>
+  </span>
   <span class="spacer"></span>
   <span class="searchbox"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6" cy="6" r="4.2"/><path d="M9.2 9.2L12.5 12.5"/></svg><input class="search" id="search" type="search" placeholder="Search specs, tags, collections…" autocomplete="off" aria-label="Search"><span class="skey">/</span></span>
   <button class="toggle" id="theme" type="button" aria-label="Toggle theme" title="Toggle theme">${theme === 'dark'
@@ -1036,7 +1086,16 @@ ${strip}
     if(prow.previousElementSibling&&prow.previousElementSibling.hasAttribute('data-p')) items.push({icon:'\\u2191',label:'Move up',run:function(){moveProj(prow,-1);}});
     if(projRail.nextNamed(prow)) items.push({icon:'\\u2193',label:'Move down',run:function(){moveProj(prow,1);}});
     if(items.length) items.push({sep:true});
-    openMenu(btn,items.concat([
+    // Sharing sits above the destructive pair, and reads the row rather than
+    // the header so it is right whichever project the kebab belongs to.
+    var shared=prow.getAttribute('data-share-url');
+    var shareItems=shared?[
+      {icon:'\\ud83d\\udd17',label:'Copy link',run:function(){copyLink(shared,null);}},
+      {icon:'\\u2716',label:'Unshare\\u2026',run:function(){unshareProject(name);}},
+    ]:[
+      {icon:'\\ud83d\\udd17',label:'Share project',run:function(){shareProject(name,function(url){copyLink(url,null);});}},
+    ];
+    openMenu(btn,items.concat(shareItems,[{sep:true}],[
       {icon:'\\u270e',label:'Rename\\u2026',run:function(){
         askName({title:'Rename project',label:'Project name',value:name,onOk:function(raw){
           var v=normName(raw);
@@ -1388,7 +1447,103 @@ ${strip}
       fcoll!==null?(fcoll===''?'Uncollected':fcoll)
       :fview!=='all'?VIEWNAME[fview]
       :fproj===null?VIEWNAME.all:(fproj===''?NO_PROJECT:fproj);
+    syncShare();
   }
+
+  // ---- sharing the project on screen -------------------------------------
+  //
+  // The control follows the selection, and its state is read off the rail row
+  // the server already rendered rather than fetched: the row carries the URL
+  // when the project is published and the tunnel answers.
+  var pshareBtn=document.getElementById('pshare');
+  var pshareOn=document.getElementById('pshare-on');
+  var pshareLink=document.getElementById('pshare-link');
+  var pshareHost=document.getElementById('pshare-host');
+  var pshareCopy=document.getElementById('pshare-copy');
+  var pshareOff=document.getElementById('pshare-off');
+
+  /** The rail row for a project name, or null. */
+  function prowFor(name){
+    if(name===null||name==='') return null;
+    return document.querySelector('.prow[data-p="'+cssEscape(name)+'"]');
+  }
+  function cssEscape(v){
+    return (window.CSS&&CSS.escape)?CSS.escape(v):String(v).replace(/["\\\\]/g,'\\\\$&');
+  }
+  function sharedUrlOf(name){
+    var row=prowFor(name);
+    return row?row.getAttribute('data-share-url'):null;
+  }
+  /** Point the header controls at whatever project is selected now. */
+  function syncShare(){
+    if(!pshareBtn||!pshareOn) return;
+    // A collection or a view is not a project, and neither is All or No project.
+    var name=(fcoll===null&&fview==='all'&&fproj)?fproj:null;
+    var url=name?sharedUrlOf(name):null;
+    pshareBtn.hidden=!name||!!url;
+    pshareOn.hidden=!url;
+    if(pshareLink){
+      pshareLink.hidden=!url;
+      if(url){ pshareLink.href=url; if(pshareHost) pshareHost.textContent=hostOf(url); }
+    }
+  }
+  function hostOf(u){
+    try{ return new URL(u).hostname.replace(/\\.trycloudflare\\.com$/,''); }catch(e){ return u; }
+  }
+  function projApi(name,method){
+    return fetch('/api/project/'+encodeURIComponent(name)+'/share',
+      {method:method,headers:{'Content-Type':'application/json'},body:method==='POST'?'{}':undefined});
+  }
+  /** Publish, then record the URL on the row so every surface agrees. */
+  function shareProject(name,after){
+    projApi(name,'POST').then(function(r){return r.ok?r.json():null;}).then(function(d){
+      if(!d||!d.share||!d.share.url) return warn('Could not share "'+name+'".');
+      var row=prowFor(name);
+      if(row) row.setAttribute('data-share-url',d.share.url);
+      syncShare();
+      if(after) after(d.share.url);
+    }).catch(function(){warn('Could not share "'+name+'".');});
+  }
+  function unshareProject(name){
+    // Asks first: the link is already in someone's chat, and stopping breaks it
+    // for everyone at once. Re-sharing returns the SAME link, which is the one
+    // thing worth saying, because it makes this reversible.
+    askConfirm({
+      title:'Stop sharing',
+      body:'Anyone with the link loses access immediately. Sharing "'+name+'" again gives back the same link.',
+      ok:'Stop sharing',
+      onOk:function(){
+        projApi(name,'DELETE').then(function(r){
+          if(!r.ok) return warn('Could not stop sharing "'+name+'".');
+          var row=prowFor(name);
+          if(row) row.removeAttribute('data-share-url');
+          syncShare();
+        }).catch(function(){warn('Could not stop sharing "'+name+'".');});
+      },
+    });
+  }
+  function copyLink(url,btn){
+    var done=function(){
+      if(!btn) return;
+      var was=btn.textContent; btn.textContent='Copied';
+      setTimeout(function(){btn.textContent=was;},1200);
+    };
+    try{ navigator.clipboard.writeText(url).then(done,function(){warn(url);}); }
+    catch(e){ warn(url); }
+  }
+  if(pshareBtn) pshareBtn.onclick=function(){
+    var name=(fcoll===null&&fview==='all'&&fproj)?fproj:null;
+    if(name) shareProject(name,function(url){copyLink(url,null);});
+  };
+  if(pshareCopy) pshareCopy.onclick=function(){
+    var name=(fcoll===null&&fview==='all'&&fproj)?fproj:null;
+    var url=name&&sharedUrlOf(name);
+    if(url) copyLink(url,pshareCopy);
+  };
+  if(pshareOff) pshareOff.onclick=function(){
+    var name=(fcoll===null&&fview==='all'&&fproj)?fproj:null;
+    if(name) unshareProject(name);
+  };
   /**
    * Put the top-of-list spacing on the first section that is actually SHOWN, at
    * both levels.

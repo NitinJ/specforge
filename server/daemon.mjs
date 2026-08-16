@@ -445,6 +445,7 @@ export function createDaemon() {
         return send(res, 200, 'text/html; charset=utf-8',
           renderIndex({
             shareInfo: (id) => publications.shareInfo(id),
+            projectShareInfo: (name) => publications.projectShareInfo(name),
             project: url.searchParams.get('project'),
           }));
       }
