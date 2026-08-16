@@ -11,7 +11,7 @@ specforge_id: f081f883da
 
 <!-- sf:box class="panel" -->
 
-Each row on the public project page shows the spec's collection name. One span in the row markup, one CSS rule, one test. No filtering, no rail, no grouping: those are recorded in [§5](#deferred) and not built. Scope set by the owner on 2026-08-16 after a three-level option table.
+Each row on the public project page shows the spec's collection name, and the "Add to my SpecForge" block moves from under the list to above it. No filtering, no rail, no grouping: those are recorded in [§5](#deferred) and not built. Scope set by the owner on 2026-08-16 after a three-level option table.
 
 ## 1 · Overview
 
@@ -29,6 +29,8 @@ Two projects hold collections today: `Figur design studio` distributes 20 specs 
 
 - A spec's collection name is visible on its row on the page served at `/p/<token>`.
 - A spec with no collection renders no label rather than an empty box.
+- A reader meets the "Add to my SpecForge" block without scrolling.
+- No row overflows its width down to 420px.
 
 #### Non-goals
 
@@ -106,6 +108,8 @@ One stage, one PR. Test first, then the change.
       verify: the test passes; contributed rows carry no collection markup (D3)
 - [x] 1.3 Screenshot the served page for a project with collections and one without.
       verify: `Figur design studio` shows a chip per collected row; `specforge` shows rows with no chip and no gap where one would be
+- [x] 1.4 Move the join block above the list and shed row fields at narrow widths.
+      verify: a test asserts the block precedes the first row and fails against the old order; screenshots at 1000px, 640px and 420px show no row overflowing
 
 **Testing:** row markup for the collected, uncollected and contributed cases · unit test over the rendered string, run red first
 
@@ -126,6 +130,14 @@ The row is a flex line whose title is the flexible item. With the chip left shri
 The chip sits between title and type, not after status
 
 Collection and type both answer "what is this"; status and the update stamp answer "where is it up to". Keeping the first pair adjacent means the eye crosses one boundary rather than two.
+
+Narrow viewports shed the type first, then the collection
+
+The chip does not shrink and the type, status and stamp never wrap, so below about 640px the title was the only item left to give and collapsed toward an ellipsis. The page carried no media query before this change. Two breakpoints now drop fields in order of how little they carry: `type` at 640px, the collection at 460px. Title, status and recency survive to the narrowest width, because those are what a row is scanned for. Raised in review of PR #181.
+
+"Add to my SpecForge" moved above the list
+
+Spec `82f5dabccf` placed it under the spec list on the reasoning that a reader came to read and keeping the project is their second want. The consequence was that on any project past a screenful the block sat below the fold, so a reader browsing a long project (20 rows for `Figur design studio`) never saw it. It is now a panel between the subtitle and the list, sized as a quiet panel rather than a banner. Owner decision, 2026-08-16. A test asserts its position rather than its presence, because every other join test passes wherever the block sits.
 
 #### Deviations
 

@@ -133,6 +133,21 @@ test('the affordance is quiet: it explains what joining gets you', () => {
     'and where it will show up, which is the rail this feature added');
 });
 
+test('the join block sits above the list, not below it', () => {
+  // Under the list it was below the fold on any project past a screenful, so
+  // the readers most likely to want their own copy were the least likely to
+  // reach it. Asserted on position rather than presence: every other test here
+  // passes wherever the block sits.
+  const html = renderProjectPage('Atelier', TOK);
+  for (const n of ['Widget themes', 'Pricing designer']) seed(n);
+  const withRows = renderProjectPage('Atelier', TOK);
+  assert.ok(html.indexOf('Add to my SpecForge') > 0, 'the block is on the page');
+  assert.ok(
+    withRows.indexOf('Add to my SpecForge') < withRows.indexOf('Widget themes'),
+    'and it comes before the first spec row',
+  );
+});
+
 test('the project name and its specs still render alongside it', () => {
   seed('Widget themes');
   seed('Pricing designer');
