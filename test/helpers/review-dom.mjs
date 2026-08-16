@@ -11,6 +11,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
 import { JSDOM } from 'jsdom';
+// The real registry, not a fixture: the menu the tests drive is the menu that
+// ships, so a change to the action list has to be a deliberate change to the
+// tests that assert its order.
+import { menuActions } from '../../lib/actions/all.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const REVIEW_JS = readFileSync(join(ROOT, 'server', 'public', 'review.js'), 'utf8');
@@ -98,6 +102,9 @@ export async function bootReviewLayer(t, opts = {}) {
     // api base both key off it.
     transport: opts.transport || 'sse',
     api: opts.api,
+    // What the server injects for the context menu. Pass [] to boot a page that
+    // was served before the feature existed, where no menu should open at all.
+    actions: opts.actions === undefined ? menuActions() : opts.actions,
     // A published page sets this when its poll finds a newer spec. Settable at
     // boot so a test can exercise a stale page without driving the poll.
     ...(opts.stale ? { stale: true } : {}),
@@ -185,10 +192,12 @@ export async function bootWithBlockCapture(t, opts = {}) {
  * delivered nowhere leaves a test asserting that no menu opened, which is what it
  * would assert if the feature were broken.
  */
-export function rightClick(window, selector) {
+export function rightClick(window, selector, { x = 120, y = 240 } = {}) {
   const el = window.document.querySelector(selector);
   if (!el) throw new Error(`rightClick: no element matches ${selector}`);
-  const event = new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+  const event = new window.MouseEvent('contextmenu', {
+    bubbles: true, cancelable: true, button: 2, clientX: x, clientY: y,
+  });
   el.dispatchEvent(event);
   return { el, event };
 }

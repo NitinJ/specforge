@@ -148,7 +148,12 @@
 
   var INIT_FILTER = (PREFS.filter === 'resolved' || PREFS.filter === 'all') ? PREFS.filter : 'open';
   // composeEl: the block a new-thread composer is currently open on (rail), or null.
-  var state = { threads: [], filter: INIT_FILTER, active: null, meta: null, composeEl: null };
+  var state = {
+    threads: [], filter: INIT_FILTER, active: null, meta: null, composeEl: null,
+    // What the composer's textarea starts with. Only ever set by the context
+    // menu, and only for one composer.
+    composeSeed: '',
+  };
   var els = {};
 
   // Reading-font catalog (review-layer owned) — the famous reader/blog fonts, 3 per
@@ -892,6 +897,7 @@
     els.sidebar.querySelector('.sf-foot-action').appendChild(els.footAction);
 
     buildLauncher();
+    buildCtxMenu();
     buildTop();
     buildTitleBar();
     buildRail();
@@ -1296,6 +1302,85 @@
   function inMenu(t) {
     while (t) { if (t === els.menu || t === els.launcher) return true; t = t.parentElement; }
     return false;
+  }
+
+  // ---------- context menu ----------
+  // Right-click a block, pick an action, and the composer opens holding it. The
+  // menu writes a comment and nothing else: no agent is called from here, no job
+  // is queued, and the spec file is not touched. See §9 of the design.
+  //
+  // The list is injected by the server (window.SPECFORGE.actions). A page served
+  // before this existed carries none, and every right-click on it falls through
+  // to the browser's own menu, which is the behaviour it had.
+  function menuActionList() {
+    var a = (window.SPECFORGE || {}).actions;
+    return a && a.length ? a : null;
+  }
+  function ctxTargetOf(node) {
+    if (inUI(node) || inMenu(node)) return null;
+    return blockAt(node);
+  }
+  function buildCtxMenu() {
+    els.ctx = create('div', { id: 'sf-ctx', class: 'sf-ctx', role: 'menu' });
+    document.body.appendChild(els.ctx);
+
+    document.addEventListener('contextmenu', function (e) {
+      var actions = menuActionList();
+      if (!actions) return;
+      var el = ctxTargetOf(e.target);
+      if (!el) return; // the page background is its own scope, and not this stage
+      e.preventDefault(); // or the browser's menu opens on top of this one
+      openCtxMenu(el, actions, e.clientX, e.clientY);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeCtxMenu();
+    });
+    document.addEventListener('click', function () { closeCtxMenu(); });
+    // A menu placed at a pointer position is in the wrong place the moment the
+    // page moves under it, and there is no position worth recomputing: you
+    // scrolled because you were looking at something else.
+    window.addEventListener('scroll', function () { closeCtxMenu(); }, true);
+  }
+  function openCtxMenu(el, actions, x, y) {
+    els.ctx.innerHTML = '';
+    actions.forEach(function (a) {
+      if (a.scope !== 'local') return;
+      els.ctx.appendChild(menuRow(a.icon, a.label, function (ev) {
+        ev.stopPropagation();
+        closeCtxMenu();
+        runAction(a, el);
+      }));
+    });
+    els.ctx.style.left = x + 'px';
+    els.ctx.style.top = y + 'px';
+    els.ctx.classList.add('open');
+    // Placed at the pointer, then pulled back inside the viewport. Right-click
+    // near the bottom or the right edge and the menu would otherwise run off it,
+    // and a row that falls outside cannot be clicked at all.
+    var r = els.ctx.getBoundingClientRect();
+    var pad = 8;
+    var maxL = Math.max(pad, window.innerWidth - r.width - pad);
+    var maxT = Math.max(pad, window.innerHeight - r.height - pad);
+    els.ctx.style.left = Math.max(pad, Math.min(x, maxL)) + 'px';
+    els.ctx.style.top = Math.max(pad, Math.min(y, maxT)) + 'px';
+  }
+  function closeCtxMenu() {
+    if (els.ctx) els.ctx.classList.remove('open');
+  }
+  /** Copy link is the only action the browser answers by itself. */
+  function runAction(a, el) {
+    if (a.id === 'copy_link') return copyAnchorLink(el);
+    openRailCompose(el, '@' + a.id + ' ');
+  }
+  function copyAnchorLink(el) {
+    // The section, not the block: a block has an id only in SpecForge's own
+    // registry, and a URL naming that is meaningless to anyone you send it to.
+    var section = sectionPathOf(el)[0];
+    var url = location.origin + location.pathname + (section ? '#' + section : '');
+    try {
+      navigator.clipboard.writeText(url);
+      if (window.SFUI && SFUI.snack) SFUI.snack('Link copied');
+    } catch (e) { /* no clipboard: the menu closed, and nothing was lost */ }
   }
   // Which view the menu is showing, as a counter. Bumped by every rebuild and
   // every close, so an async request started for one view can tell that the
@@ -2531,6 +2616,11 @@
     b.querySelector('.sf-bub-x').onclick = function (e) { e.stopPropagation(); cancelCompose(); };
 
     var ta = create('textarea', { class: 'sf-input', placeholder: 'Add a comment…', rows: '2' });
+    // Opened from the context menu, the composer starts holding the action:
+    // `@visualize `, with the space, so a qualifier can be typed straight on.
+    // The `@agent` in front of it comes from the audience chip below, which
+    // already meant "route this to the agent" before this feature existed.
+    if (state.composeSeed) ta.value = state.composeSeed;
     var row = create('div', { class: 'sf-compose-foot' });
     var aud = audienceChips(ta);
     var save = create('button', { class: 'sf-primary', type: 'button' }, 'Comment');
@@ -2552,16 +2642,20 @@
     setTimeout(function () { try { ta.focus(); } catch (e) {} }, 0);
     return b;
   }
-  function openRailCompose(el) {
+  function openRailCompose(el, seed) {
     state.active = null;      // a composer and an expanded thread are exclusive
     setSidebar(false);        // composing claims the gutter; the drawer would hide the rail
     state.composeEl = el;
+    // Cleared rather than left alone: a plain click on a block after an action
+    // must open an empty composer, not the last action you picked.
+    state.composeSeed = seed || '';
     ensureAnchorVisible(el);
     render();
   }
   function cancelCompose() {
     if (!state.composeEl) return;
     state.composeEl = null;
+    state.composeSeed = '';
     render();
   }
 

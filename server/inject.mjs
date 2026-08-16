@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { renderLiveTracker } from '../lib/tracker.mjs';
 import { blockComponents } from '../components/index.mjs';
+import { menuActions } from '../lib/actions/all.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
@@ -209,6 +210,11 @@ function reviewSnippet(specId, prefs, transport, api, servedAt) {
     // lint's idea of what is commentable drift apart, and the lint silences a
     // warning about text nobody can actually comment on.
     blocks: blockComponents(),
+    // The context menu, without the instructions: the client shows a label and
+    // writes an id, and the agent resolves that id against the registry. A page
+    // served before this existed carries no `actions`, and the client leaves the
+    // browser's own menu alone rather than opening an empty one.
+    actions: menuActions(),
     ...(transport === 'poll' ? {} : { cli: CLI_PATH }),
   });
   // The mtime of the file this response was rendered from. The caller's
