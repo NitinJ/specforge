@@ -49,6 +49,18 @@ test('a second aside on the same section counts up', () => {
   );
 });
 
+test('a section id holding regex metacharacters is handled as a literal', () => {
+  // Section ids are author-written and nothing stops one carrying a dot. An
+  // unescaped `v1.2` also matches `v1x2`, so a second aside on v1.2 would be
+  // numbered against a count taken from a different section.
+  const spec = SPEC
+    .replace('id="two"', 'id="v1.2"')
+    .replace('<section id="three">', '<section id="v1x2-aside-1" data-sf-aside="v1x2"><h3>Aside: Visualize</h3><p>Other.</p></section><section id="three">');
+  const out = writeAside(spec, { section: 'v1.2', action: 'visualize', body: BODY });
+  assert.equal(out.id, 'v1.2-aside-1', 'the other section\'s aside does not consume the number');
+  assert.match(out.html, /id="v1\.2-aside-1" data-sf-aside="v1\.2"/);
+});
+
 test('an unknown section is refused rather than guessed at', () => {
   assert.throws(
     () => writeAside(SPEC, { section: 'seven', action: 'visualize', body: BODY }),
