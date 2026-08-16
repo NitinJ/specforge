@@ -98,6 +98,18 @@ export function renderProjectPage(name, token) {
     border-radius:999px;padding:1px 8px;white-space:nowrap}
   .upd{color:var(--muted);font-size:12px;white-space:nowrap}
   .empty{color:var(--muted);padding:24px 0}
+  /* Under the list, not above it: a reader came here to read, and keeping the
+     project is the second thing they might want, never the first. */
+  .join{margin-top:36px;padding-top:20px;border-top:1px solid var(--line)}
+  .join h2{font-size:14px;margin:0 0 6px}
+  .join p{color:var(--muted);font-size:13px;margin:0 0 12px;max-width:60ch}
+  .cmd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .cmd code{flex:1 1 auto;min-width:0;overflow-x:auto;white-space:nowrap;
+    padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel);font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+  .cmd button{flex:0 0 auto;padding:8px 14px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel);color:var(--ink);font-size:12.5px;cursor:pointer}
+  .cmd button:hover{border-color:var(--accent);color:var(--accent)}
 </style>
 </head>
 <body>
@@ -105,7 +117,45 @@ export function renderProjectPage(name, token) {
   <h1>${esc(name)}</h1>
   <p class="sub">A shared SpecForge project. Open a spec to read and comment.</p>
   ${rows ? `<ul>${rows}</ul>` : '<p class="empty">No specs in this project right now.</p>'}
+
+  <section class="join">
+    <h2>Add to my SpecForge</h2>
+    <p>Use SpecForge yourself? Join this project and it appears on your own home
+      page, under Shared with me, alongside your projects.</p>
+    <div class="cmd">
+      <code id="sf-join-cmd">specforge join ${esc(`/p/${token}`)}</code>
+      <button type="button" id="sf-join-copy">Copy</button>
+    </div>
+  </section>
 </main>
+<script>
+(function(){
+  // The server serves this through a tunnel and does not know the origin the
+  // reader arrived on, so the command is completed here, from the address bar.
+  var cmd=document.getElementById('sf-join-cmd');
+  var copy=document.getElementById('sf-join-copy');
+  if(!cmd||!copy) return;
+  var full='specforge join '+location.origin+'/p/'+${JSON.stringify(token)};
+  cmd.textContent=full;
+  copy.onclick=function(){
+    var done=function(){
+      var was=copy.textContent;
+      copy.textContent='Copied';
+      setTimeout(function(){copy.textContent=was;},1200);
+    };
+    // No clipboard (insecure context, or refused): select it instead, so it is
+    // one keystroke away rather than a dead button.
+    var fallback=function(){
+      try{
+        var r=document.createRange(); r.selectNodeContents(cmd);
+        var s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      }catch(e){}
+    };
+    try{ navigator.clipboard.writeText(full).then(done,fallback); }
+    catch(e){ fallback(); }
+  };
+})();
+</script>
 </body>
 </html>`;
 }
