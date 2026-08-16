@@ -1358,6 +1358,11 @@
     // reviewer a button to re-publish what they are already reading is noise.
     if ((window.SPECFORGE || {}).transport !== 'poll') els.menu.appendChild(shareRow());
 
+    // Add to a shared project — list this spec in a project a teammate shared
+    // with you. Loopback only, for the same reason Share is: the routes are the
+    // daemon's, and a reviewer cannot contribute someone else's spec anywhere.
+    if ((window.SPECFORGE || {}).transport !== 'poll') els.menu.appendChild(contributeRow());
+
     // Footer — one bottom row: the live pill (left), the attached session id
     // (center), and Detach (right). els.live survives the innerHTML reset above
     // (#sf-live, the same node re-appended each rebuild).
@@ -1583,6 +1588,104 @@
       return row;
     }
     return menuRow('🔗', 'Share this spec', function () { doShare(); });
+  }
+
+  /**
+   * "Add to a shared project" — the menu half of `specforge contribute`.
+   *
+   * The projects offered are the ones this machine has joined, because those
+   * are the only ones it holds a token for. Contributing publishes the spec
+   * under this machine's own token and registers a pointer; the spec itself
+   * never leaves.
+   */
+  function contributeRow() {
+    if (state.contributing) {
+      var busy = menuRow('', 'Adding…', null);
+      busy.disabled = true;
+      busy.querySelector('.sf-row-ic').appendChild(create('span', { class: 'sf-spin', 'aria-hidden': 'true' }));
+      return busy;
+    }
+    return menuRow('📤', 'Add to a shared project…', function (e) {
+      // Replacing the menu's rows detaches the button that was clicked, so the
+      // outside-click handler walking up from it never reaches the menu and
+      // closes it. Every other row either closes the menu on purpose or leaves
+      // it alone; this is the only one that rebuilds it in place.
+      if (e) e.stopPropagation();
+      openContributePicker();
+    });
+  }
+
+  /**
+   * Replace the menu with the list of joined projects.
+   *
+   * A submenu rather than a dialog: the list is short, it is a choice rather
+   * than a form, and the menu is already open where the reader is looking.
+   */
+  function openContributePicker() {
+    els.menu.innerHTML = '';
+    var back = menuRow('‹', 'Back', function (e) {
+      if (e) e.stopPropagation();
+      buildMenuRows();
+    });
+    els.menu.appendChild(back);
+    var loading = menuRow('', 'Loading…', null);
+    loading.disabled = true;
+    els.menu.appendChild(loading);
+
+    fetch('/api/subscriptions').then(function (r) { return r.json(); }).then(function (body) {
+      var subs = (body && body.subscriptions) || [];
+      els.menu.innerHTML = '';
+      els.menu.appendChild(menuRow('‹', 'Back', function (e) {
+        if (e) e.stopPropagation();
+        buildMenuRows();
+      }));
+      if (!subs.length) {
+        // Nothing to offer, and the reason is actionable: they have not joined
+        // a project yet. Said here rather than left as an empty list.
+        var none = menuRow('', 'No shared projects joined yet', null);
+        none.disabled = true;
+        els.menu.appendChild(none);
+        els.menu.appendChild(menuRow('', 'Open a teammate’s project link to join one', null)).disabled = true;
+        return;
+      }
+      subs.forEach(function (s) {
+        els.menu.appendChild(menuRow('📁', s.name, function () { doContribute(s); }));
+      });
+    }).catch(function () {
+      els.menu.innerHTML = '';
+      els.menu.appendChild(menuRow('‹', 'Back', function (e) {
+        if (e) e.stopPropagation();
+        buildMenuRows();
+      }));
+      var err = menuRow('', 'Could not load your shared projects', null);
+      err.disabled = true;
+      els.menu.appendChild(err);
+    });
+  }
+
+  function doContribute(sub) {
+    state.contributing = true;
+    buildMenuRows();
+    var finish = function () { state.contributing = false; buildMenuRows(); };
+    postJSON(SPEC_API + '/contribute', { url: sub.url, owner: meAuthor() || undefined })
+      .then(function (r) {
+        if (r.ok) {
+          finish();
+          closeMenu();
+          return flash('Added to “' + sub.name + '”.');
+        }
+        return r.json().then(function (b) {
+          finish();
+          flashErr((b && b.error) || 'Could not add this spec to “' + sub.name + '”.');
+        }).catch(function () {
+          finish();
+          flashErr('Could not add this spec to “' + sub.name + '”.');
+        });
+      })
+      .catch(function () {
+        finish();
+        flashErr('Could not add this spec to “' + sub.name + '”.');
+      });
   }
 
   /** The hostname of a share URL, which is the part worth showing. */
