@@ -974,6 +974,16 @@ ${strip}
       {icon:'\\u25f1',label:'Move to project\\u2026',run:function(){
         openPicker(btn,row.getAttribute('data-p'),function(v){setProj([row],v);},'project');
       }},
+      // Deliberately its own action rather than another destination in the
+      // picker above. Filing a spec locally and listing it in someone else's
+      // project are different operations: the first is exclusive and changes
+      // nothing outside this machine, the second is additive and PUBLISHES the
+      // spec. One picker doing both would let a tidy-up publish by accident,
+      // and a local project sharing a name with a shared one would show two
+      // identical-looking rows that do very different things.
+      {icon:'\\ud83d\\udce4',label:'Add to a shared project\\u2026',run:function(){
+        openContributeMenu(btn,row);
+      }},
       {sep:true},
       {icon:'\\ud83d\\uddd1',label:'Delete spec\\u2026',danger:true,run:function(){
         askConfirm({title:'Delete spec',body:'Delete "'+title+'"? This cannot be undone.',onOk:function(){
@@ -986,6 +996,40 @@ ${strip}
         }});
       }},
     ]);
+  }
+
+  /**
+   * The projects this machine has joined, as a menu.
+   *
+   * Fetched rather than rendered with the page: a subscription can be added
+   * from a terminal while the page is open, and this is a rarely-opened menu,
+   * so one request when it is opened beats state that can be wrong.
+   */
+  function openContributeMenu(btn,row){
+    var id=row.getAttribute('data-id');
+    var title=row.querySelector('.title').textContent;
+    fetch('/api/subscriptions').then(function(r){return r.json();}).then(function(body){
+      var subs=(body&&body.subscriptions)||[];
+      if(!subs.length){
+        // The reason is actionable, so it is said rather than left as an empty
+        // menu: they have not joined a project yet.
+        return openMenu(btn,[{icon:'',label:'No shared projects joined yet',run:function(){}}]);
+      }
+      openMenu(btn,subs.map(function(s){
+        return {icon:'\\ud83d\\udcc1',label:s.name,run:function(){contributeRow(id,title,s);}};
+      }));
+    }).catch(function(){warn('Could not load your shared projects.');});
+  }
+
+  /** Publish this spec and list it in a joined project. */
+  function contributeRow(id,title,sub){
+    api(id,'/contribute','POST',{url:sub.url}).then(function(r){
+      return r.ok?r.json().then(function(d){return {ok:true,d:d};})
+        :r.json().then(function(d){return {ok:false,d:d};}).catch(function(){return {ok:false,d:null};});
+    }).then(function(out){
+      if(!out.ok) return warn((out.d&&out.d.error)||('Could not add "'+title+'" to "'+sub.name+'".'));
+      warn('Added "'+title+'" to "'+sub.name+'".');
+    }).catch(function(){warn('Could not add "'+title+'" to "'+sub.name+'".');});
   }
 
   function collMenu(btn,crow){
