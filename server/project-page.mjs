@@ -235,6 +235,15 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
       try{ localStorage.setItem('sf-theme',next); }catch(e){}
       paint();
     };
+    // With no choice stored the CSS follows the OS live, so an OS that switches
+    // at sunset repaints the page while the icon stays where it was and starts
+    // naming a theme that is no longer in force. Repaint on the same signal.
+    // A no-op once a choice is stored: the attribute answers current() first.
+    try{
+      var mq=window.matchMedia('(prefers-color-scheme: light)');
+      if(mq.addEventListener) mq.addEventListener('change',paint);
+      else if(mq.addListener) mq.addListener(paint);
+    }catch(e){}
   }
 
   // The server serves this through a tunnel and does not know the origin the

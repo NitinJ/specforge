@@ -103,6 +103,62 @@ test('the icon shows the theme in force, not the one a click would give', (t) =>
   assert.equal(moonThenSun(), w.document.documentElement.getAttribute('data-theme'));
 });
 
+/**
+ * A page whose matchMedia is a fake we can drive.
+ *
+ * jsdom never evaluates media queries, so a real prefers-color-scheme change
+ * cannot happen in it. The fake records listeners and lets the test fire one,
+ * which is the only part of the behaviour the page owns.
+ */
+function openWithFakeMedia(t, { light }) {
+  seed('Widget themes');
+  let matches = light;
+  const listeners = [];
+  const { window } = new JSDOM(renderProjectPage('Atelier', TOK), {
+    url: `https://team.example/p/${TOK}`,
+    runScripts: 'dangerously',
+    beforeParse(w) {
+      w.matchMedia = (media) => ({
+        media,
+        get matches() { return matches; },
+        addEventListener: (_, fn) => listeners.push(fn),
+        removeEventListener: () => {},
+      });
+    },
+  });
+  t.after(() => window.close());
+  return {
+    window,
+    listeners,
+    flipOsTo(next) {
+      matches = next === 'light';
+      for (const fn of listeners) fn({ matches });
+    },
+  };
+}
+
+test('the icon follows the OS when the reader has made no choice', (t) => {
+  const { window, flipOsTo } = openWithFakeMedia(t, { light: true });
+  const btn = window.document.getElementById('sf-theme');
+  const showing = () => (btn.innerHTML.includes('circle') ? 'light' : 'dark');
+  assert.equal(showing(), 'light', 'the OS says light, so the icon says light');
+  // Sunset: the CSS repaints on its own, and the icon has to follow or it names
+  // a theme that is no longer in force.
+  flipOsTo('dark');
+  assert.equal(showing(), 'dark');
+});
+
+test('a stored choice pins the icon against an OS change', (t) => {
+  const { window, flipOsTo } = openWithFakeMedia(t, { light: true });
+  const btn = window.document.getElementById('sf-theme');
+  btn.click();
+  const chosen = window.document.documentElement.getAttribute('data-theme');
+  flipOsTo('dark');
+  assert.equal(window.document.documentElement.getAttribute('data-theme'), chosen,
+    'the reader’s choice outranks the OS');
+  assert.equal(btn.innerHTML.includes('circle') ? 'light' : 'dark', chosen);
+});
+
 test('nothing about the theme reaches the owner’s machine', () => {
   seed('Widget themes');
   const html = renderProjectPage('Atelier', TOK);

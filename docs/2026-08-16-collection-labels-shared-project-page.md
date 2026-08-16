@@ -86,6 +86,8 @@ Three states, in the order the cascade needs them: `:root` carries dark as the b
 
 The choice is stored in the reader's own `localStorage` under `sf-theme`, and applied by a snippet in `<head>` so a reader who chose light does not see a dark flash first. The button's icon shows the theme in force, not the one a click would produce: with nothing stored it asks `matchMedia` what the browser actually resolved to, because the attribute is absent in that state.
 
+With nothing stored the CSS follows the OS live, so the icon subscribes to the same `prefers-color-scheme` change event and repaints. An OS that switches at sunset would otherwise repaint the page and leave the icon naming a theme no longer in force. Once a choice is stored the subscription is a no-op, because the attribute answers first. Raised in review of PR #182.
+
 ## 4 · Decisions
 
 | # | Decision | Choice | Rationale |
