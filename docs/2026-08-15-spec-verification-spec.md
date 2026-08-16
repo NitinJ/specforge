@@ -256,7 +256,7 @@ Verify returns PASS or FAIL. FAIL names the rules the spec breaks; the agent fix
 
 <!-- sf:svg id="design-2" -->
 
-*The gate is the exit condition: create-spec hands over on 0, and on nothing else. The three-round cap is an escape hatch, not the normal path, and taking it means saying which rules still fail rather than judging one you do not believe.*
+*Exit 0 is the way out. The three-round cap is the only other one, and it is not the normal path: taking it means handing over while saying which rules still fail, rather than judging a rule you do not believe in order to reach 0. A spec that leaves by that door is known to be unfinished, which is the point of making the agent say so.*
 
 #### Design options considered
 
