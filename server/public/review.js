@@ -1621,24 +1621,33 @@
    * A submenu rather than a dialog: the list is short, it is a choice rather
    * than a form, and the menu is already open where the reader is looking.
    */
+  // Bumped by anything that changes what the menu is showing. A response that
+  // arrives after the reader has moved on — pressed Back, or reopened the menu
+  // — belongs to a view that is gone, and rendering it would drag them back to
+  // a screen they left.
+  var menuView = 0;
+
   function openContributePicker() {
+    var view = ++menuView;
+    var leftView = function () { return view !== menuView; };
+    var backRow = function () {
+      return menuRow('‹', 'Back', function (e) {
+        if (e) e.stopPropagation();
+        menuView += 1;
+        buildMenuRows();
+      });
+    };
     els.menu.innerHTML = '';
-    var back = menuRow('‹', 'Back', function (e) {
-      if (e) e.stopPropagation();
-      buildMenuRows();
-    });
-    els.menu.appendChild(back);
+    els.menu.appendChild(backRow());
     var loading = menuRow('', 'Loading…', null);
     loading.disabled = true;
     els.menu.appendChild(loading);
 
     fetch('/api/subscriptions').then(function (r) { return r.json(); }).then(function (body) {
+      if (leftView()) return;
       var subs = (body && body.subscriptions) || [];
       els.menu.innerHTML = '';
-      els.menu.appendChild(menuRow('‹', 'Back', function (e) {
-        if (e) e.stopPropagation();
-        buildMenuRows();
-      }));
+      els.menu.appendChild(backRow());
       if (!subs.length) {
         // Nothing to offer, and the reason is actionable: they have not joined
         // a project yet. Said here rather than left as an empty list.

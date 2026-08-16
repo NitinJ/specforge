@@ -48,7 +48,7 @@ import {
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
 import { renderMd } from '../lib/store-md.mjs';
-import { readSubscriptions } from '../lib/store-subscriptions.mjs';
+import { readSubscriptions, parseShareUrl } from '../lib/store-subscriptions.mjs';
 import { contributeSpec, withdrawSpec } from '../lib/contribute.mjs';
 import { readShareToken } from '../lib/store-share.mjs';
 import { readMeta } from '../lib/meta.mjs';
@@ -62,6 +62,20 @@ export const publications = createPublications();
 // The index page lives in index-page.mjs; re-exported here because tests and
 // callers import it from the daemon (the module that serves it).
 export { renderIndex };
+
+/**
+ * Whether a URL names a shared project this machine has joined.
+ *
+ * The membership check behind the contribute route: joining is the deliberate
+ * act that makes a destination trusted, so anything not joined is refused
+ * before a spec is published or a token leaves.
+ */
+function isJoinedProject(url) {
+  const parsed = parseShareUrl(url);
+  if (!parsed) return false;
+  return readSubscriptions()
+    .some((s) => s.origin === parsed.origin && s.token === parsed.token);
+}
 
 function send(res, status, type, body) {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -372,6 +386,19 @@ export function createDaemon({ publications: pubs = publications } = {}) {
       return readJsonBody(req)
         .then((b) => {
           const url = b && b.url;
+          // Only a project this machine has joined. Contributing publishes the
+          // spec and hands its token to the destination, so an unrestricted
+          // route would let anything that can reach loopback disclose a spec
+          // capability to an origin nobody here ever agreed to. Joining is the
+          // agreement, and it is a deliberate act on this machine.
+          //
+          // The CLI stays unrestricted on purpose: there, the URL is one a
+          // person pasted, which is the same act as joining.
+          if (!isJoinedProject(url)) {
+            return sendJson(res, 403, {
+              error: 'contribute: not a project this machine has joined; run `specforge join <url>` first',
+            });
+          }
           if (method === 'DELETE') {
             return withdrawSpec({
               specId,

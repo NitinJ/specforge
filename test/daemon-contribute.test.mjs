@@ -142,6 +142,44 @@ test('DELETE /api/spec/:id/contribute withdraws it again', async (t) => {
   });
 });
 
+// Contributing publishes the spec and hands its token to the destination, so
+// an unrestricted route would let anything that can reach loopback disclose a
+// spec capability to an origin nobody on this machine ever agreed to. Joining
+// is that agreement.
+test('a project this machine has not joined is refused', async (t) => {
+  const id = createSpec({ title: 'Mine', html: '<h1>x</h1>' });
+  await withCreator(t, async (creator, seen) => {
+    // Deliberately NOT joined.
+    await withDaemon(t, async (base) => {
+      const r = await fetch(`${base}/api/spec/${id}/contribute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: `${creator}/p/${PTOK}` }),
+      });
+      assert.equal(r.status, 403);
+      assert.match((await r.json()).error, /has not joined|specforge join/);
+      assert.deepEqual(seen, [], 'nothing was sent to the destination');
+      assert.deepEqual(readContributed(), [], 'and nothing was recorded');
+    });
+  });
+});
+
+test('a joined origin does not license a different token on it', async (t) => {
+  const id = createSpec({ title: 'Mine', html: '<h1>x</h1>' });
+  await withCreator(t, async (creator, seen) => {
+    addSubscription({ name: 'Atelier', origin: creator, token: PTOK });
+    await withDaemon(t, async (base) => {
+      const r = await fetch(`${base}/api/spec/${id}/contribute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: `${creator}/p/${newToken()}` }),
+      });
+      assert.equal(r.status, 403, 'membership is origin AND token, not either');
+      assert.deepEqual(seen, []);
+    });
+  });
+});
+
 test('a URL that is not a project share is refused', async (t) => {
   const id = createSpec({ title: 'Mine', html: '<h1>x</h1>' });
   await withDaemon(t, async (base) => {
@@ -150,8 +188,9 @@ test('a URL that is not a project share is refused', async (t) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: `https://x.example/s/${newToken()}` }),
     });
-    assert.equal(r.status, 400);
-    assert.match((await r.json()).error, /project share URL/);
+    // Refused by the membership check, which a malformed URL can never pass:
+    // it is not parseable as a project, so it matches no subscription.
+    assert.equal(r.status, 403);
   });
 });
 
