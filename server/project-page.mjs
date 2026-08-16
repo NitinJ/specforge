@@ -43,9 +43,13 @@ export function projectSpecs(name) {
  * @param {string} token rides into each spec link, which is scoped to it
  */
 export function renderProjectPage(name, token) {
+  // The collection is a label, not a filter: it says which group of the owner's
+  // the spec sits in, and nothing on this page acts on it (spec f081f883da).
+  // Absent when the spec has none, because an empty chip claims a blank name.
   const local = projectSpecs(name).map((m) => `
     <li class="row">
       <a class="title" href="/p/${token}/spec/${m.id}">${esc(m.title || 'Untitled')}</a>
+      ${m.collection ? `<span class="coll">${esc(m.collection)}</span>` : ''}
       <span class="type">${esc(m.type || '')}</span>
       <span class="status s-${esc(m.status || 'draft')}">${esc(m.status || 'draft')}</span>
       <span class="upd">${esc(relativeTime(m.updated))}</span>
@@ -90,6 +94,14 @@ export function renderProjectPage(name, token) {
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .title:hover{color:var(--accent)}
   .type{color:var(--muted);font-size:12px;white-space:nowrap}
+  /* Squared, so it does not read as a second status pill; bordered, so it does
+     not run into the type beside it as one muted string.
+     flex:none is load-bearing: the title is the flexible item, so without it the
+     chip absorbs the squeeze and one collection renders at a different width on
+     every row, which reads as several different collections. */
+  .coll{flex:none;color:var(--muted);font-size:11.5px;border:1px solid var(--line);
+    border-radius:6px;padding:1px 8px;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:220px}
   .status{font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:999px;
     border:1px solid var(--line);white-space:nowrap}
   .s-approved{color:var(--green)} .s-review{color:var(--amber)} .s-draft{color:var(--muted)}
@@ -98,11 +110,15 @@ export function renderProjectPage(name, token) {
     border-radius:999px;padding:1px 8px;white-space:nowrap}
   .upd{color:var(--muted);font-size:12px;white-space:nowrap}
   .empty{color:var(--muted);padding:24px 0}
-  /* Under the list, not above it: a reader came here to read, and keeping the
-     project is the second thing they might want, never the first. */
-  .join{margin-top:36px;padding-top:20px;border-top:1px solid var(--line)}
-  .join h2{font-size:14px;margin:0 0 6px}
-  .join p{color:var(--muted);font-size:13px;margin:0 0 12px;max-width:60ch}
+  /* Above the list, where a reader meets it without scrolling: under the list it
+     was below the fold on any project past a screenful, so the readers most
+     likely to want their own copy were the ones least likely to see it. Kept to
+     a quiet panel rather than a banner, because reading the specs is still what
+     the page is for. */
+  .join{margin:0 0 22px;padding:13px 15px;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel)}
+  .join h2{font-size:13.5px;margin:0 0 3px}
+  .join p{color:var(--muted);font-size:12.5px;margin:0 0 10px;max-width:60ch}
   .cmd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .cmd code{flex:1 1 auto;min-width:0;overflow-x:auto;white-space:nowrap;
     padding:8px 10px;border:1px solid var(--line);border-radius:8px;
@@ -110,13 +126,25 @@ export function renderProjectPage(name, token) {
   .cmd button{flex:0 0 auto;padding:8px 14px;border:1px solid var(--line);border-radius:8px;
     background:var(--panel);color:var(--ink);font-size:12.5px;cursor:pointer}
   .cmd button:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* The collection chip does not shrink, and type, status and the stamp never
+     wrap, so on a narrow viewport the title is the only thing left to give and
+     it collapses to an ellipsis. Shed the least informative fields before that
+     happens: the type first, then the collection. Title, status and recency are
+     what a row is scanned for and they survive to the narrowest width. */
+  @media (max-width:640px){
+    .type{display:none}
+    .coll{max-width:140px}
+  }
+  @media (max-width:460px){
+    .coll{display:none}
+  }
 </style>
 </head>
 <body>
 <main>
   <h1>${esc(name)}</h1>
   <p class="sub">A shared SpecForge project. Open a spec to read and comment.</p>
-  ${rows ? `<ul>${rows}</ul>` : '<p class="empty">No specs in this project right now.</p>'}
 
   <section class="join">
     <h2>Add to my SpecForge</h2>
@@ -127,6 +155,8 @@ export function renderProjectPage(name, token) {
       <button type="button" id="sf-join-copy">Copy</button>
     </div>
   </section>
+
+  ${rows ? `<ul>${rows}</ul>` : '<p class="empty">No specs in this project right now.</p>'}
 </main>
 <script>
 (function(){
