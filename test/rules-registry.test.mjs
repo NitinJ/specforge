@@ -88,6 +88,25 @@ test('defineRule refuses a rule answered two ways, or no way', () => {
   assert.throws(() => defineRule({ id: 'bad-sev', ask: 'x', severity: 'loud' }), /unknown severity/);
 });
 
+test('an id that could not be named in --judged is refused at authoring time', () => {
+  // A rule id has to round-trip through `verify --judged a,b,c`. One carrying a
+  // comma could never be named there, so the gate would fail on it forever with
+  // no way to settle it. Greptile on #179.
+  assert.throws(() => defineRule({ id: 'a,b', ask: 'x' }), /cannot contain a comma or whitespace/);
+  assert.throws(() => defineRule({ id: 'a b', ask: 'x' }), /cannot contain a comma or whitespace/);
+  assert.throws(() => defineRule({ id: 'a\tb', ask: 'x' }), /cannot contain a comma or whitespace/);
+  // The ids people actually write are fine.
+  assert.equal(defineRule({ id: 'no-build-plan', ask: 'x' }).id, 'no-build-plan');
+  assert.equal(defineRule({ id: 'rule_2.v1', ask: 'x' }).id, 'rule_2.v1');
+});
+
+test('a template cannot smuggle in an unnameable id either', () => {
+  assert.throws(
+    () => mergeRules([], [{ id: 'has,comma', ask: 'Something must hold.' }]),
+    /cannot contain a comma or whitespace/,
+  );
+});
+
 test('a rule defaults to blocking, scope all, and its id as its title', () => {
   const r = defineRule({ id: 'x', ask: 'Something must be true.' });
   assert.equal(r.severity, 'blocking');
