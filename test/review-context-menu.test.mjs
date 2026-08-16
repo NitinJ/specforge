@@ -134,14 +134,17 @@ test('Copy link writes the anchor and opens no composer', async (t) => {
     'a direct action never reaches the agent, so there is nothing to compose');
 });
 
-test('right-clicking away from any block leaves the native menu alone', async (t) => {
-  // The page background is stage 5. Until then a right-click there has to do
-  // nothing rather than open an empty menu.
+test('right-clicking away from any block opens the spec-wide menu instead', async (t) => {
+  // Scope comes from what is under the pointer. Nothing commentable there means
+  // the reader hit the document itself, which is its own scope. The spec-wide
+  // list is covered in review-spec-menu.test.mjs; what matters here is that the
+  // block list is not what appears.
   const { window } = await boot(t);
   const ev = new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
   window.document.body.dispatchEvent(ev);
-  assert.equal(isOpen(window), false);
-  assert.equal(ev.defaultPrevented, false);
+  assert.ok(isOpen(window));
+  assert.equal(rowByLabel(window, 'Tighten'), undefined, 'no block is selected');
+  assert.ok(rowByLabel(window, 'Consistency pass'));
 });
 
 test('a page served before the feature existed has no menu at all', async (t) => {
