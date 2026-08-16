@@ -4,16 +4,16 @@
         <text class="svg-lbl-m" x="22" y="96">create-spec <a href="#goals">§3</a></text>
 
         <rect class="svg-box-a" x="164" y="60" width="130" height="46" rx="8"/>
-        <text class="svg-lbl" x="178" y="80">verify --json</text>
-        <text class="svg-lbl-m" x="178" y="96">checks answered</text>
+        <text class="svg-lbl" x="178" y="80">verify</text>
+        <text class="svg-lbl-m" x="178" y="96">PASS or FAIL</text>
 
         <rect class="svg-box-a" x="330" y="60" width="130" height="46" rx="8"/>
-        <text class="svg-lbl" x="344" y="80">judge pending</text>
+        <text class="svg-lbl" x="344" y="80">fix / judge</text>
         <text class="svg-lbl-m" x="344" y="96">subagent if any</text>
 
         <rect class="svg-box-a" x="496" y="60" width="120" height="46" rx="8"/>
-        <text class="svg-lbl" x="510" y="80">fix the spec</text>
-        <text class="svg-lbl-m" x="510" y="96">edit htmlPath</text>
+        <text class="svg-lbl" x="510" y="80">verify --judged</text>
+        <text class="svg-lbl-m" x="510" y="96">exit 0 or 1</text>
 
         <rect class="svg-box" x="652" y="60" width="100" height="46" rx="8" stroke="var(--green)" stroke-width="1.5"/>
         <text class="svg-lbl" x="666" y="80">hand over</text>
@@ -23,10 +23,10 @@
         <path class="svg-arrow" d="M294 83 L330 83"/>
         <path class="svg-arrow" d="M460 83 L496 83"/>
         <path class="svg-arrow" d="M616 83 L652 83"/>
-        <text class="svg-lbl-m" x="622" y="76">clean</text>
+        <text class="svg-lbl-m" x="620" y="76">exit 0</text>
 
         <path class="svg-arrow" d="M556 106 L556 140 L229 140 L229 106" stroke-dasharray="5 4"/>
-        <text class="svg-lbl-m" x="330" y="156">something still failing, and fewer than 3 rounds spent</text>
+        <text class="svg-lbl-m" x="300" y="156">exit 1, and fewer than 3 rounds spent</text>
 
         <path class="svg-arrow" d="M556 40 L556 22 L700 22 L700 60"/>
         <text class="svg-lbl-m" x="470" y="18">3 rounds spent: hand over anyway, naming what still fails</text>
