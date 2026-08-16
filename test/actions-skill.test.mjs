@@ -53,6 +53,21 @@ test('the skill states the rule that decides where output goes', () => {
   assert.match(SKILL, /aside/);
 });
 
+test('the skill points at the command that writes an aside', () => {
+  // Prose telling an agent what markup to produce is not a mechanism, and the
+  // first real Visualize run proved it by writing its diagram straight into the
+  // section. The skill has to name the command, and it must not go back to
+  // describing the markup as something to type.
+  assert.match(SKILL, /specforge-cli\.mjs" aside/, 'the command');
+  assert.match(SKILL, /--section/);
+  assert.match(SKILL, /--action/);
+  assert.match(SKILL, /[Dd]o not hand-write/, 'and says not to write the markup by hand');
+});
+
+test('an aside action is told not to edit the section it came from', () => {
+  assert.match(SKILL, /[Dd]o not edit the section the comment sits on/);
+});
+
 test('the skill says what to do when a detail is missing', () => {
   // The two actions that cannot run on their instruction alone. Guessing at the
   // claim to check, or at which term to rename, is worse than asking.

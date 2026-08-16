@@ -1341,7 +1341,10 @@
       openCtxMenu(anchor, actions, e.clientX, e.clientY, scope);
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') closeCtxMenu();
+      if (e.key !== 'Escape') return;
+      // The menu first: with both open, Escape means the thing on top.
+      if (els.ctx && els.ctx.classList.contains('open')) return closeCtxMenu();
+      setAsidesOpen(false);
     });
     document.addEventListener('click', function () { closeCtxMenu(); });
     // A menu placed at a pointer position is in the wrong place the moment the
@@ -1413,16 +1416,70 @@
     return ta && ta.value ? ta.value.trim() : '';
   }
   // ---------- asides ----------
-  // An aside is a section of the spec carrying data-sf-aside, placed directly
-  // after the section it came from. It renders in the flow and is filtered from
-  // nothing: it exports, it travels on a shared link, and the gate reads it.
+  // An aside is a section of the spec carrying data-sf-aside, stored directly
+  // after the section it came from. That is the model, and it is what makes
+  // export, anchoring, comments and the gate work with nothing written for them.
   //
-  // What the layer adds is a header strip: which action wrote this, a way to
-  // fold it out of the way, and the two buttons that answer it. The strip is
-  // chrome, so it is not commentable and clicking it is not a page click.
+  // The rendering is separate: the section is MOVED out of the flow into a
+  // right-hand panel, because a draft you have not accepted should not push the
+  // document you are reading down the page. Moved, not copied — one aside, one
+  // id, one set of nodes, still part of the document and still commentable.
+  //
+  // The source section keeps a marker saying an aside exists, since a panel you
+  // never open is a draft you never answer.
   function buildAsides() {
     var list = document.querySelectorAll('section[data-sf-aside]');
-    for (var i = 0; i < list.length; i++) decorateAside(list[i]);
+    if (!list.length) return; // no panel until there is something to put in it
+    els.asides = create('div', { id: 'sf-asides', class: 'sf-asides' });
+    var head = create('div', { class: 'sf-asides-head' });
+    head.appendChild(create('b', {}, 'Asides'));
+    var close = create('button', { class: 'sf-asides-close', type: 'button', 'aria-label': 'Close' }, '×');
+    close.onclick = function (e) { e.stopPropagation(); setAsidesOpen(false); };
+    head.appendChild(close);
+    els.asides.appendChild(head);
+    var body = create('div', { class: 'sf-asides-body' });
+    els.asides.appendChild(body);
+    document.body.appendChild(els.asides);
+
+    for (var i = 0; i < list.length; i++) {
+      decorateAside(list[i]);
+      markSourceOf(list[i]);
+      body.appendChild(list[i]); // appendChild MOVES a node that is already in the DOM
+    }
+  }
+  /**
+   * The marker on the source section.
+   *
+   * A direct child of the section and never inside a block: a comment anchors to
+   * a block's normalized text, so chrome placed inside one would change that
+   * text and orphan the threads already on it.
+   */
+  function markSourceOf(aside) {
+    var src = document.getElementById(aside.getAttribute('data-sf-aside'));
+    if (!src) return; // an aside whose section was deleted: nothing to hang it on
+    var m = src.querySelector(':scope > .sf-aside-mark');
+    if (!m) {
+      m = create('button', {
+        class: 'sf-aside-mark', type: 'button',
+        title: 'Drafts attached to this section',
+      });
+      m.onclick = function (e) { e.stopPropagation(); setAsidesOpen(true, aside); };
+      src.classList.add('sf-has-aside');
+      src.insertBefore(m, src.firstChild);
+    }
+    var a = actionByIdClient(aside.getAttribute('data-sf-action'));
+    m.appendChild(create('span', { class: 'sf-aside-mark-ic' }, a ? a.icon : '◇'));
+  }
+  function setAsidesOpen(open, scrollTo) {
+    if (!els.asides) return;
+    els.asides.classList.toggle('open', !!open);
+    document.body.classList.toggle('sf-asides-open', !!open);
+    // The rail and the drawer already take turns in the right gutter. The panel
+    // joins that rule rather than overlapping either of them.
+    syncRailVisibility();
+    if (open && scrollTo && scrollTo.scrollIntoView) {
+      scrollTo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
   function decorateAside(sec) {
     if (sec.querySelector(':scope > .sf-aside-head')) return; // built once
@@ -2656,7 +2713,13 @@
     // so hiding the rail on a narrow window would leave you unable to comment at
     // all — invisible input, no keyboard path, and no way to create a thread
     // from the drawer. It overlays more of a narrow page; that beats a dead end.
+    //
+    // It overrides the asides panel for the same reason and more sharply: the
+    // panel holds sections of the spec, commenting on them is the point, and
+    // every one of those comments is composed in the rail. CSS shifts the rail
+    // clear of the panel while both are up.
     if (state.composeEl) return true;
+    if (els.asides && els.asides.classList.contains('open')) return false;
     return (window.innerWidth || 0) >= RAIL_MIN_W;
   }
   function syncRailVisibility() {
@@ -3277,8 +3340,14 @@
           t.id === 'sf-ctx') return true;
       // An aside's header strip is chrome sitting inside a section of the
       // document. The section is commentable; the strip that folds it away and
-      // the buttons that answer it are not.
-      if (t.classList && t.classList.contains('sf-aside-head')) return true;
+      // the buttons that answer it are not. Deliberately NOT #sf-asides itself:
+      // the panel holds real sections of the spec, and excluding the container
+      // would make everything it carries uncommentable, which is the whole
+      // reason an aside is modelled as a section.
+      if (t.classList
+        && (t.classList.contains('sf-aside-head')
+          || t.classList.contains('sf-asides-head')
+          || t.classList.contains('sf-aside-mark'))) return true;
       t = t.parentElement;
     }
     return false;

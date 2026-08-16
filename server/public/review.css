@@ -1137,17 +1137,65 @@ body.sf-side-open #sf-launcher { right: calc(var(--sf-side-w) + 18px); }
   #sf-menu { transition: opacity var(--sf-dur-fast) linear, visibility 0s linear; transform: none !important; }
 }
 body.sf-side-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
-/* asides — a section of the spec that renders attached to the one above it
-   rather than as the next part of the argument. Offset, tinted, and hung off a
-   left border in the accent, so the eye reads it as a note in the margin that
-   happens to be in the flow. Nothing here hides it: it exports and it travels
-   on a shared link exactly as it renders. */
+/* asides — modelled as a section of the spec, rendered in a panel beside it.
+   The panel is solid rather than glass for the same reason the comments drawer
+   is: it is a reading surface you leave open, not a popover. It shares the right
+   gutter with the rail and the drawer, and review.js makes them take turns. */
+.sf-asides {
+  position: fixed; top: 0; right: 0; height: 100vh; width: var(--sf-side-w); z-index: 45;
+  background: var(--sf-panel); border-left: 1px solid var(--sf-hairline);
+  color: var(--sf-ink); display: flex; flex-direction: column;
+  box-shadow: -12px 0 32px rgba(0, 0, 0, .18);
+  transform: translateX(100%); transition: transform var(--sf-dur-pop) var(--sf-ease-out);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.sf-asides.open { transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) { .sf-asides { transition: none; } }
+html[data-sf-header] .sf-asides { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
+.sf-asides-head {
+  padding: 14px 16px; border-bottom: 1px solid var(--sf-line);
+  display: flex; align-items: center; gap: 8px;
+}
+.sf-asides-head b { font-size: 14px; font-weight: 800; letter-spacing: .2px; }
+.sf-asides-close {
+  margin-left: auto; background: none; border: none; color: var(--sf-muted);
+  font: 400 20px/1 system-ui, sans-serif; cursor: pointer; padding: 4px 6px;
+  border-radius: var(--sf-r-xs);
+  transition: color var(--sf-dur-fast) var(--sf-ease), background var(--sf-dur-fast) var(--sf-ease);
+}
+.sf-asides-close:hover { color: var(--sf-ink); background: var(--sf-panel2); }
+.sf-asides-body { overflow-y: auto; padding: 12px; flex: 1; }
+/* Composing while the panel is open is the ordinary case, not an edge one: the
+   panel holds sections of the spec and commenting on them is the point. The rail
+   returns for it (railShouldShow) and moves clear of the panel here, so the
+   composer sits beside the draft rather than under it. */
+body.sf-asides-open #sf-rail { right: calc(var(--sf-side-w) + 8px); }
+body.sf-asides-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
+body.sf-asides-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
+
+/* The marker on the source section: how you know a draft is waiting. Placed
+   against the section's top-right corner, outside every block, because a comment
+   anchors to a block's text and chrome inside one would rewrite it. */
+section.sf-has-aside { position: relative; }
+.sf-aside-mark {
+  position: absolute; top: 2px; right: -6px; z-index: 2;
+  display: flex; align-items: center; gap: 4px;
+  background: var(--sf-panel2); border: 1px solid var(--sf-hairline); color: var(--sf-muted);
+  border-radius: 999px; padding: 3px 9px; cursor: pointer;
+  font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease);
+}
+.sf-aside-mark:hover { color: var(--sf-ink); border-color: var(--sf-accent); }
+.sf-aside-mark:focus-visible { outline: none; box-shadow: var(--sf-ring); }
+
+/* Each aside inside the panel: hung off a left border in the accent so several
+   read as separate drafts rather than one long column. */
 .sf-aside {
   border-left: 3px solid var(--sf-accent);
   background: var(--sf-panel2);
   border-radius: 0 var(--sf-r-md) var(--sf-r-md) 0;
-  padding: 4px 16px 10px;
-  margin: 18px 0 22px 12px;
+  padding: 4px 12px 10px;
+  margin: 0 0 14px;
 }
 .sf-aside-head {
   display: flex; align-items: center; gap: 8px;
