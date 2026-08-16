@@ -1297,6 +1297,12 @@
     while (t) { if (t === els.menu || t === els.launcher) return true; t = t.parentElement; }
     return false;
   }
+  // Which view the menu is showing, as a counter. Bumped by every rebuild and
+  // every close, so an async request started for one view can tell that the
+  // reader has moved on — pressed Back, or closed and reopened the menu — and
+  // drop its answer rather than painting it over a screen they left.
+  var menuView = 0;
+
   function toggleMenu() { els.menu.classList.contains('open') ? closeMenu() : openMenu(); }
   function openMenu() {
     buildMenuRows();
@@ -1310,6 +1316,9 @@
   }
 
   function buildMenuRows() {
+    // Every rebuild is a new view, so anything still in flight for the old one
+    // is dropped rather than rendered over this.
+    menuView += 1;
     els.menu.innerHTML = '';
     var unresolved = unresolvedCount();
 
@@ -1621,19 +1630,14 @@
    * A submenu rather than a dialog: the list is short, it is a choice rather
    * than a form, and the menu is already open where the reader is looking.
    */
-  // Bumped by anything that changes what the menu is showing. A response that
-  // arrives after the reader has moved on — pressed Back, or reopened the menu
-  // — belongs to a view that is gone, and rendering it would drag them back to
-  // a screen they left.
-  var menuView = 0;
-
   function openContributePicker() {
     var view = ++menuView;
     var leftView = function () { return view !== menuView; };
+    // buildMenuRows bumps the counter itself, so Back invalidates this request
+    // without having to remember to.
     var backRow = function () {
       return menuRow('‹', 'Back', function (e) {
         if (e) e.stopPropagation();
-        menuView += 1;
         buildMenuRows();
       });
     };
@@ -1661,11 +1665,12 @@
         els.menu.appendChild(menuRow('📁', s.name, function () { doContribute(s); }));
       });
     }).catch(function () {
+      // Guarded like the success path: a failure that lands after the reader
+      // left is just as unwelcome as a success, and reporting it over a menu
+      // they returned to is worse, because it names a screen they cannot see.
+      if (leftView()) return;
       els.menu.innerHTML = '';
-      els.menu.appendChild(menuRow('‹', 'Back', function (e) {
-        if (e) e.stopPropagation();
-        buildMenuRows();
-      }));
+      els.menu.appendChild(backRow());
       var err = menuRow('', 'Could not load your shared projects', null);
       err.disabled = true;
       els.menu.appendChild(err);

@@ -45,6 +45,13 @@ async function boot(t, opts = {}) {
     }
     if (String(url).indexOf('/api/subscriptions') !== -1) {
       if (opts.subsFail) return Promise.reject(new Error('down'));
+      // Held open when a test wants to act while the request is in flight;
+      // resolving with an Error rejects, so both settle paths are drivable.
+      if (opts.subsGate) {
+        return opts.subsGate.then((v) => (v instanceof Error
+          ? Promise.reject(v)
+          : { ok: true, json: () => Promise.resolve(v) }));
+      }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ subscriptions: opts.subs || SUBS }) });
     }
     if (String(url).indexOf('/meta') !== -1) {
@@ -142,6 +149,84 @@ test('Back returns to the menu without closing it', async (t) => {
 
   assert.ok(window.document.getElementById('sf-menu').classList.contains('open'));
   assert.ok(labels(window).some((l) => /Add to a shared project/.test(l)), 'back where we started');
+});
+
+/** Boot with the subscriptions request held open until the test releases it. */
+async function bootDeferred(t, opts = {}) {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const booted = await boot(t, {
+    ...opts,
+    subsGate: gate,
+  });
+  return { ...booted, release };
+}
+
+test('a slow subscriptions response does not overwrite a Back', async (t) => {
+  const { window, release } = await bootDeferred(t);
+  await openMenu(window);
+  [...window.document.querySelectorAll('#sf-menu .sf-menu-row')]
+    .find((b) => /Add to a shared project/.test(b.textContent))
+    .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  // Back, while the request is still in flight.
+  [...window.document.querySelectorAll('#sf-menu .sf-menu-row')]
+    .find((b) => /Back/.test(b.textContent))
+    .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(labels(window).some((l) => /Add to a shared project/.test(l)), 'back on the main menu');
+
+  release({ subscriptions: SUBS });
+  await new Promise((r) => window.setTimeout(r, 0));
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  assert.ok(labels(window).some((l) => /Add to a shared project/.test(l)),
+    'and the late answer did not drag the reader back to the picker');
+  assert.ok(!labels(window).some((l) => /^📁?\s*Atelier$/.test(l)));
+});
+
+test('a failure arriving after a Back is dropped too', async (t) => {
+  const { window, release } = await bootDeferred(t);
+  await openMenu(window);
+  [...window.document.querySelectorAll('#sf-menu .sf-menu-row')]
+    .find((b) => /Add to a shared project/.test(b.textContent))
+    .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 0));
+  [...window.document.querySelectorAll('#sf-menu .sf-menu-row')]
+    .find((b) => /Back/.test(b.textContent))
+    .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  release(new Error('down'));
+  await new Promise((r) => window.setTimeout(r, 0));
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  assert.ok(!labels(window).some((l) => /Could not load/.test(l)),
+    'a failure names a screen the reader is no longer on');
+  assert.ok(labels(window).some((l) => /Add to a shared project/.test(l)));
+});
+
+test('closing and reopening the menu invalidates an in-flight request', async (t) => {
+  const { window, release } = await bootDeferred(t);
+  await openMenu(window);
+  [...window.document.querySelectorAll('#sf-menu .sf-menu-row')]
+    .find((b) => /Add to a shared project/.test(b.textContent))
+    .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  // Close, then reopen: a fresh main menu.
+  window.document.getElementById('sf-launcher').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  window.document.getElementById('sf-launcher').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  release({ subscriptions: SUBS });
+  await new Promise((r) => window.setTimeout(r, 0));
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  assert.ok(labels(window).some((l) => /Add to a shared project/.test(l)),
+    'the reopened menu is the reader’s current view and stays');
 });
 
 test('picking one contributes the spec to that project', async (t) => {
