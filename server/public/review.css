@@ -1142,7 +1142,10 @@ body.sf-side-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
    is: it is a reading surface you leave open, not a popover. It shares the right
    gutter with the rail and the drawer, and review.js makes them take turns. */
 .sf-asides {
-  position: fixed; top: 0; right: 0; height: 100vh; width: var(--sf-side-w); z-index: 45;
+  /* Half the page at least. This is a side PANEL, not a sidebar: it holds one
+     draft at a time, and a draft is read rather than skimmed. A diagram or a
+     worked example in a 340px column is a thumbnail of a decision. */
+  position: fixed; top: 0; right: 0; height: 100vh; width: max(50vw, 480px); z-index: 45;
   background: var(--sf-panel); border-left: 1px solid var(--sf-hairline);
   color: var(--sf-ink); display: flex; flex-direction: column;
   box-shadow: -12px 0 32px rgba(0, 0, 0, .18);
@@ -1169,16 +1172,17 @@ html[data-sf-header] .sf-asides { top: var(--sf-header-h); height: calc(100vh - 
    panel holds sections of the spec and commenting on them is the point. The rail
    returns for it (railShouldShow) and moves clear of the panel here, so the
    composer sits beside the draft rather than under it. */
-body.sf-asides-open #sf-rail { right: calc(var(--sf-side-w) + 8px); }
-body.sf-asides-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
-body.sf-asides-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
+body.sf-asides-open #sf-rail { right: calc(max(50vw, 480px) + 8px); }
+body.sf-asides-open #sf-top { right: calc(max(50vw, 480px) + 18px); }
+body.sf-asides-open #sf-menu { right: calc(max(50vw, 480px) + 18px); }
 
-/* The marker on the source section: how you know a draft is waiting. Placed
-   against the section's top-right corner, outside every block, because a comment
-   anchors to a block's text and chrome inside one would rewrite it. */
+/* The marker: how you know a draft is waiting, and on which block. Positioned
+   by review.js against the block the action was asked for on, and kept outside
+   every block because a comment anchors to a block's text and chrome inside one
+   would rewrite it. */
 section.sf-has-aside { position: relative; }
 .sf-aside-mark {
-  position: absolute; top: 2px; right: -6px; z-index: 2;
+  position: absolute; right: -6px; z-index: 2;
   display: flex; align-items: center; gap: 4px;
   background: var(--sf-panel2); border: 1px solid var(--sf-hairline); color: var(--sf-muted);
   border-radius: 999px; padding: 3px 9px; cursor: pointer;

@@ -74,7 +74,11 @@ test('the marker never goes inside a block, so anchors keep their text', async (
   assert.equal(mark(window).closest('h2, p, li, td, th'), null, 'not inside any block');
 });
 
-test('a section with two asides shows both icons', async (t) => {
+test('a section with two asides gets a marker each', async (t) => {
+  // Was: one marker stacking both icons. That said a draft existed somewhere in
+  // the section and nothing about which paragraph, and it opened whichever aside
+  // happened to be first. One marker per aside, each opening its own, is in
+  // review-aside-marks.test.mjs; this holds the panel's half of it.
   const { window } = await boot(t, {
     body: BODY.replace(
       '<section id="three"',
@@ -82,10 +86,11 @@ test('a section with two asides shows both icons', async (t) => {
       + '<h3>Aside: Go deeper</h3><p>More.</p></section><section id="three"',
     ),
   });
-  const m = mark(window);
-  assert.match(m.textContent, /⊞/);
-  assert.match(m.textContent, /🔎/);
-  assert.equal(panel(window).querySelectorAll('section[data-sf-aside]').length, 2);
+  const all = [...window.document.querySelectorAll('.sf-aside-mark')];
+  assert.equal(all.length, 2, 'one marker per aside');
+  assert.equal(all.map((m) => m.textContent).join(''), '⊞🔎', 'each carrying its own action icon');
+  assert.equal(panel(window).querySelectorAll('section[data-sf-aside]').length, 2,
+    'and both drafts are in the panel, one shown at a time');
 });
 
 test('the marker opens the panel', async (t) => {

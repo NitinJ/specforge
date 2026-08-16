@@ -350,10 +350,10 @@ An **aside** is a section of the spec carrying `data-sf-aside="<sourceSectionId>
 
 | Property | Behaviour |
 | --- | --- |
-| Stored as | A `<section data-sf-aside="…" data-sf-action="…">` in the spec file, with id `<sourceSectionId>-aside-<n>` and an `<h3>` reading *Aside: \<action label>*. Persistence, live reload and survival across sessions are behaviours sections already have. |
+| Stored as | A `<section data-sf-aside="…" data-sf-block="…" data-sf-action="…">` in the spec file, with id `<sourceSectionId>-aside-<n>` and an `<h3>` reading *Aside: \<action label>*. Persistence, live reload and survival across sessions are behaviours sections already have. |
 | Placed | Immediately after the closing tag of its source section. Several asides on one section stack in the order they were run, one per run. |
-| Rendered | Moved at boot into `#sf-asides`, a right-hand panel. The move is a DOM relocation of the same nodes, not a copy, so there is one aside and not two. Each carries a header strip with the action's icon and label from [§8](#menu) and its two buttons. |
-| How you know one exists | A marker at the top right of the source section, carrying the icon of each aside attached to it. Clicking it opens the panel at that aside. The marker is a direct child of the section rather than part of any block, because a comment anchors to a block's text and chrome inside one would change that text and orphan the threads already on it. |
+| Rendered | Moved at boot into `#sf-asides`, a right-hand panel **at least half the viewport wide** (`max(50vw, 480px)`) showing **one aside at a time**. The move is a DOM relocation of the same nodes, not a copy, so there is one aside and not two. Each carries a header strip with the action's icon and label from [§8](#menu) and its two buttons, and the panel header names the action on screen. |
+| How you know one exists | One marker per aside, positioned against **the block the action was asked for on**, read from `data-sf-block`. Clicking it opens the panel on that aside. The marker is a child of the section rather than part of any block, because a comment anchors to a block's text and chrome inside one would change that text and orphan the threads already on it, so it is placed by measurement instead. An aside with no resolvable block falls back to its section. |
 | Commentable | Yes, in the panel. The nodes moved but they are still the document, so `querySelectorAll(BLOCK_SEL)` still finds them. The panel's own chrome is excluded and its content is not, which is the distinction `inUI()` already draws everywhere else. |
 | Actions on it | **&#8592; Import into spec** and **Dismiss**, in the header strip. Both are comments, like every other action ([§9](#how-it-runs)): they send `@agent @import` and `@agent @dismiss` on the aside. |
 | Import | Merges the content into the source section and deletes the aside. The originating action's instruction decides the form, so Visualize imports as a figure and Explain simply as a callout. Threads on the imported blocks travel with them, because they anchor to blocks rather than to the aside. |
@@ -364,9 +364,13 @@ An **aside** is a section of the spec carrying `data-sf-aside="<sourceSectionId>
 
 > **Import goes through the agent rather than the browser.** A button that merged the aside itself would be the browser writing the spec file, which nothing does today and which [§9](#how-it-runs) exists to avoid. The cost is that accepting a draft takes a round trip rather than being instant. The gain beyond the write path is that the agent places the content, so an imported diagram lands as a figure in the right part of the section instead of being appended to the end of it.
 
+#### Why the panel is half the page
+
+It holds one draft at a time and a draft is read rather than skimmed. The output of Visualize is a diagram and the output of Show an example is a worked example, and either at 340px is a thumbnail of a decision rather than the decision. So the panel takes `max(50vw, 480px)` and shows one aside, with the rest reachable through their own markers.
+
 #### The panel shares the right gutter
 
-SpecForge already puts two things there: the comments rail and the comments drawer, and they already take turns, since `railShouldShow()` returns false while the drawer is open. The asides panel joins that rule rather than inventing a third region to fight over the same 340px. Opening it hides the rail, closing it brings the rail back and re-measures, which is the behaviour the drawer has had all along.
+SpecForge already puts two things there: the comments rail and the comments drawer, and they already take turns, since `railShouldShow()` returns false while the drawer is open. The asides panel joins that rule rather than inventing a third region. Opening it hides the rail, closing it brings the rail back and re-measures, which is the behaviour the drawer has had all along. One exception: an open composer overrides the panel, exactly as it already overrides the width rule, because the composer lives in the rail and commenting on a draft is what the panel is for.
 
 #### What the placement still buys
 
@@ -490,7 +494,7 @@ Six of the eleven actions write something new rather than changing what is there
 
 Right-clicking empty space offers the three actions that only make sense over the whole document. It is last because everything before it works without it.
 
-### Stage 6 — Render asides in a panel, and make the agent write one
+### Stage 6 — Render asides in a panel, and make the agent write one (PR 191)
 
 - [x] 6.1 Move `section[data-sf-aside]` into `#sf-asides`, a right-hand panel that joins the rail-and-drawer turn-taking rather than inventing a third region.
       verify: the aside's nodes are inside the panel and not in the flow, opening the panel hides the comments rail, and closing it brings the rail back.
@@ -504,6 +508,17 @@ Right-clicking empty space offers the three actions that only make sense over th
       verify: a test asserts the skill names the command, and that every aside-kind action is listed as writing one.
 
 Two defects found by using the thing. An aside renders in the document instead of beside it, and nothing makes an agent produce one at all: the first Visualize run wrote its diagram straight into the spec with no way to reject it.
+
+### Stage 7 — A panel worth reading, and markers on the right block
+
+- [x] 7.1 The panel is `max(50vw, 480px)` and shows one aside at a time, with its header naming the action on screen.
+      verify: a browser test asserts the panel is at least half the viewport; a unit test asserts clicking one marker shows that aside and hides the others.
+- [x] 7.2 One marker per aside, positioned against the block named in `data-sf-block`, falling back to the section when there is no bid or it no longer resolves. Placed after the block registry reconciles, since a bid means nothing before then, and again on resize.
+      verify: two asides on one section give two markers; an aside with no block, and one naming a block that no longer exists, each still get one; and no marker is inside a block, so the source block's text is unchanged.
+- [x] 7.3 `specforge aside --block <bid>` records it, and the skill passes the bid from the thread's anchor.
+      verify: the attribute is written for a bid-shaped value and dropped for anything else, so a bad value degrades to a section marker rather than an unreachable draft.
+
+The panel shipped at the comments drawer's width, showing every draft stacked in a column, with one marker per section. All three were wrong: a diagram at 340px is a thumbnail, and a marker at the top of a twelve-paragraph section says nothing about which paragraph was asked about.
 
 ## 15 · Design decisions (implementation time)
 

@@ -34,14 +34,18 @@ async function openPanel(page) {
   });
 }
 
-test('the aside is off screen while the panel is shut', { skip: !CHROME }, async () => {
-  // Not `isVisible`: the panel is translated off the right edge rather than
-  // hidden, exactly like the comments drawer, so visibility says yes and
-  // position is what actually answers the question.
+test('the aside is not in the reading flow while the panel is shut', { skip: !CHROME }, async () => {
   await withSpec({ html: HTML }, async ({ page }) => {
-    const off = await page.evaluate(() =>
-      document.getElementById('ap').getBoundingClientRect().left >= innerWidth);
-    assert.equal(off, true, 'the draft is not in the reading flow');
+    const state = await page.evaluate(() => {
+      const aside = document.getElementById('target-aside-1');
+      const ap = document.getElementById('ap');
+      return {
+        inMain: document.querySelector('main').contains(aside),
+        rendered: ap.getBoundingClientRect().height > 0,
+      };
+    });
+    assert.equal(state.inMain, false, 'it was moved out of the document flow');
+    assert.equal(state.rendered, false, 'and the panel shows one at a time, so it is not laid out');
     assert.equal(await page.locator('#target .sf-aside-mark').isVisible(), true, 'the marker is');
   });
 });

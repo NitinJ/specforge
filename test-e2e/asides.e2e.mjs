@@ -48,11 +48,13 @@ test('the aside renders inside the panel, beside its source section', { skip: !C
     assert.ok(geom.asideLeft >= geom.panelLeft - 1, 'the aside is inside the panel');
     assert.ok(geom.asideRight <= geom.panelRight + 1, 'and does not spill out of it');
     assert.ok(Math.abs(geom.panelRight - geom.vw) < 2, 'the panel is pinned to the right edge');
-    // Within a pixel, not exactly: both are transformed elements and
-    // getBoundingClientRect returns sub-pixel floats that differ by 6e-5.
+    // Half the page at least. It holds one draft at a time and a draft is read
+    // rather than skimmed; a diagram in a 340px column is a thumbnail of a
+    // decision. Wider than the comments drawer on purpose, so the two are not
+    // compared.
     assert.ok(
-      Math.abs(geom.panelW - geom.drawerW) < 1,
-      `panel ${geom.panelW} vs drawer ${geom.drawerW}: they share --sf-side-w`,
+      geom.panelW >= geom.vw / 2 - 1,
+      `panel ${geom.panelW} of viewport ${geom.vw}: it should be at least half`,
     );
   });
 });

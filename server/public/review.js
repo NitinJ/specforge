@@ -1432,54 +1432,106 @@
     if (!list.length) return; // no panel until there is something to put in it
     els.asides = create('div', { id: 'sf-asides', class: 'sf-asides' });
     var head = create('div', { class: 'sf-asides-head' });
-    head.appendChild(create('b', {}, 'Asides'));
+    els.asidesTitle = create('b', {}, 'Aside');
+    head.appendChild(els.asidesTitle);
     var close = create('button', { class: 'sf-asides-close', type: 'button', 'aria-label': 'Close' }, '×');
     close.onclick = function (e) { e.stopPropagation(); setAsidesOpen(false); };
     head.appendChild(close);
     els.asides.appendChild(head);
-    var body = create('div', { class: 'sf-asides-body' });
-    els.asides.appendChild(body);
+    els.asidesBody = create('div', { class: 'sf-asides-body' });
+    els.asides.appendChild(els.asidesBody);
     document.body.appendChild(els.asides);
 
     for (var i = 0; i < list.length; i++) {
       decorateAside(list[i]);
-      markSourceOf(list[i]);
-      body.appendChild(list[i]); // appendChild MOVES a node that is already in the DOM
+      list[i].setAttribute('hidden', ''); // one on screen at a time
+      els.asidesBody.appendChild(list[i]); // appendChild MOVES a node already in the DOM
     }
+    placeAsideMarks();
+    window.addEventListener('resize', queueAsideMarks, { passive: true });
   }
+
   /**
-   * The marker on the source section.
+   * One marker per aside, aimed at the block the action was asked for on.
    *
-   * A direct child of the section and never inside a block: a comment anchors to
-   * a block's normalized text, so chrome placed inside one would change that
-   * text and orphan the threads already on it.
+   * `data-sf-block` holds the bid from the comment that produced it, which is
+   * the same identity comment threads anchor by. A marker at the top of a
+   * twelve-paragraph section says a draft exists somewhere in it and nothing
+   * about which paragraph, which is the wrong answer for an action asked for on
+   * one paragraph.
+   *
+   * The marker is never placed inside the block. A comment anchors to a block's
+   * normalized text, so chrome inside one would rewrite that text and orphan
+   * every thread already on it. It is a child of the section instead, positioned
+   * against the block by measurement.
+   *
+   * Runs after the block registry resolves, since a bid means nothing before
+   * then, and again on resize.
    */
-  function markSourceOf(aside) {
-    var src = document.getElementById(aside.getAttribute('data-sf-aside'));
-    if (!src) return; // an aside whose section was deleted: nothing to hang it on
-    var m = src.querySelector(':scope > .sf-aside-mark');
-    if (!m) {
-      m = create('button', {
-        class: 'sf-aside-mark', type: 'button',
-        title: 'Drafts attached to this section',
-      });
-      m.onclick = function (e) { e.stopPropagation(); setAsidesOpen(true, aside); };
-      src.classList.add('sf-has-aside');
-      src.insertBefore(m, src.firstChild);
-    }
-    var a = actionByIdClient(aside.getAttribute('data-sf-action'));
-    m.appendChild(create('span', { class: 'sf-aside-mark-ic' }, a ? a.icon : '◇'));
+  function placeAsideMarks() {
+    if (!els.asidesBody) return;
+    var list = els.asidesBody.querySelectorAll('section[data-sf-aside]');
+    for (var i = 0; i < list.length; i++) placeOneMark(list[i]);
   }
-  function setAsidesOpen(open, scrollTo) {
+  function placeOneMark(aside) {
+    var sectionId = aside.getAttribute('data-sf-aside');
+    var section = document.getElementById(sectionId);
+    if (!section) return; // its section was deleted: nothing to hang it on
+    // The commented block when the registry can resolve it, the section's first
+    // block otherwise. An aside written before --block existed, or written while
+    // the registry was unavailable, still has to be reachable.
+    var target = elForBid(aside.getAttribute('data-sf-block'));
+    if (!target || !section.contains(target)) target = section;
+
+    var m = document.querySelector('.sf-aside-mark[data-sf-for="' + aside.id + '"]');
+    if (!m) {
+      var a = actionByIdClient(aside.getAttribute('data-sf-action'));
+      m = create('button', {
+        class: 'sf-aside-mark', type: 'button', 'data-sf-for': aside.id,
+        title: (a ? a.label : 'Aside') + ' — a draft attached here',
+      });
+      m.appendChild(create('span', { class: 'sf-aside-mark-ic' }, a ? a.icon : '◇'));
+      m.onclick = function (e) { e.stopPropagation(); setAsidesOpen(true, aside); };
+      section.classList.add('sf-has-aside');
+      section.appendChild(m);
+    }
+    // Measured rather than given a CSS anchor: an absolutely positioned sibling
+    // resolves against the nearest positioned ancestor, not against the block
+    // above it, and the block itself cannot host the marker.
+    var sr = section.getBoundingClientRect();
+    var tr = target.getBoundingClientRect();
+    m.style.top = Math.max(0, Math.round(tr.top - sr.top)) + 'px';
+  }
+  var markTick = false;
+  function queueAsideMarks() {
+    if (markTick) return;
+    markTick = true;
+    window.requestAnimationFrame(function () { markTick = false; placeAsideMarks(); });
+  }
+
+  /**
+   * Open the panel on one aside.
+   *
+   * One at a time, filling the panel, rather than every draft stacked in a
+   * scrolling column. A draft is read against the block it came from, and each
+   * has its own marker to open it with.
+   */
+  function setAsidesOpen(open, show) {
     if (!els.asides) return;
+    if (open && show) {
+      var list = els.asidesBody.querySelectorAll('section[data-sf-aside]');
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] === show) list[i].removeAttribute('hidden');
+        else list[i].setAttribute('hidden', '');
+      }
+      var a = actionByIdClient(show.getAttribute('data-sf-action'));
+      els.asidesTitle.textContent = a ? a.label : 'Aside';
+    }
     els.asides.classList.toggle('open', !!open);
     document.body.classList.toggle('sf-asides-open', !!open);
     // The rail and the drawer already take turns in the right gutter. The panel
     // joins that rule rather than overlapping either of them.
     syncRailVisibility();
-    if (open && scrollTo && scrollTo.scrollIntoView) {
-      scrollTo.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
   }
   function decorateAside(sec) {
     if (sec.querySelector(':scope > .sf-aside-head')) return; // built once
@@ -2111,6 +2163,10 @@
     // removed. `retired` is the durable record.
     goneBids = {};
     (out.registry.retired || []).forEach(function (b) { goneBids[b] = true; });
+    // Aside markers aim at a bid, so they cannot know their block until this
+    // runs. buildAsides has already placed them against their sections; this
+    // moves them onto the paragraph the action was actually asked for on.
+    queueAsideMarks();
     return out;
   }
   // Fetch the registry, reconcile, persist if it moved, then render. Any failure
