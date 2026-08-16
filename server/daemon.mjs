@@ -48,6 +48,10 @@ import {
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
 import { renderMd } from '../lib/store-md.mjs';
+import { readSubscriptions, parseShareUrl } from '../lib/store-subscriptions.mjs';
+import { contributeSpec, withdrawSpec } from '../lib/contribute.mjs';
+import { readShareToken } from '../lib/store-share.mjs';
+import { readMeta } from '../lib/meta.mjs';
 import { zip } from '../lib/zip.mjs';
 
 // Publications live for the daemon's lifetime, which is what lets a share
@@ -58,6 +62,20 @@ export const publications = createPublications();
 // The index page lives in index-page.mjs; re-exported here because tests and
 // callers import it from the daemon (the module that serves it).
 export { renderIndex };
+
+/**
+ * Whether a URL names a shared project this machine has joined.
+ *
+ * The membership check behind the contribute route: joining is the deliberate
+ * act that makes a destination trusted, so anything not joined is refused
+ * before a spec is published or a token leaves.
+ */
+function isJoinedProject(url) {
+  const parsed = parseShareUrl(url);
+  if (!parsed) return false;
+  return readSubscriptions()
+    .some((s) => s.origin === parsed.origin && s.token === parsed.token);
+}
 
 function send(res, status, type, body) {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -230,7 +248,7 @@ function serveEvents(id, req, res) {
  * Create the v2 daemon HTTP server (no listen — caller binds).
  * @returns {import('node:http').Server}
  */
-export function createDaemon() {
+export function createDaemon({ publications: pubs = publications } = {}) {
   return http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const path = url.pathname;
@@ -245,7 +263,7 @@ export function createDaemon() {
           // Deleting a project edits the prefs registry, which can be the last
           // thing keeping an empty published project in existence. The sweep
           // runs behind the response; nobody waits on it.
-          .then(() => { publications.sweepProjects(); })
+          .then(() => { pubs.sweepProjects(); })
           .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });
@@ -303,7 +321,7 @@ export function createDaemon() {
       if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
       // The registry, not the file, composes the public URL and decides whether
       // it actually serves: the record holds only a token.
-      return handleMeta(meta[1], res, (id) => publications.shareInfo(id));
+      return handleMeta(meta[1], res, (id) => pubs.shareInfo(id));
     }
     const status = path.match(/^\/api\/spec\/([\w-]+)\/status$/);
     if (status) {
@@ -346,7 +364,7 @@ export function createDaemon() {
         .then((b) => handleOrganize(organize[1], b, res))
         // Moving a spec can empty a published project (a rename is N of these
         // moves). The sweep retires such shares without waiting for a restart.
-        .then(() => { publications.sweepProjects(); })
+        .then(() => { pubs.sweepProjects(); })
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
     const det = path.match(/^\/api\/spec\/([\w-]+)\/detach$/);
@@ -354,21 +372,79 @@ export function createDaemon() {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleDetach(det[1], res);
     }
+    // List this spec in someone else's shared project, or take it back out.
+    // The publish step is in-process here (the CLI asks over HTTP instead);
+    // everything after it is the shared path in lib/contribute.mjs, so the two
+    // callers cannot drift.
+    const contrib = path.match(/^\/api\/spec\/([\w-]+)\/contribute$/);
+    if (contrib) {
+      const specId = contrib[1];
+      if (method !== 'POST' && method !== 'DELETE') {
+        return sendJson(res, 405, { error: 'method not allowed' });
+      }
+      if (!readMeta(specId)) return sendJson(res, 404, { error: `unknown spec ${specId}` });
+      return readJsonBody(req)
+        .then((b) => {
+          const url = b && b.url;
+          // Only a project this machine has joined. Contributing publishes the
+          // spec and hands its token to the destination, so an unrestricted
+          // route would let anything that can reach loopback disclose a spec
+          // capability to an origin nobody here ever agreed to. Joining is the
+          // agreement, and it is a deliberate act on this machine.
+          //
+          // The CLI stays unrestricted on purpose: there, the URL is one a
+          // person pasted, which is the same act as joining.
+          if (!isJoinedProject(url)) {
+            return sendJson(res, 403, {
+              error: 'contribute: not a project this machine has joined; run `specforge join <url>` first',
+            });
+          }
+          if (method === 'DELETE') {
+            return withdrawSpec({
+              specId,
+              projectUrl: url,
+              currentToken: () => readShareToken(specId),
+            }).then((out) => sendJson(res, 200, out));
+          }
+          return contributeSpec({
+            specId,
+            projectUrl: url,
+            title: readMeta(specId).title,
+            owner: b && b.owner,
+            share: () => pubs.share(specId),
+          }).then((out) => sendJson(res, 201, out));
+        })
+        .catch((e) => sendJson(res, 400, { error: e.message }));
+    }
+
     const exp = path.match(/^\/api\/spec\/([\w-]+)\/export$/);
     if (exp) {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleExport(exp[1], res);
     }
+    // The projects this machine has joined, for the spec menu's "Add to a
+    // shared project" picker. The URL is composed here rather than by the page,
+    // because the record holds an origin and a token and the page should not be
+    // in the business of knowing how they combine.
+    if (path === '/api/subscriptions') {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      return sendJson(res, 200, {
+        subscriptions: readSubscriptions().map((s) => ({
+          name: s.name, origin: s.origin, token: s.token, url: `${s.origin}/p/${s.token}`,
+        })),
+      });
+    }
+
     // --- Publications (loopback only; a publication never serves these) ---
     if (path === '/api/shares') {
       if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
       // The origin and the local port are reported alongside the list because
       // this is the surface for answering why a link is not working.
       return sendJson(res, 200, {
-        origin: publications.origin(),
-        localPort: publications.localPort(),
-        shares: publications.list(),
-        projects: publications.listProjects(),
+        origin: pubs.origin(),
+        localPort: pubs.localPort(),
+        shares: pubs.list(),
+        projects: pubs.listProjects(),
       });
     }
     // A project name arrives URL-encoded (names carry spaces); decoded before it
@@ -383,12 +459,12 @@ export function createDaemon() {
       }
       if (method === 'POST') {
         return readJsonBody(req).catch(() => ({}))
-          .then((b) => publications.shareProject(name, { rotate: !!(b && b.rotate) }))
+          .then((b) => pubs.shareProject(name, { rotate: !!(b && b.rotate) }))
           .then((share) => sendJson(res, 201, { ok: true, share }))
           .catch((e) => sendJson(res, 400, { error: e.message }));
       }
       if (method === 'DELETE') {
-        return publications.unshareProject(name)
+        return pubs.unshareProject(name)
           .then((was) => sendJson(res, 200, { ok: true, wasPublished: was }))
           .catch((e) => sendJson(res, 400, { error: e.message }));
       }
@@ -400,12 +476,12 @@ export function createDaemon() {
         // rotate revokes the token already sent and mints a new one, which is
         // the only way to kill a link without unpublishing the spec.
         return readJsonBody(req).catch(() => ({}))
-          .then((b) => publications.share(shareR[1], { rotate: !!(b && b.rotate) }))
+          .then((b) => pubs.share(shareR[1], { rotate: !!(b && b.rotate) }))
           .then((share) => sendJson(res, 201, { ok: true, share }))
           .catch((e) => sendJson(res, 400, { error: e.message }));
       }
       if (method === 'DELETE') {
-        return publications.unshare(shareR[1])
+        return pubs.unshare(shareR[1])
           .then((was) => sendJson(res, 200, { ok: true, wasPublished: was }))
           .catch((e) => sendJson(res, 400, { error: e.message }));
       }
@@ -421,10 +497,10 @@ export function createDaemon() {
       // delete. The delete removes the directory holding the share record, so a
       // share committing anywhere inside it would leave a public URL serving a
       // spec that no longer exists, with nothing on disk left to find it by.
-      return publications.unshareThen(specRes[1], () => handleDelete(specRes[1], res))
+      return pubs.unshareThen(specRes[1], () => handleDelete(specRes[1], res))
         // Deleting the last spec of a published project empties it, the same
         // way an organize move can. Swept behind the response, like the others.
-        .then(() => { publications.sweepProjects(); })
+        .then(() => { pubs.sweepProjects(); })
         .catch((e) => sendJson(res, 500, { error: e.message }));
     }
 
@@ -444,8 +520,8 @@ export function createDaemon() {
         // the GET stays free of side effects.
         return send(res, 200, 'text/html; charset=utf-8',
           renderIndex({
-            shareInfo: (id) => publications.shareInfo(id),
-            projectShareInfo: (name) => publications.projectShareInfo(name),
+            shareInfo: (id) => pubs.shareInfo(id),
+            projectShareInfo: (name) => pubs.projectShareInfo(name),
             project: url.searchParams.get('project'),
           }));
       }

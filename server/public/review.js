@@ -1297,6 +1297,12 @@
     while (t) { if (t === els.menu || t === els.launcher) return true; t = t.parentElement; }
     return false;
   }
+  // Which view the menu is showing, as a counter. Bumped by every rebuild and
+  // every close, so an async request started for one view can tell that the
+  // reader has moved on — pressed Back, or closed and reopened the menu — and
+  // drop its answer rather than painting it over a screen they left.
+  var menuView = 0;
+
   function toggleMenu() { els.menu.classList.contains('open') ? closeMenu() : openMenu(); }
   function openMenu() {
     buildMenuRows();
@@ -1310,6 +1316,9 @@
   }
 
   function buildMenuRows() {
+    // Every rebuild is a new view, so anything still in flight for the old one
+    // is dropped rather than rendered over this.
+    menuView += 1;
     els.menu.innerHTML = '';
     var unresolved = unresolvedCount();
 
@@ -1357,6 +1366,11 @@
     // copy: a published page has no share route behind it, and offering a
     // reviewer a button to re-publish what they are already reading is noise.
     if ((window.SPECFORGE || {}).transport !== 'poll') els.menu.appendChild(shareRow());
+
+    // Add to a shared project — list this spec in a project a teammate shared
+    // with you. Loopback only, for the same reason Share is: the routes are the
+    // daemon's, and a reviewer cannot contribute someone else's spec anywhere.
+    if ((window.SPECFORGE || {}).transport !== 'poll') els.menu.appendChild(contributeRow());
 
     // Footer — one bottom row: the live pill (left), the attached session id
     // (center), and Detach (right). els.live survives the innerHTML reset above
@@ -1583,6 +1597,109 @@
       return row;
     }
     return menuRow('🔗', 'Share this spec', function () { doShare(); });
+  }
+
+  /**
+   * "Add to a shared project" — the menu half of `specforge contribute`.
+   *
+   * The projects offered are the ones this machine has joined, because those
+   * are the only ones it holds a token for. Contributing publishes the spec
+   * under this machine's own token and registers a pointer; the spec itself
+   * never leaves.
+   */
+  function contributeRow() {
+    if (state.contributing) {
+      var busy = menuRow('', 'Adding…', null);
+      busy.disabled = true;
+      busy.querySelector('.sf-row-ic').appendChild(create('span', { class: 'sf-spin', 'aria-hidden': 'true' }));
+      return busy;
+    }
+    return menuRow('📤', 'Add to a shared project…', function (e) {
+      // Replacing the menu's rows detaches the button that was clicked, so the
+      // outside-click handler walking up from it never reaches the menu and
+      // closes it. Every other row either closes the menu on purpose or leaves
+      // it alone; this is the only one that rebuilds it in place.
+      if (e) e.stopPropagation();
+      openContributePicker();
+    });
+  }
+
+  /**
+   * Replace the menu with the list of joined projects.
+   *
+   * A submenu rather than a dialog: the list is short, it is a choice rather
+   * than a form, and the menu is already open where the reader is looking.
+   */
+  function openContributePicker() {
+    var view = ++menuView;
+    var leftView = function () { return view !== menuView; };
+    // buildMenuRows bumps the counter itself, so Back invalidates this request
+    // without having to remember to.
+    var backRow = function () {
+      return menuRow('‹', 'Back', function (e) {
+        if (e) e.stopPropagation();
+        buildMenuRows();
+      });
+    };
+    els.menu.innerHTML = '';
+    els.menu.appendChild(backRow());
+    var loading = menuRow('', 'Loading…', null);
+    loading.disabled = true;
+    els.menu.appendChild(loading);
+
+    fetch('/api/subscriptions').then(function (r) { return r.json(); }).then(function (body) {
+      if (leftView()) return;
+      var subs = (body && body.subscriptions) || [];
+      els.menu.innerHTML = '';
+      els.menu.appendChild(backRow());
+      if (!subs.length) {
+        // Nothing to offer, and the reason is actionable: they have not joined
+        // a project yet. Said here rather than left as an empty list.
+        var none = menuRow('', 'No shared projects joined yet', null);
+        none.disabled = true;
+        els.menu.appendChild(none);
+        els.menu.appendChild(menuRow('', 'Open a teammate’s project link to join one', null)).disabled = true;
+        return;
+      }
+      subs.forEach(function (s) {
+        els.menu.appendChild(menuRow('📁', s.name, function () { doContribute(s); }));
+      });
+    }).catch(function () {
+      // Guarded like the success path: a failure that lands after the reader
+      // left is just as unwelcome as a success, and reporting it over a menu
+      // they returned to is worse, because it names a screen they cannot see.
+      if (leftView()) return;
+      els.menu.innerHTML = '';
+      els.menu.appendChild(backRow());
+      var err = menuRow('', 'Could not load your shared projects', null);
+      err.disabled = true;
+      els.menu.appendChild(err);
+    });
+  }
+
+  function doContribute(sub) {
+    state.contributing = true;
+    buildMenuRows();
+    var finish = function () { state.contributing = false; buildMenuRows(); };
+    postJSON(SPEC_API + '/contribute', { url: sub.url, owner: meAuthor() || undefined })
+      .then(function (r) {
+        if (r.ok) {
+          finish();
+          closeMenu();
+          return flash('Added to “' + sub.name + '”.');
+        }
+        return r.json().then(function (b) {
+          finish();
+          flashErr((b && b.error) || 'Could not add this spec to “' + sub.name + '”.');
+        }).catch(function () {
+          finish();
+          flashErr('Could not add this spec to “' + sub.name + '”.');
+        });
+      })
+      .catch(function () {
+        finish();
+        flashErr('Could not add this spec to “' + sub.name + '”.');
+      });
   }
 
   /** The hostname of a share URL, which is the part worth showing. */
