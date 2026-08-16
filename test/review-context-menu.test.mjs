@@ -194,6 +194,37 @@ test('the menu is review chrome, so clicking it does not act as a page click', a
   assert.equal(card.querySelector('textarea').value, '@tighten ');
 });
 
+test('moving to another block discards the draft, the same as clicking there does', async (t) => {
+  // Deliberate, and not a property of the menu. A composer belongs to one block
+  // and moving it has always dropped what was in it; the two gestures are
+  // asserted together here so that if one is ever made to protect a draft, the
+  // other has to be too. Making right-click safer than left-click on the same
+  // question would be the inconsistency, not the loss.
+  const draftAfter = async (move) => {
+    const { window } = await boot(t);
+    window.document.querySelector('p.p-one').dispatchEvent(
+      new window.MouseEvent('click', { bubbles: true }),
+    );
+    await tick(window);
+    window.document.querySelector('#sf-rail .sf-bub-compose textarea').value = 'my unsaved sentence';
+    await move(window);
+    await tick(window);
+    const ta = window.document.querySelector('#sf-rail .sf-bub-compose textarea');
+    return ta ? ta.value : null;
+  };
+
+  const byClick = await draftAfter((w) => {
+    w.document.querySelector('p.p-two').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  });
+  const byAction = await draftAfter(async (w) => {
+    rightClick(w, 'p.p-two');
+    rowByLabel(w, 'Tighten').click();
+  });
+
+  assert.equal(byClick, '', 'a click on another block drops the draft, as it always has');
+  assert.equal(byAction, '@tighten ', 'and an action there does the same, plus its own seed');
+});
+
 test('two actions on one block ride in one comment', async (t) => {
   const { window } = await boot(t);
   rightClick(window, 'p.p-two');

@@ -1378,7 +1378,14 @@
     var draft = openDraftFor(el);
     openRailCompose(el, '@' + a.id + ' ' + draft);
   }
-  /** What is typed in the composer, if one is open on this block. */
+  /**
+   * What is typed in the composer, if one is open on THIS block.
+   *
+   * A composer open on a different block is left behind with its text, which is
+   * what clicking that other block has always done: a composer belongs to one
+   * block and moving it drops what was in it. Carrying the text across would be
+   * worse, since it was written about the block you left.
+   */
   function openDraftFor(el) {
     if (state.composeEl !== el || !els.rail) return '';
     var ta = els.rail.querySelector('.sf-bub-compose textarea');
