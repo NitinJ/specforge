@@ -3185,12 +3185,17 @@ test('Unshare DELETEs the share', async (t) => {
   const { document } = window;
   document.getElementById('sf-launcher').click();
   document.querySelector('#sf-menu .sf-share-off').click();
-  // The link is already out there and stopping the share breaks it for everyone
-  // with no undo — publishing again mints a new token on a new URL.
+  // The link is already out there, so stopping the share breaks it for everyone
+  // at once and is worth confirming. It is not irreversible, though: the token
+  // outlives an unshare (lib/store-share.mjs, and "byte for byte the same link"
+  // in publications.test.mjs), so sharing again hands the same URL back. The
+  // dialog used to claim the opposite, which made a reversible act read as a
+  // permanent one.
   assert.equal(deletes.length, 0, 'nothing is revoked before the confirm');
   assert.ok(document.getElementById('sf-dc').hasAttribute('open'), 'a confirm dialog');
-  assert.match(document.getElementById('sf-dc-body').textContent, /new link/,
-    'it says the old link will not come back');
+  const body = document.getElementById('sf-dc-body').textContent;
+  assert.match(body, /same link/, 'it says the link comes back');
+  assert.doesNotMatch(body, /new link/, 'and does not claim a new one');
   document.getElementById('sf-dc-ok').click();
   await tick(window);
   assert.ok(deletes.some((u) => /\/share$/.test(u)), 'confirming DELETEs the share');
