@@ -20,6 +20,7 @@ import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
 import { STATUSES } from '../lib/lifecycle.mjs';
 import { readSubscriptions } from '../lib/store-subscriptions.mjs';
+import { groupByCollection } from '../lib/collections.mjs';
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -93,20 +94,8 @@ function groupByProject(specs, ranked = []) {
   };
 }
 
-function groupByCollection(specs, ranked = []) {
-  const groups = new Map();
-  for (const m of specs) {
-    const key = m.collection || '';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(m);
-  }
-  const rank = new Map(ranked.map((name, i) => [name, i]));
-  const at = (k) => (rank.has(k) ? rank.get(k) : Number.MAX_SAFE_INTEGER);
-  const named = [...groups.keys()].filter((k) => k !== '')
-    .sort((a, b) => at(a) - at(b) || a.toLowerCase().localeCompare(b.toLowerCase()));
-  const order = groups.has('') ? [...named, ''] : named;
-  return { order: order.map((k) => ({ key: k, specs: groups.get(k) })), named };
-}
+// groupByCollection now lives in lib/collections.mjs: the public project page
+// groups the same way, and the two must not drift.
 
 /**
  * The one actions affordance, on a spec row and on a collection alike.
