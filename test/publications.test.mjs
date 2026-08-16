@@ -779,6 +779,27 @@ test('with a configured origin the whole URL survives an unshare cycle', () => w
   await p.stopAll();
 }));
 
+// The unshare dialog tells the reader that sharing again gives back the same
+// link. That sentence is only true because of the behaviour above, so it is
+// pinned here: a change that made a re-share mint a new token would leave the
+// UI lying, and the UI test alone cannot see it.
+test('the unshare copy matches what a re-share actually does', () => withHome(async () => {
+  const { readFileSync } = await import('node:fs');
+  seed('c-copy');
+  const { pubs: p } = mkPubs({ publicOrigin: PUB });
+  const first = await p.share('c-copy');
+  await p.unshare('c-copy');
+  const again = await p.share('c-copy');
+  await p.stopAll();
+
+  const client = readFileSync(new URL('../server/public/review.js', import.meta.url), 'utf8');
+  const claimsSame = /Sharing this spec\s*'?\s*\+?\s*'?again gives back the same link/.test(
+    client.replace(/\s+/g, ' '),
+  );
+  assert.equal(again.url === first.url, claimsSame,
+    'the dialog and the registry must agree about whether the link comes back');
+}));
+
 test('a configured origin is reported live while the gateway is up', () => withHome(async () => {
   seed('c-live');
   const { pubs: p } = mkPubs({ publicOrigin: PUB });

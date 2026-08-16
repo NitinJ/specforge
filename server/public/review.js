@@ -1738,14 +1738,18 @@
     }).catch(function () { finish(); flashErr('Could not publish this spec.'); });
   }
 
-  // Asks first. The link is already out there — in someone's tab, in a message —
-  // and stopping the share breaks it for everyone at once, with no undo: the next
-  // publish is a new token on a new URL, so the old link never comes back.
+  // Asks first. The link is already out there, in someone's tab or a message,
+  // and stopping the share breaks it for everyone at once.
+  //
+  // It is reversible, and the dialog says so, because that is what tells the
+  // reader how much care this needs. The token outlives an unshare by design
+  // (lib/store-share.mjs), so sharing again hands back the same URL; rotate is
+  // the only thing that changes it. This text used to claim the opposite.
   function doUnshare() {
     confirmThen({
       title: 'Stop sharing',
-      body: 'Anyone with the link loses access immediately, and publishing again '
-        + 'gives a new link — this one will not work.',
+      body: 'Anyone with the link loses access immediately. Sharing this spec '
+        + 'again gives back the same link.',
       ok: 'Stop sharing',
       onOk: function () {
         fetch(SPEC_API + '/share', { method: 'DELETE' }).then(function (r) {
