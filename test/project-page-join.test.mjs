@@ -54,17 +54,65 @@ test('the page offers the join command, carrying its own URL', () => {
   assert.ok(html.includes(`/p/${TOK}`), 'with this project’s URL in it');
 });
 
-test('the command names the origin the reader actually reached', () => {
+test('the command names the origin the reader actually reached', (t) => {
   seed('Widget themes');
   const html = renderProjectPage('Atelier', TOK);
-  const dom = new JSDOM(html, { url: `https://team.example/p/${TOK}` });
-  const { window } = dom;
-  // The server does not know its own public origin (the tunnel does), so the
-  // page fills it in from where the reader is.
-  const cmd = window.document.getElementById('sf-join-cmd');
-  assert.ok(cmd, 'the command element exists');
-  window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
-  window.close();
+  // runScripts is the whole point: the server reaches a reader through a tunnel
+  // and does not know that origin, so the page completes the command itself.
+  // Without executing it, this test would pass on a page that never did.
+  const { window } = new JSDOM(html, {
+    url: `https://team.example/p/${TOK}`,
+    runScripts: 'dangerously',
+  });
+  t.after(() => window.close());
+  assert.equal(
+    window.document.getElementById('sf-join-cmd').textContent,
+    `specforge join https://team.example/p/${TOK}`,
+  );
+});
+
+test('a different reader gets their own origin, not a hardcoded one', (t) => {
+  seed('Widget themes');
+  const { window } = new JSDOM(renderProjectPage('Atelier', TOK), {
+    url: `http://192.168.1.9:4180/p/${TOK}`,
+    runScripts: 'dangerously',
+  });
+  t.after(() => window.close());
+  assert.match(window.document.getElementById('sf-join-cmd').textContent,
+    /^specforge join http:\/\/192\.168\.1\.9:4180\/p\//);
+});
+
+test('Copy puts the completed command on the clipboard', async (t) => {
+  seed('Widget themes');
+  const { window } = new JSDOM(renderProjectPage('Atelier', TOK), {
+    url: `https://team.example/p/${TOK}`,
+    runScripts: 'dangerously',
+  });
+  t.after(() => window.close());
+  const written = [];
+  window.navigator.clipboard = { writeText: (v) => { written.push(v); return Promise.resolve(); } };
+
+  window.document.getElementById('sf-join-copy').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.deepEqual(written, [`specforge join https://team.example/p/${TOK}`]);
+  assert.equal(window.document.getElementById('sf-join-copy').textContent, 'Copied');
+});
+
+test('with no clipboard the command is selected instead of the button dying', async (t) => {
+  seed('Widget themes');
+  const { window } = new JSDOM(renderProjectPage('Atelier', TOK), {
+    url: `https://team.example/p/${TOK}`,
+    runScripts: 'dangerously',
+  });
+  t.after(() => window.close());
+  // An insecure context has no navigator.clipboard at all.
+  window.navigator.clipboard = undefined;
+
+  window.document.getElementById('sf-join-copy').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const sel = window.getSelection();
+  assert.ok(sel && sel.rangeCount > 0, 'something is selected');
+  assert.match(sel.toString(), /specforge join https:\/\/team\.example/);
 });
 
 test('nothing on the page writes to a reader’s machine', () => {
