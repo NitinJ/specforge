@@ -13,7 +13,9 @@ specforge_id: 543ebb7b12
 
 Specs are checked today by `lib/lint-spec.mjs`, which is already a rule engine: eight named checks returning `{name, ok, detail, advisory}`. Every one is a regex or a DOM count, so it catches a missing `<h1>` and cannot catch a decision with no rationale, a number with no source, or a TL;DR that contradicts the decisions below it.
 
-This adds a second kind of rule to the same runner. A rule is either check (a function, deterministic, free) or ask (a sentence the agent judges against the spec). One registry, one report, one verdict. `specforge verify <id>` runs the checks itself and hands the agent the ask-rules it could not answer.
+This adds a second kind of rule to the same runner. A rule is either check (a function, deterministic, free) or ask (a sentence the agent judges against the spec). One registry, one report, one verdict.
+
+`specforge verify <id>` is a **gate**: PASS or FAIL, exit 0 or 1, and a spec is not finished until it passes. FAIL names every rule the spec breaks and says which kind of work each needs. The agent fixes the mechanical ones, reads the spec against the judged ones, and runs it again with `--judged` naming what it settled. A rule nobody has judged counts against the spec exactly like a broken one, because otherwise nobody judges it.
 
 Rules come from two places: a global list in the repo, and a per-template list living in a `<section data-sf-rules>` inside each template spec, which the scaffolder strips when creating from it. You edit a template's rules the way you edit anything else in SpecForge, and new specs never carry the block.
 
@@ -21,7 +23,7 @@ A template carries one more thing, which is not a rule. The two sections that dr
 
 32 global rules are proposed in [§5](#testing), 14 answered by code and 18 by the agent, with each type's template adding its own on top. Families A to D (27) are reasoned from the language contract and the shape of the shell. Family E (5 global, plus 3 that live in templates because they are scoped to one type) is derived from 274 review comments across 20 of your specs, and each of its rules cites the comments that produced it. The rest of what that corpus asked for became prompts, or is recorded in [§5.E](#testing) as evidence that produced no check.
 
-Verification runs at the end of `create-spec`, fixes what it can in at most three rounds, and reports what it could not. Nothing is stored: this is not a user-visible feature, it exists so specs stop repeating the same mistakes. Running it in a separate agent turns out to be one sentence in the skill rather than a mechanism, because the harness owns subagents and the skill only has to ask.
+The gate runs at the end of `create-spec`, which does not hand over until it passes, capped at three rounds. Nothing is stored: this is not a user-visible feature, it exists so specs stop repeating the same mistakes. Running the judging in a separate agent turns out to be one sentence in the skill rather than a mechanism, because the harness owns subagents and the skill only has to ask.
 
 ## 1 · What exists
 
@@ -151,7 +153,7 @@ lib/rules/global.mjs — the shape
 }
 ```
 
-A rule with `check` is answered by Node. A rule with `ask` is answered by whoever is reading, and `verify` reports it as `pending` rather than passing it. Reporting an unanswered judgement as a pass is the one failure mode that would make the whole system worse than nothing, so the third state exists from the start.
+A rule with `check` is answered by Node. A rule with `ask` is answered by whoever is reading, and until they say so it counts as failing. Reporting an unanswered judgement as a pass is the one failure mode that would make the whole system worse than nothing; treating it as a resting place is the other, because then nobody judges it. The reader reports what they judged with `--judged`, per run, and the gate goes green (D13).
 
 #### Current state, grounded in code
 
@@ -159,7 +161,7 @@ A rule with `check` is answered by Node. A rule with `ask` is answered by whoeve
 | --- | --- | --- |
 | `lib/lint-spec.mjs` | 203 lines. Eight checks inline in `lintSpec`; exports `lintSpec`, `checkLanguage`; has a CLI entrypoint. | The eight move into `lib/rules/` as check-rules with the same names and severities. `lintSpec` becomes a wrapper that runs the check-rules and returns the same `{ok, checks}`. Its CLI keeps working. |
 | `lib/rules/` | does not exist | new `index.mjs` (registry, merge, strip), `global.mjs` ([§5](#testing)), `structural.mjs` (the eight moved checks). |
-| `lib/verify-spec.mjs` | does not exist | new Runs every rule for a spec's type; returns `{ok, pending, verdicts}`. |
+| `lib/verify-spec.mjs` | does not exist | new Runs every rule for a spec's type; returns `{pass, failing, advisories, passed}`. |
 | `lib/specforge-cli.mjs` | `cmdCreate` scaffolds from `templateHtmlFor(type)`; 27 commands. | Add `verify <id> [--json]`. `cmdCreate` strips the rules block and the prompts from the scaffolded HTML, and returns the prompts in its JSON. |
 | `lib/store-templates.mjs` | Seeds and reads `template-<type>`; `templateHtmlFor` returns the HTML. | Export `templateRules(type)` and `templatePrompts(type)`, which parse the rules block and the prompt blocks out of the template spec. |
 | `skills/create-spec/SKILL.md` | Step 4 runs the lint and says not to finish on a failing one. | Step 3 gains the prompts: author each section against its prompt where one exists. Step 4 becomes verify: run it, answer the ask-rules, fix, re-run, at most three rounds. |
@@ -212,8 +214,8 @@ Which interfaces between which components change. Capture every touched boundary
 | Interface | Between | New or changed | Change |
 | --- | --- | --- | --- |
 | `lintSpec(html)` | 5 skills, 8 test files → lint | unchanged | Same signature, same `{ok, checks}`, same eight names and severities. Implemented over the registry instead of inline. This is the compatibility promise the whole refactor hangs on. |
-| `verifySpec(html, type)` | CLI, tests → verifier | new | Returns `{ok, verdicts, pending}`. `verdicts` holds every answered rule; `pending` holds the ask-rules for the agent. `ok` is false while anything blocking fails, and is *not* true while anything blocking is pending. |
-| `specforge verify <id> [--json]` | agent → CLI | new | Human output for reading, `--json` for an agent to consume. Exit 0 when nothing blocking failed, 1 otherwise, so a harness can gate on it without parsing. |
+| `verifySpec(html, type, {judged})` | CLI, tests → verifier | new | Returns `{pass, failing, advisories, passed}`. `failing` is every blocking rule the spec does not satisfy, each marked `kind: 'check'` (a function found a defect, fix it) or `kind: 'judge'` (read the spec against it). `judged` names the ids the caller has judged and found satisfied, for this run only. |
+| `specforge verify <id> [--json] [--judged a,b]` | agent → CLI | new | Human output for reading, `--json` for an agent to consume. Exit 0 when the gate passes and 1 when it does not, so a harness can gate on it without parsing. |
 | `templateRules(type)` | registry → store-templates | new | Parses `data-sf-rules` out of the template spec, returns rule records. Returns `[]` for a template with no block, which is every template today. |
 | `templatePrompts(type)` | create → store-templates | new | Parses every `data-sf-prompt` out of the template spec, returns `[{section, text}]` keyed by the enclosing section's id. Returns `[]` for a template with no prompts. |
 | `stripTemplateBlocks(html)` | create / import → registry | new | Removes the rules section and every prompt block on the way from template to spec. Idempotent, so importing an HTML file that happens to contain either is also safe. |
@@ -226,14 +228,14 @@ You asked for a separate agent if it is easily feasible. It is, and it is not a 
 skills/create-spec/SKILL.md — step 4, the portable sentence
 
 ```
-Run `specforge verify <id> --json`. It answers the mechanical rules itself and
-returns the ask-rules as `pending`.
+The spec is not finished until `specforge verify <id>` exits 0. Run it, fix
+what it names, run it again, repeat.
 
-Judge the pending rules against the spec. **If your harness can run a subagent,
-run this in one**, handing it only the spec path and the pending rules — a fresh
-reader judges a document more honestly than its author, and the author is you.
-If it cannot, judge them yourself, reading the spec from the top as though you
-had not written it.
+A `kind: "judge"` entry is one no function can answer. **If your harness can run
+a subagent, judge it in one**, handing it only the spec path and the rules — a
+fresh reader judges a document more honestly than its author, and the author is
+you. If it cannot, judge them yourself, reading the spec from the top as though
+you had not written it. Name the satisfied ones in `--judged` on the next run.
 ```
 
 That works under Claude Code (the Agent tool), under Codex (its own subagent), and under a harness with neither, where it reads as "do this carefully". No SpecForge code knows which is happening, which is the only way this stays harness-agnostic.
@@ -248,13 +250,13 @@ Nothing is stored. No file is added to the store, no field to `meta.json`, no mi
 
 #### The loop
 
-Three rounds, then stop. The cap exists because an agent that cannot satisfy a rule in three attempts is usually failing to understand the rule rather than the spec, and a fourth attempt turns a bad rule into a long silence.
+Verify returns PASS or FAIL. FAIL names the rules the spec breaks; the agent fixes them, judges the ones no function can answer, and runs it again. The spec is not finished until it exits 0 (D13). Three rounds, then stop: an agent that cannot satisfy a rule in three attempts is usually failing to understand the rule rather than the spec, and a fourth attempt turns a bad rule into a long silence.
 
 ![The verification loop: verify, judge, fix, re-verify, capped at three rounds](2026-08-15-spec-verification-spec.assets/design-2.svg)
 
 <!-- sf:svg id="design-2" -->
 
-*The loop always terminates, and it always ends in a handover. A rule the agent cannot satisfy becomes a line in the report rather than a reason to keep going.*
+*The gate is the exit condition: create-spec hands over on 0, and on nothing else. The three-round cap is an escape hatch, not the normal path, and taking it means saying which rules still fail rather than judging one you do not believe.*
 
 #### Design options considered
 
@@ -464,7 +466,7 @@ Write the reason so it holds up without the Design section beside it. A row that
 | D2 | Where does a template's rule list live? | A `<section data-sf-rules>` in the template spec, stripped by the scaffolder. | Templates are already specs edited through SpecForge, so this needs no new surface. Stripping keeps the block out of every document made from it. |
 | D3 | What is the rule format in a template? | `<li data-sf-rule="id">` holding a sentence. | Adding a rule is writing a sentence in a list, which was the requirement. Anything richer needs a format to learn. |
 | D4 | Can a template override a global rule? | Yes, by id, including `data-sf-severity="off"`. | A deck is allowed lines a design spec is not. Without an off switch the global list has to be written for the loosest type, which makes it useless for the strictest. |
-| D5 | What happens to an unanswered ask-rule? | It reports as `pending`, and a pending blocking rule keeps `ok` false. | Reporting an unjudged rule as a pass is the failure that would make this worse than nothing: it manufactures assurance. |
+| D5 | What happens to an unanswered ask-rule? | It fails the gate, exactly like a rule a function found broken, until the agent judges it and says so with `--judged`. | Reporting an unjudged rule as a pass manufactures assurance, which would make this worse than nothing. Giving it a state of its own that no run can clear is the other half of the same mistake: then nobody judges it, and the gate never closes. See D13. |
 | D6 | When does verification run? | At the end of `create-spec` only, with a three-round fix loop. | Your call. Review rounds already put the agent's output in front of you, so the marginal value there is low and the marginal noise is not. |
 | D7 | Does a separate agent do the judging? | The skill asks for one and degrades to inline when the harness has none. | The harness owns subagents, so this is a sentence rather than a mechanism, and it keeps SpecForge agnostic. The gain is bias, not speed: an agent judging its own spec tends to confirm. |
 | D8 | Is a verification result stored? | No. Nothing on disk, nothing on the index, nothing user-visible. | Your call in review: verification exists so specs stop repeating the same mistakes, not so a spec can display a badge. Its output is a work list the agent acts on before handing over, and it has no reader after that. |
@@ -472,6 +474,7 @@ Write the reason so it holds up without the Design section beside it. A row that
 | D9 | Do the existing advisory checks become blocking? | No. Severities are carried over exactly. | This spec changes where rules live, not how strict the tool is. Bundling a strictness change into a refactor would make both hard to argue with. D11's promotion is the one exception and is a merge artefact, not a strictness change. |
 | D11 | What happens where a corpus rule and a reasoned rule say the same thing? | Merge into the corpus rule, which states the narrow case explicitly. `no-repeated-claims` absorbs `decisions-match-prose`; `prescriptions-name-their-source` absorbs `numbers-have-provenance` and takes its blocking severity. | Your call in review. Two rules that fire on the same defect report it twice and drift apart as one is edited. The corpus rule survives because it carries the evidence, and the merged wording keeps the narrower case so nothing stops being checked. |
 | D12 | Where do corpus rules scoped to one spec type live? | In that type's template block, not the global list. `stages-are-explained-plainly` and `fixes-carry-a-guard` under design-impl and impl, `findings-name-what-they-break` under research. | Your call in review. A rule in the global file needs a PR to tune; a rule in a template is prose you edit in SpecForge, which is what [§6](#observability) exists for. The evidence moves with the rule, so a template rule is as grounded as a global one, and [§5.E](#testing) keeps a pointer so the list is still navigable from one place. |
+| D13 | Is verification enforced, or reported? | Enforced. `verify` returns PASS or FAIL and exits 0 or 1; create-spec is not finished until it exits 0. A rule no function can answer is judged by the agent, which reports that with `--judged`, per run and stored nowhere. | Your call, and it corrects the first cut. That version had a third state, `pending`, that no run could clear, so a real spec could never reach PASS and the skill said to hand over anyway. A check whose result nobody has to act on is a report. An unjudged rule now counts against the spec exactly like a broken one, because otherwise nobody judges it. D2 is unaffected: `--judged` writes nothing down. Two things keep it from being a rubber stamp: an id the type does not have fails the gate rather than being ignored, and a judgement never applies to a rule a function already failed. |
 
 ## 8 · Open questions
 
@@ -480,7 +483,7 @@ Write the reason so it holds up without the Design section beside it. A row that
 - [x] **Q3 — resolved** Should verification block approval? No. The lifecycle stays yours; the tool reports and the author decides. A rule that could stop you approving your own spec would be a rule you route around within a week.
 - [x] **Q4 — resolved** Merged, your call in review. `no-repeated-claims` absorbs `decisions-match-prose`, and `prescriptions-name-their-source` absorbs `numbers-have-provenance`. Both survivors stay in [§5.E](#testing), where their corpus citation is, and each names the narrow case explicitly so the merged wording loses nothing. The B and C tables carry a line saying where the check went, so a reader of those families is not left looking for it. `prescriptions-name-their-source` goes from advisory to blocking: merging a blocking rule into an advisory one would have quietly weakened the number check. See D11.
 - [x] **Q5 — resolved** Moved to the templates, your call in review. Nothing prevented it. The only cost was that [§5](#testing) stops being the single complete list, and that is answered by leaving a pointer in [§5.E](#testing) rather than by keeping the rules there. `stages-are-explained-plainly` and `fixes-carry-a-guard` now sit in the design-impl and impl blocks, `findings-name-what-they-break` in research, each carrying the comment that produced it and marked corpus. A template rule is now as grounded in evidence as a global one, and all three became yours to edit without a PR, which is what [§6](#observability) exists for. See D12.
-- [ ] **Q6 — open** *`verify` can never say PASS on a real spec. Leave it that way, or let a judgement be recorded?* In plain terms: two decisions you already made combine into a third nobody chose. D2 says nothing is stored, and D5 says an unjudged rule is not a pass. Put together, the tool has no way to learn that the agent judged the nine blocking questions, so it reports them as outstanding every time and the run never comes back green. Nothing is broken by this: the agent still reads the spec, still fixes what it finds, and still hands over. But the verdict the tool prints is the same on a spec that was carefully judged and one that was not. Technically, `ok` is `failed.length === 0 && blockingPending.length === 0`, and `blockingPending` is a constant for a given type. Implementation has already made the exit code carry the distinction that matters (`1` a rule failed, `2` judgements outstanding, `0` neither), and every surface now says re-running will not clear the list. This question is whether that is the end state. **A. Leave it.** The report is a work list, not a certificate. Nothing is stored, nothing to invalidate, nothing to go stale. The cost is that no automated gate can ever distinguish a judged spec from an unjudged one, so verification stays a discipline rather than a check. **B. Accept judgements for one run.** `verify --judged a,b,c` takes the ids the agent has judged and clears them for that invocation only. Still nothing on disk, so D2 holds as written. The loop can end green, and the three-round cap gets a real terminating condition. The cost is a flag that an agent can pass without having judged anything, which makes the green run worth exactly as much as the agent's honesty. **C. Store the judgements.** A spec records which rules were judged and when. This is the only option that survives a restart or a second reader, and the only one that overturns D2, which you settled in review with "nothing stored. This is not a user visible thing." My reading: B is small and makes the loop terminate; A is what the design as written says; C reopens a decision you have already made. No default is obviously right, which is why this is here rather than decided.
+- [x] **Q6 — resolved** Verification is a gate: it returns PASS or FAIL, FAIL names the rules the spec breaks, the agent fixes them and runs it again until it passes. Your call: a check whose result nobody has to act on is a report. The first cut had a third state that no run could clear, so it could never reach PASS; that is gone. See D13.
 
 ## 9 · Design alignment
 
@@ -572,17 +575,13 @@ Plain-language summary: templates get to carry their own rules and their own wri
 
 ### Stage 4 — verify, the CLI and the skill (PR 173)
 
-- [ ] 4.1 Add `lib/verify-spec.mjs`: `verifySpec(html, type)` returning `{ok, verdicts, pending}`, where a pending blocking rule keeps `ok` false.
-      <!-- sf:task id="4.1" status="doing" -->
-      verify: a spec passing every check but with ask-rules outstanding reports ok:false, which is D5
-- [ ] 4.2 Add `specforge verify <id> [--json]`, exiting 1 when anything blocking failed.
-      <!-- sf:task id="4.2" status="doing" -->
-      verify: CLI tests cover human and JSON output, both exit codes, and an unknown id
-- [ ] 4.3 Rewrite step 4 of `create-spec` as the verify loop, with the subagent sentence and the three-round cap.
-      <!-- sf:task id="4.3" status="doing" -->
+- [x] 4.1 Add `lib/verify-spec.mjs`: `verifySpec(html, type, {judged})` returning `{pass, failing, advisories, passed}`, where an unjudged blocking rule fails the gate.
+      verify: a spec passing every mechanical check still fails until its judged rules are named, and passes once they are (D5, D13)
+- [x] 4.2 Add `specforge verify <id> [--json] [--judged a,b]`, exiting 1 when the gate does not pass.
+      verify: CLI tests cover human and JSON output, both exit codes, the full loop to exit 0, a judged id that cannot paper over a defect, a mistyped one, and an unknown spec
+- [x] 4.3 Rewrite step 4 of `create-spec` as the verify loop, with the subagent sentence and the three-round cap.
       verify: the skill names the cap, says what to do when the rounds run out, and assumes no particular harness
-- [ ] 4.4 Apply [§14](#doc-updates) and [§15](#test-journeys).
-      <!-- sf:task id="4.4" status="doing" -->
+- [x] 4.4 Apply [§14](#doc-updates) and [§15](#test-journeys).
       verify: the docs mention verify and the rules block; the journeys run green
 
 **Testing:** the runner, the CLI surface and the end-to-end journeys · unit and CLI tests
@@ -636,7 +635,7 @@ What this spec changes that the docs must reflect — the surfaces, not the new 
 | New handlers / APIs | `specforge verify <id> [--json]` in the CLI usage header; `verifySpec`, `allRules`, `templateRules`, `templatePrompts`, `stripTemplateBlocks`. `create`'s JSON gains `prompts`. |
 | New patterns | A rule is a record with either `check` or `ask`, never both. Anyone adding a check to the lint now adds a rule instead, and `lib/rules/` is where they look. Guidance that shapes a section rather than testing it is a prompt in the template, not a rule. |
 | New features | `README.md`: what verification is, that rules come in two kinds, that a type's rules are edited in its template spec, and that a template section can carry a writing prompt. This is the user-facing half. |
-| New invariants | A spec never contains a `data-sf-rules` block or a `data-sf-prompt` block. A pending blocking rule is not a pass. |
+| New invariants | A spec never contains a `data-sf-rules` block or a `data-sf-prompt` block. An unjudged blocking rule is not a pass, and create-spec does not hand over until the gate exits 0. |
 | Skills | `create-spec` step 4 becomes the verify loop. `tune-templates` gains the rules block as something you can tune, which is the natural home for it. `convert-spec` and `migrate-spec` keep calling the lint and are unaffected. |
 | Reference docs | `references/spec-language.md` says the lint cannot see aphorism or unlabelled sentences. That is now half true: it still cannot, but a rule can. The line needs updating rather than deleting. |
 | Removed / renamed | Nothing removed. `lintSpec` keeps its name, signature and output. |
@@ -650,7 +649,7 @@ End-to-end journeys this spec adds or changes. Landed as a task in the final sta
 | Change | Journey | What it exercises |
 | --- | --- | --- |
 | add | A defect is caught and fixed | Create a spec from a template, leave a placeholder in it, run verify, confirm the report names `no-placeholders` and exits 1. Fix it, re-run, confirm exit 0. The whole loop in one test. |
-| add | A pending judgement is not a pass | A spec that satisfies every check-rule still reports `ok:false` while blocking ask-rules are pending. This is D5, and the failure it prevents is the system quietly certifying documents nobody judged. |
+| add | An unjudged rule is not a pass, and a judged one cannot hide a defect | A spec that satisfies every check-rule still fails while its blocking ask-rules are unjudged, and passes once they are named. Naming a check-rule in `--judged` does not clear it. This is D5 and D13, and the two failures it prevents are certifying a document nobody judged, and a gate that can be talked past. |
 | add | Editing a template changes the bar | Add a rule to `template-design`'s block, create a design spec, confirm the new rule is in its verify output and that the spec itself contains no rules block. The feature you asked for, end to end. |
 | add | A template turns a global rule off | The deck template's `no-aphorisms: off` keeps that rule out of a deck's verify output while a design spec still carries it. The override path, which is the likeliest part to end up half-built. |
 | modify | Existing lint journeys | Every current lint assertion keeps passing against the wrapper. Add one that pins the check names, order and advisory flags, so a future rule cannot quietly change what `lintSpec` reports. |
@@ -676,7 +675,8 @@ End-to-end journeys this spec adds or changes. Landed as a task in the final sta
 | --- | --- |
 | **check-rule** | A rule answered by running a function over the spec HTML. Deterministic and free. |
 | **ask-rule** | A rule answered by reading the spec and judging it. Stated as one sentence. |
-| **pending** | An ask-rule nobody has answered yet. Distinct from a pass, deliberately. |
+| **the gate** | `verify`. Returns PASS or FAIL and exits 0 or 1; a spec is not finished until it passes. |
+| **judged** | An ask-rule the agent has read the spec against and found satisfied, reported with `--judged`. Lasts one run, stored nowhere. Until then the rule fails the gate. |
 | **override** | A template rule sharing an id with a global rule, replacing its severity or its text. |
 | **section prompt** | Authoring guidance a template attaches to one section. Never checked, stripped from the spec. |
 
