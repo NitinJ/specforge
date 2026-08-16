@@ -1,8 +1,8 @@
-// The journeys the verification system exists for, end to end through the store.
+// The journeys the gate exists for, end to end through the store.
 //
-// Each one is a story a user or an agent actually lives, asserted from the
-// outside: create → verify → fix → verify. Unit tests can all pass while the
-// pieces fail to add up, which is what these are for.
+// Each one is a story a user or an agent actually lives. Unit tests can all pass
+// while the pieces fail to add up, which is what these are for. The one that
+// matters most is the loop: FAIL, fix, re-run, PASS.
 
 import test, { beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,82 +16,75 @@ import { cleanSpec } from './helpers/spec-corpus.mjs';
 useTempStore({ beforeEach, afterEach }, 'sf-journey-');
 
 const deps = { ensureDaemon: async () => ({ url: 'http://localhost:4180' }), session: '' };
+const failingIds = (r) => r.failing.map((f) => f.id);
 
-test('journey: an agent scaffolds a spec, leaves a placeholder, and verify catches it', async () => {
-  // The scaffold is placeholders by definition, so a spec that has not been
-  // authored yet fails loudly rather than looking finished.
+test('journey: the loop — an agent fixes what the gate names until it passes', async () => {
+  // This is the whole design. Everything else is detail.
   const { id } = await cmdCreate({ title: 'Half-written', type: 'design' }, deps);
-  const before = await cmdVerify({ id });
-  assert.equal(before.ok, false);
-  assert.ok(before.failed.some((v) => v.id === 'no-placeholders'), 'an unauthored scaffold is caught');
 
-  // The agent authors it. One placeholder is missed.
-  const authored = cleanSpec().replace('<h1>A Real Spec</h1>', '<h1>Half-written</h1>')
-    .replace('<p>The store writes', '<p>{{ TODO: write the summary }}</p><p>The store writes');
-  writeFileSync(specHtmlPath(id), authored);
+  // Round 1: an unauthored scaffold is placeholders, so it fails loudly.
+  const r1 = await cmdVerify({ id });
+  assert.equal(r1.pass, false);
+  assert.ok(failingIds(r1).includes('no-placeholders'));
 
-  const after = await cmdVerify({ id });
-  const placeholders = after.failed.find((v) => v.id === 'no-placeholders');
-  assert.ok(placeholders, 'the one that was missed is still caught');
-  assert.match(placeholders.detail, /1 left/);
-  assert.ok(placeholders.fix, 'and the report says what to do about it');
+  // The agent authors it, and misses one placeholder.
+  writeFileSync(specHtmlPath(id), cleanSpec()
+    .replace('<h1>A Real Spec</h1>', '<h1>Half-written</h1>')
+    .replace('<p>The store writes', '<p>{{ TODO: write the summary }}</p><p>The store writes'));
+
+  // Round 2: still failing, and the report says exactly which rule and why.
+  const r2 = await cmdVerify({ id });
+  assert.equal(r2.pass, false);
+  const missed = r2.failing.find((f) => f.id === 'no-placeholders');
+  assert.match(missed.why, /1 left/);
+  assert.ok(missed.fix);
+
+  // The agent fixes it and judges what no function can answer.
+  writeFileSync(specHtmlPath(id), cleanSpec().replace('<h1>A Real Spec</h1>', '<h1>Half-written</h1>'));
+  const r3 = await cmdVerify({ id });
+  assert.equal(r3.failing.every((f) => f.kind === 'judge'), true, 'nothing mechanical left');
+
+  // Round 3: the gate passes, and create-spec is allowed to hand over.
+  const r4 = await cmdVerify({ id, judged: failingIds(r3).join(',') });
+  assert.equal(r4.pass, true);
+  assert.equal(r4.exit, 0);
 });
 
-test('journey: fixing what verify reported clears exactly that rule', async () => {
-  const { id } = await cmdCreate({ title: 'Fixable', type: 'design' }, deps);
+test('journey: a spec cannot be judged past a real defect', async () => {
+  const { id } = await cmdCreate({ title: 'Broken', type: 'design' }, deps);
   writeFileSync(specHtmlPath(id), cleanSpec().replace('<h1>A Real Spec</h1>', '<h1>{{TITLE}}</h1>'));
-
-  const before = await cmdVerify({ id });
-  const failedBefore = before.failed.map((v) => v.id).sort();
-  assert.deepEqual(failedBefore, ['front-matter-filled', 'no-placeholders']);
-
-  writeFileSync(specHtmlPath(id), cleanSpec().replace('<h1>A Real Spec</h1>', '<h1>Fixable</h1>'));
-  const after = await cmdVerify({ id });
-  assert.deepEqual(after.failed, [], 'both cleared, and nothing else broke');
-});
-
-test('journey: mechanically clean is still not done, and the report says why', async () => {
-  const { id } = await cmdCreate({ title: 'Clean but unjudged', type: 'design' }, deps);
-  writeFileSync(specHtmlPath(id), cleanSpec());
   const r = await cmdVerify({ id });
-  assert.deepEqual(r.failed, [], 'every function is satisfied');
-  assert.equal(r.ok, false, 'and the spec is still not verified');
-  const blocking = r.pending.filter((p) => p.severity === 'blocking');
-  assert.ok(blocking.length > 0);
-  for (const p of blocking) assert.ok(p.ask, 'each one hands over a sentence to judge');
+  const claimed = failingIds(r).join(',');
+  const after = await cmdVerify({ id, judged: claimed });
+  assert.equal(after.pass, false, 'claiming to have judged a broken spec must not pass it');
+  assert.ok(failingIds(after).some((x) => x === 'no-placeholders' || x === 'front-matter-filled'));
 });
 
-test('journey: the user edits a rule in the template and the next spec is judged by it', async () => {
+test('journey: the user adds a rule to the template and the next spec must satisfy it', async () => {
   ensureTemplates();
-  const edited = templateHtmlFor('design').replace(
+  writeFileSync(specHtmlPath(templateId('design')), templateHtmlFor('design').replace(
     '\n  </ul>\n</section>',
     '\n    <li data-sf-rule="names-the-owner">The spec names who owns the decision.</li>\n  </ul>\n</section>',
-  );
-  writeFileSync(specHtmlPath(templateId('design')), edited);
+  ));
 
   const { id } = await cmdCreate({ title: 'Judged by a new rule', type: 'design' }, deps);
   writeFileSync(specHtmlPath(id), cleanSpec());
   const r = await cmdVerify({ id });
-  const added = r.pending.find((p) => p.id === 'names-the-owner');
-  assert.ok(added, 'a sentence written into the template is a rule');
-  assert.equal(added.ask, 'The spec names who owns the decision.');
-  assert.equal(added.severity, 'blocking', 'and it blocks by default');
+  const added = r.failing.find((f) => f.id === 'names-the-owner');
+  assert.ok(added, 'a sentence written into the template is a rule the gate enforces');
+  assert.equal(added.why, 'The spec names who owns the decision.');
+  assert.equal(added.kind, 'judge');
 });
 
-test('journey: the user softens a rule and it stops holding up the handover', async () => {
+test('journey: the user turns a rule off and the gate stops asking', async () => {
   ensureTemplates();
-  const edited = templateHtmlFor('design').replace(
+  writeFileSync(specHtmlPath(templateId('design')), templateHtmlFor('design').replace(
     '\n  </ul>\n</section>',
-    '\n    <li data-sf-rule="unknowns-are-written-down" data-sf-severity="advisory"></li>\n  </ul>\n</section>',
-  );
-  writeFileSync(specHtmlPath(templateId('design')), edited);
-
+    '\n    <li data-sf-rule="unknowns-are-written-down" data-sf-severity="off"></li>\n  </ul>\n</section>',
+  ));
   const { id } = await cmdCreate({ title: 'Softened', type: 'design' }, deps);
   writeFileSync(specHtmlPath(id), cleanSpec());
-  const r = await cmdVerify({ id });
-  const rule = r.pending.find((p) => p.id === 'unknowns-are-written-down');
-  assert.equal(rule.severity, 'advisory');
-  assert.ok(rule.ask.length, 'softening kept the sentence rather than blanking it');
+  assert.equal(failingIds(await cmdVerify({ id })).includes('unknowns-are-written-down'), false);
 });
 
 test('journey: a spec never carries the scaffolding a reader should not see', async () => {
@@ -111,10 +104,10 @@ test('journey: the guidance the strip removed still reaches the agent', async ()
   assert.match(openQ.text, /options they can pick from/);
 });
 
-test('journey: an impl spec is judged by the rules its type adds', async () => {
+test('journey: an impl spec is gated by the rules its type adds', async () => {
   const { id } = await cmdCreate({ title: 'A build plan', type: 'design-impl' }, deps);
   writeFileSync(specHtmlPath(id), cleanSpec());
-  const ids = (await cmdVerify({ id })).pending.map((p) => p.id);
+  const ids = failingIds(await cmdVerify({ id }));
   assert.ok(ids.includes('stages-are-pr-sized'));
   assert.ok(ids.includes('stages-are-explained-plainly'), 'including the ones the corpus produced');
   assert.equal(ids.includes('findings-cite-sources'), false, "and not another type's");
