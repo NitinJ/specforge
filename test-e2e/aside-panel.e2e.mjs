@@ -14,7 +14,9 @@ const HTML = baseSpec('Aside panel e2e').replace(
   '<main>',
   '<main>'
   + '<section id="target"><h2>Target</h2><p id="p">The section the aside came from.</p></section>'
-  + '<section id="target-aside-1" data-sf-aside="target" data-sf-action="visualize">'
+  // b2 is #p: the registry assigns bids in document order from b1, and the
+  // shell's own h2 "Target" takes b1. Probed rather than assumed.
+  + '<section id="target-aside-1" data-sf-aside="target" data-sf-block="b2" data-sf-action="visualize">'
   + '<h3>Aside: Visualize</h3><p id="ap">A diagram the agent drafted.</p></section>',
 );
 
@@ -50,15 +52,19 @@ test('the aside is not in the reading flow while the panel is shut', { skip: !CH
   });
 });
 
-test('the marker sits at the top right of its section', { skip: !CHROME }, async () => {
+test('the marker sits beside the block it was asked for, at the section edge', { skip: !CHROME }, async () => {
+  // Was: near the top of the section. That was true when one marker stood for
+  // every draft on a section; now each marker names one block.
   await withSpec({ html: HTML }, async ({ page }) => {
     const geom = await page.evaluate(() => {
       const s = document.getElementById('target').getBoundingClientRect();
+      const b = document.getElementById('p').getBoundingClientRect();
       const m = document.querySelector('#target .sf-aside-mark').getBoundingClientRect();
-      return { sTop: s.top, sRight: s.right, mTop: m.top, mRight: m.right };
+      return { sTop: s.top, sRight: s.right, bTop: b.top, mTop: m.top, mRight: m.right };
     });
-    assert.ok(Math.abs(geom.mTop - geom.sTop) < 30, 'near the top of the section');
-    assert.ok(Math.abs(geom.mRight - geom.sRight) < 40, 'and at its right edge');
+    assert.ok(Math.abs(geom.mTop - geom.bTop) < 24, 'level with its block');
+    assert.ok(geom.bTop - geom.sTop > 20, 'and that block is not the top of the section');
+    assert.ok(Math.abs(geom.mRight - geom.sRight) < 40, 'at the section edge, out of the text');
   });
 });
 
@@ -102,6 +108,47 @@ test('a paragraph inside the panel is a real hit target', { skip: !CHROME }, asy
     assert.equal(probe.ok, true, `covered by ${probe.hit}, box ${JSON.stringify(probe.box)}`);
     await page.click('#ap');
     await page.waitForSelector('#sf-rail .sf-bub-compose');
+  });
+});
+
+test('the composer stays on screen with the panel open, at every width', { skip: !CHROME }, async () => {
+  // Shifting the rail clear of a half-viewport panel pushes it off the left edge
+  // on a narrow window: an input you cannot see, which is the dead end
+  // railShouldShow exists to refuse. Below 1100 the rail stays put and overlays
+  // the panel instead.
+  for (const width of [1600, 1280, 1100, 900, 700]) {
+    await withSpec({ html: HTML }, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openPanel(page);
+      await page.click('#ap');
+      await page.waitForSelector('#sf-rail .sf-bub-compose');
+      const box = await page.evaluate(() => {
+        const r = document.querySelector('#sf-rail .sf-bub-compose').getBoundingClientRect();
+        return { left: r.left, right: r.right, vw: innerWidth };
+      });
+      assert.ok(box.left >= -1, `composer off the left edge at ${width}: left ${box.left}`);
+      assert.ok(box.right <= box.vw + 1, `composer off the right edge at ${width}: right ${box.right}`);
+    });
+  }
+});
+
+test('markers follow their block when the layout reflows', { skip: !CHROME }, async () => {
+  // Positioned by measurement, so a reflow that fires no resize event leaves
+  // them pointing at the wrong paragraph. The width slider is the everyday case.
+  await withSpec({ html: HTML }, async ({ page }) => {
+    const offset = () => page.evaluate(() => {
+      const m = document.querySelector('.sf-aside-mark').getBoundingClientRect();
+      const b = document.getElementById('p').getBoundingClientRect();
+      return Math.abs(m.top - b.top);
+    });
+    assert.ok(await offset() < 24, 'aimed at its block to begin with');
+
+    // Narrow the content column the way the width control does, with no resize.
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty('--maxw', '520px');
+    });
+    await page.waitForTimeout(300); // the ResizeObserver fires on the next frame
+    assert.ok(await offset() < 24, 'still aimed at it after the column re-wrapped');
   });
 });
 

@@ -1172,9 +1172,20 @@ html[data-sf-header] .sf-asides { top: var(--sf-header-h); height: calc(100vh - 
    panel holds sections of the spec and commenting on them is the point. The rail
    returns for it (railShouldShow) and moves clear of the panel here, so the
    composer sits beside the draft rather than under it. */
-body.sf-asides-open #sf-rail { right: calc(max(50vw, 480px) + 8px); }
-body.sf-asides-open #sf-top { right: calc(max(50vw, 480px) + 18px); }
-body.sf-asides-open #sf-menu { right: calc(max(50vw, 480px) + 18px); }
+/* Only where the shift leaves room for the rail. The rail is 272px wide, so
+   below this the shift would push the composer off the left edge: an input you
+   cannot see, which is the dead end railShouldShow already refuses. Under it the
+   rail stays put and overlays the panel instead. That overlays more of a narrow
+   page, and that beats a dead end — the same trade the composer already makes
+   against the width rule. */
+@media (min-width: 1100px) {
+  body.sf-asides-open #sf-rail { right: calc(max(50vw, 480px) + 8px); }
+  body.sf-asides-open #sf-top { right: calc(max(50vw, 480px) + 18px); }
+  body.sf-asides-open #sf-menu { right: calc(max(50vw, 480px) + 18px); }
+}
+/* The composer overlays the panel on a narrow window, so it has to sit above it
+   rather than behind. */
+body.sf-asides-open #sf-rail { z-index: 46; }
 
 /* The marker: how you know a draft is waiting, and on which block. Positioned
    by review.js against the block the action was asked for on, and kept outside

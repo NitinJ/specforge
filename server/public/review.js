@@ -1448,7 +1448,19 @@
       els.asidesBody.appendChild(list[i]); // appendChild MOVES a node already in the DOM
     }
     placeAsideMarks();
+    // A marker is positioned by measurement, so it detaches from its block on
+    // any reflow. Resize alone misses most of them: the width slider,
+    // fit-to-width, the TOC collapsing, a web font arriving late. The rail hit
+    // exactly this and solved it in buildRail; the same three hooks apply here.
     window.addEventListener('resize', queueAsideMarks, { passive: true });
+    if (window.ResizeObserver) {
+      var ro = new window.ResizeObserver(queueAsideMarks);
+      try { ro.observe(widthContainer()); } catch (e) {}
+      try { ro.observe(document.documentElement); } catch (e) {}
+    }
+    if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+      document.fonts.ready.then(queueAsideMarks).catch(function () {});
+    }
   }
 
   /**
