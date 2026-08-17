@@ -17,7 +17,7 @@ const HTML = baseSpec('Aside panel e2e').replace(
   // b2 is #p: the registry assigns bids in document order from b1, and the
   // shell's own h2 "Target" takes b1. Probed rather than assumed.
   + '<section id="target-aside-1" data-sf-aside="target" data-sf-block="b2" data-sf-action="visualize">'
-  + '<h3>Aside: Visualize</h3><p id="ap">A diagram the agent drafted.</p></section>',
+  + '<p id="ap">A diagram the agent drafted.</p></section>',
 );
 
 /**
@@ -64,7 +64,9 @@ test('the marker sits beside the block it was asked for, at the section edge', {
     });
     assert.ok(Math.abs(geom.mTop - geom.bTop) < 24, 'level with its block');
     assert.ok(geom.bTop - geom.sTop > 20, 'and that block is not the top of the section');
-    assert.ok(Math.abs(geom.mRight - geom.sRight) < 40, 'at the section edge, out of the text');
+    // Horizontal placement is its own test now: the marker moved off the section
+    // edge and into the gutter, so "within 40px of the edge" no longer holds.
+    assert.ok(geom.mRight > geom.sRight, 'and clear of the text rather than on it');
   });
 });
 
@@ -149,6 +151,66 @@ test('markers follow their block when the layout reflows', { skip: !CHROME }, as
     });
     await page.waitForTimeout(300); // the ResizeObserver fires on the next frame
     assert.ok(await offset() < 24, 'still aimed at it after the column re-wrapped');
+  });
+});
+
+test('the marker sits in the gutter, clear of the text and the rail', { skip: !CHROME }, async () => {
+  // It used to hang off the section's own right edge, which put it against the
+  // prose on a wide window. The gutter between the document and the comments
+  // rail is the strip this layout already reserves for margin furniture.
+  await withSpec({ html: HTML }, async ({ page }) => {
+    await page.waitForSelector('.sf-aside-mark');
+    const geom = await page.evaluate(() => {
+      const m = document.querySelector('.sf-aside-mark').getBoundingClientRect();
+      const main = document.querySelector('main').getBoundingClientRect();
+      return { mLeft: m.left, mRight: m.right, mW: m.width, mH: m.height, contRight: main.right, vw: innerWidth };
+    });
+    assert.ok(geom.mLeft >= geom.contRight, `marker overlaps the text: ${geom.mLeft} < ${geom.contRight}`);
+    assert.ok(geom.mRight <= geom.vw, 'and stays inside the window');
+  });
+});
+
+test('the marker is a circle, not a pill', { skip: !CHROME }, async () => {
+  // A pill in a spec is a status tag, and a control borrowing that shape reads
+  // as one.
+  await withSpec({ html: HTML }, async ({ page }) => {
+    await page.waitForSelector('.sf-aside-mark');
+    const box = await page.evaluate(() => {
+      const el = document.querySelector('.sf-aside-mark');
+      const r = el.getBoundingClientRect();
+      return { w: r.width, h: r.height, radius: getComputedStyle(el).borderTopLeftRadius };
+    });
+    assert.equal(Math.round(box.w), Math.round(box.h), `not square: ${box.w}x${box.h}`);
+    assert.ok(parseFloat(box.radius) >= box.w / 2 - 1, `not round: radius ${box.radius} on ${box.w}px`);
+  });
+});
+
+test('a comment on a draft sits beside the marker while the panel is shut', { skip: !CHROME }, async () => {
+  // The thread anchors to a block inside the panel, and the panel is translated
+  // off screen when shut, so the bubble used to land at a height unrelated to
+  // the document. The marker is where the draft is from the page's point of
+  // view, so that is what it lines up with.
+  await withSpec({ html: HTML }, async ({ page, base, id }) => {
+    await page.evaluate(async (u) => {
+      await fetch(u, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          body: 'the arrow is backwards',
+          anchor: { block: { index: 0, tag: 'P', text: 'A diagram the agent drafted.', sectionPath: ['target-aside-1'] } },
+        }),
+      });
+    }, `${base}/api/spec/${id}/comments`);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#sf-rail .sf-bub');
+    await page.waitForSelector('.sf-aside-mark');
+
+    const gap = await page.evaluate(() => {
+      const bub = document.querySelector('#sf-rail .sf-bub').getBoundingClientRect();
+      const mark = document.querySelector('.sf-aside-mark').getBoundingClientRect();
+      return Math.abs(bub.top - mark.top);
+    });
+    assert.ok(gap < 120, `the bubble is ${Math.round(gap)}px from the marker it belongs to`);
   });
 });
 

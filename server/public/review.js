@@ -268,6 +268,14 @@
   // never re-renders when a slide changes.
   var SLIDE_SEL = 'main > section[data-sf-section]';
   var DECK_INSET = 16;
+  // The aside marker: a circle, sized here because placement measures it and CSS
+  // draws it, and the two have to agree. Circular rather than a pill so it does
+  // not read as one of the spec's own status tags.
+  var MARK_W = 26;
+  // Clearance on each side of the marker inside its gutter. Small on purpose:
+  // the gutter is reserved as MARK_W + 2 * MARK_GAP, and every pixel of it comes
+  // out of the window the rail is trying to fit in.
+  var MARK_GAP = 2;
 
   // The vendored highlighter's path. Up here for the same reason as the three
   // above: initHighlight() runs from boot(), at the readyState check below, and
@@ -1421,6 +1429,10 @@
   function runAction(a, el) {
     if (a.id === 'copy_link') return copyAnchorLink(el);
     if (a.id === 'delete') return deleteAsideSection(el);
+    // Import carries no qualifier worth typing: you have read the draft and you
+    // want it in. Sending it straight saves a composer nobody adds to, and the
+    // comment it writes is the same one the composer would have.
+    if (a.id === 'import') return sendActionComment(a, el);
     // Whatever is already in the composer for this block rides along. You are
     // mid-thought and decide the agent should draw it; losing the sentence you
     // typed is the wrong answer, and the action reading first is the right
@@ -1459,7 +1471,10 @@
     if (!list.length) return; // no panel until there is something to put in it
     els.asides = create('div', { id: 'sf-asides', class: 'sf-asides' });
     var head = create('div', { class: 'sf-asides-head' });
-    els.asidesTitle = create('b', {}, 'Aside');
+    // "Aside" is what the code calls this and not what a reader calls it: they
+    // asked an action to do something and this holds what came back. The header
+    // carries the action's own label as soon as one is shown.
+    els.asidesTitle = create('b', {}, 'Draft');
     head.appendChild(els.asidesTitle);
     var close = create('button', { class: 'sf-asides-close', type: 'button', 'aria-label': 'Close' }, '×');
     close.onclick = function (e) { e.stopPropagation(); setAsidesOpen(false); };
@@ -1516,9 +1531,56 @@
   function placeAsideMarks() {
     if (!els.asidesBody) return;
     var list = els.asidesBody.querySelectorAll('section[data-sf-aside]');
-    for (var i = 0; i < list.length; i++) placeOneMark(list[i]);
+    // Tops already taken, per section. Two drafts on the same block — or two
+    // that both fall back to their section because neither resolved a bid —
+    // otherwise land on the same pixel, and only the one on top can be clicked,
+    // so the other draft cannot be opened at all. Stacked downward instead, in
+    // the order they were written.
+    var taken = {};
+    for (var i = 0; i < list.length; i++) placeOneMark(list[i], taken);
   }
-  function placeOneMark(aside) {
+  /**
+   * The marker for an aside, found by walking rather than by selector.
+   *
+   * A section id is author-written and may hold a quote or a bracket, which an
+   * attribute selector built by concatenation would either throw on or match
+   * wrongly.
+   */
+  function markFor(asideId) {
+    var all = document.querySelectorAll('.sf-aside-mark');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute('data-sf-for') === asideId) return all[i];
+    }
+    return null;
+  }
+  /**
+   * Where the marker sits across the page: centred in the gutter between the
+   * document and the comments rail.
+   *
+   * It used to hang off the section's own right edge, which put it against the
+   * text on a wide window and over it on a narrow one. The gutter is the strip
+   * this document already reserves for margin furniture, and the marker is
+   * small enough to share it with the rail rather than displace anything.
+   */
+  function markLeftIn(section) {
+    var sr = section.getBoundingClientRect();
+    var contRight = sr.right;
+    try { contRight = widthContainer().getBoundingClientRect().right || sr.right; } catch (e) {}
+    var vw = window.innerWidth || 0;
+    var railLeft = vw || contRight + 2 * MARK_W;
+    if (els.rail && !els.rail.hasAttribute('hidden')) {
+      var rr = els.rail.getBoundingClientRect();
+      if (rr.width) railLeft = rr.left;
+    }
+    var centre = contRight + (railLeft - contRight) / 2;
+    // Clear of the text at one end and inside the window at the other. A gutter
+    // too narrow to hold it means overlapping the rail, never the prose.
+    var min = contRight + MARK_W / 2 + MARK_GAP;
+    if (centre < min) centre = min;
+    if (vw && centre > vw - MARK_W / 2 - MARK_GAP) centre = vw - MARK_W / 2 - MARK_GAP;
+    return Math.round(centre - MARK_W / 2 - sr.left);
+  }
+  function placeOneMark(aside, taken) {
     var sectionId = aside.getAttribute('data-sf-aside');
     var section = document.getElementById(sectionId);
     if (!section) return; // its section was deleted: nothing to hang it on
@@ -1528,12 +1590,12 @@
     var target = elForBid(aside.getAttribute('data-sf-block'));
     if (!target || !section.contains(target)) target = section;
 
-    var m = document.querySelector('.sf-aside-mark[data-sf-for="' + aside.id + '"]');
+    var m = markFor(aside.id);
     if (!m) {
       var a = actionByIdClient(aside.getAttribute('data-sf-action'));
       m = create('button', {
         class: 'sf-aside-mark', type: 'button', 'data-sf-for': aside.id,
-        title: (a ? a.label : 'Aside') + ' — a draft attached here',
+        title: (a ? a.label : 'Draft') + ' — a draft attached here',
       });
       m.appendChild(create('span', { class: 'sf-aside-mark-ic' }, a ? a.icon : '◇'));
       m.onclick = function (e) { e.stopPropagation(); setAsidesOpen(true, aside); };
@@ -1545,7 +1607,18 @@
     // above it, and the block itself cannot host the marker.
     var sr = section.getBoundingClientRect();
     var tr = target.getBoundingClientRect();
-    m.style.top = Math.max(0, Math.round(tr.top - sr.top)) + 'px';
+    var top = Math.max(0, Math.round(tr.top - sr.top));
+    if (taken) {
+      var used = taken[sectionId] || (taken[sectionId] = []);
+      // Nudged down past anything already sitting where this one wants to be,
+      // and re-checked, since the nudge can land on a third marker.
+      for (var n = 0; n < used.length; n++) {
+        if (Math.abs(used[n] - top) < MARK_W + 2) { top = used[n] + MARK_W + 4; n = -1; }
+      }
+      used.push(top);
+    }
+    m.style.top = top + 'px';
+    m.style.left = markLeftIn(section) + 'px';
   }
   var markTick = false;
   function queueAsideMarks() {
@@ -1570,7 +1643,7 @@
         else list[i].setAttribute('hidden', '');
       }
       var a = actionByIdClient(show.getAttribute('data-sf-action'));
-      els.asidesTitle.textContent = a ? a.label : 'Aside';
+      els.asidesTitle.textContent = a ? a.label : 'Draft';
     }
     els.asides.classList.toggle('open', !!open);
     document.body.classList.toggle('sf-asides-open', !!open);
@@ -1591,7 +1664,7 @@
       title: 'Fold this draft away',
     });
     toggle.innerHTML = '<span class="sf-aside-ic">' + esc(a ? a.icon : '◇') + '</span>' +
-      '<span class="sf-aside-label">' + esc(a ? a.label : 'Aside') + '</span>';
+      '<span class="sf-aside-label">' + esc(a ? a.label : 'Draft') + '</span>';
     toggle.onclick = function (e) {
       e.stopPropagation();
       var shut = sec.classList.toggle('sf-aside-shut');
@@ -1653,6 +1726,31 @@
           .catch(function () { flashErr('Could not delete that draft.'); });
       },
     });
+  }
+
+  /**
+   * Post an action's comment without opening the composer.
+   *
+   * The same comment the composer would have sent, `@agent @<id>`, on the same
+   * anchor. For an action with nothing to add before sending, the composer is a
+   * second click that changes nothing.
+   */
+  function sendActionComment(a, el) {
+    postJSON(API, withAuthor({ anchor: { block: blockAnchor(el) }, body: '@agent @' + a.id }))
+      .then(function (r) {
+        if (!r.ok) return flashErr('Could not add the comment.');
+        // The panel closes, as it does on a delete: the draft has been answered
+        // and there is nothing left to read in it. It also uncovers the rail,
+        // which the panel hides, so the comment that was just written is visible
+        // rather than filed somewhere behind the thing you were reading.
+        setAsidesOpen(false);
+        // Added, not sent: it joins the batch you are building, and goes to the
+        // agent when you send that batch, like every other comment. Saying so
+        // matters, because the button reads as though it acts on its own.
+        flash('Import requested. Send your review to run it.');
+        load();
+      })
+      .catch(function () { flashErr('Could not add the comment.'); });
   }
 
   function copyAnchorLink(el) {
@@ -2320,11 +2418,32 @@
   // Those are what the sidebar quotes, what a comment written by an older
   // client carries, and what an older client would read if this one were rolled
   // back — so they are never dropped in favour of the id.
+  /**
+   * A block's own text, with the review layer's chrome taken out.
+   *
+   * SpecForge injects controls INTO the document: a draft carries a header strip
+   * holding the action's label and its two buttons, and a section carries the
+   * markers for its drafts. `textContent` counts all of it, so a comment on a
+   * draft anchored to "⊞Visualize← Import into specDelete …" — words the reader
+   * never wrote, that move when the buttons are renamed, and that the reconcile
+   * then tries to match a block by.
+   *
+   * Cloned only when there is chrome to remove, so the ordinary block is read
+   * exactly as before.
+   */
+  var CHROME_SEL = '.sf-aside-head, .sf-aside-mark';
+  function blockText(el) {
+    if (!el.querySelector || !el.querySelector(CHROME_SEL)) return norm(el.textContent);
+    var copy = el.cloneNode(true);
+    var chrome = copy.querySelectorAll(CHROME_SEL);
+    for (var i = 0; i < chrome.length; i++) chrome[i].parentNode.removeChild(chrome[i]);
+    return norm(copy.textContent);
+  }
   function blockAnchor(el) {
     var a = {
       index: commentableBlocks().indexOf(el),
       tag: el.tagName,
-      text: norm(el.textContent).slice(0, 400),
+      text: blockText(el).slice(0, 400),
       sectionPath: sectionPathOf(el),
     };
     var bid = bidOf(el);
@@ -3087,6 +3206,23 @@
   // edge) rather than sliding off it. The rail's own CSS width stays the single
   // source of truth for how wide it is.
   var RAIL_MARGIN = 8;
+  /**
+   * The space kept between the document and the rail.
+   *
+   * Normally 8px, which is a margin rather than a gutter: the rail effectively
+   * starts where the text ends. A spec with drafts needs somewhere to put their
+   * markers, and 8px cannot hold a 26px circle, so the rail moves over by enough
+   * to open one. Widened only where there is something to put in it, so a spec
+   * with no drafts is laid out exactly as before.
+   */
+  function railGutter() {
+    if (!document.querySelector('.sf-aside-mark')) return RAIL_MARGIN;
+    // Exactly what a marker needs and no more. Asking for the margin PLUS the
+    // marker overshot what the window could give, the rail was clamped back, and
+    // the marker ended up centred against a gap narrower than the one it was
+    // placed for — touching the rail it was supposed to sit clear of.
+    return Math.max(RAIL_MARGIN, MARK_W + 2 * MARK_GAP);
+  }
   function positionRailX() {
     var right = 0;
     // A deck fills its stage edge to edge — there is no gutter beside the slide
@@ -3111,7 +3247,7 @@
     // the width in review.css.
     var railW = els.rail.offsetWidth || 272;
     var vw = window.innerWidth || 0;
-    var left = right + RAIL_MARGIN;
+    var left = right + railGutter();
     var maxLeft = vw - railW - RAIL_MARGIN;
     if (vw && left > maxLeft) left = maxLeft;
     if (left < RAIL_MARGIN) left = RAIL_MARGIN;
@@ -3119,21 +3255,47 @@
     els.rail.style.right = 'auto';
   }
 
+  /**
+   * The element a bubble measures against.
+   *
+   * A thread on a draft anchors to a block inside the panel. The panel is
+   * translated off screen when closed and scrolls on its own when open, so that
+   * block's rect says nothing about where the draft sits in the document, and
+   * the bubble landed at an unrelated height. The marker is where the draft is
+   * from the document's point of view, so it stands in whenever the block itself
+   * is not on screen — closed panel, or another draft showing in it.
+   */
+  function measureAnchor(el) {
+    if (!el || !el.closest) return el;
+    var aside = el.closest('section[data-sf-aside]');
+    if (!aside) return el;
+    var shown = els.asides && els.asides.classList.contains('open') && !aside.hasAttribute('hidden');
+    if (shown) return el;
+    return markFor(aside.id) || el;
+  }
+  function anchorTop(b) {
+    var el = b._anchor && measureAnchor(b._anchor);
+    return el ? el.getBoundingClientRect().top : 0;
+  }
+
   function positionRail() {
     if (!els.rail) return;
     syncRailVisibility();
-    if (els.rail.hasAttribute('hidden')) return; // nothing to measure while off
-    positionRailX();
+    var railOff = els.rail.hasAttribute('hidden');
+    // The rail first, then the markers: they are placed in the gap between the
+    // document and the rail, so the rail has to have settled before there is a
+    // gap to measure. Done from here rather than from a listener of their own,
+    // because this already runs on every reflow that can move either.
+    if (!railOff) positionRailX();
+    placeAsideMarks();
+    if (railOff) return; // nothing more to measure while it is off
     var bubs = Array.prototype.filter.call(els.rail.children, function (b) {
       return b.classList.contains('sf-bub');
     });
     if (!bubs.length) { renderOffscreenChips(0, 0); return; }
     var vp = railViewport();
     var items = bubs.map(function (b) {
-      return {
-        top: (b._anchor ? b._anchor.getBoundingClientRect().top : 0) - vp.top,
-        h: b.offsetHeight,
-      };
+      return { top: anchorTop(b) - vp.top, h: b.offsetHeight };
     });
     var focusIdx = -1;
     bubs.forEach(function (b, i) { if (b.getAttribute('data-focus') === '1') focusIdx = i; });
@@ -3209,9 +3371,14 @@
       var best = null, bestTop = 0;
       Array.prototype.forEach.call(els.rail.children, function (b) {
         if (!b._anchor) return; // the chips themselves
-        var top = b._anchor.getBoundingClientRect().top - vp.top;
+        // Measured, and scrolled to, through the same resolver the layout used:
+        // scrolling to a block inside a closed panel moves nothing the reader
+        // can see, and counting it in one place while navigating to another
+        // strands it.
+        var el = measureAnchor(b._anchor);
+        var top = el.getBoundingClientRect().top - vp.top;
         if (offscreenDir(top, vp) !== dir) return;
-        if (!best || Math.abs(top) < Math.abs(bestTop)) { best = b._anchor; bestTop = top; }
+        if (!best || Math.abs(top) < Math.abs(bestTop)) { best = el; bestTop = top; }
       });
       if (best && best.scrollIntoView) best.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };

@@ -18,16 +18,30 @@ const SPEC = `<!doctype html><html data-sf-spec-status="draft"><head><title>T</t
   <section id="one"><h2>1 · One</h2><p>The first section.</p></section>
   <section id="two"><h2>2 · Two</h2><p>The second section.</p></section>
   <section id="two-aside-1" data-sf-aside="two" data-sf-action="visualize">
-    <h3>Aside: Visualize</h3><p>A diagram the agent drafted.</p>
+    <p>A diagram the agent drafted.</p>
   </section>
   <section id="three"><h2>3 · Three</h2><p>The third section.</p></section>
 </main>
 </body></html>`;
 
 test('an aside exports in place, directly under the section it belongs to', () => {
+  // Titled by the action that wrote it. The spec stores no heading on a draft,
+  // because on screen the label comes from `data-sf-action` and a stored one put
+  // the same words there twice. Markdown is flat and has no panel to title the
+  // block, so the exporter derives it.
   const { markdown } = specToMarkdown(SPEC, { id: 'x', title: 'Export Spec' });
   const headings = [...markdown.matchAll(/^#{2,3} (.+)$/gm)].map((m) => m[1].trim());
-  assert.deepEqual(headings, ['1 · One', '2 · Two', 'Aside: Visualize', '3 · Three']);
+  assert.deepEqual(headings, ['1 · One', '2 · Two', 'Visualize', '3 · Three']);
+});
+
+test('a draft whose action the registry lost exports under its id', () => {
+  // Never unlabelled: the id is at least true, where a guessed label is not.
+  const { markdown } = specToMarkdown(
+    SPEC.replace('data-sf-action="visualize"', 'data-sf-action="visualise"'),
+    { id: 'x', title: 'Export Spec' },
+  );
+  const headings = [...markdown.matchAll(/^#{2,3} (.+)$/gm)].map((m) => m[1].trim());
+  assert.deepEqual(headings, ['1 · One', '2 · Two', 'two-aside-1', '3 · Three']);
 });
 
 test('the exporter needed no change: it walks sections in document order', () => {

@@ -187,16 +187,17 @@ test('a spec with no asides builds no panel and no marker', async (t) => {
   assert.equal(mark(window), null);
 });
 
-test('Import and Dismiss still seed the composer from inside the panel', async (t) => {
-  const { window } = await boot(t);
+test('Import sends its comment from inside the panel, without a composer', async (t) => {
+  // It used to seed the composer and wait for a second click. There is nothing
+  // to add before sending: you have read the draft and you want it in.
+  const { window, posts } = await boot(t);
   mark(window).click();
   await tick(window);
   const importBtn = [...window.document.querySelectorAll('#sf-asides .sf-aside-act')]
     .find((b) => b.textContent.includes('Import'));
   importBtn.click();
   await tick(window);
-  assert.equal(
-    window.document.querySelector('#sf-rail .sf-bub-compose textarea').value,
-    '@import ',
-  );
+  assert.equal(window.document.querySelector('#sf-rail .sf-bub-compose'), null, 'no composer');
+  const posted = posts.find((p) => /\/comments$/.test(p.url));
+  assert.equal(posted.body.body, '@agent @import');
 });
