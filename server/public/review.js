@@ -1735,9 +1735,22 @@
    * anchor. For an action with nothing to add before sending, the composer is a
    * second click that changes nothing.
    */
+  // Requests in flight, keyed by action and target. A comment used to take two
+  // deliberate steps — seed the composer, press Comment — and one click does not
+  // have that pause in it. Two clicks before the first response lands wrote two
+  // `@agent @import` threads on one draft, and the agent then imports it twice,
+  // or fails the second time because the first already deleted it.
+  var sending = {};
   function sendActionComment(a, el) {
+    var key = a.id + '::' + (el.id || sectionPathOf(el)[0] || '');
+    if (sending[key]) return;
+    sending[key] = true;
     postJSON(API, withAuthor({ anchor: { block: blockAnchor(el) }, body: '@agent @' + a.id }))
       .then(function (r) {
+        // Held until the answer, not just until the request goes out: a refused
+        // one has to be retryable, and a successful one has closed the panel, so
+        // the button that would repeat it is no longer on screen.
+        delete sending[key];
         if (!r.ok) return flashErr('Could not add the comment.');
         // The panel closes, as it does on a delete: the draft has been answered
         // and there is nothing left to read in it. It also uncovers the rail,

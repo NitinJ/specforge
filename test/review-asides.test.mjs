@@ -185,6 +185,28 @@ test('a delete the server refuses says so and leaves the panel alone', async (t)
   assert.match(window.document.body.textContent, /[Cc]ould not delete/);
 });
 
+test('clicking Import twice writes one comment, not two', async (t) => {
+  // A comment used to take two deliberate steps, and one click does not have
+  // that pause in it. Two threads on one draft means the agent imports it twice,
+  // or fails the second time because the first already deleted it.
+  const { window, posts } = await boot(t);
+  btn(window, 'Import').click();
+  btn(window, 'Import').click();
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/comments$/.test(p.url)).length, 1);
+});
+
+test('a refused Import can be tried again', async (t) => {
+  // The guard is held until the answer, not until the request goes out. Holding
+  // it forever would make one failed click the last one available.
+  const { window, posts } = await boot(t, { failPost: /\/comments$/ });
+  btn(window, 'Import').click();
+  await tick(window);
+  btn(window, 'Import').click();
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/comments$/.test(p.url)).length, 2);
+});
+
 test('Import says the review still has to be sent', async (t) => {
   // The button reads as though it acts on its own, and it does not: it writes a
   // comment, and the comment reaches the agent when the batch does. Without
