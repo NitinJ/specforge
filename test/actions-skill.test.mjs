@@ -44,6 +44,26 @@ test('the skill does not restate an instruction', () => {
   }
 });
 
+test('nor does it restate an action\'s import guidance', () => {
+  // Same trap, second field. The guidance reaches the agent on the thread, so a
+  // copy here is a second version to keep in step and the one nobody updates.
+  for (const a of ALL_ACTIONS.filter((x) => x.importInstruction)) {
+    const opening = a.importInstruction.split('.')[0].trim();
+    assert.equal(
+      SKILL.includes(opening), false,
+      `${a.id}'s import guidance is pasted into the skill`,
+    );
+  }
+});
+
+test('the skill says an import depends on what kind of draft it is', () => {
+  // Without this the agent reads `@import` as one operation and applies one
+  // behaviour to six kinds of content, which is what a merge/replace flag did.
+  assert.match(SKILL, /`target`/, 'the field carrying the resolved aside');
+  assert.match(SKILL, /guidance/);
+  assert.match(SKILL, /cut only what the draft carries forward/i, 'and the rule that holds over all of them');
+});
+
 test('the skill tells the agent how to read the registry', () => {
   assert.match(SKILL, /specforge-cli\.mjs" actions/, 'the command that prints the list');
 });

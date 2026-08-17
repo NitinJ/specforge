@@ -17,6 +17,7 @@ const ok = {
   kind: 'aside',
   scope: 'local',
   instruction: 'Choose the form the content wants and build it.',
+  importInstruction: 'Replace the blocks the diagram carries forward, and nothing else.',
 };
 
 test('a well-formed action keeps every field it was given', () => {
@@ -26,6 +27,7 @@ test('a well-formed action keeps every field it was given', () => {
   assert.equal(a.kind, 'aside');
   assert.equal(a.scope, 'local');
   assert.equal(a.instruction, ok.instruction);
+  assert.equal(a.importInstruction, ok.importInstruction);
 });
 
 test('an id has to be a lowercase token with underscores', () => {
@@ -44,7 +46,10 @@ test('an id has to be a lowercase token with underscores', () => {
 test('kind and scope come from a fixed list', () => {
   assert.throws(() => defineAction({ ...ok, kind: 'inplace' }), /kind/);
   assert.throws(() => defineAction({ ...ok, scope: 'section' }), /scope/);
-  for (const kind of KINDS) assert.ok(defineAction({ ...ok, kind }));
+  // Import guidance goes with the aside kind, so it comes off for the others.
+  for (const kind of KINDS) {
+    assert.ok(defineAction({ ...ok, kind, importInstruction: kind === 'aside' ? ok.importInstruction : undefined }));
+  }
   for (const scope of SCOPES) assert.ok(defineAction({ ...ok, scope }));
 });
 
@@ -64,20 +69,25 @@ test('a direct action needs no instruction, because no agent reads it', () => {
   assert.equal(copy.kind, 'direct');
 });
 
-test('an aside says whether its draft adds to the section or takes its place', () => {
-  // Adding is the safe default, so an action that says nothing merges.
-  assert.equal(defineAction(ok).importMode, 'merge');
-  assert.equal(defineAction({ ...ok, importMode: 'replace' }).importMode, 'replace');
-  assert.throws(() => defineAction({ ...ok, importMode: 'overwrite' }), /importMode/);
+test('an aside action without import guidance is refused', () => {
+  // The second instruction, and required for the same reason as the first: what
+  // to write and what to do with it once written are two different standards. A
+  // diagram supersedes the prose it was drawn from, a plain-language rewrite
+  // sits beside it, and a verification report is not spec prose at all. Leaving
+  // it unsaid is what left the agent placing content with nothing to go on.
+  assert.throws(() => defineAction({ ...ok, importInstruction: undefined }), /importInstruction/);
+  assert.throws(() => defineAction({ ...ok, importInstruction: '   ' }), /importInstruction/);
 });
 
-test('only an aside can replace the section it came from', () => {
-  // An in-place action edits the section; there is no draft to replace it with,
-  // so the property would be read by nothing and mean nothing.
+test('only an aside carries import guidance, because only an aside is imported', () => {
+  // On anything else it is a statement about a thing that never happens, and
+  // reads as though it does.
   assert.throws(
-    () => defineAction({ ...ok, kind: 'in-place', importMode: 'replace' }),
-    /importMode/,
+    () => defineAction({ ...ok, kind: 'in-place', importInstruction: 'Replace it.' }),
+    /importInstruction/,
   );
+  const inPlace = defineAction({ ...ok, kind: 'in-place', importInstruction: undefined });
+  assert.equal(inPlace.importInstruction, '');
 });
 
 test('a label and an icon are required', () => {

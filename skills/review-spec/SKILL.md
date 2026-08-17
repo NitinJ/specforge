@@ -181,6 +181,14 @@ carries an `actions` array, and everything you need is in it:
 - `next` says what to do with the result. Read it before you touch the spec.
 - `run`, where present, is the command, already carrying this thread's section
   and block. Run it rather than composing your own.
+- `target`, on `@import` only, is the aside being folded in: the section and
+  block it came from, and `guidance` from the action that wrote it. **What
+  importing means depends on what kind of draft it is** — a diagram supersedes
+  the prose it was drawn from, a plain-language rewrite sits beside it, a
+  verification report is not spec prose at all and imports as corrections to the
+  claims it found wrong. `next` already carries the guidance; the rule over all
+  of them is **cut only what the draft carries forward**. A diagram covering
+  three paragraphs of twelve replaces three, not twelve.
 
 The whole list, outside a thread:
 

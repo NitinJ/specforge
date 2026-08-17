@@ -215,8 +215,9 @@ test('an import arrives resolved against the aside it answers', () => {
   };
   const [a] = actionsForThread(t, { specId: 'sp1', cli: CLI, html });
   assert.equal(a.target.section, 'object', 'the section named in data-sf-aside');
-  assert.equal(a.target.mode, 'replace', 'Visualize supersedes its input');
-  assert.match(a.next, /Replace the section `object`/);
+  assert.match(a.target.guidance, /supersedes/, "Visualize's own import guidance");
+  assert.match(a.next, /section `object`/);
+  assert.match(a.next, /Cut only what the draft carries forward/);
 });
 
 test('an import with no spec to read still says what it is answering', () => {

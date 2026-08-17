@@ -15,6 +15,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { importTarget } from '../lib/actions/import-target.mjs';
+import { ALL_ACTIONS } from '../lib/actions/all.mjs';
 
 const SPEC = `<!doctype html><html><body><main>
   <section id="object"><h2>1 · Object</h2><p id="p1">First.</p><p id="p2">Second.</p></section>
@@ -41,11 +42,44 @@ test('an aside with no block falls back to the section', () => {
   assert.equal(t.block, null);
 });
 
-test('the mode comes from the action that produced the aside', () => {
-  // Visualize supersedes the prose it was drawn from, so importing it replaces
-  // the section. Everything else adds to what is there.
-  assert.equal(importTarget(SPEC, 'object-aside-1').mode, 'replace');
-  assert.equal(importTarget(SPEC, 'object-aside-2').mode, 'merge');
+test('the guidance comes from the action that produced the aside', () => {
+  // Not a merge/replace flag. What folding a draft in means depends on what kind
+  // of draft it is, and only the action that wrote it knows: a diagram
+  // supersedes the prose it was drawn from, a plain-language rewrite sits beside
+  // it and cuts nothing.
+  const diagram = importTarget(SPEC, 'object-aside-1');
+  const plain = importTarget(SPEC, 'object-aside-2');
+  assert.match(diagram.guidance, /supersedes/);
+  assert.match(plain.guidance, /never in place of it/);
+  assert.notEqual(diagram.guidance, plain.guidance);
+});
+
+test('the guidance reaches the sentence the agent reads', () => {
+  // Carried on the thread rather than left for a lookup, which is the whole
+  // lesson of stage 8: an instruction the agent has to decide to fetch is an
+  // instruction it does not read.
+  const t = importTarget(SPEC, 'object-aside-1');
+  assert.ok(t.next.includes(t.guidance), 'the guidance is in the sentence, not only beside it');
+  assert.match(t.next, /came from Visualize/, 'and it says which kind of draft this is');
+});
+
+test('the opening does not presume the draft is prose that goes in', () => {
+  // Two of the six are not content to paste. A verification report imports as
+  // corrections to the claims it found wrong; a decision aid imports as the
+  // decision, not the option list. An opening that says "fold this content into
+  // the section" contradicts their own guidance two sentences later.
+  const report = SPEC.replace('data-sf-action="visualize"', 'data-sf-action="verify_against_code"');
+  const t = importTarget(report, 'object-aside-1');
+  assert.equal(/[Ff]old this aside's content into/.test(t.next), false);
+  assert.match(t.next, /Import this aside into the section/);
+});
+
+test('the agent is told to cut only what the draft carries forward', () => {
+  // The one rule that holds over every kind of import. A diagram covering three
+  // paragraphs of twelve replaces three, not twelve.
+  for (const id of ['object-aside-1', 'object-aside-2']) {
+    assert.match(importTarget(SPEC, id).next, /[Cc]ut only what the draft carries forward/);
+  }
 });
 
 test('an unknown aside resolves to nothing rather than guessing', () => {
@@ -54,28 +88,23 @@ test('an unknown aside resolves to nothing rather than guessing', () => {
 });
 
 test('an aside naming an action the registry lost still resolves its target', () => {
-  // The mode is unknown, so it takes the safe one: add rather than replace.
+  // No guidance to give, so the import is told to cut nothing and to say so.
   const renamed = SPEC.replace('data-sf-action="visualize"', 'data-sf-action="visualise"');
   const t = importTarget(renamed, 'object-aside-1');
   assert.equal(t.section, 'object');
-  assert.equal(t.mode, 'merge', 'never destructive on a guess');
+  assert.equal(t.guidance, '');
+  assert.match(t.next, /without cutting anything/, 'never destructive on a guess');
 });
 
 test('the instruction it produces names the target, not a direction', () => {
-  const replace = importTarget(SPEC, 'object-aside-1');
-  assert.match(replace.next, /object/);
-  assert.match(replace.next, /[Rr]eplace/);
-  assert.equal(/above it/.test(replace.next), false);
-
-  const merge = importTarget(SPEC, 'object-aside-2');
-  assert.match(merge.next, /object/);
-  assert.equal(/[Rr]eplace the section/.test(merge.next), false);
+  const t = importTarget(SPEC, 'object-aside-1');
+  assert.match(t.next, /object/);
+  assert.equal(/above it/.test(t.next), false);
 });
 
-test('a merge with a block says to place the content beside that block', () => {
+test('an import with a block says to place the content around that block', () => {
   const withBlock = SPEC.replace('data-sf-action="visualize"', 'data-sf-action="go_deeper"');
   const t = importTarget(withBlock, 'object-aside-1');
-  assert.equal(t.mode, 'merge');
   assert.match(t.next, /b4/, 'the block it was asked about');
 });
 
@@ -87,9 +116,8 @@ test('a merge with a block says to place the content beside that block', () => {
 test('a source section that is gone produces no instruction to act on it', () => {
   const gone = SPEC.replace('<section id="object">', '<section id="the-object">');
   const t = importTarget(gone, 'object-aside-1');
-  assert.equal(t.mode, 'unresolved');
-  assert.equal(/[Rr]eplace the section/.test(t.next), false, 'nothing destructive on a name that resolves to nothing');
-  assert.equal(/[Mm]erge this aside/.test(t.next), false);
+  assert.equal(t.resolved, false);
+  assert.equal(/[Ff]old this aside/.test(t.next), false, 'nothing aimed at a name that resolves to nothing');
 });
 
 test('and it says to ask rather than to find something close', () => {
@@ -125,10 +153,17 @@ test('no registry in hand keeps the block rather than dropping it', () => {
   assert.equal(importTarget(SPEC, 'object-aside-1').block, 'b4');
 });
 
-test('a resolved target takes one of the two modes the registry can declare', () => {
-  // `unresolved` is the resolver's own, for a target that is not there. An
-  // action cannot declare it, so no new action can invent a third verb.
-  for (const id of ['object-aside-1', 'object-aside-2']) {
-    assert.ok(['merge', 'replace'].includes(importTarget(SPEC, id).mode));
+test('every aside action in the registry has guidance to give', () => {
+  // A missing one is only visible at import time, which is the worst moment to
+  // find out: the reader has accepted a draft and the agent has nothing to go on.
+  for (const a of ALL_ACTIONS.filter((x) => x.kind === 'aside')) {
+    assert.ok(a.importInstruction.length > 40, `${a.id} has no usable import guidance`);
   }
+});
+
+test('no two aside actions import the same way', () => {
+  // If two were identical the guidance would not be earning its place, and the
+  // merge/replace flag it replaced would have been enough.
+  const seen = ALL_ACTIONS.filter((a) => a.kind === 'aside').map((a) => a.importInstruction);
+  assert.equal(new Set(seen).size, seen.length);
 });
