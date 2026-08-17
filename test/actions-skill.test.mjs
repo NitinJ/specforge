@@ -53,6 +53,15 @@ test('the skill states the rule that decides where output goes', () => {
   assert.match(SKILL, /aside/);
 });
 
+test('the skill tells the agent the thread already carries the resolution', () => {
+  // The fix for the failure this file's other tests were written after: the
+  // expansion is pushed onto the thread now, so the skill's job is to say that
+  // rather than to describe a lookup nobody performed.
+  assert.match(SKILL, /`actions` array|carries an `actions`/);
+  assert.match(SKILL, /`next`/, 'and names the field that says what to do');
+  assert.match(SKILL, /`run`/, 'and the one carrying the command');
+});
+
 test('the skill points at the command that writes an aside', () => {
   // Prose telling an agent what markup to produce is not a mechanism, and the
   // first real Visualize run proved it by writing its diagram straight into the

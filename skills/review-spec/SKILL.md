@@ -152,11 +152,37 @@ Do **not** resolve threads — only the human resolves (which closes them).
 
 A comment can name an **action**: a menu entry the reader picked instead of
 typing the same request again. It looks like `@agent @visualize`, and the reader
-may have typed a qualifier after it. Every action carries a **standing
-instruction** — a written standard you apply every time — and that instruction
-is what you execute. The words on the button are the label, not the ask.
+may have typed a qualifier after it.
 
-Read the list, with the instructions, from the registry:
+**`specforge comments <id>` resolves it for you.** A thread that names an action
+carries an `actions` array, and everything you need is in it:
+
+```json
+"actions": [{
+  "id": "visualize",
+  "kind": "aside",
+  "instruction": "Choose the form this content actually wants, a diagram, a table or a mock, …",
+  "detail": "",
+  "section": "object",
+  "block": "b583",
+  "run": "node \"…/specforge-cli.mjs\" aside c8fb987ad0 --section object --block b583 --action visualize --file <path>",
+  "next": "This writes an aside, not an edit. Do not edit the section. …"
+}]
+```
+
+- `batchId` says which submission asked for it. **Work only the actions whose
+  `batchId` is the batch you are on.** Two batches can be pending at once and a
+  thread can appear in both, so an action belonging to the next batch will be
+  sitting right there on the thread you are reading.
+- `instruction` is what you execute. **The name on the button is not the ask.**
+  `@visualize` reads like ordinary English and it is not: it stands for a written
+  standard, and following the word instead of the standard is how this went
+  wrong four times in a row.
+- `next` says what to do with the result. Read it before you touch the spec.
+- `run`, where present, is the command, already carrying this thread's section
+  and block. Run it rather than composing your own.
+
+The whole list, outside a thread:
 
 ```
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" actions            # all of them
@@ -199,8 +225,10 @@ rather than inferring from the label.
   ```
   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" aside <specId> \
     --section <sourceSectionId> --action <actionId> \
-    --block <anchor.block.bid> --file <path-to-your-html>
+    --block <anchor.block.bid> --thread <threadId> --file <path-to-your-html>
   ```
+
+  You do not have to assemble that: the thread's `run` field already carries it.
 
   It places the section, numbers the id and writes the attributes the review
   layer reads. **Do not hand-write that markup.** Getting any of them wrong
@@ -210,7 +238,9 @@ rather than inferring from the label.
 
   `--block` is the `bid` from the thread's `anchor.block`, and it is what puts
   the marker on the paragraph the reader asked about rather than at the top of
-  the section. Pass it whenever the thread has one; omit it when it does not.
+  the section. `--thread` is what `batch-done` checks: without it the draft
+  answers no request, and a draft written last week on the same section would
+  close today's batch. Pass both whenever the thread has them.
 
   What you write is the body only: the content, in the spec's own component
   vocabulary. The command adds the wrapper and the heading. An aside gets **no
