@@ -44,6 +44,31 @@ test('an aside answering a different thread does not satisfy this one', () => {
   assert.match(gaps[0].run, /--thread th_2/);
 });
 
+test('one draft does not answer two actions in the same comment', () => {
+  // `@agent @visualize @go_deeper` is one thread and two requests. Keyed on the
+  // thread alone, the Visualize draft would close the batch and Go deeper would
+  // never be written.
+  const gaps = asideGaps([thread('@agent @visualize @go_deeper')], SPEC_WITH, { specId: 'sp1', cli: '/cli.mjs' });
+  assert.deepEqual(gaps.map((g) => g.action), ['go_deeper']);
+});
+
+test('a later request on an answered thread still needs its own draft', () => {
+  // A thread accumulates across batches: Visualize last round, Go deeper this
+  // one. The old draft is on the right thread and answers the wrong ask.
+  const later = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object'], bid: 'b1' } },
+    comments: [
+      { kind: 'human', body: '@agent @visualize', batchId: 'b_1' },
+      { kind: 'human', body: '@agent @go_deeper', batchId: 'b_2' },
+    ],
+  };
+  const gaps = asideGaps([later], SPEC_WITH, {
+    specId: 'sp1', cli: '/cli.mjs', batchIds: new Set(['b_2']),
+  });
+  assert.deepEqual(gaps.map((g) => g.action), ['go_deeper']);
+});
+
 test('an aside with no thread attribution satisfies nothing', () => {
   // Hand-written rather than produced by the command. Strict on purpose: the
   // alternative reopens the hole above, and --force is the way through.
