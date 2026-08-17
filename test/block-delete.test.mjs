@@ -139,12 +139,34 @@ test('a hex entity decodes too', () => {
   assert.equal(out.html.includes('dash'), false);
 });
 
-test('an entity that decodes to nothing known is left as written', () => {
-  // Refusing to match is right here: whatever the reader saw, it was not this,
-  // and inventing a replacement character would match the wrong block.
-  const odd = SPEC.replace('<p>The second paragraph.</p>', '<p>A &notarealentity; here.</p>');
-  const out = cut(odd, { section: 'one', tag: 'P', text: 'A &notarealentity; here.' });
-  assert.equal(out.html.includes('notarealentity'), false);
+test('a valid entity the decoder does not carry still matches', () => {
+  // The table is finite and the set of named entities is not, so `&copy;` in a
+  // spec would leave an untouched block undeletable. An unrecognised entity is
+  // matched as one character, because that is what it is.
+  const c = SPEC.replace('<p>The second paragraph.</p>', '<p>&copy; 2026 Figur.</p>');
+  const out = cut(c, { section: 'one', tag: 'P', text: '© 2026 Figur.' });
+  assert.equal(out.html.includes('2026'), false);
+});
+
+test('the wildcard widens a match, so an ambiguity it creates is still a refusal', () => {
+  // The bound on the trade. A wildcard can make two blocks look alike; two
+  // blocks matching has always meant "do nothing".
+  const two = SPEC
+    .replace('<p>The first paragraph.</p>', '<p>Figur &copy; here.</p>')
+    .replace('<p>The second paragraph.</p>', '<p>Figur &reg; here.</p>');
+  assert.throws(() => cut(two, { section: 'one', tag: 'P', text: 'Figur © here.' }), /matches 2 blocks/);
+});
+
+test('text that is simply different does not match through the wildcard', () => {
+  const c = SPEC.replace('<p>The second paragraph.</p>', '<p>&copy; 2026 Figur.</p>');
+  assert.throws(() => cut(c, { section: 'one', tag: 'P', text: '© 2027 Figur.' }), /no block/);
+});
+
+test('a regex character in the text is matched literally, not as a pattern', () => {
+  // The comparison builds a regex from the file's text once an entity is in it.
+  const re = SPEC.replace('<p>The second paragraph.</p>', '<p>Costs &pound;5 (a.k.a. cheap).</p>');
+  const out = cut(re, { section: 'one', tag: 'P', text: 'Costs £5 (a.k.a. cheap).' });
+  assert.equal(out.html.includes('cheap'), false);
 });
 
 test('a component block is a div, and deletes like anything else', () => {
