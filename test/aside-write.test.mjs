@@ -33,8 +33,12 @@ test('the aside lands directly after its source section', () => {
 test('it carries the attributes the review layer reads', () => {
   const { html } = writeAside(SPEC, { section: 'two', action: 'visualize', body: BODY });
   assert.match(html, /<section id="two-aside-1" data-sf-aside="two" data-sf-action="visualize">/);
-  assert.match(html, /<h3>Aside: Visualize<\/h3>/, 'the label, for the markdown export');
   assert.match(html, /A diagram the agent drafted/);
+  // No heading of its own. Every surface that shows a label reads it from
+  // data-sf-action, so storing one put the same words on screen twice, a line
+  // apart, and named an internal concept while doing it.
+  assert.equal(/<h3>/.test(html), false);
+  assert.equal(/Aside:/.test(html), false);
   assert.deepEqual(getAsideSectionIds(html), ['two-aside-1']);
 });
 

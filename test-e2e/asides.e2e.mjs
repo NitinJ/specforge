@@ -90,15 +90,25 @@ test('the aside re-themes, so its colours come from the palette', { skip: !CHROM
   });
 });
 
-test('Import opens the composer, anchored inside the aside', { skip: !CHROME }, async () => {
-  await withSpec({ html: HTML }, async ({ page }) => {
+test('Import writes its comment on one click, with no composer', { skip: !CHROME }, async () => {
+  // It used to seed a composer and wait for a second click. There is nothing to
+  // type: you have read the draft and the only question is in or out. The whole
+  // path is real here, so this is the comment the agent will actually resolve.
+  await withSpec({ html: HTML }, async ({ page, base, id }) => {
     await openPanel(page);
     await page.locator('#target-aside-1 .sf-aside-act', { hasText: 'Import' }).click();
-    await page.waitForSelector('#sf-rail .sf-bub-compose textarea');
-    assert.equal(
-      await page.locator('#sf-rail .sf-bub-compose textarea').inputValue(),
-      '@import ',
-    );
+    await page.waitForSelector('#sf-rail .sf-bub');
+    assert.equal(await page.$('#sf-rail .sf-bub-compose'), null, 'no composer opened');
+    assert.equal(await page.$('#sf-asides.open'), null, 'and the panel closed, uncovering the rail');
+
+    const threads = await page.evaluate(async (u) => {
+      const r = await fetch(u);
+      return (await r.json()).threads;
+    }, `${base}/api/spec/${id}/comments`);
+    assert.equal(threads.length, 1);
+    assert.equal(threads[0].comments[0].body, '@agent @import');
+    assert.deepEqual(threads[0].anchor.block.sectionPath, ['target-aside-1'],
+      'anchored in the draft it answers, which is how the agent knows which one');
   });
 });
 

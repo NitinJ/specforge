@@ -24,7 +24,7 @@ const BODY = `
       <p class="p-c">The third paragraph.</p>
     </section>
     <section id="two-aside-1" data-sf-aside="two" data-sf-block="b3" data-sf-action="visualize">
-      <h3>Aside: Visualize</h3><p class="aside-p">A diagram the agent drafted.</p>
+      <p class="aside-p">A diagram the agent drafted.</p>
     </section>
     <section id="three" data-sf-section><h2>3 · Three</h2><p>Third section.</p></section>
   </main>
@@ -32,7 +32,8 @@ const BODY = `
 `;
 
 // The page's own block list, in document order, is what a bid indexes into:
-// h1, h2, p.p-a, p.p-b, p.p-c, h3, p.aside-p, h2, p → b0 … b8. So b3 is p.b.
+// h1, h2, p.p-a, p.p-b, p.p-c, p.aside-p, h2, p → b0 … b7. So b3 is p.b.
+// A draft carries no heading of its own: its label comes from data-sf-action.
 const boot = (t, opts = {}) => bootReviewLayer(t, { body: BODY, ...opts });
 const marks = (window) => [...window.document.querySelectorAll('.sf-aside-mark')];
 
@@ -46,6 +47,28 @@ test('the marker attaches to the block that was commented', async (t) => {
     Number(all[0].style.top.replace('px', '')) >= 0, true,
     'positioned against its block rather than pinned to the section heading',
   );
+});
+
+test('the marker is placed across the page as well as down it', async (t) => {
+  // It used to hang off the section's own right edge, which put it against the
+  // text. Both coordinates are measured now, so both are set inline; the gutter
+  // it lands in is a geometry question and lives in the browser tests.
+  const { window } = await boot(t);
+  await tick(window);
+  assert.notEqual(marks(window)[0].style.left, '', 'a measured horizontal position');
+});
+
+test('a marker is found by its aside, not by a selector built from the id', async (t) => {
+  // Section ids are author-written. One holding a quote or a bracket makes an
+  // attribute selector built by concatenation either throw or match the wrong
+  // element, and the marker is then created a second time on every reflow.
+  const { window } = await boot(t, {
+    body: BODY.replace(/two-aside-1/g, 'two"a-aside-1').replace('id="two"', 'id="two"'),
+  });
+  await tick(window);
+  window.dispatchEvent(new window.Event('resize'));
+  await tick(window);
+  assert.equal(marks(window).length, 1, 'still one marker after a re-place');
 });
 
 test('the marker is still not inside any block', async (t) => {

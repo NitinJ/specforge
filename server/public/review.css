@@ -1201,14 +1201,25 @@ body.sf-asides-open #sf-rail { z-index: 46; }
    every block because a comment anchors to a block's text and chrome inside one
    would rewrite it. */
 section.sf-has-aside { position: relative; }
+/* A circle in the gutter, not a pill on the text edge. Round because a pill in a
+   spec is a status tag (.tag), and a control that borrows that shape reads as
+   one. `left` is measured in review.js against the gap between the document and
+   the comments rail; the size here has to match MARK_W there. */
 .sf-aside-mark {
-  position: absolute; right: -6px; z-index: 2;
-  display: flex; align-items: center; gap: 4px;
+  /* Above the rail (43). The gutter it sits in is reserved by moving the rail
+     over, but on a window too narrow to hold both the rail is clamped back and
+     they overlap. A marker under a comment bubble cannot be clicked, and then
+     the draft has no way to be opened at all. */
+  position: absolute; z-index: 44;
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
   background: var(--sf-panel2); border: 1px solid var(--sf-hairline); color: var(--sf-muted);
-  border-radius: 999px; padding: 3px 9px; cursor: pointer;
+  border-radius: 50%; cursor: pointer;
   font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease);
+  transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease),
+    background var(--sf-dur-fast) var(--sf-ease);
 }
+.sf-aside-mark:hover { background: var(--sf-panel); }
 .sf-aside-mark:hover { color: var(--sf-ink); border-color: var(--sf-accent); }
 .sf-aside-mark:focus-visible { outline: none; box-shadow: var(--sf-ring); }
 

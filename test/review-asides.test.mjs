@@ -94,15 +94,38 @@ test('an aside opens expanded on every load', async (t) => {
   );
 });
 
-test('Import seeds the composer, anchored inside the aside', async (t) => {
-  const { window } = await boot(t);
+test('Import sends its comment straight, with no composer to fill in', async (t) => {
+  // The composer existed so a qualifier could be typed. Import takes none: the
+  // draft is written, you have read it, and the only question is in or out.
+  const { window, posts } = await boot(t);
   btn(window, 'Import').click();
   await tick(window);
-  const card = window.document.querySelector('#sf-rail .sf-bub-compose');
-  assert.ok(card, 'Import opened the composer');
-  assert.equal(card.querySelector('textarea').value, '@import ');
-  assert.match(card.querySelector('.q').textContent, /Aside: Visualize/,
-    'anchored to the aside, so the agent knows which draft is being answered');
+  assert.equal(window.document.querySelector('#sf-rail .sf-bub-compose'), null);
+  const posted = posts.find((p) => /\/comments$/.test(p.url));
+  assert.equal(posted.body.body, '@agent @import');
+});
+
+test('the import comment is anchored inside the aside it answers', async (t) => {
+  // Which draft is being imported comes from where the comment sits, so this is
+  // what makes the resolved thread name the right one.
+  const { window, posts } = await boot(t);
+  btn(window, 'Import').click();
+  await tick(window);
+  const posted = posts.find((p) => /\/comments$/.test(p.url));
+  assert.deepEqual(posted.body.anchor.block.sectionPath, ['two-aside-1']);
+});
+
+test('an anchor on a draft quotes the draft, not the buttons on it', async (t) => {
+  // The review layer injects its controls INTO the document, so a draft's
+  // textContent runs "⊞Visualize← Import into specDelete …" before a word the
+  // agent wrote. That text is what the reconcile matches a block by when no bid
+  // is available, and it moves whenever a button is renamed.
+  const { window, posts } = await boot(t);
+  btn(window, 'Import').click();
+  await tick(window);
+  const text = posts.find((p) => /\/comments$/.test(p.url)).body.anchor.block.text;
+  assert.equal(/Import into spec|Delete/.test(text), false, `chrome in the anchor: ${text}`);
+  assert.match(text, /A diagram the agent drafted/, 'and the draft itself is still quoted');
 });
 
 test('Delete does not open a composer: the browser answers it', async (t) => {
@@ -162,15 +185,57 @@ test('a delete the server refuses says so and leaves the panel alone', async (t)
   assert.match(window.document.body.textContent, /[Cc]ould not delete/);
 });
 
-test('sending Import produces the comment the agent reads', async (t) => {
+test('clicking Import twice writes one comment, not two', async (t) => {
+  // A comment used to take two deliberate steps, and one click does not have
+  // that pause in it. Two threads on one draft means the agent imports it twice,
+  // or fails the second time because the first already deleted it.
   const { window, posts } = await boot(t);
   btn(window, 'Import').click();
+  btn(window, 'Import').click();
   await tick(window);
-  const card = window.document.querySelector('#sf-rail .sf-bub-compose');
-  card.querySelector('.sf-primary').click();
+  assert.equal(posts.filter((p) => /\/comments$/.test(p.url)).length, 1);
+});
+
+test('a refused Import can be tried again', async (t) => {
+  // The guard is held until the answer, not until the request goes out. Holding
+  // it forever would make one failed click the last one available.
+  const { window, posts } = await boot(t, { failPost: /\/comments$/ });
+  btn(window, 'Import').click();
   await tick(window);
-  const posted = posts.find((p) => /\/comments$/.test(p.url));
-  assert.equal(posted.body.body, '@agent @import');
+  btn(window, 'Import').click();
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/comments$/.test(p.url)).length, 2);
+});
+
+test('an Import whose connection drops can be tried again too', async (t) => {
+  // The other failure path, and the one a `.then()`-only cleanup misses: the
+  // promise rejects rather than resolving with ok:false, so the guard is never
+  // released and that button never sends another Import for the rest of the
+  // session.
+  const { window, posts } = await boot(t, { dropPost: /\/comments$/ });
+  btn(window, 'Import').click();
+  await tick(window);
+  btn(window, 'Import').click();
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/comments$/.test(p.url)).length, 2);
+});
+
+test('Import says the review still has to be sent', async (t) => {
+  // The button reads as though it acts on its own, and it does not: it writes a
+  // comment, and the comment reaches the agent when the batch does. Without
+  // saying so, a reader clicks it and watches nothing happen.
+  const { window } = await boot(t);
+  btn(window, 'Import').click();
+  await tick(window);
+  assert.match(window.document.body.textContent, /[Ss]end/);
+});
+
+test('an Import the server refuses is reported', async (t) => {
+  // A fulfilled fetch is not an accepted comment. Silence here reads as done.
+  const { window } = await boot(t, { failPost: /\/comments$/ });
+  btn(window, 'Import').click();
+  await tick(window);
+  assert.match(window.document.body.textContent, /[Cc]ould not add/);
 });
 
 test('an aside is commentable like any section', async (t) => {

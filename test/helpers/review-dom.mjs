@@ -125,6 +125,12 @@ export async function bootReviewLayer(t, opts = {}) {
     const bucket = init && BUCKETS[init.method];
     if (bucket) {
       bucket.push({ url, body: init.body ? JSON.parse(init.body) : {} });
+      // opts.dropPost is the connection failing, which is a different path from
+      // opts.failPost: the promise REJECTS rather than resolving with ok:false,
+      // so a client that cleans up in .then() only never runs its cleanup.
+      if (opts.dropPost && opts.dropPost.test(String(url))) {
+        return Promise.reject(new Error('network'));
+      }
       // opts.failPost lets a test make one endpoint reject, to prove the client
       // checks Response.ok rather than assuming a fulfilled fetch succeeded.
       const ok = !(opts.failPost && opts.failPost.test(String(url)));
