@@ -392,7 +392,11 @@ The instruction it replaced said *merge this aside into the section above it*, a
 | `importMode: merge`, no block | Merge into the named section, placed where it belongs rather than appended. |
 | `importMode: replace` | Replace the named section with the draft, keeping the section id and heading. |
 | `data-sf-action` the registry no longer knows | Merge. Guessing `replace` would delete a section on the strength of a string nobody recognises. |
+| The named section is no longer in the spec | Mode `unresolved`. No merge and no replace: say the source is gone and ask whether the draft belongs elsewhere or should be dismissed. |
+| The named block is no longer in the registry | Dropped from the sentence, and the merge falls back to "where it belongs". Same fallback the aside's marker already takes. |
 | No spec in hand, or the id is not an aside | No `target`: the general instruction stands and the agent is told which aside it is answering. |
+
+Both names are checked before they become an instruction, because an aside outlives edits to the document around it. The section is checked against the spec, which the resolver already holds. The block is checked against `blocks.json`, which the caller passes in; no registry means unknown rather than deleted, so the aside's own block stands. What is not checkable is an id deleted and later taken by a different section: the aside names a string, the document holds that string, and nothing records which section held it when the draft was written.
 
 <!-- sf:callout variant="warning" -->
 
@@ -568,7 +572,7 @@ The panel shipped at the comments drawer's width, showing every draft stacked in
 
 Four aside actions, four answered by editing the section. The instruction and the command both existed; neither ever reached the agent, and the text that woke it said to amend the spec. This moves the resolution onto the thread and stops the wake-up text contradicting it.
 
-### Stage 9 — What an import acts on
+### Stage 9 — What an import acts on (PR 194)
 
 - [x] 9.1 An action declares `importMode`, `merge` or `replace`, defaulting to `merge`. The registry refuses `replace` on anything that is not an aside action, because an in-place action has no draft to replace the section with.
       verify: the default is `merge`; an unknown mode throws; `replace` on an in-place action throws naming the property.
@@ -576,6 +580,8 @@ Four aside actions, four answered by editing the section. The instruction and th
       verify: the section comes from the attribute and not from what precedes the aside; an action id the registry no longer knows resolves to `merge`; a plain section resolves to nothing.
 - [x] 9.3 `comments <id>` reads the spec and attaches `target` to a resolved `@import`, and `next` becomes the concrete sentence rather than the general one. Visualize carries `importMode: 'replace'`.
       verify: an `@import` on a Visualize aside resolves to the source section with mode `replace`; with no spec in hand it still names the aside it is answering.
+- [x] 9.5 A target that is no longer there stops being authoritative: a missing section resolves to `unresolved` and a block absent from the registry is dropped.
+      verify: a renamed source section produces neither a merge nor a replace and says to ask; a stale bid leaves the sentence with no block in it; no registry in hand keeps the block.
 - [x] 9.4 The spec records the semantics: §10 gains the resolution table and the section-scoped-replace warning, §12 gains Q9.
       verify: the exported markdown carries both, and the lint passes.
 
@@ -600,6 +606,7 @@ Filled during implementation: choices made where the spec was ambiguous.
 - **The panel overlays the document rather than reflowing it.** Same as the comments drawer, which is fixed at the right edge and has never pushed the page. Giving this one panel a different behaviour would be the inconsistency; the two now share `--sf-side-w`, and a test asserts they measure the same width.
 - **An open composer overrides the panel, the way it already overrides the width rule.** The rail hides while the panel is open, and the composer lives in the rail, so commenting on an aside was a dead end: an open panel and no way to say anything about it. The composer now brings the rail back and CSS shifts it clear of the panel. Found by a browser test, because in jsdom the click resolved and nothing was measurably wrong.
 - **Import resolves at delivery, not at definition.** Every other action carries a fixed instruction written when the registry was. Import cannot: it acts on a draft that did not exist then, so its general instruction stays in the registry and `importTarget()` produces the concrete sentence per thread. Putting the concrete version in the registry was never available; putting it in the skill was, and is what stage 8 proved does not reach the agent.
+- **A missing section stops the import; a missing block only degrades it.** Both are stale names, and the two failures are not the same size. A `replace` aimed at a section that is not there is the destructive case and gets refused outright. A block that is gone costs the merge its placement, and the aside's marker already has that fallback, so the import takes it too rather than refusing over it.
 - **An unknown `data-sf-action` falls back to `merge`.** An aside can outlive the action id that wrote it, through a rename or a removal. Merging a draft into a section it does not belong in is a bad paragraph; replacing a section on the strength of a string the registry does not recognise deletes work. The safe fallback is the one that adds.
 
 ## 16 · Deviations

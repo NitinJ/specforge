@@ -79,7 +79,55 @@ test('a merge with a block says to place the content beside that block', () => {
   assert.match(t.next, /b4/, 'the block it was asked about');
 });
 
-test('every mode is one of two, so a new action cannot invent a third', () => {
+// An aside outlives edits to the document around it. Renaming a section id or
+// deleting the section leaves the aside naming something that is not there, and
+// the resolver's whole job is turning that name into an instruction the agent
+// acts on. A `replace` aimed at a missing section is the destructive case.
+
+test('a source section that is gone produces no instruction to act on it', () => {
+  const gone = SPEC.replace('<section id="object">', '<section id="the-object">');
+  const t = importTarget(gone, 'object-aside-1');
+  assert.equal(t.mode, 'unresolved');
+  assert.equal(/[Rr]eplace the section/.test(t.next), false, 'nothing destructive on a name that resolves to nothing');
+  assert.equal(/[Mm]erge this aside/.test(t.next), false);
+});
+
+test('and it says to ask rather than to find something close', () => {
+  const gone = SPEC.replace('<section id="object">', '<section id="the-object">');
+  const t = importTarget(gone, 'object-aside-1');
+  assert.match(t.next, /object/, 'the name it was looking for');
+  assert.match(t.next, /ask/i);
+  assert.equal(t.section, 'object', 'still reported, so the reply can name it');
+});
+
+test('a block the registry no longer has is dropped from the instruction', () => {
+  // The bid lives in blocks.json, not in the spec, so the caller passes what is
+  // live. Telling the agent to place content after a block that is not there is
+  // an instruction it cannot follow.
+  const merge = SPEC.replace('data-sf-action="visualize"', 'data-sf-action="go_deeper"');
+  const t = importTarget(merge, 'object-aside-1', { bids: new Set(['b1', 'b2']) });
+  assert.equal(t.block, null);
+  assert.equal(/b4/.test(t.next), false);
+  assert.match(t.next, /where it belongs/);
+});
+
+test('a block still in the registry is kept', () => {
+  const merge = SPEC.replace('data-sf-action="visualize"', 'data-sf-action="go_deeper"');
+  const t = importTarget(merge, 'object-aside-1', { bids: new Set(['b4']) });
+  assert.equal(t.block, 'b4');
+  assert.match(t.next, /b4/);
+});
+
+test('no registry in hand keeps the block rather than dropping it', () => {
+  // The registry is derived and disposable: a missing one means "unknown", not
+  // "deleted". Dropping the block there would lose a good anchor on every call
+  // made without one.
+  assert.equal(importTarget(SPEC, 'object-aside-1').block, 'b4');
+});
+
+test('a resolved target takes one of the two modes the registry can declare', () => {
+  // `unresolved` is the resolver's own, for a target that is not there. An
+  // action cannot declare it, so no new action can invent a third verb.
   for (const id of ['object-aside-1', 'object-aside-2']) {
     assert.ok(['merge', 'replace'].includes(importTarget(SPEC, id).mode));
   }
