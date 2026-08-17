@@ -173,10 +173,15 @@ li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margi
 
   main{padding:40px 48px 120px;min-width:0}
   h1{font-size:30px;line-height:1.25;margin:0 0 10px}
-  h2{font-size:21px;margin:48px 0 14px;padding-top:10px;border-top:1px solid var(--line)}
-  h2:first-of-type{border-top:none;margin-top:18px}
-  h3{font-size:16.5px;margin:26px 0 8px}
-  h4{font-size:14px;margin:18px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  h2{font-size:21px;margin:56px 0 14px;padding-top:12px;border-top:1px solid var(--line)}
+  /* Only the first section drops the rule and the space above it. `h2:first-of-type`
+     was the obvious spelling and the wrong one: each h2 is the only h2 inside its own
+     section element, so it matched every one of them and no section ever got either.
+     No angle brackets in this comment: several tools here read the shell with
+     regexes, and a tag written in prose counts as markup to them. */
+  main > section:first-of-type > h2,main > h2:first-of-type{border-top:none;margin-top:18px}
+  h3{font-size:16.5px;margin:34px 0 8px}
+  h4{font-size:14px;margin:24px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
   p{margin:10px 0}
   ul,ol{margin:10px 0;padding-left:22px}
   li{margin:5px 0}
