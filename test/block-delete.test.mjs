@@ -116,6 +116,74 @@ test('markup inside the block does not have to be in the text given', () => {
   assert.equal(out.html.includes('bold'), false);
 });
 
+// The three ways the client's view and the file's text disagree. Each of them
+// made Delete answer 409 on a block nobody had touched, which reads to the
+// reader as "this is broken" and is indistinguishable from a genuinely stale
+// page.
+
+test('an entity in the source matches the character the reader sees', () => {
+  // textContent is decoded and the file is not, so a paragraph holding `&amp;`
+  // or an `&#8212;` never matched. SpecForge's own templates write the numeric
+  // forms, so this was most of the em dashes in every spec it produces.
+  const withEntities = SPEC.replace(
+    '<p>The second paragraph.</p>',
+    '<p>Fish &amp; chips &#8212; a classic&#8230;</p>',
+  );
+  const out = cut(withEntities, { section: 'one', tag: 'P', text: 'Fish & chips — a classic…' });
+  assert.equal(out.html.includes('Fish'), false);
+});
+
+test('a hex entity decodes too', () => {
+  const hex = SPEC.replace('<p>The second paragraph.</p>', '<p>A &#x2014; dash.</p>');
+  const out = cut(hex, { section: 'one', tag: 'P', text: 'A — dash.' });
+  assert.equal(out.html.includes('dash'), false);
+});
+
+test('an entity that decodes to nothing known is left as written', () => {
+  // Refusing to match is right here: whatever the reader saw, it was not this,
+  // and inventing a replacement character would match the wrong block.
+  const odd = SPEC.replace('<p>The second paragraph.</p>', '<p>A &notarealentity; here.</p>');
+  const out = cut(odd, { section: 'one', tag: 'P', text: 'A &notarealentity; here.' });
+  assert.equal(out.html.includes('notarealentity'), false);
+});
+
+test('a component block is a div, and deletes like anything else', () => {
+  // Half the commentable surfaces are components: .panel, .callout, .card and
+  // the injected component classes, every one of them a div. A whitelist of the
+  // plain block tags refused a delete on exactly the entries most likely to be
+  // deleted.
+  const withCallout = SPEC.replace(
+    '<p>The second paragraph.</p>',
+    '<div class="callout note"><strong>Note.</strong> Worth knowing.</div>',
+  );
+  const out = cut(withCallout, { section: 'one', tag: 'DIV', text: 'Note. Worth knowing.' });
+  assert.equal(out.html.includes('callout'), false);
+  assert.equal(out.html.includes('The first paragraph.'), true);
+});
+
+test('a tag that holds the document is refused whatever the text says', () => {
+  // A section cannot be taken out through the route meant for its contents.
+  for (const tag of ['SECTION', 'MAIN', 'BODY', 'SCRIPT']) {
+    assert.throws(() => cut(SPEC, { section: 'one', tag, text: 'anything' }), /holds the document/);
+  }
+});
+
+test('a tag that is not a tag name is refused', () => {
+  assert.throws(() => cut(SPEC, { section: 'one', tag: 'p, li', text: 'x' }), /not a tag name/);
+  assert.throws(() => cut(SPEC, { section: 'one', tag: '', text: 'x' }), /not a tag name/);
+});
+
+test('a diagram is found by its source, which is what the file holds', () => {
+  // The rendered picture replaced its own source in the DOM, so the client sends
+  // the source it stashed and the server searches the same thing.
+  const withDiagram = SPEC.replace(
+    '<p>The second paragraph.</p>',
+    '<pre data-lang="mermaid"><code>graph TD\n  A--&gt;B</code></pre>',
+  );
+  const out = cut(withDiagram, { section: 'one', tag: 'PRE', text: 'graph TD A-->B' });
+  assert.equal(out.html.includes('graph TD'), false);
+});
+
 test('an aside is refused: it has its own delete', () => {
   // Cutting one block out of a draft leaves a half-answered draft, and the
   // reader already has a control that removes the whole thing.

@@ -37,6 +37,33 @@ test('the menu opens on right-click and is actually visible', { skip: !CHROME },
   });
 });
 
+test('a rendered diagram deletes by its source, not by the picture', { skip: !CHROME }, async () => {
+  // The one case only a real browser reaches: mermaid replaces the block's own
+  // source with an SVG, so the text on screen is the diagram's labels while the
+  // file still holds `graph TD`. Sending what is on screen answered 409 on a
+  // block nobody had touched.
+  const withDiagram = baseSpec('Diagram delete e2e').replace(
+    '<main>',
+    '<main><section id="target"><h2>Target</h2>'
+    + '<pre data-lang="mermaid"><code>graph TD\n  Browser--&gt;API</code></pre>'
+    + '<p id="keep">A paragraph that stays.</p></section>',
+  );
+  await withSpec({ html: withDiagram }, async ({ page, id }) => {
+    // Wait for the render, not just the element: before it, the pre still holds
+    // its source and the test would pass for the wrong reason.
+    await page.waitForSelector('pre[data-sf-mermaid="rendered"]', { timeout: 15000 });
+    await page.click('pre[data-sf-mermaid]', { button: 'right' });
+    await page.waitForSelector('#sf-ctx.open');
+    await page.locator('#sf-ctx .sf-menu-row', { hasText: 'Delete' }).click();
+    await page.locator('.sfui-dlg[open] .sfui-btn.danger').click();
+    await page.waitForFunction(() => !document.querySelector('pre[data-sf-mermaid]'));
+
+    const onDisk = readFileSync(join(process.env.SPECFORGE_HOME, 'specs', id, 'spec.html'), 'utf8');
+    assert.equal(onDisk.includes('graph TD'), false, 'the diagram left the file');
+    assert.equal(onDisk.includes('A paragraph that stays.'), true);
+  });
+});
+
 test('the headings are visible above their entries', { skip: !CHROME }, async () => {
   // jsdom says the headings are in the DOM. Only a browser says they are legible
   // and sit above the rows they head rather than beside them.

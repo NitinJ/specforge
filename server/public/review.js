@@ -785,6 +785,13 @@
             // as its source until the next load, which is the same outcome as an
             // unreachable renderer and consistent with what was recorded.
             if (finished) return finish();
+            // Kept before the source is replaced by the picture. The file still
+            // holds the mermaid text, so anything that has to name this block to
+            // the server — Delete does — has to say what is written there rather
+            // than what is on screen. Nothing else reads it, and in particular
+            // comment anchors still use the rendered text, because that is what
+            // they were recorded against.
+            pre.setAttribute('data-sf-src', src);
             pre.innerHTML = r.svg;
             hoistDiagramStyle(pre, id);
             pre.setAttribute('data-sf-mermaid', 'rendered');
@@ -1816,7 +1823,10 @@
    */
   function deleteBlockAt(el) {
     var section = sectionPathOf(el)[0];
-    var text = blockText(el);
+    // What the FILE says, which for a rendered diagram is not what is on screen:
+    // the picture replaced its own source, and the server searches the source.
+    // Everything else reads the same either way.
+    var text = el.getAttribute('data-sf-src') || blockText(el);
     if (!section || !text) return flashErr('Could not tell which block that is.');
     var key = 'delete_block::' + section + '::' + text;
     if (sending[key]) return;
