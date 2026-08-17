@@ -315,6 +315,7 @@
     // injector (the second IIFE below), which builds after this chrome.
     applyFont(initFont()); // reading font — persisted choice (or the spec's own) on load
     applyMono(initMono()); // the monospace face, which is a separate choice
+    flagDeck();            // so the stylesheet can leave a paged spec's spacing alone
     initHighlight();       // and colour the code blocks whose author named a language
     buildChrome();
     // Diagrams before the reconcile, never beside it. Rendering replaces a
@@ -2966,6 +2967,18 @@
       if (secs[i].classList.contains('is-current')) return secs;
     }
     return null;
+  }
+  /**
+   * Mark a deck on `<html>`, once, at boot.
+   *
+   * A deck shows one section at a time and fills the stage, so the section
+   * spacing the stylesheet restores for a scrolling spec is meaningless on it
+   * and the padding would push a slide's own layout around. CSS cannot ask
+   * whether a spec pages its sections; this is that question, answered where it
+   * is already answered for the rail.
+   */
+  function flagDeck() {
+    if (deckSlides()) document.documentElement.setAttribute('data-sf-deck', '');
   }
   /** The slide a block sits on, or null off a deck. */
   function slideOf(el) {

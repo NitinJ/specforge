@@ -1513,6 +1513,45 @@ section[data-sf-rules] > h2 {
 section[data-sf-rules] li { margin: 6px 0; }
 section[data-sf-rules] li:not([data-sf-rule]) { color: var(--sf-muted); }
 
+/* Section spacing, corrected for every spec already in the store.
+ *
+ * The templates carry `h2:first-of-type{border-top:none;margin-top:18px}`, which
+ * reads as "the first heading needs no rule above it" and is not what it does:
+ * each h2 is the only h2 inside its own <section>, so it is first-of-type in
+ * every one of them. Every section got the exception, and the 48px of air and
+ * the separator the rule below it defined have never once applied.
+ *
+ * The templates are fixed, and a template only reaches specs written after it.
+ * The hundred already in the store carry the broken rule in their own <style>,
+ * and this is the only place that can reach them. Same standing as the reading
+ * font: the review layer owns how a spec reads, not what it says.
+ *
+ * Skipped on a deck, which shows one section at a time and has no gaps between
+ * them to set, and skipped where a spec deliberately spaces its own sections
+ * (`data-sf-space`), so an author who has thought about this keeps their answer.
+ */
+html:not([data-sf-deck]) main > section:not([data-sf-space]) > h2 {
+  margin-top: 56px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line, var(--sf-line));
+}
+/* The first section is the one the exception was written for. */
+html:not([data-sf-deck]) main > section:first-of-type > h2 {
+  margin-top: 18px;
+  padding-top: 0;
+  border-top: none;
+}
+/* Subsections, which were tight for the ordinary reason rather than a broken
+   selector: 26px under a 16.5px heading reads as one block of text, not two. */
+html:not([data-sf-deck]) main > section > h3 { margin-top: 34px; }
+html:not([data-sf-deck]) main > section > h4 { margin-top: 24px; }
+/* Except at the top of a section, where the h2's own margin is already the gap
+   and adding to it leaves the heading floating away from its section. */
+html:not([data-sf-deck]) main > section > h2 + h3,
+html:not([data-sf-deck]) main > section > h2 + h4,
+html:not([data-sf-deck]) main > section > h3:first-child,
+html:not([data-sf-deck]) main > section > h4:first-child { margin-top: 14px; }
+
 /* print / "Export PDF": drop all injected review chrome so the PDF is just the
    spec, and keep atomic blocks from splitting across pages. The spec's own CSS
    (and the print dialog's "Background graphics" toggle) drive the look. */
