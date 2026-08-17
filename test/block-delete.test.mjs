@@ -148,25 +148,30 @@ test('a valid entity the decoder does not carry still matches', () => {
   assert.equal(out.html.includes('2026'), false);
 });
 
-test('the wildcard widens a match, so an ambiguity it creates is still a refusal', () => {
-  // The bound on the trade. A wildcard can make two blocks look alike; two
-  // blocks matching has always meant "do nothing".
+test('two entities that decode differently are two different blocks', () => {
+  // The comparison is exact, and this is why. A single-character wildcard for an
+  // unknown entity made these two look alike, so a request written before
+  // someone changed one to the other still matched and deleted a block the
+  // reader had never seen.
   const two = SPEC
     .replace('<p>The first paragraph.</p>', '<p>Figur &copy; here.</p>')
     .replace('<p>The second paragraph.</p>', '<p>Figur &reg; here.</p>');
-  assert.throws(() => cut(two, { section: 'one', tag: 'P', text: 'Figur © here.' }), /matches 2 blocks/);
+  const out = cut(two, { section: 'one', tag: 'P', text: 'Figur © here.' });
+  assert.equal(out.html.includes('&copy;'), false, 'the one that was asked for');
+  assert.equal(out.html.includes('&reg;'), true, 'and not the other');
 });
 
-test('text that is simply different does not match through the wildcard', () => {
+test('text that is simply different does not match', () => {
   const c = SPEC.replace('<p>The second paragraph.</p>', '<p>&copy; 2026 Figur.</p>');
   assert.throws(() => cut(c, { section: 'one', tag: 'P', text: '© 2027 Figur.' }), /no block/);
 });
 
-test('a regex character in the text is matched literally, not as a pattern', () => {
-  // The comparison builds a regex from the file's text once an entity is in it.
-  const re = SPEC.replace('<p>The second paragraph.</p>', '<p>Costs &pound;5 (a.k.a. cheap).</p>');
-  const out = cut(re, { section: 'one', tag: 'P', text: 'Costs £5 (a.k.a. cheap).' });
-  assert.equal(out.html.includes('cheap'), false);
+test('case tells two named entities apart', () => {
+  // &Alpha; and &alpha; are different characters, so the table is read
+  // case-sensitively even though the numeric forms are not.
+  const g = SPEC.replace('<p>The second paragraph.</p>', '<p>&Alpha; and &alpha;.</p>');
+  const out = cut(g, { section: 'one', tag: 'P', text: 'Α and α.' });
+  assert.equal(out.html.includes('Alpha'), false);
 });
 
 test('a component block is a div, and deletes like anything else', () => {
