@@ -145,6 +145,63 @@ test('a comment never submitted is not a live request', () => {
   assert.deepEqual(actionsForThread(t, { specId: 'sp1', cli: CLI, batchIds: new Set(['b_1']) }), []);
 });
 
+test('each action says which batch asked for it', () => {
+  // Two batches can be pending at once. Without attribution, an action from the
+  // second is delivered as part of the first, done there, and then demanded
+  // again when the second comes round.
+  const t = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object'], bid: 'b1' } },
+    comments: [
+      { kind: 'human', body: '@agent @visualize', batchId: 'b_1' },
+      { kind: 'human', body: '@agent @go_deeper', batchId: 'b_2' },
+    ],
+  };
+  const both = actionsForThread(t, { specId: 'sp1', cli: CLI, batchIds: new Set(['b_1', 'b_2']) });
+  assert.deepEqual(both.map((a) => [a.id, a.batchId]), [['visualize', 'b_1'], ['go_deeper', 'b_2']]);
+});
+
+test('the same action in two pending batches is two requests', () => {
+  const t = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object'], bid: 'b1' } },
+    comments: [
+      { kind: 'human', body: '@agent @visualize', batchId: 'b_1' },
+      { kind: 'human', body: '@agent @visualize again, as a table', batchId: 'b_2' },
+    ],
+  };
+  const out = actionsForThread(t, { specId: 'sp1', cli: CLI, batchIds: new Set(['b_1', 'b_2']) });
+  assert.equal(out.length, 2);
+  assert.deepEqual(out.map((a) => a.batchId), ['b_1', 'b_2']);
+  assert.equal(out[1].detail, 'again, as a table', 'and each keeps its own qualifier');
+});
+
+test('the same action twice inside one batch is one request', () => {
+  const t = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object'], bid: 'b1' } },
+    comments: [
+      { kind: 'human', body: '@agent @visualize', batchId: 'b_1' },
+      { kind: 'human', body: '@agent @visualize', batchId: 'b_1' },
+    ],
+  };
+  assert.equal(actionsForThread(t, { specId: 'sp1', cli: CLI, batchIds: new Set(['b_1']) }).length, 1);
+});
+
+test('a qualifier belongs to its own comment, not to the whole thread', () => {
+  // Joining the thread into one body mixed Monday's words into Tuesday's action.
+  const t = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object'], bid: 'b1' } },
+    comments: [
+      { kind: 'human', body: 'this section is confusing', batchId: 'b_1' },
+      { kind: 'human', body: '@agent @visualize the retry path', batchId: 'b_1' },
+    ],
+  };
+  const [a] = actionsForThread(t, { specId: 'sp1', cli: CLI, batchIds: new Set(['b_1']) });
+  assert.equal(a.detail, 'the retry path');
+});
+
 test('only the human comments are read', () => {
   // An agent reply quoting an action it just ran must not queue it again.
   const t = thread('@agent this is fine');
