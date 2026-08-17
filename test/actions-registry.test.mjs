@@ -64,6 +64,22 @@ test('a direct action needs no instruction, because no agent reads it', () => {
   assert.equal(copy.kind, 'direct');
 });
 
+test('an aside says whether its draft adds to the section or takes its place', () => {
+  // Adding is the safe default, so an action that says nothing merges.
+  assert.equal(defineAction(ok).importMode, 'merge');
+  assert.equal(defineAction({ ...ok, importMode: 'replace' }).importMode, 'replace');
+  assert.throws(() => defineAction({ ...ok, importMode: 'overwrite' }), /importMode/);
+});
+
+test('only an aside can replace the section it came from', () => {
+  // An in-place action edits the section; there is no draft to replace it with,
+  // so the property would be read by nothing and mean nothing.
+  assert.throws(
+    () => defineAction({ ...ok, kind: 'in-place', importMode: 'replace' }),
+    /importMode/,
+  );
+});
+
 test('a label and an icon are required', () => {
   assert.throws(() => defineAction({ ...ok, label: '' }), /label/);
   assert.throws(() => defineAction({ ...ok, icon: '' }), /icon/);

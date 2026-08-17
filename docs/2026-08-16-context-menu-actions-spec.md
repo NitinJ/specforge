@@ -372,13 +372,31 @@ An **aside** is a section of the spec carrying `data-sf-aside="<sourceSectionId>
 | How you know one exists | One marker per aside, positioned against **the block the action was asked for on**, read from `data-sf-block`. Clicking it opens the panel on that aside. The marker is a child of the section rather than part of any block, because a comment anchors to a block's text and chrome inside one would change that text and orphan the threads already on it, so it is placed by measurement instead. An aside with no resolvable block falls back to its section. |
 | Commentable | Yes, in the panel. The nodes moved but they are still the document, so `querySelectorAll(BLOCK_SEL)` still finds them. The panel's own chrome is excluded and its content is not, which is the distinction `inUI()` already draws everywhere else. |
 | Actions on it | **&#8592; Import into spec** and **Dismiss**, in the header strip. Both are comments, like every other action ([§9](#how-it-runs)): they send `@agent @import` and `@agent @dismiss` on the aside. |
-| Import | Merges the content into the source section and deletes the aside. The originating action's instruction decides the form, so Visualize imports as a figure and Explain simply as a callout. Threads on the imported blocks travel with them, because they anchor to blocks rather than to the aside. |
+| Import | Lands the content in the section named in `data-sf-aside`, beside the block named in `data-sf-block`, and deletes the aside. What it does there is the action's `importMode`: `merge` adds the draft to the section, `replace` puts it in the section's place. Visualize is the one `replace` in the registry. The originating action's instruction decides the form, so Visualize imports as a figure and Explain simply as a callout. Threads on the imported blocks travel with them, because they anchor to blocks rather than to the aside. |
 | Dismiss | Deletes the section and its threads. Same as deleting any section that has been commented on. |
 | If its section is deleted | The aside goes with it. An aside is about the section above it, and one left behind attaches itself to whatever section happens to precede it, which is worse than losing a draft you had not imported. |
 
 <!-- sf:callout variant="note" -->
 
 > **Import goes through the agent rather than the browser.** A button that merged the aside itself would be the browser writing the spec file, which nothing does today and which [§9](#how-it-runs) exists to avoid. The cost is that accepting a draft takes a round trip rather than being instant. The gain beyond the write path is that the agent places the content, so an imported diagram lands as a figure in the right part of the section instead of being appended to the end of it.
+
+#### What an import resolves against
+
+Import is the one action whose instruction cannot be written in advance. Every other entry in the registry carries a fixed standard; this one acts on a draft that did not exist when the registry was written, so what it merges, where it lands, and whether it supersedes the section are properties of the aside rather than of the action. The aside already records all three: `data-sf-aside` names the section, `data-sf-block` names the block, `data-sf-action` names the action whose `importMode` decides the verb. `importTarget(html, asideId)` reads them and returns the concrete sentence, delivered as `target` on the resolved thread ([§9](#how-it-runs)) alongside the general instruction.
+
+The instruction it replaced said *merge this aside into the section above it*, and both halves were wrong. It named a **position** where the aside records an **identity**, so an aside sitting after another aside merged into that other draft rather than into the section. And it worked on the section when the request was about a block: ask for a diagram of one paragraph in a twelve-paragraph section and the result landed wherever the agent chose.
+
+| Case | What the agent is told |
+| --- | --- |
+| `importMode: merge`, block known | Merge into the named section, immediately after the named block. |
+| `importMode: merge`, no block | Merge into the named section, placed where it belongs rather than appended. |
+| `importMode: replace` | Replace the named section with the draft, keeping the section id and heading. |
+| `data-sf-action` the registry no longer knows | Merge. Guessing `replace` would delete a section on the strength of a string nobody recognises. |
+| No spec in hand, or the id is not an aside | No `target`: the general instruction stands and the agent is told which aside it is answering. |
+
+<!-- sf:callout variant="warning" -->
+
+> **Replace is section-scoped even when the ask was block-scoped.** Visualize asked on one paragraph writes an aside carrying that paragraph's `data-sf-block`, and importing it replaces the whole section rather than that paragraph. This is deliberate: a diagram built from one paragraph is almost always a diagram of what the section is about, and a replace that swapped a single paragraph for a figure would leave the surrounding prose describing a thing that is no longer written down. The alternative, block-level replace, is recorded in [§12](#open-questions) rather than built.
 
 #### Why the panel is half the page
 
@@ -424,7 +442,7 @@ Settled in review. Each was an open question above it before it was one of these
 
 ## 12 · Open questions
 
-- Nothing is open. Every question below was settled in review; the answers are the decisions in [§11](#decisions).
+- Q1 to Q8 were settled in review; the answers are the decisions in [§11](#decisions). Q9 opened during implementation and is deferred rather than answered.
 - [x] **Q1 — resolved** Which actions ship. Eleven, listed in [§6](#recommendations): eight local and three spec-wide, 166 of 242 instances.
 - [x] **Q2 — resolved** Does an action ask you a question before it runs? No. It writes a comment instead, which you can add to before sending. [D1](#decisions).
 - [x] **Q3 — resolved** Do spec-wide actions ship now? Yes, in the same feature. [D2](#decisions).
@@ -433,6 +451,7 @@ Settled in review. Each was an open question above it before it was one of these
 - [x] **Q6 — resolved** What happens to an aside when its section is deleted? It is deleted with it. [D5](#decisions).
 - [x] **Q7 — resolved** Which surfaces show an aside? All of them. Nothing filters `data-sf-aside`, and one rule changes, `toc-in-sync`. [D6](#decisions).
 - [x] **Q8 — resolved** Do the two actions that need a detail from you come into the menu? Yes, both. [D7](#decisions).
+- [ ] **Q9 — deferred** Should `replace` ever act on a block rather than the section? Visualize asked on one paragraph records that paragraph in `data-sf-block`, and importing it replaces the whole section ([§10](#asides)). Block-level replace would need the resolver to say which block the draft stands in for and the agent to leave the rest of the section untouched, and it is only right when the diagram really is about that one paragraph. Revisit when a real import gets this wrong; until then the section-scoped rule is what shipped.
 
 ## 13 · Implementation plan
 
@@ -536,7 +555,7 @@ Two defects found by using the thing. An aside renders in the document instead o
 
 The panel shipped at the comments drawer's width, showing every draft stacked in a column, with one marker per section. All three were wrong: a diagram at 340px is a thumbnail, and a marker at the top of a twelve-paragraph section says nothing about which paragraph was asked about.
 
-### Stage 8 — Deliver the action to the agent
+### Stage 8 — Deliver the action to the agent (PR 193)
 
 - [x] 8.1 `comments <id>` attaches an `actions` array to every thread that names one: the instruction in full, the qualifier that was typed, a `next` sentence, and `run` carrying the command with this thread's section and block already in it.
       verify: an aside action resolves with a runnable command; an in-place one resolves with no command and the section named; a thread with no section is refused rather than given a broken command; only human comments are read.
@@ -548,6 +567,19 @@ The panel shipped at the comments drawer's width, showing every draft stacked in
       verify: a test asserts the skill names the `actions` array, `next` and `run`.
 
 Four aside actions, four answered by editing the section. The instruction and the command both existed; neither ever reached the agent, and the text that woke it said to amend the spec. This moves the resolution onto the thread and stops the wake-up text contradicting it.
+
+### Stage 9 — What an import acts on
+
+- [x] 9.1 An action declares `importMode`, `merge` or `replace`, defaulting to `merge`. The registry refuses `replace` on anything that is not an aside action, because an in-place action has no draft to replace the section with.
+      verify: the default is `merge`; an unknown mode throws; `replace` on an in-place action throws naming the property.
+- [x] 9.2 `importTarget(html, asideId)` reads `data-sf-aside`, `data-sf-block` and `data-sf-action` off the aside and returns the section, the block, the mode and the sentence saying what to do with them.
+      verify: the section comes from the attribute and not from what precedes the aside; an action id the registry no longer knows resolves to `merge`; a plain section resolves to nothing.
+- [x] 9.3 `comments <id>` reads the spec and attaches `target` to a resolved `@import`, and `next` becomes the concrete sentence rather than the general one. Visualize carries `importMode: 'replace'`.
+      verify: an `@import` on a Visualize aside resolves to the source section with mode `replace`; with no spec in hand it still names the aside it is answering.
+- [x] 9.4 The spec records the semantics: §10 gains the resolution table and the section-scoped-replace warning, §12 gains Q9.
+      verify: the exported markdown carries both, and the lint passes.
+
+The import instruction said "merge this aside into the section above it". It named a position where the aside records an identity, and it worked on the section when the request was about a block. This resolves the target from the aside itself and gives the registry a way to say that a draft supersedes what it was made from.
 
 ## 15 · Design decisions (implementation time)
 
@@ -567,6 +599,8 @@ Filled during implementation: choices made where the spec was ambiguous.
 - **A spec-wide action anchors to the title.** The comment has to hang somewhere, and the place the reader was standing is not the thing being changed. A spec with no `h1` falls back to the first commentable block: a menu that throws on right-click is worse than one anchored a line off.
 - **The panel overlays the document rather than reflowing it.** Same as the comments drawer, which is fixed at the right edge and has never pushed the page. Giving this one panel a different behaviour would be the inconsistency; the two now share `--sf-side-w`, and a test asserts they measure the same width.
 - **An open composer overrides the panel, the way it already overrides the width rule.** The rail hides while the panel is open, and the composer lives in the rail, so commenting on an aside was a dead end: an open panel and no way to say anything about it. The composer now brings the rail back and CSS shifts it clear of the panel. Found by a browser test, because in jsdom the click resolved and nothing was measurably wrong.
+- **Import resolves at delivery, not at definition.** Every other action carries a fixed instruction written when the registry was. Import cannot: it acts on a draft that did not exist then, so its general instruction stays in the registry and `importTarget()` produces the concrete sentence per thread. Putting the concrete version in the registry was never available; putting it in the skill was, and is what stage 8 proved does not reach the agent.
+- **An unknown `data-sf-action` falls back to `merge`.** An aside can outlive the action id that wrote it, through a rename or a removal. Merging a draft into a section it does not belong in is a bad paragraph; replacing a section on the strength of a string the registry does not recognise deletes work. The safe fallback is the one that adds.
 
 ## 16 · Deviations
 
@@ -578,6 +612,7 @@ Filled during implementation: intentional departures from the spec, and why.
 - **The first real Visualize wrote its diagram straight into the spec.** On spec `c8fb987ad0`, comment `@agent @visualize`, the agent produced the figure in place with no `data-sf-aside` wrapper and no way to reject it. Prose in a skill is not a mechanism: stage 6.4 adds a command that writes the section, so the markup cannot be got wrong by an agent that skims.
 - **The command was not enough either: four out of four aside actions were answered by editing the section.** Audited across the store on 2026-08-17: `@visualize`, `@visualize`, `@explain_simply` and `@help_me_decide`, and three of them arrived after the command shipped. The cause was delivery, and it is now stage 8. A command an agent never learns it should run is the same defect as an instruction it never reads.
 - **The contents drawer needed the aside exemption too.** [§10](#asides) names one rule that has to change, `toc-in-sync`. The floating drawer the review layer injects builds itself from `section[id]` when a spec has no curated table of contents of its own, so an aside appeared in it on exactly those specs. Same exemption, second place. Found by writing the browser test rather than by reading. PR #187.
+- **Import was pointed at a position, and at the wrong unit.** [§10](#asides) said an import merges into "the source section", and the shipped instruction rendered that as "the section above it". Two asides on one section stack, so the second merged into the first. The aside carried the answer in `data-sf-aside` the whole time and nothing read it. Stage 9 reads it, and adds `importMode` so Visualize can supersede the prose it was built from rather than sit next to it.
 
 ## 17 · Tradeoffs
 
