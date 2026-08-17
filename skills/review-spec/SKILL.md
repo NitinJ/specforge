@@ -221,8 +221,10 @@ rather than inferring from the label.
   ```
   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" aside <specId> \
     --section <sourceSectionId> --action <actionId> \
-    --block <anchor.block.bid> --file <path-to-your-html>
+    --block <anchor.block.bid> --thread <threadId> --file <path-to-your-html>
   ```
+
+  You do not have to assemble that: the thread's `run` field already carries it.
 
   It places the section, numbers the id and writes the attributes the review
   layer reads. **Do not hand-write that markup.** Getting any of them wrong
@@ -232,7 +234,9 @@ rather than inferring from the label.
 
   `--block` is the `bid` from the thread's `anchor.block`, and it is what puts
   the marker on the paragraph the reader asked about rather than at the top of
-  the section. Pass it whenever the thread has one; omit it when it does not.
+  the section. `--thread` is what `batch-done` checks: without it the draft
+  answers no request, and a draft written last week on the same section would
+  close today's batch. Pass both whenever the thread has them.
 
   What you write is the body only: the content, in the spec's own component
   vocabulary. The command adds the wrapper and the heading. An aside gets **no

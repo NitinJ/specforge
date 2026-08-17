@@ -18,30 +18,38 @@ const thread = (body, over = {}) => ({
 
 const SPEC_WITHOUT = '<section id="object"><h2>Object</h2><p>Prose.</p></section>';
 const SPEC_WITH = SPEC_WITHOUT
-  + '<section id="object-aside-1" data-sf-aside="object" data-sf-action="visualize"><h3>A</h3><p>b</p></section>';
+  + '<section id="object-aside-1" data-sf-aside="object" data-sf-thread="th_1" data-sf-action="visualize">'
+  + '<h3>A</h3><p>b</p></section>';
 
 test('an aside action with no aside is a gap', () => {
   const gaps = asideGaps([thread('@agent @visualize')], SPEC_WITHOUT, { specId: 'sp1', cli: '/cli.mjs' });
   assert.equal(gaps.length, 1);
   assert.equal(gaps[0].action, 'visualize');
   assert.equal(gaps[0].section, 'object');
-  assert.match(gaps[0].run, /--section object --block b1 --action visualize/);
+  assert.match(gaps[0].run, /--section object --block b1 --thread th_1 --action visualize/);
 });
 
 test('an aside action with its aside is not', () => {
   assert.deepEqual(asideGaps([thread('@agent @visualize')], SPEC_WITH, { specId: 'sp1', cli: '/cli.mjs' }), []);
 });
 
-test('the aside has to be the one that was asked for', () => {
-  // A Go deeper aside on the section does not answer a Visualize request.
-  const gaps = asideGaps([thread('@agent @go_deeper')], SPEC_WITH, { specId: 'sp1', cli: '/cli.mjs' });
-  assert.equal(gaps.length, 1);
-  assert.equal(gaps[0].action, 'go_deeper');
+test('an aside answering a different thread does not satisfy this one', () => {
+  // The hole a section-plus-action check leaves open: ask @visualize on §object
+  // today and last week's §object Visualize aside closes the batch with no new
+  // draft written. The thread id is what distinguishes one request from the
+  // one before it.
+  const again = { ...thread('@agent @visualize'), id: 'th_2' };
+  const gaps = asideGaps([again], SPEC_WITH, { specId: 'sp1', cli: '/cli.mjs' });
+  assert.equal(gaps.length, 1, 'a fresh request needs a fresh draft');
+  assert.match(gaps[0].run, /--thread th_2/);
 });
 
-test('and it has to be on the section that was commented', () => {
-  const other = thread('@agent @visualize', { sectionPath: ['features'] });
-  assert.equal(asideGaps([other], SPEC_WITH, { specId: 'sp1', cli: '/cli.mjs' }).length, 1);
+test('an aside with no thread attribution satisfies nothing', () => {
+  // Hand-written rather than produced by the command. Strict on purpose: the
+  // alternative reopens the hole above, and --force is the way through.
+  const untagged = SPEC_WITHOUT
+    + '<section id="object-aside-1" data-sf-aside="object" data-sf-action="visualize"><h3>A</h3><p>b</p></section>';
+  assert.equal(asideGaps([thread('@agent @visualize')], untagged, { specId: 'sp1', cli: '/cli.mjs' }).length, 1);
 });
 
 test('an in-place action is never a gap', () => {

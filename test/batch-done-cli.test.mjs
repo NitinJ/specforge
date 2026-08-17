@@ -46,14 +46,19 @@ async function seed(t, body) {
   const { mutateComments } = await import('../lib/store-comments.mjs');
   const { createThread } = await import('../lib/comments.mjs');
   const { submitBatch } = await import('../lib/store-inbox.mjs');
-  mutateComments(id, (store) => createThread(store, {
-    anchor: { block: { tag: 'P', text: 'A paragraph to act on.', sectionPath: ['object'], bid: 'b2' } },
-    body,
-    author: 'nitin',
-    kind: 'human',
-  }));
+  let threadId;
+  mutateComments(id, (store) => {
+    const t = createThread(store, {
+      anchor: { block: { tag: 'P', text: 'A paragraph to act on.', sectionPath: ['object'], bid: 'b2' } },
+      body,
+      author: 'nitin',
+      kind: 'human',
+    });
+    threadId = t.id;
+    return t;
+  });
   const batch = submitBatch(id);
-  return { id, run, batchId: batch.batchId };
+  return { id, run, batchId: batch.batchId, threadId };
 }
 
 test('batch-done refuses while an aside action has produced no aside', async (t) => {
@@ -80,9 +85,19 @@ test('--force closes it anyway, for the case the check cannot see', async (t) =>
 });
 
 test('batch-done passes once the aside exists', async (t) => {
-  const { id, run, batchId } = await seed(t, '@agent @visualize');
-  run('aside', id, '--section', 'object', '--block', 'b2', '--action', 'visualize', '--body', '<p>A draft.</p>');
+  const { id, run, batchId, threadId } = await seed(t, '@agent @visualize');
+  run('aside', id, '--section', 'object', '--block', 'b2', '--thread', threadId,
+    '--action', 'visualize', '--body', '<p>A draft.</p>');
   assert.equal(JSON.parse(run('batch-done', id, batchId)).ok, true);
+});
+
+test('an aside answering a different thread does not close this batch', async (t) => {
+  // The section-plus-action check would have passed here. The draft exists on
+  // §object and it is a Visualize draft; it just answers something else.
+  const { id, run, batchId } = await seed(t, '@agent @visualize');
+  run('aside', id, '--section', 'object', '--block', 'b2', '--thread', 'th_someoneelse',
+    '--action', 'visualize', '--body', '<p>An older draft.</p>');
+  assert.throws(() => run('batch-done', id, batchId), (e) => /produced no aside/.test(String(e.stderr)));
 });
 
 test('a batch with no aside action closes as it always did', async (t) => {

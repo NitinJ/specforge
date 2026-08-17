@@ -104,6 +104,47 @@ test('two actions in one comment each resolve', () => {
   assert.equal(out[1].detail, 'on the retry path');
 });
 
+test('an aside command names the thread it answers', () => {
+  // Without it, batch-done cannot tell a new request from one already answered:
+  // an aside written last week on the same section satisfies today's ask.
+  const [a] = resolve(thread('@agent @visualize'));
+  assert.match(a.run, /--thread th_1/);
+});
+
+test('only the batch being answered is resolved', () => {
+  // A thread accumulates. Monday's @visualize was answered; Tuesday's reply is
+  // the live request. Reading the whole thread would replay Monday's, announce
+  // work already done, and have batch-done demand a second draft for it.
+  const t = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object'], bid: 'b1' } },
+    comments: [
+      { kind: 'human', body: '@agent @visualize', batchId: 'b_mon' },
+      { kind: 'agent', body: 'Drafted it.' },
+      { kind: 'human', body: '@agent the arrow is backwards', batchId: 'b_tue' },
+    ],
+  };
+  const live = actionsForThread(t, { specId: 'sp1', cli: CLI, batchIds: new Set(['b_tue']) });
+  assert.deepEqual(live, [], 'Tuesday asks for no action');
+
+  const monday = actionsForThread(t, { specId: 'sp1', cli: CLI, batchIds: new Set(['b_mon']) });
+  assert.deepEqual(monday.map((a) => a.id), ['visualize']);
+
+  const unscoped = actionsForThread(t, { specId: 'sp1', cli: CLI });
+  assert.deepEqual(unscoped.map((a) => a.id), ['visualize'], 'no batch in hand reads the whole thread');
+});
+
+test('a comment never submitted is not a live request', () => {
+  // Typed in the browser and not yet sent. It carries no batchId, so scoping
+  // leaves it out; the agent has not been asked for it yet.
+  const t = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object'], bid: 'b1' } },
+    comments: [{ kind: 'human', body: '@agent @visualize' }],
+  };
+  assert.deepEqual(actionsForThread(t, { specId: 'sp1', cli: CLI, batchIds: new Set(['b_1']) }), []);
+});
+
 test('only the human comments are read', () => {
   // An agent reply quoting an action it just ran must not queue it again.
   const t = thread('@agent this is fine');
