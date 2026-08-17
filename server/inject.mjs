@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { renderLiveTracker } from '../lib/tracker.mjs';
 import { blockComponents } from '../components/index.mjs';
-import { menuActions } from '../lib/actions/all.mjs';
+import { menuActions, menuGroups } from '../lib/actions/all.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
@@ -219,7 +219,7 @@ function reviewSnippet(specId, prefs, transport, api, servedAt) {
     // no agent: their composer defaults to discussion, so an action picked there
     // would post a comment nothing ever reads, which is a menu entry that
     // silently does nothing.
-    ...(transport === 'poll' ? {} : { actions: menuActions(), cli: CLI_PATH }),
+    ...(transport === 'poll' ? {} : { actions: menuActions(), groups: menuGroups(), cli: CLI_PATH }),
   });
   // The mtime of the file this response was rendered from. The caller's
   // reading is preferred because only it knows when it read the bytes; falling

@@ -251,7 +251,20 @@ The argument does not run the other way. An aside whose only sensible next step 
 
 <!-- sf:section id="menu" -->
 
-Labels are verb-first and short enough to scan. Each carries the standing instruction from [§6](#recommendations), which is what the agent actually runs. Entries are grouped by kind and ordered by how often you asked inside a kind, so the two that rewrite your text never sit between the six that only add a draft beside it.
+Labels are verb-first and short enough to scan. Each carries the standing instruction from [§6](#recommendations), which is what the agent actually runs.
+
+#### Grouped by what you are after
+
+Ten entries in one undifferentiated column is a list you read rather than a menu you pick from. They sit under headings, and the headings are the buckets from [§4](#buckets), collapsed to menu size: the corpus was grouped by what the reader was trying to get rather than by what the agent does to the document, and that is the question a reader is answering when the menu opens.
+
+| Heading | Entries | The buckets it holds |
+| --- | --- | --- |
+| **Understand it** | Explain simply, Visualize, Go deeper, Show an example | Comprehension, Presentation, and the "fill the gaps" half of Structure. All four write a draft beside the block and change nothing. |
+| **Check it** | Verify against code, Help me decide | Grounding and Decision. Both answer "can I rely on this", and both need a fact only the reader has. |
+| **Change it** | Restructure, Tighten, Delete | Compression and the "reorganise" half of Structure. Every entry that rewrites your text is here, so none of them sits among the ones that only draft beside it. |
+| &#8212; | Copy link | Neither a request nor an edit. Under the divider with no heading of its own, because a group of one reads as a mistake. |
+
+Eight research buckets is too fine for ten entries: it would be close to a heading per line, which is the problem the grouping was meant to solve. Order comes from the group list rather than from the order actions were declared, and the registry declares them in that order too, so reading the file top to bottom is reading the menu.
 
 #### Agentic actions, on a block or a section
 
@@ -265,6 +278,7 @@ Labels are verb-first and short enough to scan. Each carries the standing instru
 | &#10077; | **Show an example** | aside | 13 | Often long, often illustrative rather than normative. Many will be read and discarded, which is exactly what an aside is for. |
 | &#9776; | **Restructure** | in place | 16 | Rebuilds the section on a deliberate pattern. The most destructive action in the menu, since it rewrites everything in scope and nothing keeps the old version ([D4](#decisions)). |
 | &#9986; | **Tighten** | in place | 4 | Covers the same ground in fewer words. Nothing is added, so nothing needs reviewing beside the original. |
+| &#10005; | **Delete** | direct | 19 | Removes the block you pointed at, after a confirmation quoting it. The other half of the Compression bucket, and the only entry that removes the reader's own writing, so it is last in its group: a destructive item mid-list is the one you hit reaching for the item below it. Answered by the browser ([D10](#decisions)). |
 
 #### Agentic actions, on the whole spec
 
@@ -481,6 +495,7 @@ Settled in review. Each was an open question above it before it was one of these
 | D7 | **The two actions that need a detail from you are in the menu.** Verify against code and Fix the naming pre-fill the comment box like any action; you type the claim or the replacement term before sending. [§8](#menu) | They are the second and third most asked things that were left out, worth 32 instances, and D1 already gives them the field they were missing. Nothing is built for this beyond two more menu entries. | Two entries that do something unhelpful if sent bare. Their instructions have to ask rather than guess. |
 | D8 | **Every action says how its own output is imported, and the agent decides the extent.** Each aside action carries an `importInstruction` beside its `instruction`. How much of a section a draft supersedes is judged per import, bounded by: cut only what the draft carries forward. [§10](#asides) | The `merge`/`replace` flag it replaced hid six behaviours behind two words, and its section-scoped replace discarded prose the diagram never covered. What importing means depends on what kind of content it is, and only the action that wrote it knows that. | Six instructions to keep current instead of one flag, and the extent of a replace is no longer predictable from the registry alone. |
 | D9 | **Delete is answered by the browser, not the agent.** The button calls `DELETE /api/spec/:id/aside/:asideId`, which removes the section and its threads. The endpoint refuses anything without `data-sf-aside`. [§10](#asides) | Rejecting a draft takes no judgement: nothing to word, nothing to place. A comment round trip bought a wait and a token bill for a delete. The distinction from the section editor removed in v0.2.47 is that nothing but an id comes from the client. | A second write path into `spec.html` to keep correct, and a reader can now delete a draft while the batch that produced it is still open, which `batch-done --force` covers. |
+| D10 | **Delete removes the block you pointed at, from the browser, and the block names itself by its text.** The client posts section, tag and the block's text; `POST /api/spec/:id/block/delete` finds exactly one match or answers 409. [§8](#menu) | The server cannot enumerate blocks: what counts as one is decided in the browser, from a selector that carries injected component classes, excludes review chrome and collapses a rendered diagram to its source. Naming the block the way a reader would is the only identification both ends can agree on, and refusing anything ambiguous is what makes it safe. Nothing sent is markup, which is the line the section editor crossed in v0.2.47. | A block whose text appears twice in one section cannot be deleted this way, and a page even slightly out of date gets a 409 rather than a deletion. Both are the safe end of the trade. |
 
 ## 12 · Open questions
 
@@ -659,6 +674,36 @@ A `merge`/`replace` flag cannot carry six behaviours. Visualize supersedes the p
 
 Dismiss sent `@agent @dismiss` and waited for a session to delete a section. There is no judgement in rejecting a draft, so the round trip bought a wait and a token bill for a delete. Renamed to Delete and answered where it is clicked.
 
+### Stage 12 — The chrome around a draft (PR 197)
+
+- [x] 12.1 The marker is a circle in the gutter between the document and the comments rail, and the rail moves over to open that gutter on a spec that has one.
+      verify: in a browser, the marker is clear of the text, inside the window, square and round-cornered; two markers on one block stack instead of overlapping.
+- [x] 12.2 No stored heading on a draft, and no "Aside" on screen. The markdown export derives the heading from the action.
+      verify: `writeAside` writes no `h3`; the export titles a draft by its action label and an unknown action by the section id.
+- [x] 12.3 Import posts its comment on one click, closes the panel, and says the review still has to be sent. Guarded against a double click on every path out.
+      verify: no composer opens; two clicks write one comment; a refusal and a dropped connection each leave it retryable.
+- [x] 12.4 A comment on a draft anchors to the draft's marker while the panel is shut, for the rail's layout and for the off-screen chips alike.
+      verify: in a browser, the bubble sits beside the marker with the panel closed.
+- [x] 12.5 A comment anchor quotes the block, not the review layer's buttons injected into it.
+      verify: an import comment's anchor text carries no button label and still carries the draft's own words.
+
+Four things the reader asked for after using the panel. The marker hung off the text edge, "Aside" was on screen three times, Import wanted two clicks for a decision with nothing to type, and a comment on a draft floated at a height unrelated to anything.
+
+### Stage 13 — A menu with headings, and Delete on a block
+
+- [x] 13.1 An action declares the heading it sits under, and the registry refuses one that reaches a menu without a group. The list and its order are injected beside the actions.
+      verify: a menu action with no group throws; an unknown group throws; an aside action has none; declaration order matches group order.
+- [x] 13.2 The menu renders headings, with a divider before the one entry that has none.
+      verify: the headings read Understand it, Check it, Change it; the menu opens on a heading and the divider sits immediately before the last row.
+- [x] 13.3 `deleteBlock` finds a block by section, tag and text, and refuses anything that does not resolve to exactly one.
+      verify: the same text in another section is untouched; no match and two matches both throw; whitespace and inline markup do not have to match; a draft is refused.
+- [x] 13.4 `POST /api/spec/:id/block/delete`, answering 409 when the block does not resolve, and the menu entry that confirms and calls it.
+      verify: 409 leaves the file untouched; a missing identifier is 400; a template is 403. In a browser, the paragraph leaves spec.html and its section does not.
+- [x] 13.5 The spec records the grouping and D10.
+      verify: the exported markdown carries both, and the lint passes.
+
+Ten entries in one column is a list rather than a menu, and the one bucket with no entry was Compression's other half: Delete, which the corpus asked for 19 times.
+
 ## 15 · Design decisions (implementation time)
 
 <!-- sf:section id="impl-decisions" -->
@@ -678,6 +723,8 @@ Filled during implementation: choices made where the spec was ambiguous.
 - **The panel overlays the document rather than reflowing it.** Same as the comments drawer, which is fixed at the right edge and has never pushed the page. Giving this one panel a different behaviour would be the inconsistency; the two now share `--sf-side-w`, and a test asserts they measure the same width.
 - **An open composer overrides the panel, the way it already overrides the width rule.** The rail hides while the panel is open, and the composer lives in the rail, so commenting on an aside was a dead end: an open panel and no way to say anything about it. The composer now brings the rail back and CSS shifts it clear of the panel. Found by a browser test, because in jsdom the click resolved and nothing was measurably wrong.
 - **Import resolves at delivery, not at definition.** Every other action carries a fixed instruction written when the registry was. Import cannot: it acts on a draft that did not exist then, so its general instruction stays in the registry and `importTarget()` produces the concrete sentence per thread. Putting the concrete version in the registry was never available; putting it in the skill was, and is what stage 8 proved does not reach the agent.
+- **The block names itself by its text, not by an index.** An index into the commentable-block sequence would have been shorter to send, and the server cannot compute that sequence: what counts as a block is decided in the browser, from a selector carrying injected component classes, an exclusion for review chrome and a rule collapsing a rendered diagram to the `pre` it came from. Reimplementing that server-side is a second definition that drifts from the first, and the drift shows up as a delete cutting the wrong paragraph. Text is the identification both ends can already agree on.
+- **Deleting a block keeps its comment threads; deleting a draft does not.** A draft and its threads are one thing, since the discussion is about a proposal that no longer exists. A thread on a paragraph is a conversation between people, and removing the paragraph does not settle it. The reconcile already renders such a thread as an orphan, which is a state the reader can read and resolve.
 - **The delete reloads rather than removing the node.** The client could drop the section from the DOM on a 200 and skip the round trip. It does not: the write already triggers the spec file's live reload, and a client that removes its own copy is a second place the document lives, which can disagree with the file when the delete half-succeeds. The cost is a reload the reader sees; the gain is that what is on screen is always what is in the file.
 - **The guard lives in the splicer, not the route.** Checking `data-sf-aside` in `handleAsideDelete` would have been the obvious place and protects exactly one caller. In `deleteAside` it protects every future one, including a CLI command nobody has written yet. The route is left holding only what is route-shaped: 404 for a missing spec, 403 for a template.
 - **Both refusals are 400, and neither says which.** A section that is not an aside and a section that is not there could be 400 and 404. Distinguishing them tells a caller whether a given id exists in a spec it may not otherwise read, and the message already says enough to fix a real mistake.

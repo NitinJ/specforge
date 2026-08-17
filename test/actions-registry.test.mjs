@@ -16,6 +16,7 @@ const ok = {
   icon: '⊐',
   kind: 'aside',
   scope: 'local',
+  group: 'understand',
   instruction: 'Choose the form the content wants and build it.',
   importInstruction: 'Replace the blocks the diagram carries forward, and nothing else.',
 };
@@ -88,6 +89,23 @@ test('only an aside carries import guidance, because only an aside is imported',
   );
   const inPlace = defineAction({ ...ok, kind: 'in-place', importInstruction: undefined });
   assert.equal(inPlace.importInstruction, '');
+});
+
+test('an action that reaches a menu declares the heading it sits under', () => {
+  // Without this a new action lands in whichever group the renderer sweeps it
+  // into, which is a decision nobody made and nobody can see in the registry.
+  assert.equal(defineAction(ok).group, 'understand');
+  assert.throws(() => defineAction({ ...ok, group: undefined }), /group/);
+  assert.throws(() => defineAction({ ...ok, group: 'tidying' }), /group/);
+});
+
+test('an action on a draft has no group, because it is in no menu', () => {
+  // Import and Delete render as buttons on the draft itself.
+  const onAside = defineAction({
+    ...ok, id: 'import', label: 'Import', kind: 'in-place', scope: 'aside',
+    group: undefined, importInstruction: undefined,
+  });
+  assert.equal(onAside.group, null);
 });
 
 test('a label and an icon are required', () => {

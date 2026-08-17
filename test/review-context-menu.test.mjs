@@ -34,9 +34,84 @@ test('the menu lists the local actions, in registry order', async (t) => {
   rightClick(window, 'p.p-two');
   assert.equal(
     labels(window).join(' | '),
-    '💡Explain simply | ⊞Visualize | 🔎Go deeper | ✓Verify against code | ⚖Help me decide'
-      + ' | ❝Show an example | ☰Restructure | ✂Tighten | 🔗Copy link',
+    '💡Explain simply | ⊞Visualize | 🔎Go deeper | ❝Show an example | ✓Verify against code'
+      + ' | ⚖Help me decide | ☰Restructure | ✂Tighten | ✕Delete | 🔗Copy link',
   );
+});
+
+test('the entries sit under headings, by what the reader is after', async (t) => {
+  // Ten entries in one undifferentiated column is a list you read rather than a
+  // menu you pick from. Grouped the way the corpus was bucketed: by the ask, not
+  // by what the action does to the document.
+  const { window } = await boot(t);
+  rightClick(window, 'p.p-two');
+  const heads = [...menu(window).querySelectorAll('.sf-menu-head')].map((h) => h.textContent);
+  assert.deepEqual(heads, ['Understand it', 'Check it', 'Change it']);
+});
+
+test('every entry in the menu sits under a heading, or after the divider', async (t) => {
+  // An action added without a group would otherwise render into whichever
+  // section the renderer swept it into, silently.
+  const { window } = await boot(t);
+  rightClick(window, 'p.p-two');
+  const kinds = [...menu(window).children].map((el) => el.className);
+  assert.equal(kinds[0], 'sf-menu-head', 'the menu opens on a heading');
+  assert.equal(kinds.filter((k) => k === 'sf-menu-sep').length, 1, 'one divider, for Copy link');
+  assert.equal(kinds[kinds.length - 2], 'sf-menu-sep', 'and it is right before the last row');
+});
+
+test('Delete is the last thing you can do to the block', async (t) => {
+  // The only entry that removes the reader's own writing, and the one they hit
+  // by reaching for the item below it if it sits mid-list.
+  const { window } = await boot(t);
+  rightClick(window, 'p.p-two');
+  const rows = labels(window);
+  const del = rows.findIndex((r) => r.includes('Delete'));
+  const change = rows.findIndex((r) => r.includes('Restructure'));
+  assert.ok(del > change, 'after the other edits');
+  assert.equal(rows[del + 1], '🔗Copy link', 'and last but for the one entry with no group');
+});
+
+test('Delete asks before removing a block, and quotes what it will cut', async (t) => {
+  // The reader's own writing, and nothing in the store is versioned. The text is
+  // in the question because "delete this block" does not say which one on a page
+  // where the menu has already closed.
+  const { window, posts } = await boot(t);
+  rightClick(window, 'p.p-two');
+  rowByLabel(window, 'Delete').click();
+  await tick(window);
+  const dlg = window.document.querySelector('.sfui-dlg[open]');
+  assert.ok(dlg, 'a confirmation is shown');
+  assert.match(dlg.textContent, /A paragraph in the second section/, 'quoting the block');
+  assert.deepEqual(posts.filter((p) => /block\/delete$/.test(p.url)), [], 'nothing sent yet');
+});
+
+test('confirming Delete names the block by section, tag and text', async (t) => {
+  // The server cannot enumerate blocks: what counts as one is decided here, from
+  // a selector that includes injected component classes and collapses a rendered
+  // diagram. So it is named the way a reader would name it.
+  const { window, posts } = await boot(t);
+  rightClick(window, 'p.p-two');
+  rowByLabel(window, 'Delete').click();
+  await tick(window);
+  window.document.querySelector('.sfui-dlg[open] .sfui-btn.danger').click();
+  await tick(window);
+  const sent = posts.find((p) => /block\/delete$/.test(p.url));
+  assert.equal(sent.body.section, 'two');
+  assert.equal(sent.body.tag, 'P');
+  assert.match(sent.body.text, /A paragraph in the second section/);
+});
+
+test('a Delete the server refuses tells the reader to reload', async (t) => {
+  // A refusal means the block did not resolve to exactly one element, which
+  // means this page is showing something the file no longer says.
+  const { window } = await boot(t, { failPost: /block\/delete$/ });
+  rightClick(window, 'p.p-two');
+  rowByLabel(window, 'Delete').click();
+  await tick(window);
+  window.document.querySelector('.sfui-dlg[open] .sfui-btn.danger').click();
+  await tick(window);
+  assert.match(window.document.body.textContent, /Reload/);
 });
 
 test('the menu carries no global action, because no block was pointed at the whole spec', async (t) => {

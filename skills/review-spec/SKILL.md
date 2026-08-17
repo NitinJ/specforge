@@ -210,6 +210,7 @@ in your head is the version that was true last month.
 | `@show_an_example` | aside |
 | `@restructure` | in-place |
 | `@tighten` | in-place |
+| `@delete_block` | never reaches you; the browser removes the block itself |
 | `@fix_the_naming` | in-place, whole spec |
 | `@consistency_pass` | in-place, whole spec |
 | `@canonicalize` | in-place, whole spec |
