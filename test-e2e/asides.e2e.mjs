@@ -133,6 +133,39 @@ test('the aside reads in the spec typography, not the review layer chrome font',
   });
 });
 
+test('the reading font reaches the draft too', { skip: !CHROME }, async () => {
+  // The review layer's font picker stamps its choice on the WIDTH CONTAINER, and
+  // buildAsides moves the aside out of that container into a fixed panel beside
+  // it. So a draft rendered in the default face while the document it belongs to
+  // rendered in the chosen one, and the previous test could not see it: its
+  // fixture never picks a font. Same for the code face, which is why a `pre` is
+  // in here.
+  // Driven through the stored preference and a reload, which is the ordering
+  // that broke: the font is applied at boot, and the panel is built after it.
+  await withSpec({ html: TWIN }, async ({ page }) => {
+    // The reading face is a global pref and the browser owns it once stored, so
+    // this is what a returning reader with a chosen font actually has.
+    await page.evaluate(() => {
+      localStorage.setItem('sf-prefs', JSON.stringify({ font: 'lora', mono: 'jetbrains-mono' }));
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#sf-launcher');
+    await page.waitForFunction(() =>
+      getComputedStyle(document.getElementById('tp')).fontFamily.includes('Lora'));
+    await openPanel(page);
+
+    const face = await page.evaluate(() => ({
+      proseAside: getComputedStyle(document.getElementById('ap')).fontFamily,
+      proseDoc: getComputedStyle(document.getElementById('tp')).fontFamily,
+      codeAside: getComputedStyle(document.getElementById('ac')).fontFamily,
+      codeDoc: getComputedStyle(document.getElementById('tc')).fontFamily,
+    }));
+    assert.equal(face.proseAside, face.proseDoc, 'the draft follows the reading font');
+    assert.match(face.proseAside, /Lora/, 'and that font is the one that was picked');
+    assert.equal(face.codeAside, face.codeDoc, 'and the code face too');
+  });
+});
+
 test('the panel own chrome keeps the review layer font', { skip: !CHROME }, async () => {
   // The other half of the same rule: the header and the buttons are chrome, and
   // chrome does not inherit the document's reading typography.
