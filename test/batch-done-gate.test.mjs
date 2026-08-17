@@ -18,8 +18,8 @@ const thread = (body, over = {}) => ({
 
 const SPEC_WITHOUT = '<section id="object"><h2>Object</h2><p>Prose.</p></section>';
 const SPEC_WITH = SPEC_WITHOUT
-  + '<section id="object-aside-1" data-sf-aside="object" data-sf-thread="th_1" data-sf-action="visualize">'
-  + '<h3>A</h3><p>b</p></section>';
+  + '<section id="object-aside-1" data-sf-aside="object" data-sf-thread="th_1" data-sf-batch="b_1"'
+  + ' data-sf-action="visualize"><h3>A</h3><p>b</p></section>';
 
 test('an aside action with no aside is a gap', () => {
   const gaps = asideGaps([thread('@agent @visualize')], SPEC_WITHOUT, { specId: 'sp1', cli: '/cli.mjs' });
@@ -67,6 +67,25 @@ test('a later request on an answered thread still needs its own draft', () => {
     specId: 'sp1', cli: '/cli.mjs', batchIds: new Set(['b_2']),
   });
   assert.deepEqual(gaps.map((g) => g.action), ['go_deeper']);
+});
+
+test('asking the same action again is a new request, not one already answered', () => {
+  // "@visualize" then "@visualize again, as a table". Same thread, same action,
+  // different ask. Keyed on thread and action alone, the first diagram closes
+  // the second request and the table is never drawn.
+  const again = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object'], bid: 'b1' } },
+    comments: [
+      { kind: 'human', body: '@agent @visualize', batchId: 'b_1' },
+      { kind: 'human', body: '@agent @visualize again, as a table', batchId: 'b_2' },
+    ],
+  };
+  const gaps = asideGaps([again], SPEC_WITH, {
+    specId: 'sp1', cli: '/cli.mjs', batchIds: new Set(['b_2']),
+  });
+  assert.equal(gaps.length, 1, 'the second ask needs its own draft');
+  assert.match(gaps[0].run, /--batch b_2/);
 });
 
 test('an aside with no thread attribution satisfies nothing', () => {

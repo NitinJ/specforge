@@ -87,8 +87,17 @@ test('--force closes it anyway, for the case the check cannot see', async (t) =>
 test('batch-done passes once the aside exists', async (t) => {
   const { id, run, batchId, threadId } = await seed(t, '@agent @visualize');
   run('aside', id, '--section', 'object', '--block', 'b2', '--thread', threadId,
-    '--action', 'visualize', '--body', '<p>A draft.</p>');
+    '--batch', batchId, '--action', 'visualize', '--body', '<p>A draft.</p>');
   assert.equal(JSON.parse(run('batch-done', id, batchId)).ok, true);
+});
+
+test('a draft answering an earlier batch does not close this one', async (t) => {
+  // Same thread, same action, a second ask. The first draft is on the right
+  // thread with the right action and still answers something else.
+  const { id, run, batchId, threadId } = await seed(t, '@agent @visualize');
+  run('aside', id, '--section', 'object', '--block', 'b2', '--thread', threadId,
+    '--batch', 'b_earlier', '--action', 'visualize', '--body', '<p>An older draft.</p>');
+  assert.throws(() => run('batch-done', id, batchId), (e) => /produced no aside/.test(String(e.stderr)));
 });
 
 test('an aside answering a different thread does not close this batch', async (t) => {

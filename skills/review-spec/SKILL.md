@@ -170,6 +170,10 @@ carries an `actions` array, and everything you need is in it:
 }]
 ```
 
+- `batchId` says which submission asked for it. **Work only the actions whose
+  `batchId` is the batch you are on.** Two batches can be pending at once and a
+  thread can appear in both, so an action belonging to the next batch will be
+  sitting right there on the thread you are reading.
 - `instruction` is what you execute. **The name on the button is not the ask.**
   `@visualize` reads like ordinary English and it is not: it stands for a written
   standard, and following the word instead of the standard is how this went
