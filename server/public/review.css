@@ -1150,7 +1150,12 @@ body.sf-side-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
   color: var(--sf-ink); display: flex; flex-direction: column;
   box-shadow: -12px 0 32px rgba(0, 0, 0, .18);
   transform: translateX(100%); transition: transform var(--sf-dur-pop) var(--sf-ease-out);
-  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* No font here on purpose. What this panel holds is a SECTION OF THE SPEC, and
+     it has to read the way the rest of the spec reads: a chrome font on the
+     container set spec prose at 14px/1.5 where the document says 16px/1.7. The
+     chrome inside the panel declares its own font instead, so the content is the
+     only thing inheriting from the document. Colours were already right, because
+     every --sf-* token aliases the spec's own palette. */
 }
 .sf-asides.open { transform: translateX(0); }
 @media (prefers-reduced-motion: reduce) { .sf-asides { transition: none; } }
@@ -1158,6 +1163,10 @@ html[data-sf-header] .sf-asides { top: var(--sf-header-h); height: calc(100vh - 
 .sf-asides-head {
   padding: 14px 16px; border-bottom: 1px solid var(--sf-line);
   display: flex; align-items: center; gap: 8px;
+  /* Chrome, so it declares the chrome font rather than inheriting the spec's
+     reading typography. Everything in this panel that is not the draft itself
+     does the same. */
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 .sf-asides-head b { font-size: 14px; font-weight: 800; letter-spacing: .2px; }
 .sf-asides-close {

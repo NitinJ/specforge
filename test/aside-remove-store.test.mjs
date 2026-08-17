@@ -11,7 +11,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -71,6 +71,26 @@ test('an aside with no threads on it deletes cleanly', () => {
   const out = removeAside(id, 'object-aside-1');
   assert.equal(out.threads, 0);
   assert.deepEqual(loadComments(id).threads.map((t) => t.id), ['th_1']);
+});
+
+test('a spec write that fails leaves the comments alone', () => {
+  // Neither write is transactional with the other, so the order is chosen by
+  // which half-done state survives. Comments deleted for a spec write that then
+  // failed are silent and permanent, since nothing in the store is versioned;
+  // threads orphaned the other way are visible and fixable. So the spec goes
+  // first, and this is the failure that proves the order.
+  const id = seed('sp_f', [thread('th_1', 'object-aside-1')]);
+  chmodSync(join(specDir(id), 'spec.html'), 0o444);
+  try {
+    assert.throws(() => removeAside(id, 'object-aside-1'));
+    assert.deepEqual(
+      loadComments(id).threads.map((t) => t.id), ['th_1'],
+      'the comments on the draft survived the failure',
+    );
+    assert.equal(readSpecHtml(id).includes('object-aside-1'), true, 'and so did the draft');
+  } finally {
+    chmodSync(join(specDir(id), 'spec.html'), 0o644);
+  }
 });
 
 test('the spec is only written once the delete is known to be legal', () => {

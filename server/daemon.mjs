@@ -356,7 +356,17 @@ export function createDaemon({ publications: pubs = publications } = {}) {
     const aside = path.match(/^\/api\/spec\/([\w-]+)\/aside\/([^/]+)$/);
     if (aside) {
       if (method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
-      return handleAsideDelete(aside[1], decodeURIComponent(aside[2]), res);
+      // decodeURIComponent throws on a malformed escape (`%zz`), and nothing
+      // wraps this router: a synchronous throw here leaves the request handler
+      // as an uncaughtException and takes the daemon down for every spec open
+      // in every tab. A bad URL is a 400.
+      let asideId;
+      try {
+        asideId = decodeURIComponent(aside[2]);
+      } catch {
+        return sendJson(res, 400, { error: 'malformed aside id' });
+      }
+      return handleAsideDelete(aside[1], asideId, res);
     }
     const rename = path.match(/^\/api\/spec\/([\w-]+)\/rename$/);
     if (rename) {
