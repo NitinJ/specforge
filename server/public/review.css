@@ -1292,6 +1292,20 @@ section.sf-has-aside { position: relative; }
 @media (prefers-reduced-motion: reduce) {
   .sf-ctx { transition: opacity var(--sf-dur-fast) linear, visibility 0s linear; transform: none !important; }
 }
+/* Group headings. Ten entries in one undifferentiated column is a list you read
+   rather than a menu you pick from, so they are grouped by what the reader is
+   after: understand it, check it, change it. Quiet enough to scan past, since
+   the entries are the thing being chosen and the heading only says which
+   neighbourhood you are in. */
+.sf-menu-head {
+  padding: 7px 10px 3px; color: var(--sf-muted);
+  font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  pointer-events: none; user-select: none;
+}
+.sf-menu-head:first-child { padding-top: 3px; }
+/* For the one entry that has no heading of its own: without a divider Copy link
+   reads as the last item under "Change it", beside Delete. */
+.sf-menu-sep { height: 1px; background: var(--sf-hairline); margin: 5px 6px; }
 .sf-menu-row {
   display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
   background: none; border: none; color: var(--sf-ink); border-radius: var(--sf-r-sm);

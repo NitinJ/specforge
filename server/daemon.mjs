@@ -20,6 +20,7 @@
 //   GET/PUT  /api/prefs                         → store-wide UI prefs (index theme,
 //                                                  project list, selected project)
 //   DELETE /api/spec/<id>/aside/<asideId>       → delete an aside + its threads
+//   POST /api/spec/<id>/block/delete            → delete one block (section/tag/text)
 //   POST /api/spec/<id>/rename                  → set title (meta + spec <h1>/<title>)
 //   PATCH /api/spec/<id>/organize               → set tags / collection / project
 //
@@ -44,7 +45,7 @@ import {
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
   handleBlocksGet, handleBlocksPut,
-  handleRename, handleOrganize, handleExport, handleDelete, handleAsideDelete,
+  handleRename, handleOrganize, handleExport, handleDelete, handleAsideDelete, handleBlockDelete,
 } from '../lib/store-api.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
@@ -367,6 +368,13 @@ export function createDaemon({ publications: pubs = publications } = {}) {
         return sendJson(res, 400, { error: 'malformed aside id' });
       }
       return handleAsideDelete(aside[1], asideId, res);
+    }
+    const blockDel = path.match(/^\/api\/spec\/([\w-]+)\/block\/delete$/);
+    if (blockDel) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((b) => handleBlockDelete(blockDel[1], b, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
     const rename = path.match(/^\/api\/spec\/([\w-]+)\/rename$/);
     if (rename) {

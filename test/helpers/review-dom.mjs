@@ -14,7 +14,7 @@ import { JSDOM } from 'jsdom';
 // The real registry, not a fixture: the menu the tests drive is the menu that
 // ships, so a change to the action list has to be a deliberate change to the
 // tests that assert its order.
-import { menuActions } from '../../lib/actions/all.mjs';
+import { menuActions, menuGroups } from '../../lib/actions/all.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const REVIEW_JS = readFileSync(join(ROOT, 'server', 'public', 'review.js'), 'utf8');
@@ -106,6 +106,9 @@ export async function bootReviewLayer(t, opts = {}) {
     // What the server injects for the context menu. Pass [] to boot a page that
     // was served before the feature existed, where no menu should open at all.
     actions: opts.actions === undefined ? menuActions() : opts.actions,
+    // The menu reads its headings and their order from here, the same as the
+    // served page does, so a group renamed in the registry moves both together.
+    groups: opts.groups === undefined ? menuGroups() : opts.groups,
     // A published page sets this when its poll finds a newer spec. Settable at
     // boot so a test can exercise a stale page without driving the poll.
     ...(opts.stale ? { stale: true } : {}),

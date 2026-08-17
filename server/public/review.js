@@ -1399,15 +1399,45 @@
     if (h1 && !inUI(h1)) return h1;
     return commentableBlocks()[0] || null;
   }
+  /**
+   * The menu's entries for a scope, under their headings.
+   *
+   * Grouped by what the reader is trying to get — understand it, check it,
+   * change it — rather than by what the action does to the document, which is
+   * how the corpus was bucketed in the first place. Ten entries in one
+   * undifferentiated column is a list you read rather than a menu you pick from.
+   *
+   * Order comes from the injected group list, not from the order the actions
+   * happen to appear in, so a heading cannot go missing because no action
+   * declared it first. An action whose group is null renders last with no
+   * heading of its own.
+   */
+  function menuSections(actions, scope) {
+    var groups = (window.SPECFORGE || {}).groups || [];
+    var here = actions.filter(function (a) { return a.scope === scope; });
+    var out = [];
+    groups.forEach(function (g) {
+      var rows = here.filter(function (a) { return a.group === g.id; });
+      if (rows.length) out.push({ label: g.label, rows: rows });
+    });
+    var loose = here.filter(function (a) { return !a.group; });
+    if (loose.length) out.push({ label: null, rows: loose });
+    return out;
+  }
   function openCtxMenu(el, actions, x, y, scope) {
     els.ctx.innerHTML = '';
-    actions.forEach(function (a) {
-      if (a.scope !== scope) return;
-      els.ctx.appendChild(menuRow(a.icon, a.label, function (ev) {
-        ev.stopPropagation();
-        closeCtxMenu();
-        runAction(a, el);
-      }));
+    menuSections(actions, scope).forEach(function (sec, i) {
+      if (sec.label) els.ctx.appendChild(create('div', { class: 'sf-menu-head' }, sec.label));
+      // The one entry with no heading still needs separating from the group
+      // above it, or Copy link reads as the last item under "Change it".
+      else if (i) els.ctx.appendChild(create('div', { class: 'sf-menu-sep' }));
+      sec.rows.forEach(function (a) {
+        els.ctx.appendChild(menuRow(a.icon, a.label, function (ev) {
+          ev.stopPropagation();
+          closeCtxMenu();
+          runAction(a, el);
+        }));
+      });
     });
     els.ctx.style.left = x + 'px';
     els.ctx.style.top = y + 'px';
@@ -1429,6 +1459,7 @@
   function runAction(a, el) {
     if (a.id === 'copy_link') return copyAnchorLink(el);
     if (a.id === 'delete') return deleteAsideSection(el);
+    if (a.id === 'delete_block') return deleteBlockAt(el);
     // Import carries no qualifier worth typing: you have read the draft and you
     // want it in. Sending it straight saves a composer nobody adds to, and the
     // comment it writes is the same one the composer would have.
@@ -1769,6 +1800,48 @@
         delete sending[key];
         flashErr('Could not add the comment.');
       });
+  }
+
+  /**
+   * Delete the block that was right-clicked.
+   *
+   * The block has no id in the document — its identity lives in the registry,
+   * keyed to a DOM the server cannot see — so it is named the way a reader would
+   * name it: this tag, in this section, with this text. The server finds exactly
+   * one match or refuses, and a refusal means the page is out of date rather
+   * than that the reader asked for something impossible.
+   *
+   * Asks first, and says what it is about to cut. This is the reader's own
+   * writing and nothing in the store is versioned.
+   */
+  function deleteBlockAt(el) {
+    var section = sectionPathOf(el)[0];
+    var text = blockText(el);
+    if (!section || !text) return flashErr('Could not tell which block that is.');
+    var key = 'delete_block::' + section + '::' + text;
+    if (sending[key]) return;
+    confirmThen({
+      title: 'Delete this ' + (el.tagName === 'LI' ? 'item' : 'block'),
+      body: '"' + (text.length > 120 ? text.slice(0, 120) + '…' : text) + '"\n\n'
+        + 'It goes for good. Comments on it stay, and show as orphaned.',
+      ok: 'Delete',
+      onOk: function () {
+        sending[key] = true;
+        postJSON(SPEC_API + '/block/delete', { section: section, tag: el.tagName, text: text })
+          .then(function (r) {
+            delete sending[key];
+            // A 409 is the page being out of date: the block was edited or
+            // removed since it loaded, and the server refused rather than
+            // cutting whatever was nearest.
+            if (!r.ok) return flashErr('Could not delete that block. Reload and try again.');
+            flash('Block deleted.');
+          })
+          .catch(function () {
+            delete sending[key];
+            flashErr('Could not delete that block.');
+          });
+      },
+    });
   }
 
   function copyAnchorLink(el) {

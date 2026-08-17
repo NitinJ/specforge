@@ -7,6 +7,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { withSpec, baseSpec, findCachedChromium, computedAcrossThemes } from './harness.mjs';
 
 const CHROME = findCachedChromium();
@@ -28,9 +30,43 @@ test('the menu opens on right-click and is actually visible', { skip: !CHROME },
     const menu = page.locator('#sf-ctx');
     assert.equal(await menu.isVisible(), true);
     const rows = await page.locator('#sf-ctx .sf-menu-row').allTextContents();
-    assert.equal(rows.length, 9, 'the nine local entries');
+    assert.equal(rows.length, 10, 'the ten local entries');
     assert.match(rows[0], /Explain simply/);
-    assert.match(rows[8], /Copy link/);
+    assert.match(rows[8], /Delete/);
+    assert.match(rows[9], /Copy link/);
+  });
+});
+
+test('the headings are visible above their entries', { skip: !CHROME }, async () => {
+  // jsdom says the headings are in the DOM. Only a browser says they are legible
+  // and sit above the rows they head rather than beside them.
+  await withSpec({ html: HTML }, async ({ page }) => {
+    await openMenu(page);
+    const heads = await page.locator('#sf-ctx .sf-menu-head').allTextContents();
+    assert.deepEqual(heads, ['Understand it', 'Check it', 'Change it']);
+    const geom = await page.evaluate(() => {
+      const head = document.querySelector('.sf-menu-head').getBoundingClientRect();
+      const row = document.querySelector('.sf-menu-row').getBoundingClientRect();
+      return { headBottom: head.bottom, rowTop: row.top, headVisible: head.height > 0 };
+    });
+    assert.equal(geom.headVisible, true);
+    assert.ok(geom.headBottom <= geom.rowTop + 1, 'the heading is above its first row');
+  });
+});
+
+test('Delete removes the block from the file, through the real endpoint', { skip: !CHROME }, async () => {
+  // The whole path: right-click, confirm, endpoint, and the paragraph is gone
+  // from spec.html on disk while its section and neighbours are not.
+  await withSpec({ html: HTML }, async ({ page, id }) => {
+    await openMenu(page);
+    await page.locator('#sf-ctx .sf-menu-row', { hasText: 'Delete' }).click();
+    await page.locator('.sfui-dlg[open] .sfui-btn.danger').click();
+    await page.waitForFunction(() => !document.getElementById('p'));
+
+    const onDisk = readFileSync(join(process.env.SPECFORGE_HOME, 'specs', id, 'spec.html'), 'utf8');
+    assert.equal(onDisk.includes('A paragraph to act on.'), false, 'gone from the file');
+    assert.equal(onDisk.includes('id="target"'), true, 'its section stays');
+    assert.equal(onDisk.includes('<h2>Target</h2>'), true, 'and so does the heading beside it');
   });
 });
 
