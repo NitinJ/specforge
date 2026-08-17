@@ -1542,15 +1542,18 @@ html:not([data-sf-deck]) main > section:first-of-type > h2 {
   border-top: none;
 }
 /* Subsections, which were tight for the ordinary reason rather than a broken
-   selector: 26px under a 16.5px heading reads as one block of text, not two. */
-html:not([data-sf-deck]) main > section > h3 { margin-top: 34px; }
-html:not([data-sf-deck]) main > section > h4 { margin-top: 24px; }
+   selector: 26px under a 16.5px heading reads as one block of text, not two.
+   `data-sf-space` opts out of these too — an author who set their own spacing
+   meant the whole section, and an opt-out honoured on one rule of three is a
+   promise the stylesheet does not keep. */
+html:not([data-sf-deck]) main > section:not([data-sf-space]) > h3 { margin-top: 34px; }
+html:not([data-sf-deck]) main > section:not([data-sf-space]) > h4 { margin-top: 24px; }
 /* Except at the top of a section, where the h2's own margin is already the gap
    and adding to it leaves the heading floating away from its section. */
-html:not([data-sf-deck]) main > section > h2 + h3,
-html:not([data-sf-deck]) main > section > h2 + h4,
-html:not([data-sf-deck]) main > section > h3:first-child,
-html:not([data-sf-deck]) main > section > h4:first-child { margin-top: 14px; }
+html:not([data-sf-deck]) main > section:not([data-sf-space]) > h2 + h3,
+html:not([data-sf-deck]) main > section:not([data-sf-space]) > h2 + h4,
+html:not([data-sf-deck]) main > section:not([data-sf-space]) > h3:first-child,
+html:not([data-sf-deck]) main > section:not([data-sf-space]) > h4:first-child { margin-top: 14px; }
 
 /* print / "Export PDF": drop all injected review chrome so the PDF is just the
    spec, and keep atomic blocks from splitting across pages. The spec's own CSS

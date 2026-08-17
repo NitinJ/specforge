@@ -69,6 +69,31 @@ test('subsections get room too, but less than a section', { skip: !CHROME }, asy
   });
 });
 
+test('a section that sets its own spacing keeps all of it, not just the heading', { skip: !CHROME }, async () => {
+  // An opt-out honoured on one rule of three is a promise the stylesheet does
+  // not keep: the h2 would be left alone while the h3 and h4 inside it were
+  // still overwritten.
+  const opted = `<!doctype html><html><head><title>Opted out</title>
+<style>:root{--bg:#fff;--ink:#111;--panel:#f6f6f6;--panel2:#eee;--muted:#666;--line:#ddd;--accent:#2f6feb}
+[data-theme="dark"]{--bg:#111;--ink:#eee;--panel:#1a1a1a;--panel2:#222;--muted:#999;--line:#333;--accent:#6ea8fe}
+body{background:var(--bg);color:var(--ink)}
+section h2,section h3,section h4{margin-top:7px}</style>
+</head><body><main>
+<h1>Opted out</h1>
+<section id="s1"><h2>One</h2><p>First.</p></section>
+<section id="s2" data-sf-space><h2 id="o2">Two</h2><p>Second.</p>
+<h3 id="o3">Sub</h3><p>Under.</p><h4 id="o4">Sub-sub</h4><p>Under that.</p></section>
+</main></body></html>`;
+  await withSpec({ html: opted }, async ({ page }) => {
+    await page.waitForSelector('#o4');
+    const mt = await page.evaluate(() => {
+      const m = (id) => getComputedStyle(document.getElementById(id)).marginTop;
+      return { h2: m('o2'), h3: m('o3'), h4: m('o4') };
+    });
+    assert.deepEqual(mt, { h2: '7px', h3: '7px', h4: '7px' });
+  });
+});
+
 test('a deck is left alone, because it has no gaps between sections to set', { skip: !CHROME }, async () => {
   // A deck shows one section at a time and fills the stage. Section margins
   // there are meaningless at best and push a slide's own layout around at worst.
