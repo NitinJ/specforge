@@ -152,11 +152,33 @@ Do **not** resolve threads — only the human resolves (which closes them).
 
 A comment can name an **action**: a menu entry the reader picked instead of
 typing the same request again. It looks like `@agent @visualize`, and the reader
-may have typed a qualifier after it. Every action carries a **standing
-instruction** — a written standard you apply every time — and that instruction
-is what you execute. The words on the button are the label, not the ask.
+may have typed a qualifier after it.
 
-Read the list, with the instructions, from the registry:
+**`specforge comments <id>` resolves it for you.** A thread that names an action
+carries an `actions` array, and everything you need is in it:
+
+```json
+"actions": [{
+  "id": "visualize",
+  "kind": "aside",
+  "instruction": "Choose the form this content actually wants, a diagram, a table or a mock, …",
+  "detail": "",
+  "section": "object",
+  "block": "b583",
+  "run": "node \"…/specforge-cli.mjs\" aside c8fb987ad0 --section object --block b583 --action visualize --file <path>",
+  "next": "This writes an aside, not an edit. Do not edit the section. …"
+}]
+```
+
+- `instruction` is what you execute. **The name on the button is not the ask.**
+  `@visualize` reads like ordinary English and it is not: it stands for a written
+  standard, and following the word instead of the standard is how this went
+  wrong four times in a row.
+- `next` says what to do with the result. Read it before you touch the spec.
+- `run`, where present, is the command, already carrying this thread's section
+  and block. Run it rather than composing your own.
+
+The whole list, outside a thread:
 
 ```
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" actions            # all of them

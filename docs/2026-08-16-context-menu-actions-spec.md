@@ -332,6 +332,22 @@ flowchart TD
 - **Actions batch.** Right-click three sections, pick an action on each, send once.
 - **Nothing new is stored.** No action queue, no job record, no status field. The comment is the queue.
 
+#### The action is delivered, not looked up
+
+<!-- sf:callout variant="decision" -->
+
+> Everything an agent needs to run an action arrives on the thread it is already reading. Nothing about an action is a lookup the agent has to decide to perform.
+
+The first build got this wrong and the feature failed four times out of four: every aside action was answered by editing the section. Three of the four came after the aside command and the skill instruction had shipped, so the cause was not wording. Three things pointed the agent at the wrong behaviour and none of them was the skill.
+
+| What the agent received | What it did about it |
+| --- | --- |
+| The wake-up text: *"amend the `spec.html` per the comments"* | This is the message that starts the turn, and the code that writes it says so: the watcher re-arm is repeated there precisely because it is what the agent is certain to read. It predated actions and never mentioned them, so the most authoritative instruction in the flow said to edit the spec. |
+| `comments <id>`, returning `"@agent @visualize"` | No id, no kind, no instruction, no command. The expansion lived in a section of a 250-line skill file the agent had no reason to open. |
+| The token itself | `@visualize` reads like ordinary English. There is no felt ambiguity, so nothing prompts a lookup: the agent believes it already understands the request. |
+
+So the resolution moved to where the agent cannot miss it. `comments` attaches an `actions` array to any thread that names one, carrying the standing instruction in full, the `next` sentence saying what to do with the result, and `run`: the exact `specforge aside` line with this thread's own section and block already in it. The wake-up text names the actions in the batch and stops saying "amend the spec" unconditionally. `batch-done` refuses while an aside action has produced no aside, which is the backstop rather than the mechanism: what made this fail quietly was that nothing anywhere noticed.
+
 #### The two things that have to hold
 
 An action id is a lowercase token with underscores, `@help_me_decide` rather than `@help me decide`, so that it can be matched in a comment body without ambiguity. The comment carries the id and not the instruction, so improving an instruction later does not require rewriting comments already sent.
@@ -509,7 +525,7 @@ Right-clicking empty space offers the three actions that only make sense over th
 
 Two defects found by using the thing. An aside renders in the document instead of beside it, and nothing makes an agent produce one at all: the first Visualize run wrote its diagram straight into the spec with no way to reject it.
 
-### Stage 7 — A panel worth reading, and markers on the right block
+### Stage 7 — A panel worth reading, and markers on the right block (PR 192)
 
 - [x] 7.1 The panel is `max(50vw, 480px)` and shows one aside at a time, with its header naming the action on screen.
       verify: a browser test asserts the panel is at least half the viewport; a unit test asserts clicking one marker shows that aside and hides the others.
@@ -519,6 +535,19 @@ Two defects found by using the thing. An aside renders in the document instead o
       verify: the attribute is written for a bid-shaped value and dropped for anything else, so a bad value degrades to a section marker rather than an unreachable draft.
 
 The panel shipped at the comments drawer's width, showing every draft stacked in a column, with one marker per section. All three were wrong: a diagram at 340px is a thumbnail, and a marker at the top of a twelve-paragraph section says nothing about which paragraph was asked about.
+
+### Stage 8 — Deliver the action to the agent
+
+- [x] 8.1 `comments <id>` attaches an `actions` array to every thread that names one: the instruction in full, the qualifier that was typed, a `next` sentence, and `run` carrying the command with this thread's section and block already in it.
+      verify: an aside action resolves with a runnable command; an in-place one resolves with no command and the section named; a thread with no section is refused rather than given a broken command; only human comments are read.
+- [x] 8.2 The wake-up text names the actions in the batch and stops saying "amend the `spec.html`" unconditionally when one is present.
+      verify: a batch with an aside action carries the action name and "do not edit"; a batch with an in-place action carries neither; an unknown id is dropped rather than announced.
+- [x] 8.3 `batch-done` refuses while an aside action has produced no aside, listing each gap with its command, and takes `--force` for the case it cannot see.
+      verify: the failing command names the section, the block and the action; it passes once the aside exists; an in-place action never holds a batch open.
+- [x] 8.4 The skill says the thread carries the resolution rather than describing a lookup.
+      verify: a test asserts the skill names the `actions` array, `next` and `run`.
+
+Four aside actions, four answered by editing the section. The instruction and the command both existed; neither ever reached the agent, and the text that woke it said to amend the spec. This moves the resolution onto the thread and stops the wake-up text contradicting it.
 
 ## 15 · Design decisions (implementation time)
 
@@ -547,6 +576,7 @@ Filled during implementation: intentional departures from the spec, and why.
 - **Stage 2 gained a fifth task.** Viewport clamping and treating the menu as review chrome are not in the plan. Both came out of running the thing: the menu is nine rows tall, so a right-click in the last 300px of a page put rows off screen where they could not be clicked, and because the document click handler runs in the capture phase, picking a row was also collapsing whatever thread was open. Every jsdom test passed on the first, which is what the browser tier is for. PR #185.
 - **Asides shipped rendered inline, which was a misreading.** "An aside is just a differently rendered section" meant the section is the model and the panel is the rendering. It was read as "render it in the flow", and the panel was deleted along with the reveal affordance. Stage 6 puts the rendering back; the model was right all along and does not change.
 - **The first real Visualize wrote its diagram straight into the spec.** On spec `c8fb987ad0`, comment `@agent @visualize`, the agent produced the figure in place with no `data-sf-aside` wrapper and no way to reject it. Prose in a skill is not a mechanism: stage 6.4 adds a command that writes the section, so the markup cannot be got wrong by an agent that skims.
+- **The command was not enough either: four out of four aside actions were answered by editing the section.** Audited across the store on 2026-08-17: `@visualize`, `@visualize`, `@explain_simply` and `@help_me_decide`, and three of them arrived after the command shipped. The cause was delivery, and it is now stage 8. A command an agent never learns it should run is the same defect as an instruction it never reads.
 - **The contents drawer needed the aside exemption too.** [§10](#asides) names one rule that has to change, `toc-in-sync`. The floating drawer the review layer injects builds itself from `section[id]` when a spec has no curated table of contents of its own, so an aside appeared in it on exactly those specs. Same exemption, second place. Found by writing the browser test rather than by reading. PR #187.
 
 ## 17 · Tradeoffs
