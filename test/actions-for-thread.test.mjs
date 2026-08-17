@@ -202,6 +202,45 @@ test('a qualifier belongs to its own comment, not to the whole thread', () => {
   assert.equal(a.detail, 'the retry path');
 });
 
+test('an import arrives resolved against the aside it answers', () => {
+  // The one action whose instruction cannot be written in advance: what it
+  // merges, where, and whether it replaces the section all come from the aside.
+  const html = '<section id="object"><h2>O</h2><p>p</p></section>'
+    + '<section id="object-aside-1" data-sf-aside="object" data-sf-block="b4" data-sf-action="visualize">'
+    + '<h3>Aside: Visualize</h3><p>A diagram.</p></section>';
+  const t = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object-aside-1'], bid: 'b9' } },
+    comments: [{ kind: 'human', body: '@agent @import' }],
+  };
+  const [a] = actionsForThread(t, { specId: 'sp1', cli: CLI, html });
+  assert.equal(a.target.section, 'object', 'the section named in data-sf-aside');
+  assert.equal(a.target.mode, 'replace', 'Visualize supersedes its input');
+  assert.match(a.next, /Replace the section `object`/);
+});
+
+test('an import with no spec to read still says what it is answering', () => {
+  const t = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object-aside-1'], bid: 'b9' } },
+    comments: [{ kind: 'human', body: '@agent @import' }],
+  };
+  const [a] = actionsForThread(t, { specId: 'sp1', cli: CLI });
+  assert.equal(a.target, undefined);
+  assert.match(a.next, /object-aside-1/, 'the aside, at least');
+});
+
+test('a dismiss says which aside and nothing about sections', () => {
+  const t = {
+    id: 'th_1',
+    anchor: { block: { sectionPath: ['object-aside-1'], bid: 'b9' } },
+    comments: [{ kind: 'human', body: '@agent @dismiss' }],
+  };
+  const [a] = actionsForThread(t, { specId: 'sp1', cli: CLI });
+  assert.match(a.next, /object-aside-1/);
+  assert.equal(/Edit the section/.test(a.next), false, 'it deletes a draft, it does not edit the spec');
+});
+
 test('only the human comments are read', () => {
   // An agent reply quoting an action it just ran must not queue it again.
   const t = thread('@agent this is fine');
