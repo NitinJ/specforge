@@ -153,6 +153,10 @@
     // What the composer's textarea starts with. Only ever set by the context
     // menu, and only for one composer.
     composeSeed: '',
+    // The reading and code faces in force. Kept because the asides panel is
+    // built after they are applied and holds document content, so it has to be
+    // given the current choice rather than the default.
+    font: null, mono: null,
   };
   var els = {};
 
@@ -460,19 +464,37 @@
   // chrome root (#sf-sidebar/#sf-menu/#sf-launcher/#sf-compose/#sf-toc) declares its
   // own font-family, so the reading font can't inherit in. Code stays monospace
   // under every reading font; which monospace is applyMono's business.
+  /**
+   * Every element the reading typography has to reach.
+   *
+   * The width container holds the document. The asides panel holds sections of
+   * the SAME document, moved out of that container to be read beside it, so a
+   * font stamped only on the container leaves a draft rendering in a different
+   * face from the spec it belongs to. The panel does not exist until an aside
+   * does, hence the null check.
+   */
+  function typeRoots() {
+    var out = [widthContainer()];
+    if (els.asidesBody) out.push(els.asidesBody);
+    return out;
+  }
   function applyFont(id) {
-    var c = widthContainer();
+    state.font = id; // so a panel built later can be given the current choice
     var f = fontById(id);
-    if (!f || f.cat === 'mono') { // 'default' / unknown / a code font → no override, no fetch
-      c.removeAttribute('data-sf-font');
-      c.style.removeProperty('--sf-reading-font');
-      return;
+    var roots = typeRoots();
+    for (var i = 0; i < roots.length; i++) {
+      var c = roots[i];
+      if (!f || f.cat === 'mono') { // 'default' / unknown / a code font → no override, no fetch
+        c.removeAttribute('data-sf-font');
+        c.style.removeProperty('--sf-reading-font');
+        continue;
+      }
+      // data-sf-font carries the CATEGORY (sans/serif/presentation) — review.css keys
+      // the code exemption off its presence; the family is the inline --sf-reading-font.
+      c.setAttribute('data-sf-font', f.cat);
+      c.style.setProperty('--sf-reading-font', f.stack);
     }
-    loadGoogleFont(f);
-    // data-sf-font carries the CATEGORY (sans/serif/presentation) — review.css keys
-    // the code exemption off its presence; the family is the inline --sf-reading-font.
-    c.setAttribute('data-sf-font', f.cat);
-    c.style.setProperty('--sf-reading-font', f.stack);
+    if (f && f.cat !== 'mono') loadGoogleFont(f);
   }
 
   /**
@@ -485,16 +507,20 @@
    * rule keyed on it puts them back on --mono.
    */
   function applyMono(id) {
-    var c = widthContainer();
+    state.mono = id; // same reason as applyFont: a panel built later needs it
     var f = isMono(id) ? fontById(id) : null;
-    if (!f) {
-      c.removeAttribute('data-sf-mono');
-      c.style.removeProperty('--mono');
-      return;
+    var roots = typeRoots();
+    for (var i = 0; i < roots.length; i++) {
+      var c = roots[i];
+      if (!f) {
+        c.removeAttribute('data-sf-mono');
+        c.style.removeProperty('--mono');
+        continue;
+      }
+      c.setAttribute('data-sf-mono', f.id);
+      c.style.setProperty('--mono', f.stack);
     }
-    loadGoogleFont(f);
-    c.setAttribute('data-sf-mono', f.id);
-    c.style.setProperty('--mono', f.stack);
+    if (f) loadGoogleFont(f);
   }
 
   // ---------- syntax highlighting (review-layer owned) ----------
@@ -1391,9 +1417,10 @@
   function closeCtxMenu() {
     if (els.ctx) els.ctx.classList.remove('open');
   }
-  /** Copy link is the only action the browser answers by itself. */
+  /** Copy link and Delete are the two actions the browser answers by itself. */
   function runAction(a, el) {
     if (a.id === 'copy_link') return copyAnchorLink(el);
+    if (a.id === 'delete') return deleteAsideSection(el);
     // Whatever is already in the composer for this block rides along. You are
     // mid-thought and decide the agent should draw it; losing the sentence you
     // typed is the wrong answer, and the action reading first is the right
@@ -1441,6 +1468,12 @@
     els.asidesBody = create('div', { class: 'sf-asides-body' });
     els.asides.appendChild(els.asidesBody);
     document.body.appendChild(els.asides);
+    // The panel is built after the reading font was applied, and it holds
+    // document content that has just been moved out of the element carrying it.
+    // Re-applying stamps the current choice onto the body as well, so a draft
+    // renders in the same face as the spec it came from.
+    applyFont(state.font);
+    applyMono(state.mono);
 
     for (var i = 0; i < list.length; i++) {
       decorateAside(list[i]);
@@ -1583,6 +1616,42 @@
   function asideActions() {
     return ((window.SPECFORGE || {}).actions || []).filter(function (a) {
       return a.scope === 'aside';
+    });
+  }
+
+  /**
+   * Delete an aside, from the button on its own header.
+   *
+   * The only place the review layer removes something from the spec body. It
+   * asks first: there is no versioning in the store, so a draft deleted is gone
+   * and re-running the action costs an agent round trip. `el` is the aside
+   * section itself, since the button is built into its header.
+   *
+   * Nothing is removed from the DOM here. The write triggers the live reload the
+   * spec file already has, and the aside goes because it is no longer in the
+   * file — one source of truth rather than a client copy that can disagree with
+   * it.
+   */
+  function deleteAsideSection(sec) {
+    var id = sec && sec.id;
+    if (!id) return flashErr('Could not tell which draft that is.');
+    var a = actionByIdClient(sec.getAttribute('data-sf-action'));
+    confirmThen({
+      title: 'Delete this draft',
+      body: 'The ' + (a ? a.label : 'aside') + ' draft and any comments on it go for good. '
+        + 'The section it came from is not touched.',
+      ok: 'Delete',
+      onOk: function () {
+        fetch(SPEC_API + '/aside/' + encodeURIComponent(id), { method: 'DELETE' })
+          .then(function (r) {
+            if (!r.ok) return flashErr('Could not delete that draft.');
+            // Close the panel before the reload: it is open on a section that is
+            // about to stop existing, and reopening it empty reads as a failure.
+            setAsidesOpen(false);
+            flash('Draft deleted.');
+          })
+          .catch(function () { flashErr('Could not delete that draft.'); });
+      },
     });
   }
 

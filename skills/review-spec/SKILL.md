@@ -214,7 +214,7 @@ in your head is the version that was true last month.
 | `@consistency_pass` | in-place, whole spec |
 | `@canonicalize` | in-place, whole spec |
 | `@import` | in-place, on an aside |
-| `@dismiss` | in-place, on an aside |
+| `@delete` | never reaches you; the browser removes the aside itself |
 | `@copy_link` | never reaches you; the browser answers it |
 
 **The rule the table follows**: an action edits **in-place** when it changes the
@@ -262,9 +262,10 @@ rather than inferring from the label.
   title, so the anchor is a place to hang the thread rather than the thing to
   change. Read the whole spec before you start: a consistency pass that has read
   one section has not done the work its name claims.
-- **on an aside** — `@import` and `@dismiss` arrive from the two buttons on an
-  aside, so the comment is anchored inside one. Act on the aside the anchor sits
-  in, and on nothing else.
+- **on an aside** — `@import` arrives from the button on an aside, so the comment
+  is anchored inside one. Act on the aside the anchor sits in, and on nothing
+  else. The other button, Delete, never reaches you: the browser removes the
+  aside and its threads itself.
 
 **Deleting a section deletes its asides with it.** They are drafts about that
 section, and one left behind attaches itself to whatever section now precedes it.

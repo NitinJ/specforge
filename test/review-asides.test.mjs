@@ -36,6 +36,11 @@ const boot = (t, opts = {}) => bootReviewLayer(t, { body: BODY, ...opts });
 const strip = (window) => window.document.querySelector('#two-aside-1 .sf-aside-head');
 const btn = (window, label) => [...window.document.querySelectorAll('#two-aside-1 .sf-aside-act')]
   .find((b) => b.textContent.includes(label));
+// SFUI's confirm, which the review layer routes through for anything it cannot
+// undo. Reused rather than reimplemented, so a delete asks the same way an
+// unshare does.
+const confirmDialog = (window) => window.document.querySelector('.sfui-dlg[open]');
+const okButton = (window) => confirmDialog(window).querySelector('.sfui-btn.danger');
 
 test('an aside gets a header strip naming the action that wrote it', async (t) => {
   const { window } = await boot(t);
@@ -89,17 +94,72 @@ test('an aside opens expanded on every load', async (t) => {
   );
 });
 
-test('Import and Dismiss seed the composer, anchored inside the aside', async (t) => {
-  for (const [label, seed] of [['Import', '@import '], ['Dismiss', '@dismiss ']]) {
-    const { window } = await boot(t);
-    btn(window, label).click();
-    await tick(window);
-    const card = window.document.querySelector('#sf-rail .sf-bub-compose');
-    assert.ok(card, `${label} opened the composer`);
-    assert.equal(card.querySelector('textarea').value, seed);
-    assert.match(card.querySelector('.q').textContent, /Aside: Visualize/,
-      'anchored to the aside, so the agent knows which draft is being answered');
-  }
+test('Import seeds the composer, anchored inside the aside', async (t) => {
+  const { window } = await boot(t);
+  btn(window, 'Import').click();
+  await tick(window);
+  const card = window.document.querySelector('#sf-rail .sf-bub-compose');
+  assert.ok(card, 'Import opened the composer');
+  assert.equal(card.querySelector('textarea').value, '@import ');
+  assert.match(card.querySelector('.q').textContent, /Aside: Visualize/,
+    'anchored to the aside, so the agent knows which draft is being answered');
+});
+
+test('Delete does not open a composer: the browser answers it', async (t) => {
+  // It used to send `@agent @dismiss` and wait for an agent to delete a section.
+  // There is no judgement in rejecting a draft, so the round trip bought a wait
+  // and a token bill for a delete.
+  const { window } = await boot(t);
+  btn(window, 'Delete').click();
+  await tick(window);
+  assert.equal(
+    window.document.querySelector('#sf-rail .sf-bub-compose'), null,
+    'no comment is composed',
+  );
+});
+
+test('Delete asks before it removes the draft, and deletes nothing until answered', async (t) => {
+  // Nothing in the store is versioned, so a deleted draft is gone and getting it
+  // back costs an agent round trip.
+  const { window, dels } = await boot(t);
+  btn(window, 'Delete').click();
+  await tick(window);
+  assert.deepEqual(dels, [], 'nothing sent while the question is open');
+  assert.ok(confirmDialog(window), 'a confirmation is shown');
+});
+
+test('confirming Delete calls the endpoint for that aside', async (t) => {
+  const { window, dels } = await boot(t);
+  btn(window, 'Delete').click();
+  await tick(window);
+  okButton(window).click();
+  await tick(window);
+  assert.equal(dels.length, 1);
+  assert.match(dels[0].url, /\/aside\/two-aside-1$/, 'the aside it was clicked on');
+});
+
+test('the panel closes on a delete, rather than reopening onto a section that is gone', async (t) => {
+  const { window } = await boot(t);
+  window.document.body.classList.add('sf-asides-open');
+  btn(window, 'Delete').click();
+  await tick(window);
+  okButton(window).click();
+  await tick(window);
+  assert.equal(window.document.body.classList.contains('sf-asides-open'), false);
+});
+
+test('a delete the server refuses says so and leaves the panel alone', async (t) => {
+  // The reader has to find out. A fulfilled fetch is not a successful delete,
+  // and a silent failure reads as done until the page reloads with the draft
+  // still in it.
+  const { window } = await boot(t, { failPost: /\/aside\// });
+  window.document.body.classList.add('sf-asides-open');
+  btn(window, 'Delete').click();
+  await tick(window);
+  okButton(window).click();
+  await tick(window);
+  assert.equal(window.document.body.classList.contains('sf-asides-open'), true, 'still open');
+  assert.match(window.document.body.textContent, /[Cc]ould not delete/);
 });
 
 test('sending Import produces the comment the agent reads', async (t) => {

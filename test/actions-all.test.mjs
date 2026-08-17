@@ -28,9 +28,11 @@ const EXPECTED = [
   ['fix_the_naming', 'in-place', 'global'],
   ['consistency_pass', 'in-place', 'global'],
   ['canonicalize', 'in-place', 'global'],
-  // Not in any menu: these render as buttons on an aside.
+  // Not in any menu: these render as buttons on an aside. They split on whether
+  // answering needs judgement — Import goes to the agent, Delete is `direct`
+  // because rejecting a draft has nothing in it for an agent to decide.
   ['import', 'in-place', 'aside'],
-  ['dismiss', 'in-place', 'aside'],
+  ['delete', 'direct', 'aside'],
 ];
 
 test('the registry is exactly the shortlist, in menu order', () => {
@@ -75,8 +77,27 @@ test('forScope splits local from global, and direct actions ride with local', ()
   );
   assert.equal(
     forScope('aside').map((a) => a.id).join(' '),
-    'import dismiss',
+    'import delete',
     'the aside scope never reaches a menu; the context menu filters to local',
+  );
+});
+
+test('Delete is answered by the browser and never reaches an agent', () => {
+  // A `direct` action carries no instruction because nobody reads one. Making
+  // it `in-place` again would put a comment in the queue for a delete, which is
+  // the round trip this stage removed.
+  const del = actionById('delete');
+  assert.equal(del.kind, 'direct');
+  assert.equal(del.instruction, '');
+  assert.equal(del.importInstruction, '', 'nothing about it is imported');
+});
+
+test('the only actions the browser answers are Copy link and Delete', () => {
+  // Every other action is a comment. Two exceptions, both because there is no
+  // judgement in them: one reads an anchor, one removes a draft nobody accepted.
+  assert.deepEqual(
+    ALL_ACTIONS.filter((a) => a.kind === 'direct').map((a) => a.id),
+    ['copy_link', 'delete'],
   );
 });
 

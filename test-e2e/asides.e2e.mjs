@@ -6,6 +6,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { withSpec, baseSpec, findCachedChromium, computedAcrossThemes } from './harness.mjs';
 
 const CHROME = findCachedChromium();
@@ -15,7 +17,17 @@ const HTML = baseSpec('Asides e2e').replace(
   '<main>'
   + '<section id="target"><h2>Target</h2><p id="p">The section the aside came from.</p></section>'
   + '<section id="target-aside-1" data-sf-aside="target" data-sf-action="visualize">'
-  + '<h3>Aside: Visualize</h3><p id="ap">A diagram the agent drafted.</p></section>',
+  + '<h3 id="ah">Aside: Visualize</h3><p id="ap">A diagram the agent drafted, with '
+  + '<code id="ac">a token</code> in it.</p></section>',
+);
+
+// The same markup in the flow, to compare an aside's rendering against. Every
+// element in the aside has a twin here that the panel never touches.
+const TWIN = HTML.replace(
+  '<section id="target">',
+  '<section id="twin"><h3 id="th">Aside: Visualize</h3>'
+  + '<p id="tp">A diagram the agent drafted, with <code id="tc">a token</code> in it.</p></section>'
+  + '<section id="target">',
 );
 
 /** Open the panel and wait for the slide to settle, not just for the class. */
@@ -87,6 +99,113 @@ test('Import opens the composer, anchored inside the aside', { skip: !CHROME }, 
       await page.locator('#sf-rail .sf-bub-compose textarea').inputValue(),
       '@import ',
     );
+  });
+});
+
+test('the aside reads in the spec typography, not the review layer chrome font', { skip: !CHROME }, async () => {
+  // An aside IS a section of the spec, so its prose has to render the way the
+  // rest of the spec's prose renders. The panel is chrome and carries the review
+  // layer's own font; the content inside it is not, and inheriting that font set
+  // spec prose at 14px/1.5 where the document says 16px/1.7.
+  // Compared element by element against an identical section left in the flow,
+  // so this covers the prose, the headings and the monospace runs rather than
+  // one paragraph: a spec sets type on all three and the panel must not resize
+  // any of them.
+  await withSpec({ html: TWIN }, async ({ page }) => {
+    await openPanel(page);
+    const type = await page.evaluate(() => {
+      const pick = (id) => {
+        const s = getComputedStyle(document.getElementById(id));
+        return {
+          family: s.fontFamily, size: s.fontSize, line: s.lineHeight,
+          weight: s.fontWeight, color: s.color,
+        };
+      };
+      return {
+        heading: [pick('ah'), pick('th')],
+        prose: [pick('ap'), pick('tp')],
+        code: [pick('ac'), pick('tc')],
+      };
+    });
+    assert.deepEqual(type.prose[0], type.prose[1], 'prose');
+    assert.deepEqual(type.heading[0], type.heading[1], 'headings');
+    assert.deepEqual(type.code[0], type.code[1], 'monospace runs');
+  });
+});
+
+test('the reading font reaches the draft too', { skip: !CHROME }, async () => {
+  // The review layer's font picker stamps its choice on the WIDTH CONTAINER, and
+  // buildAsides moves the aside out of that container into a fixed panel beside
+  // it. So a draft rendered in the default face while the document it belongs to
+  // rendered in the chosen one, and the previous test could not see it: its
+  // fixture never picks a font. Same for the code face, which is why a `pre` is
+  // in here.
+  // Driven through the stored preference and a reload, which is the ordering
+  // that broke: the font is applied at boot, and the panel is built after it.
+  await withSpec({ html: TWIN }, async ({ page }) => {
+    // The reading face is a global pref and the browser owns it once stored, so
+    // this is what a returning reader with a chosen font actually has.
+    await page.evaluate(() => {
+      localStorage.setItem('sf-prefs', JSON.stringify({ font: 'lora', mono: 'jetbrains-mono' }));
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#sf-launcher');
+    await page.waitForFunction(() =>
+      getComputedStyle(document.getElementById('tp')).fontFamily.includes('Lora'));
+    await openPanel(page);
+
+    const face = await page.evaluate(() => ({
+      proseAside: getComputedStyle(document.getElementById('ap')).fontFamily,
+      proseDoc: getComputedStyle(document.getElementById('tp')).fontFamily,
+      codeAside: getComputedStyle(document.getElementById('ac')).fontFamily,
+      codeDoc: getComputedStyle(document.getElementById('tc')).fontFamily,
+    }));
+    assert.equal(face.proseAside, face.proseDoc, 'the draft follows the reading font');
+    assert.match(face.proseAside, /Lora/, 'and that font is the one that was picked');
+    assert.equal(face.codeAside, face.codeDoc, 'and the code face too');
+  });
+});
+
+test('the panel own chrome keeps the review layer font', { skip: !CHROME }, async () => {
+  // The other half of the same rule: the header and the buttons are chrome, and
+  // chrome does not inherit the document's reading typography.
+  await withSpec({ html: HTML }, async ({ page }) => {
+    await openPanel(page);
+    const chrome = await page.evaluate(() => {
+      const head = getComputedStyle(document.querySelector('.sf-asides-head'));
+      const act = getComputedStyle(document.querySelector('.sf-aside-act'));
+      const body = getComputedStyle(document.body);
+      return {
+        headSize: head.fontSize, headFamily: head.fontFamily,
+        actSize: act.fontSize, bodySize: body.fontSize,
+      };
+    });
+    assert.notEqual(chrome.headSize, chrome.bodySize, 'the header is sized as chrome');
+    assert.match(chrome.headFamily, /system-ui|-apple-system|Segoe UI|Roboto/);
+    assert.notEqual(chrome.actSize, chrome.bodySize, 'and so are the buttons');
+  });
+});
+
+test('Delete removes the aside from the file, through the real endpoint', { skip: !CHROME }, async () => {
+  // The one path where a click changes spec.html. Everything below the button is
+  // real here: the daemon, the route, the splicer and the file on disk. jsdom
+  // can say a DELETE was issued; only this says the section actually left the
+  // document and the one it came from did not.
+  await withSpec({ html: HTML }, async ({ page, id }) => {
+    await openPanel(page);
+    await page.locator('#target-aside-1 .sf-aside-act', { hasText: 'Delete' }).click();
+    await page.locator('.sfui-dlg[open] .sfui-btn.danger').click();
+
+    // The write triggers the live reload the spec file already has, so the aside
+    // goes because it is no longer in the file rather than because the client
+    // removed a node.
+    await page.waitForFunction(() => !document.getElementById('target-aside-1'));
+    assert.ok(await page.$('#target'), 'the section it came from stays');
+    assert.equal(await page.$('#sf-asides.open'), null, 'and the panel is not left open on nothing');
+
+    const onDisk = readFileSync(join(process.env.SPECFORGE_HOME, 'specs', id, 'spec.html'), 'utf8');
+    assert.equal(onDisk.includes('target-aside-1'), false, 'gone from the file, not just the page');
+    assert.equal(onDisk.includes('id="target"'), true);
   });
 });
 
