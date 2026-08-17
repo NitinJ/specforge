@@ -133,10 +133,15 @@ test('an entity in the source matches the character the reader sees', () => {
   assert.equal(out.html.includes('Fish'), false);
 });
 
-test('a hex entity decodes too', () => {
-  const hex = SPEC.replace('<p>The second paragraph.</p>', '<p>A &#x2014; dash.</p>');
-  const out = cut(hex, { section: 'one', tag: 'P', text: 'A — dash.' });
-  assert.equal(out.html.includes('dash'), false);
+test('a hex entity decodes in either case, on both the x and the digits', () => {
+  // Case is significant for a name and not for a hex reference. Sharing one
+  // regex flag between the two branches got this wrong in both directions.
+  for (const spelling of ['&#x2014;', '&#X2014;', '&#x201C;', '&#X201c;']) {
+    const hex = SPEC.replace('<p>The second paragraph.</p>', `<p>A ${spelling} mark.</p>`);
+    const want = `A ${spelling === '&#x2014;' || spelling === '&#X2014;' ? '—' : '“'} mark.`;
+    const out = cut(hex, { section: 'one', tag: 'P', text: want });
+    assert.equal(out.html.includes('mark'), false, `${spelling} did not decode`);
+  }
 });
 
 test('a valid entity the decoder does not carry still matches', () => {
