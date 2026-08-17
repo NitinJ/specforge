@@ -1535,8 +1535,10 @@ html:not([data-sf-deck]) main > section:not([data-sf-space]) > h2 {
   padding-top: 12px;
   border-top: 1px solid var(--line, var(--sf-line));
 }
-/* The first section is the one the exception was written for. */
-html:not([data-sf-deck]) main > section:first-of-type > h2 {
+/* The first section is the one the exception was written for. It carries the
+   opt-out too: this rule sets a margin as much as the one above it does, so
+   leaving it off here overrode the author on exactly one section. */
+html:not([data-sf-deck]) main > section:first-of-type:not([data-sf-space]) > h2 {
   margin-top: 18px;
   padding-top: 0;
   border-top: none;

@@ -80,7 +80,8 @@ body{background:var(--bg);color:var(--ink)}
 section h2,section h3,section h4{margin-top:7px}</style>
 </head><body><main>
 <h1>Opted out</h1>
-<section id="s1"><h2>One</h2><p>First.</p></section>
+
+<section id="s1" data-sf-space><h2 id="o1">One</h2><p>First.</p></section>
 <section id="s2" data-sf-space><h2 id="o2">Two</h2><p>Second.</p>
 <h3 id="o3">Sub</h3><p>Under.</p><h4 id="o4">Sub-sub</h4><p>Under that.</p></section>
 </main></body></html>`;
@@ -88,9 +89,12 @@ section h2,section h3,section h4{margin-top:7px}</style>
     await page.waitForSelector('#o4');
     const mt = await page.evaluate(() => {
       const m = (id) => getComputedStyle(document.getElementById(id)).marginTop;
-      return { h2: m('o2'), h3: m('o3'), h4: m('o4') };
+      return { first: m('o1'), h2: m('o2'), h3: m('o3'), h4: m('o4') };
     });
-    assert.deepEqual(mt, { h2: '7px', h3: '7px', h4: '7px' });
+    // The first section is included on purpose: the exception that gives it a
+    // smaller margin sets one as much as the general rule does, so leaving the
+    // opt-out off there overrode the author on exactly one section.
+    assert.deepEqual(mt, { first: '7px', h2: '7px', h3: '7px', h4: '7px' });
   });
 });
 
