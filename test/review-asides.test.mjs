@@ -207,6 +207,19 @@ test('a refused Import can be tried again', async (t) => {
   assert.equal(posts.filter((p) => /\/comments$/.test(p.url)).length, 2);
 });
 
+test('an Import whose connection drops can be tried again too', async (t) => {
+  // The other failure path, and the one a `.then()`-only cleanup misses: the
+  // promise rejects rather than resolving with ok:false, so the guard is never
+  // released and that button never sends another Import for the rest of the
+  // session.
+  const { window, posts } = await boot(t, { dropPost: /\/comments$/ });
+  btn(window, 'Import').click();
+  await tick(window);
+  btn(window, 'Import').click();
+  await tick(window);
+  assert.equal(posts.filter((p) => /\/comments$/.test(p.url)).length, 2);
+});
+
 test('Import says the review still has to be sent', async (t) => {
   // The button reads as though it acts on its own, and it does not: it writes a
   // comment, and the comment reaches the agent when the batch does. Without

@@ -1747,9 +1747,11 @@
     sending[key] = true;
     postJSON(API, withAuthor({ anchor: { block: blockAnchor(el) }, body: '@agent @' + a.id }))
       .then(function (r) {
-        // Held until the answer, not just until the request goes out: a refused
-        // one has to be retryable, and a successful one has closed the panel, so
-        // the button that would repeat it is no longer on screen.
+        // Released on every path out, refusal and network failure alike. Held
+        // until the ANSWER rather than until the request goes out, because a
+        // click that did not produce a comment has to stay retryable; released
+        // in one branch only would have made a dropped connection the last
+        // Import that button ever ran.
         delete sending[key];
         if (!r.ok) return flashErr('Could not add the comment.');
         // The panel closes, as it does on a delete: the draft has been answered
@@ -1763,7 +1765,10 @@
         flash('Import requested. Send your review to run it.');
         load();
       })
-      .catch(function () { flashErr('Could not add the comment.'); });
+      .catch(function () {
+        delete sending[key];
+        flashErr('Could not add the comment.');
+      });
   }
 
   function copyAnchorLink(el) {
