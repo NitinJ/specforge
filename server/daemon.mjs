@@ -19,6 +19,7 @@
 //   GET/PUT  /api/spec/<id>/prefs               → per-spec UI prefs (theme/width/filter)
 //   GET/PUT  /api/prefs                         → store-wide UI prefs (index theme,
 //                                                  project list, selected project)
+//   DELETE /api/spec/<id>/aside/<asideId>       → delete an aside + its threads
 //   POST /api/spec/<id>/rename                  → set title (meta + spec <h1>/<title>)
 //   PATCH /api/spec/<id>/organize               → set tags / collection / project
 //
@@ -43,7 +44,7 @@ import {
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
   handleBlocksGet, handleBlocksPut,
-  handleRename, handleOrganize, handleExport, handleDelete,
+  handleRename, handleOrganize, handleExport, handleDelete, handleAsideDelete,
 } from '../lib/store-api.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
@@ -349,6 +350,13 @@ export function createDaemon({ publications: pubs = publications } = {}) {
           .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });
+    }
+    // The aside id is a section id, and section ids are author-written: a dot in
+    // one is legal, so the pattern is "not a slash" rather than a word class.
+    const aside = path.match(/^\/api\/spec\/([\w-]+)\/aside\/([^/]+)$/);
+    if (aside) {
+      if (method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleAsideDelete(aside[1], decodeURIComponent(aside[2]), res);
     }
     const rename = path.match(/^\/api\/spec\/([\w-]+)\/rename$/);
     if (rename) {

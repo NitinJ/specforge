@@ -74,7 +74,8 @@ export const HARNESS_BODY = `
 /**
  * Boot the review client the way a deferred <script> does: it runs after the
  * document is parsed (readyState !== 'loading'), THEN DOMContentLoaded fires.
- * Returns { window, posts } where posts captures any POST fetch bodies.
+ * Returns { window, posts, puts, patches, dels } — one bucket per write method,
+ * each capturing { url, body } for the calls the client made.
  */
 export async function bootReviewLayer(t, opts = {}) {
   const body = opts.body || SPEC_BODY;
@@ -115,9 +116,14 @@ export async function bootReviewLayer(t, opts = {}) {
   const posts = [];
   const puts = [];
   const patches = [];
+  const dels = [];
+  // DELETE is captured like the others. Without it a client DELETE fell through
+  // to the read branch, whose response carries no `ok`, so code that checks
+  // Response.ok saw undefined and reported a failure the server never sent.
+  const BUCKETS = { POST: posts, PUT: puts, PATCH: patches, DELETE: dels };
   window.fetch = (url, init) => {
-    if (init && (init.method === 'POST' || init.method === 'PUT' || init.method === 'PATCH')) {
-      const bucket = init.method === 'PUT' ? puts : init.method === 'PATCH' ? patches : posts;
+    const bucket = init && BUCKETS[init.method];
+    if (bucket) {
       bucket.push({ url, body: init.body ? JSON.parse(init.body) : {} });
       // opts.failPost lets a test make one endpoint reject, to prove the client
       // checks Response.ok rather than assuming a fulfilled fetch succeeded.
@@ -152,7 +158,7 @@ export async function bootReviewLayer(t, opts = {}) {
   window.eval(REVIEW_JS); // deferred-script execution → boot() via the readyState check
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
   await new Promise((r) => window.setTimeout(r, 0)); // flush load()/render microtasks
-  return { window, posts, puts, patches };
+  return { window, posts, puts, patches, dels };
 }
 
 /**

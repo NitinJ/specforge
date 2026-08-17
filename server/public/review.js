@@ -1391,9 +1391,10 @@
   function closeCtxMenu() {
     if (els.ctx) els.ctx.classList.remove('open');
   }
-  /** Copy link is the only action the browser answers by itself. */
+  /** Copy link and Delete are the two actions the browser answers by itself. */
   function runAction(a, el) {
     if (a.id === 'copy_link') return copyAnchorLink(el);
+    if (a.id === 'delete') return deleteAsideSection(el);
     // Whatever is already in the composer for this block rides along. You are
     // mid-thought and decide the agent should draw it; losing the sentence you
     // typed is the wrong answer, and the action reading first is the right
@@ -1583,6 +1584,42 @@
   function asideActions() {
     return ((window.SPECFORGE || {}).actions || []).filter(function (a) {
       return a.scope === 'aside';
+    });
+  }
+
+  /**
+   * Delete an aside, from the button on its own header.
+   *
+   * The only place the review layer removes something from the spec body. It
+   * asks first: there is no versioning in the store, so a draft deleted is gone
+   * and re-running the action costs an agent round trip. `el` is the aside
+   * section itself, since the button is built into its header.
+   *
+   * Nothing is removed from the DOM here. The write triggers the live reload the
+   * spec file already has, and the aside goes because it is no longer in the
+   * file — one source of truth rather than a client copy that can disagree with
+   * it.
+   */
+  function deleteAsideSection(sec) {
+    var id = sec && sec.id;
+    if (!id) return flashErr('Could not tell which draft that is.');
+    var a = actionByIdClient(sec.getAttribute('data-sf-action'));
+    confirmThen({
+      title: 'Delete this draft',
+      body: 'The ' + (a ? a.label : 'aside') + ' draft and any comments on it go for good. '
+        + 'The section it came from is not touched.',
+      ok: 'Delete',
+      onOk: function () {
+        fetch(SPEC_API + '/aside/' + encodeURIComponent(id), { method: 'DELETE' })
+          .then(function (r) {
+            if (!r.ok) return flashErr('Could not delete that draft.');
+            // Close the panel before the reload: it is open on a section that is
+            // about to stop existing, and reopening it empty reads as a failure.
+            setAsidesOpen(false);
+            flash('Draft deleted.');
+          })
+          .catch(function () { flashErr('Could not delete that draft.'); });
+      },
     });
   }
 

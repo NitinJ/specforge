@@ -6,6 +6,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { withSpec, baseSpec, findCachedChromium, computedAcrossThemes } from './harness.mjs';
 
 const CHROME = findCachedChromium();
@@ -87,6 +89,29 @@ test('Import opens the composer, anchored inside the aside', { skip: !CHROME }, 
       await page.locator('#sf-rail .sf-bub-compose textarea').inputValue(),
       '@import ',
     );
+  });
+});
+
+test('Delete removes the aside from the file, through the real endpoint', { skip: !CHROME }, async () => {
+  // The one path where a click changes spec.html. Everything below the button is
+  // real here: the daemon, the route, the splicer and the file on disk. jsdom
+  // can say a DELETE was issued; only this says the section actually left the
+  // document and the one it came from did not.
+  await withSpec({ html: HTML }, async ({ page, id }) => {
+    await openPanel(page);
+    await page.locator('#target-aside-1 .sf-aside-act', { hasText: 'Delete' }).click();
+    await page.locator('.sfui-dlg[open] .sfui-btn.danger').click();
+
+    // The write triggers the live reload the spec file already has, so the aside
+    // goes because it is no longer in the file rather than because the client
+    // removed a node.
+    await page.waitForFunction(() => !document.getElementById('target-aside-1'));
+    assert.ok(await page.$('#target'), 'the section it came from stays');
+    assert.equal(await page.$('#sf-asides.open'), null, 'and the panel is not left open on nothing');
+
+    const onDisk = readFileSync(join(process.env.SPECFORGE_HOME, 'specs', id, 'spec.html'), 'utf8');
+    assert.equal(onDisk.includes('target-aside-1'), false, 'gone from the file, not just the page');
+    assert.equal(onDisk.includes('id="target"'), true);
   });
 });
 

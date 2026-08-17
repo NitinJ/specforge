@@ -231,15 +231,20 @@ test('an import with no spec to read still says what it is answering', () => {
   assert.match(a.next, /object-aside-1/, 'the aside, at least');
 });
 
-test('a dismiss says which aside and nothing about sections', () => {
+test('a delete never becomes work for the agent', () => {
+  // It is a `direct` action now: the browser calls the endpoint and the section
+  // goes. A thread carrying it resolves to "nothing to do" rather than to an
+  // instruction, so an agent reading the thread does not delete it a second time
+  // or reply as though it had.
   const t = {
     id: 'th_1',
     anchor: { block: { sectionPath: ['object-aside-1'], bid: 'b9' } },
-    comments: [{ kind: 'human', body: '@agent @dismiss' }],
+    comments: [{ kind: 'human', body: '@agent @delete' }],
   };
   const [a] = actionsForThread(t, { specId: 'sp1', cli: CLI });
-  assert.match(a.next, /object-aside-1/);
-  assert.equal(/Edit the section/.test(a.next), false, 'it deletes a draft, it does not edit the spec');
+  assert.equal(a.kind, 'direct');
+  assert.equal(a.run, null);
+  assert.match(a.next, /browser answers this one/i);
 });
 
 test('only the human comments are read', () => {
