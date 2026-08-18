@@ -343,6 +343,16 @@ Variants: `add`, `del`, `ctx`.
 <div class="diff"><span class="del">- old line</span><span class="add">+ new line</span></div>
 ```
 
+### `automatic on every .codeblock`
+
+Nothing to author. The review layer attaches a copy control to every code block, because code in a spec exists to be run. It is absent with no script, which costs a reader a selection rather than the code.
+
+Variants: `copied`.
+
+```html
+<div class="codeblock"><span class="filename">lib/config.mjs</span><pre><code>export const PALETTE_TOKENS = [];</code></pre></div>
+```
+
 ## Structure
 
 ### `<details class="disclosure">`

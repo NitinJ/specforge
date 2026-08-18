@@ -323,6 +323,10 @@ function sfRevealDisclosures(el) {
   var HIGHLIGHT_SRC = '/public/prism.js';
   // The vendored diagram renderer, up here for exactly the same reason.
   var MERMAID_SRC = '/public/mermaid.js';
+  // The interactive components' behaviour, on the same terms: fetched only for a
+  // document that has one of them, and declared here rather than beside its
+  // loader for the `<script src="undefined">` reason above.
+  var INTERACTIVE_SRC = '/public/interactive.js';
   // A ceiling on the source one diagram may carry. Mermaid's own default is
   // 50000; this is lower because a published spec is read by strangers and an
   // imported one carries untrusted markdown, and no diagram legible at a spec's
@@ -356,6 +360,7 @@ function sfRevealDisclosures(el) {
     applyMono(initMono()); // the monospace face, which is a separate choice
     flagDeck();            // so the stylesheet can leave a paged spec's spacing alone
     initHighlight();       // and colour the code blocks whose author named a language
+    initInteractive();     // and give the interactive components their behaviour
     buildChrome();
     // Diagrams before the reconcile, never beside it. Rendering replaces a
     // block's contents, and the reconcile identifies a block by its text, so
@@ -645,6 +650,29 @@ function sfRevealDisclosures(el) {
       applyLang(b.el, b.lang);
       try { window.Prism.highlightElement(b.el); } catch (e) { /* a bad grammar is not a broken page */ }
     });
+  }
+
+  /**
+   * Load the interactive components' behaviour, once, and only for a document
+   * that has one of them. Same bargain as the highlighter below: a spec of prose
+   * and diagrams fetches nothing.
+   *
+   * The selectors come from the registry through the injected config rather than
+   * being listed here, so adding an interactive component does not mean
+   * remembering to teach this file about it.
+   *
+   * Nothing is hidden until that script runs, by construction — the stamped CSS
+   * keys every hiding rule on the attribute it sets — so a load that fails
+   * leaves a complete document rather than a broken one, and there is no
+   * fallback to write.
+   */
+  function initInteractive() {
+    var sel = ((window.SPECFORGE || {}).live || []).join(',');
+    if (!sel || !document.querySelector(sel)) return;
+    var s = document.createElement('script');
+    s.src = INTERACTIVE_SRC;
+    s.async = true;
+    document.head.appendChild(s);
   }
 
   /**

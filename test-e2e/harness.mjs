@@ -82,12 +82,16 @@ export const needsChrome = { skip: CHROME ? false : 'no cached chromium' };
  * @param {string} [opts.type] spec type recorded in meta
  * @param {string} [opts.wait] selector proving the review layer booted
  * @param {boolean} [opts.acceptDownloads] also hand the body a `downloads` dir
+ * @param {string[]} [opts.permissions] browser permissions to grant, e.g.
+ *   `['clipboard-read', 'clipboard-write']`. Without them a clipboard read is
+ *   refused and the copy control can only be tested by its own label, which is
+ *   the component asserting its own success.
  * @param {(ctx:{page:object, base:string, id:string, downloads:string|null}) => Promise<any>} fn
  */
 export async function withSpec(opts, fn) {
   const {
     html = baseSpec(), title = 'E2E Spec', type, wait = '#sf-launcher',
-    acceptDownloads = false,
+    acceptDownloads = false, permissions,
   } = opts || {};
 
   const home = mkdtempSync(join(tmpdir(), 'sf-e2e-'));
@@ -107,6 +111,7 @@ export async function withSpec(opts, fn) {
     const page = await browser.newPage({
       viewport: { width: 1280, height: 900 },
       acceptDownloads,
+      ...(permissions ? { permissions } : {}),
     });
     // Not 'networkidle': the injected EventSource is a response that never
     // completes, so the network is never idle on a served spec.
