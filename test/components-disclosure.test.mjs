@@ -136,6 +136,34 @@ test('a table inside a disclosure survives export', () => {
   assert.match(md, /\|\s*Level\s*\|/, 'and still a table, not escaped pipes');
 });
 
+test('a closed disclosure exports closed, whatever its other attributes say', () => {
+  // `\bopen\b` also matches `class="open-question"`. Exporting a collapsed block
+  // as an expanded one silently changes what the document says on first read,
+  // which is the one thing this component must not do.
+  const body = `<details class="disclosure open-question"><summary>Q</summary><p>x</p></details>`;
+  const { md } = roundTrip(spec(body));
+  assert.ok(!md.includes('<details open>'), `exported open: ${md.slice(md.indexOf('<details'), 60)}`);
+  assert.match(md, /<details>/);
+});
+
+test('an actually-open disclosure keeps its open attribute', () => {
+  const { md } = roundTrip(spec('<details class="disclosure" open><summary>S</summary><p>x</p></details>'));
+  assert.match(md, /<details open>/);
+});
+
+test('a multi-line summary is collapsed to one line', () => {
+  // <summary> is a raw HTML tag in the export, and a newline inside it ends the
+  // tag as far as a markdown renderer is concerned: the rest of the summary
+  // spills into the document as literal text.
+  const body = `<details class="disclosure"><summary>How the
+    61% was
+    measured</summary><p>x</p></details>`;
+  const { md } = roundTrip(spec(body));
+  const line = md.slice(md.indexOf('<summary>'), md.indexOf('</summary>'));
+  assert.ok(!line.includes('\n'), `summary spans lines: ${JSON.stringify(line)}`);
+  assert.match(md, /<summary>How the 61% was measured<\/summary>/);
+});
+
 test('export warns about nothing: details is a handled element', () => {
   // It reached the exporter's default branch before this, which pushed
   // "unhandled element" and flattened the block to prose.

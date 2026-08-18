@@ -4172,7 +4172,13 @@ function sfRevealDisclosures(el) {
       });
       return byId;
     }
+    // The last-resort path, for a document with fewer than three sections. It
+    // needs the same two exclusions as the two above it: the first version of
+    // this change taught childrenOf and the section path about disclosures and
+    // left this one listing headings nobody can see.
     Array.prototype.forEach.call(document.querySelectorAll('h2,h3'), function (h) {
+      if (h.closest('[data-sf-no-toc]')) return;
+      if (h.closest('details')) return;
       var id = h.id;
       if (!id) { id = slug(txt(h)) || 'sec'; if (seen[id]) id = id + '-' + byId.length; h.id = id; }
       seen[id] = 1; byId.push({ id: id, text: txt(h) });

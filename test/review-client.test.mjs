@@ -2380,6 +2380,28 @@ test('an open disclosure hides its headings from the outline too', async (t) => 
   assert.deepEqual(hrefs, ['#a', '#b', '#c']);
 });
 
+test('the heading-only fallback outline also skips a disclosure', async (t) => {
+  // Fewer than three sections, so collect() falls through to listing h2/h3
+  // directly. That path was left listing headings inside a disclosure after the
+  // other two learned to skip them, which is a rail entry pointing at content
+  // the reader cannot see.
+  const body = `
+    <main>
+      <h2 id="only">Alpha</h2><p>x</p>
+      <details class="disclosure"><summary>Detail</summary>
+        <h3 id="buried">Method</h3><p>x</p>
+      </details>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.ok(!hrefs.includes('#buried'), `the rail lists a hidden heading: ${hrefs.join(', ')}`);
+});
+
 test('a whole section used as a demo is left out of the outline too', async (t) => {
   // The component library's h2 example IS a section, so it was collected as a
   // top-level entry and the library listed "4 · Design" among its own chapters.
