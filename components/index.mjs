@@ -94,6 +94,32 @@ export function needsOf(c) {
 }
 
 /**
+ * The attribute that says the enhancement script is running.
+ *
+ * The contract the whole enhanced layer rests on: the stamped stylesheet may not
+ * hide content, and every rule that hides is written under this attribute, which
+ * only the script sets. A document that never runs the script therefore never
+ * hides anything, which is what makes an enhanced component complete from
+ * file:// rather than truncated.
+ *
+ * Named here rather than typed into the CSS and the client separately, because
+ * those two disagreeing is a failure with no symptom until someone opens a spec
+ * from disk.
+ */
+export const LIVE_ATTR = 'data-sf-live';
+
+/**
+ * Selectors that mean "this document has something for the script to do".
+ *
+ * The review layer fetches /public/interactive.js only when one of these
+ * matches, which is the same bargain the highlighter and the reading fonts
+ * make: a spec of prose and diagrams fetches nothing.
+ */
+export function scriptSelectors() {
+  return COMPONENTS.filter((c) => needsOf(c) === 'script' && c.detect).map((c) => c.detect);
+}
+
+/**
  * How the library spends color.
  *
  * Four tokens carry all of it, and each means one thing:
