@@ -132,40 +132,33 @@ test('a refused Clipboard API still copies, through the fallback', needsChrome, 
   });
 });
 
-test('a deliberate final blank line survives', needsChrome, async () => {
-  // Only the ONE newline the markup added comes off. `\n+$` ate a blank line an
-  // author had put there on purpose, which in a config sample or a diff is
-  // content.
-  const html = baseSpec('Blank').replace('</main>',
-    '<section id="p"><h2>9 · P</h2><div class="codeblock" id="cb3">'
-    + '<pre><code>[server]\nport = 4180\n\n</code></pre></div></section></main>');
-  await withSpec({
-    html,
-    permissions: ['clipboard-read', 'clipboard-write'],
-  }, async ({ page }) => {
-    await page.waitForSelector('#cb3 .copy');
-    await page.click('#cb3 .copy');
-    await page.waitForSelector('#cb3 .copy.copied');
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()),
-      '[server]\nport = 4180\n');
-  });
-});
-
-test('trailing spaces on the last line are not eaten', needsChrome, async () => {
-  // `\s+$` trimmed them; two trailing spaces are a hard line break in markdown
-  // and a fixture asserting exact bytes cares about the rest.
-  const html = baseSpec('Trailing').replace('</main>',
-    '<section id="p"><h2>9 · P</h2><div class="codeblock" id="cb2">'
-    + '<pre><code>line one  \nline two</code></pre></div></section></main>');
-  await withSpec({
-    html,
-    permissions: ['clipboard-read', 'clipboard-write'],
-  }, async ({ page }) => {
-    await page.waitForSelector('#cb2 .copy');
-    await page.click('#cb2 .copy');
-    await page.waitForSelector('#cb2 .copy.copied');
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'line one  \nline two');
-  });
+test('the block is copied verbatim, whitespace and all', needsChrome, async () => {
+  // Nothing is trimmed, because nothing can tell an artifact of the markup from
+  // the author's own text: a hand-written block usually has a meaningless
+  // newline before `</code>`, an imported fenced block has a meaningful one, and
+  // they are the same character. Two guesses were tried and both lost real
+  // content — `\s+$` took the two trailing spaces that are a hard line break,
+  // `\n+$` took a deliberate final blank line.
+  const cases = [
+    ['line one  \nline two', 'trailing spaces are a hard line break'],
+    ['[server]\nport = 4180\n\n', 'a deliberate final blank line'],
+    ['npm test\n', 'and the ordinary trailing newline'],
+  ];
+  for (const [code, why] of cases) {
+    const html = baseSpec('Verbatim').replace('</main>',
+      '<section id="p"><h2>9 · P</h2><div class="codeblock" id="cbv">'
+      + `<pre><code>${code}</code></pre></div></section></main>`);
+    // eslint-disable-next-line no-await-in-loop
+    await withSpec({
+      html,
+      permissions: ['clipboard-read', 'clipboard-write'],
+    }, async ({ page }) => {
+      await page.waitForSelector('#cbv .copy');
+      await page.click('#cbv .copy');
+      await page.waitForSelector('#cbv .copy.copied');
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), code, why);
+    });
+  }
 });
 
 test('the control returns to its resting label', needsChrome, async () => {
