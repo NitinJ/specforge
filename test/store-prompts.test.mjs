@@ -184,6 +184,59 @@ test('an in-place custom action gets no import instruction', () => {
     'there is no draft to import');
 });
 
+test('a typoed kind is refused rather than coerced', () => {
+  // Raised in review of PR #202: coercing an unrecognised value would turn a
+  // typo into a working action that does the wrong thing, silently.
+  writePrompts({ actions: { custom: [{ ...CUSTOM, kind: 'inplace' }] } });
+  assert.equal(readPrompts().actions, undefined);
+});
+
+test('a typoed scope is refused rather than coerced', () => {
+  writePrompts({ actions: { custom: [{ ...CUSTOM, scope: 'globl' }] } });
+  assert.equal(readPrompts().actions, undefined);
+});
+
+test('a kind the registry reserves for itself is refused', () => {
+  writePrompts({ actions: { custom: [{ ...CUSTOM, kind: 'direct' }] } });
+  assert.equal(readPrompts().actions, undefined,
+    'direct is the browser doing something it has code for');
+});
+
+test('omitted kind and scope still default', () => {
+  const { kind, ...noKind } = CUSTOM;
+  const { scope, ...bare } = noKind;
+  writePrompts({ actions: { custom: [bare] } });
+  const got = readPrompts().actions.custom[0];
+  assert.equal(got.kind, 'aside');
+  assert.equal(got.scope, 'local');
+});
+
+test('null clears a top-level key', () => {
+  writePrompts({ language: 'Terse.' });
+  const after = writePrompts({ language: null });
+  assert.equal(after.language, undefined, 'the per-entry reset the pane needs');
+});
+
+test('an empty string does not clear, because that would be a silent no-op', () => {
+  writePrompts({ language: 'Terse.' });
+  const after = writePrompts({ language: '' });
+  assert.equal(after.language, 'Terse.',
+    'clearing is explicit; an empty textarea must send null to mean it');
+});
+
+test('null clears one key inside actions and leaves the rest', () => {
+  writePrompts({ actions: { hidden: ['summarize'], custom: [CUSTOM] } });
+  const after = writePrompts({ actions: { hidden: null } });
+  assert.equal(after.actions.hidden, undefined);
+  assert.equal(after.actions.custom.length, 1, 'the other keys survived');
+});
+
+test('clearing the last key inside actions drops the container', () => {
+  writePrompts({ actions: { hidden: ['summarize'] } });
+  const after = writePrompts({ actions: { hidden: null } });
+  assert.equal(after.actions, undefined, 'no empty husk left behind');
+});
+
 test('sanitizePrompts is pure and does not need a store', () => {
   const got = sanitizePrompts({ language: '  padded  ', actions: { hidden: ['a', 'a', 'b'] } });
   assert.equal(got.language, 'padded', 'trimmed');
