@@ -640,7 +640,7 @@ Four aside actions, four answered by editing the section. The instruction and th
 
 The import instruction said "merge this aside into the section above it". It named a position where the aside records an identity, and it worked on the section when the request was about a block. This resolves the target from the aside itself and gives the registry a way to say that a draft supersedes what it was made from.
 
-### Stage 10 — Import guidance per action
+### Stage 10 — Import guidance per action (PR 195)
 
 - [x] 10.1 An aside action carries an `importInstruction` beside its `instruction`, and the registry refuses an aside action without one and any other kind with one. `importMode` and `IMPORT_MODES` are removed.
       verify: an aside action with no import guidance throws; an in-place action carrying some throws; no reference to the old flag survives in code.
@@ -653,7 +653,7 @@ The import instruction said "merge this aside into the section above it". It nam
 
 A `merge`/`replace` flag cannot carry six behaviours. Visualize supersedes the prose it was drawn from, Explain simply sits beside it, Verify against code is not prose at all. And a section-scoped replace threw away paragraphs the diagram never covered.
 
-### Stage 11 — Delete, answered by the browser
+### Stage 11 — Delete, answered by the browser (PR 196)
 
 - [x] 11.1 The section splicer moves out of `write-aside.mjs` into `section-span.mjs`, so the delete cuts with the same depth-counted code the write places with.
       verify: the aside-write tests pass unchanged against the extracted helpers.
@@ -689,7 +689,7 @@ Dismiss sent `@agent @dismiss` and waited for a session to delete a section. The
 
 Four things the reader asked for after using the panel. The marker hung off the text edge, "Aside" was on screen three times, Import wanted two clicks for a decision with nothing to type, and a comment on a draft floated at a height unrelated to anything.
 
-### Stage 13 — A menu with headings, and Delete on a block
+### Stage 13 — A menu with headings, and Delete on a block (PR 198)
 
 - [x] 13.1 An action declares the heading it sits under, and the registry refuses one that reaches a menu without a group. The list and its order are injected beside the actions.
       verify: a menu action with no group throws; an unknown group throws; an aside action has none; declaration order matches group order.
