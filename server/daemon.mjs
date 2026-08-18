@@ -36,6 +36,7 @@ import { agentBusy } from '../lib/store-inbox.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
 import { renderSettings } from './settings-page.mjs';
+import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
 import { readDoc, DOC_ID } from '../lib/components-doc.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -270,6 +271,33 @@ export function createDaemon({ publications: pubs = publications } = {}) {
           .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });
+    }
+
+    // --- Prompt customizations (the configuration pane) ---
+    //
+    // Loopback only, like every owner surface: these routes are on the daemon,
+    // not the gateway, so no share token reaches them. A reviewer cannot change
+    // what the owner's agents are told.
+    if (path === '/api/prompts') {
+      if (method === 'GET') return sendJson(res, 200, handlePromptsGet());
+      if (method === 'PUT') {
+        return readJsonBody(req)
+          .then((b) => sendJson(res, 200, handlePromptsPut(b)))
+          .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
+    }
+    if (path === '/api/prompts/reset') {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((b) => {
+          try {
+            return sendJson(res, 200, handlePromptsReset(b && b.class));
+          } catch (e) {
+            return sendJson(res, 400, { error: e.message });
+          }
+        })
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
 
     // --- Comments API (store-keyed) ---

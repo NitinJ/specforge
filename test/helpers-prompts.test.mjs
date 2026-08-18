@@ -72,9 +72,14 @@ test('the settings harness runs the page’s own script', (t) => {
 });
 
 test('the settings harness stubs fetch before parsing', (t) => {
+  // Before parsing, not after construction: the page fetches its state as it
+  // loads, so a stub attached afterwards would miss the call and the test would
+  // read as a page that never asked.
   const { window, calls } = loadSettings(t, {});
   assert.equal(typeof window.fetch, 'function');
-  assert.deepEqual(calls, [], 'the shell issues no requests of its own yet');
+  assert.equal(calls.length, 1, 'the page asked for its state while parsing');
+  assert.equal(calls[0].url, '/api/prompts');
+  assert.equal(calls[0].method, 'GET');
 });
 
 test('the harness opens the tab the options name', (t) => {
