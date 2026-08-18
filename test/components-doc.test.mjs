@@ -72,8 +72,10 @@ test('the document is generated: building twice is byte-identical', () => {
 });
 
 test('writeDoc puts it in the store under the reserved id', () => {
-  const r = writeDoc();
-  assert.equal(r.id, DOC_ID);
+  // writeDoc writes every layer's document and reports on each, so this asks for
+  // the static one by id rather than assuming it is the only one.
+  const written = writeDoc();
+  assert.ok(written.some((r) => r.id === DOC_ID), 'the static document was written');
   assert.ok(existsSync(docPath()), 'the file exists');
   assert.equal(readFileSync(docPath(), 'utf8'), buildDoc());
 });
