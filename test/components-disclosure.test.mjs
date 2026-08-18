@@ -151,7 +151,9 @@ test('the word "open" inside an attribute VALUE is not the open attribute', () =
   // `title="open questions"` both put a bare `open` between spaces. Quoted
   // values come off before the test now.
   for (const attrs of ['class="disclosure open-question"', 'class="disclosure open bar"',
-    'title="open questions"', 'data-note="open"']) {
+    'title="open questions"', 'data-note="open"',
+    // Unquoted values are legal HTML and were read as the attribute itself.
+    'data-note=open', 'class=disclosure data-x=open']) {
     const { md } = roundTrip(spec(`<details ${attrs}><summary>Q</summary><p>x</p></details>`));
     assert.ok(!md.includes('<details open>'), `${attrs} exported as open`);
   }
@@ -166,7 +168,18 @@ test('a summary that contains a literal closing tag cannot end its own tag', () 
   const { md } = roundTrip(spec(body));
   const block = md.slice(md.indexOf('<details'), md.indexOf('</details>'));
   assert.equal((block.match(/<\/summary>/g) || []).length, 1, 'exactly one closing tag');
-  assert.ok(block.includes('&lt;/summary&gt;'), 'and the text is still readable');
+  assert.ok(block.includes('&lt;/summary'), 'and the text is still readable');
+});
+
+test('a summary mentioning any other tag is left as written', () => {
+  // Escaping every angle bracket also sealed the tag, and changed what a reader
+  // sees: a code span holding `<div>` rendered the entities instead of the tag.
+  // Only `</summary` can end a <summary>, so only that is neutralised.
+  const body = '<details class="disclosure">'
+    + '<summary>What <code>&lt;div&gt;</code> costs</summary><p>x</p></details>';
+  const { md } = roundTrip(spec(body));
+  const line = md.slice(md.indexOf('<summary>'), md.indexOf('</summary>'));
+  assert.ok(line.includes('<div>'), `the tag was escaped: ${line}`);
 });
 
 test('an actually-open disclosure keeps its open attribute, however it is spelled', () => {
