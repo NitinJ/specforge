@@ -22,7 +22,7 @@ import { readMeta } from '../lib/meta.mjs';
 import { specHtmlPath, isReservedId } from '../lib/store-paths.mjs';
 import { specUrl } from '../lib/daemon-client.mjs';
 import { syncAll } from '../lib/components-stamp.mjs';
-import { COMPONENTS, FAMILIES } from '../components/index.mjs';
+import { COMPONENTS, FAMILIES, LAYERS, componentsIn } from '../components/index.mjs';
 import { buildDoc, docPath, writeDoc, DOC_ID } from '../lib/components-doc.mjs';
 
 let home;
@@ -45,14 +45,20 @@ function listen(srv) {
 
 // ---- the document ----
 
-test('the document carries a specimen and a rule for every component', () => {
-  const html = buildDoc();
-  for (const c of COMPONENTS) {
-    assert.ok(html.includes(`data-component="${c.name}"`), `${c.name} has an entry`);
-    assert.ok(html.includes(c.rule), `${c.name} shows its rule`);
+test('each document carries a specimen and a rule for every component in its layer', () => {
+  // Per layer, not per registry: a component is documented in exactly one of the
+  // two collections, and asking the static document for an interactive one would
+  // be asking it to list something it does not carry.
+  for (const layer of LAYERS) {
+    const html = buildDoc({ layer });
+    const items = componentsIn(layer);
+    for (const c of items) {
+      assert.ok(html.includes(`data-component="${c.name}"`), `${c.name} has an entry in ${layer}`);
+      assert.ok(html.includes(c.rule), `${c.name} shows its rule`);
+    }
+    const entries = (html.match(/data-component="/g) || []).length;
+    assert.equal(entries, items.length, `one entry per ${layer} component and no more`);
   }
-  const entries = (html.match(/data-component="/g) || []).length;
-  assert.equal(entries, COMPONENTS.length, 'one entry per component and no more');
 });
 
 test('the document groups by family, in the library order', () => {
