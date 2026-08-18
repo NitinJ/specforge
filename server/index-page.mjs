@@ -382,8 +382,15 @@ ${inner}
 
   /* ── shell: fixed rail + scrolling list ───────────────────────────── */
   .app{display:flex;align-items:flex-start;min-height:100vh}
+  /* A column so the configuration row can be pushed to the bottom by margin
+     rather than positioned there, which keeps it below the rail's content on a
+     short viewport instead of floating over it. */
   .side{position:sticky;top:0;flex:none;width:238px;height:100vh;overflow-y:auto;padding:0 12px 24px;
+        display:flex;flex-direction:column;
         border-right:1px solid var(--line);background:color-mix(in srgb,var(--surface) 50%,var(--bg))}
+  .cfg{margin-top:auto;display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:8px;
+       border:1px solid var(--line);color:var(--muted);font-size:13px;text-decoration:none}
+  .cfg:hover{border-color:var(--accent);color:var(--accent)}
   /* not ".main" — the row's left cluster already owns that name */
   .pane{flex:1;min-width:0}
 
@@ -658,7 +665,8 @@ ${inner}
   @media(max-width:1180px){.badge.t{display:none}}
   @media(max-width:900px){
     .app{display:block}
-    .side{position:static;width:auto;height:auto;border-right:none;border-bottom:1px solid var(--line);padding-bottom:12px}
+    .side{position:static;width:auto;height:auto;border-right:none;border-bottom:1px solid var(--line);padding-bottom:12px;display:block}
+    .cfg{margin-top:10px;display:inline-flex}
     .side .brand{height:48px}
     .views,.colls{display:flex;flex-wrap:wrap;gap:4px}
     .nav,.cnav{width:auto}
@@ -679,6 +687,7 @@ ${inner}
   <div class="shead" id="chead">Collections</div>
   <nav class="colls" id="colls" aria-label="Collections">${collRows}</nav>
   ${named.length ? '' : '<p class="shint">Select specs with the checkbox, then move them into a collection.</p>'}
+  <a class="cfg" id="cfg" href="/settings">⚙<span>Configuration</span></a>
 </aside>
 <main class="pane">
 <div class="top"><div class="topin">

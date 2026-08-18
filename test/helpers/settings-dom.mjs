@@ -13,14 +13,34 @@ import { JSDOM, VirtualConsole } from 'jsdom';
 import { renderSettings } from '../../server/settings-page.mjs';
 
 /**
+ * A correctly shaped, entirely uncustomized answer.
+ *
+ * What the page gets when a test does not care about the data: enough for it to
+ * render without throwing, and empty enough that nothing asserts against it by
+ * accident.
+ */
+const EMPTY_STATE = {
+  language: { value: '', customized: false },
+  actions: { shipped: [], custom: [], groups: [] },
+  type: 'design-impl',
+  types: ['design-impl'],
+  rules: [],
+  prompts: [],
+  shipped: { rules: [], prompts: [] },
+};
+
+/**
  * @param {{after:Function}} t the node:test context, for window cleanup
  * @param {object} [opts] passed straight to renderSettings
  * @param {object} [hostOpts]
  * @param {string} [hostOpts.url] the page's own URL, for ?tab= cases
  * @param {'light'|'dark'} [hostOpts.scheme] what the OS preference resolves to
  * @param {(req:{method:string,url:string,body:any}) => any} [hostOpts.respond]
- *   override the JSON a stubbed fetch resolves with; defaults to echoing the
- *   request body back with ok:true
+ *   override the JSON a stubbed fetch resolves with. The default answers with
+ *   an empty but correctly shaped settings state, because the page fetches as
+ *   it loads and renders from the answer: a stub that echoed the request would
+ *   make the page throw after the test ended, where node reports it as an
+ *   unhandled rejection rather than a failure.
  * @returns {{window: Window, calls: Array, setScheme: (s:'light'|'dark') => void}}
  *   `setScheme` flips the OS preference and fires the change event, which is the
  *   only way to exercise the page's live-theme listener: jsdom never evaluates
@@ -44,7 +64,7 @@ export function loadSettings(t, opts, hostOpts = {}) {
       const body = init && init.body ? JSON.parse(init.body) : undefined;
       const call = { method, url, body };
       calls.push(call);
-      const json = hostOpts.respond ? hostOpts.respond(call) : Object.assign({ ok: true }, body || {});
+      const json = hostOpts.respond ? hostOpts.respond(call) : EMPTY_STATE;
       return Promise.resolve({ ok: true, json: () => Promise.resolve(json) });
     };
     // jsdom never evaluates media queries, so the page's theme code would read
