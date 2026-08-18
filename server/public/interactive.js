@@ -397,6 +397,13 @@
         // it and makes aria-sort meaningless — the attribute is defined on a
         // header, not on a button. The button also brings Enter and Space and
         // the tab stop for free, which is three fewer things to implement.
+        // A header that already holds a control is left alone, and its column
+        // stays unsorted. Moving a link or a button inside this one would nest
+        // interactive content — invalid, and unreachable by keyboard — and every
+        // press of the inner control would also sort the table. An author who
+        // put a control in a header meant it to do its own job.
+        if (th.querySelector('a[href], button, input, select, textarea, [tabindex]')) return;
+
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'sf-sort';

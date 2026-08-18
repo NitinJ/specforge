@@ -157,6 +157,35 @@ test('returning to a column starts at ascending, not where it left off', needsCh
   });
 });
 
+test('a header that already holds a control keeps it, and stays unsorted', needsChrome, async () => {
+  // Moving a link inside the sort button would nest interactive content, which
+  // is invalid and unreachable by keyboard, and every press of the inner control
+  // would also sort the table. An author who put a control in a header meant it
+  // to do its own job.
+  const withLink = baseSpec('Linked').replace('</main>',
+    '<section id="p"><h2>9 · P</h2><table class="sortable" id="tl">'
+    + '<thead><tr><th>Component</th>'
+    + '<th>Uses <a href="#p">why</a></th></tr></thead>'
+    + '<tbody><tr><td>callout</td><td>640</td></tr>'
+    + '<tr><td>tag</td><td>1298</td></tr></tbody></table></section></main>');
+  await withSpec({ html: withLink }, async ({ page }) => {
+    await page.waitForSelector('#tl[data-sf-sortable]');
+    const seen = await page.evaluate(() => {
+      const heads = [...document.querySelectorAll('#tl thead th')];
+      return {
+        plainWrapped: !!heads[0].querySelector('.sf-sort'),
+        controlWrapped: !!heads[1].querySelector('.sf-sort'),
+        linkSurvives: !!heads[1].querySelector('a[href]'),
+        nested: !!heads[1].querySelector('.sf-sort a[href]'),
+      };
+    });
+    assert.equal(seen.plainWrapped, true, 'the ordinary header is still sortable');
+    assert.equal(seen.controlWrapped, false, 'the one with a link is not wrapped');
+    assert.equal(seen.linkSurvives, true, 'and its link is untouched');
+    assert.equal(seen.nested, false, 'nothing interactive was nested inside a button');
+  });
+});
+
 test('an ordinary table is left alone', needsChrome, async () => {
   await withSpec({ html: html('') }, async ({ page }) => {
     await page.waitForSelector('#sf-launcher');
