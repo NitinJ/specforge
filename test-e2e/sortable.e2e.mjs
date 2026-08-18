@@ -236,6 +236,34 @@ for (const [shape, table] of Object.entries(SPANS)) {
   });
 }
 
+test('a row with fewer cells is short at the END, and still sorts under its header', needsChrome, async () => {
+  // The reason the guard tests spans and not row widths. Once colspan and
+  // rowspan are excluded there is no way to write a row that SKIPS a column:
+  // cells fill successive grid slots, so cell index is grid column index and a
+  // short row is missing its last columns. Asserted on the geometry as well as
+  // the ordering, because that is the claim the guard rests on.
+  const ragged = baseSpec('Ragged').replace('</main>',
+    '<section id="p"><h2>9 · P</h2><table class="sortable" id="t">'
+    + '<thead><tr><th>Component</th><th>Uses</th><th>Size</th></tr></thead>'
+    + '<tbody><tr><td>tag</td><td>1298</td><td>10 KB</td></tr>'
+    + '<tr><td>panel</td><td>97</td></tr>'
+    + '<tr><td>callout</td><td>640</td><td>8 KB</td></tr></tbody>'
+    + '</table></section></main>');
+  await withSpec({ html: ragged }, async ({ page }) => {
+    await page.waitForSelector('#t[data-sf-sortable]');
+    const aligned = await page.evaluate(() => {
+      const head = document.querySelectorAll('#t thead th');
+      const short = [...document.querySelectorAll('#t tbody tr')].find((r) => r.cells.length === 2);
+      return Math.abs(short.cells[1].getBoundingClientRect().left
+        - head[1].getBoundingClientRect().left) < 1;
+    });
+    assert.equal(aligned, true, 'the last cell of a short row sits in its own column');
+
+    await page.click('#t thead th:nth-child(2) .sf-sort');
+    assert.deepEqual(await order(page), ['panel', 'callout', 'tag'], '97, 640, 1298');
+  });
+});
+
 test('an ordinary table is left alone', needsChrome, async () => {
   await withSpec({ html: html('') }, async ({ page }) => {
     await page.waitForSelector('#sf-launcher');
