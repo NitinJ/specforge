@@ -42,14 +42,71 @@ test('the language tab shows the stored direction', async (t) => {
   const { window } = open(t, 'language');
   await settle(window);
   assert.equal(window.document.getElementById('sf-lang').value, 'Write terse.');
-  assert.match(window.document.querySelector('.chip').textContent, /customized/);
+  assert.match(window.document.querySelector('#sf-lang-state .chip').textContent, /customized/);
 });
 
 test('an untouched direction reads as default', async (t) => {
   const { window } = open(t, 'language');
   await settle(window);
-  assert.equal(window.document.getElementById('sf-lang').value, '');
-  assert.match(window.document.querySelector('.chip').textContent, /default/);
+  assert.equal(window.document.getElementById('sf-lang').value, '',
+    'the box is the user’s addition, so nothing they did not write is in it');
+  assert.match(window.document.querySelector('#sf-lang-state .chip').textContent, /default/);
+});
+
+test('the shipped contract is shown beside the box, read-only', async (t) => {
+  // The direction is added on top of the contract rather than replacing it, so
+  // the contract is reference rather than the box's value. Without it on screen
+  // there is nothing to write "on top of".
+  const { window } = open(t, 'language');
+  await settle(window);
+  const pre = window.document.getElementById('sf-contract');
+  assert.match(pre.textContent, /Spec language contract/);
+  assert.equal(pre.closest('textarea'), null, 'it is not an editable field');
+});
+
+test('copy puts the contract into the box without saving it', async (t) => {
+  const { window, calls } = open(t, 'language');
+  await settle(window);
+  window.document.getElementById('sf-lang-copy').click();
+  await settle(window);
+  assert.match(window.document.getElementById('sf-lang').value, /Spec language contract/);
+  assert.equal(calls.some((c) => c.method === 'PUT'), false, 'nothing was written yet');
+  assert.equal(handlePromptsGet().language.value, '');
+});
+
+test('copy appends rather than discarding what was already written', async (t) => {
+  handlePromptsPut({ language: 'Write terse.' });
+  const { window } = open(t, 'language');
+  await settle(window);
+  window.document.getElementById('sf-lang-copy').click();
+  await settle(window);
+  const v = window.document.getElementById('sf-lang').value;
+  assert.match(v, /^Write terse\./, 'the reader’s own words come first and survive');
+  assert.match(v, /Spec language contract/);
+});
+
+test('the box counts against the cap the store silently truncates at', async (t) => {
+  const { window } = open(t, 'language');
+  await settle(window);
+  const ta = window.document.getElementById('sf-lang');
+  ta.value = 'x'.repeat(120);
+  ta.dispatchEvent(new window.Event('input'));
+  assert.equal(window.document.getElementById('sf-lang-count').textContent, '120 / 4000');
+});
+
+test('a save over the cap is refused, rather than losing the tail', async (t) => {
+  // The store truncates at 4,000 without saying so, so the one place a human
+  // types this is where the limit has to bite.
+  const { window, calls } = open(t, 'language');
+  await settle(window);
+  const ta = window.document.getElementById('sf-lang');
+  ta.value = 'x'.repeat(4001);
+  ta.dispatchEvent(new window.Event('input'));
+  window.document.getElementById('sf-lang-save').click();
+  await settle(window);
+  assert.match(window.document.getElementById('sf-lang-msg').textContent, /Too long by 1 character/);
+  assert.equal(calls.some((c) => c.method === 'PUT'), false, 'nothing was sent');
+  assert.equal(handlePromptsGet().language.value, '');
 });
 
 test('saving the direction sends it and re-renders from the answer', async (t) => {
@@ -61,7 +118,7 @@ test('saving the direction sends it and re-renders from the answer', async (t) =
   const put = calls.find((c) => c.method === 'PUT');
   assert.equal(put.body.language, 'Short sentences.');
   assert.equal(handlePromptsGet().language.value, 'Short sentences.', 'it reached the store');
-  assert.match(window.document.querySelector('.chip').textContent, /customized/);
+  assert.match(window.document.querySelector('#sf-lang-state .chip').textContent, /customized/);
 });
 
 test('saving an emptied box sends null, because an empty string cannot clear', async (t) => {

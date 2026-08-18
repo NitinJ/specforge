@@ -196,13 +196,21 @@ Legend: added `prompts.json`, `/settings`, the two API routes · changed `action
 | `ALL_ACTIONS`, `menuActions()`, `actionById()`, `forScope()` | registry → inject, CLI, store-api | changed semantics | Same signatures; the returned set is now defaults + overrides + custom, with `menuActions()` excluding hidden ids and `actionById()` not. |
 | `create` output | CLI → agent | changed | The payload gains `language` beside `prompts`; empty when unset. |
 | `comments` output | CLI → agent | changed | Top-level `language` field; the review-spec skill instructs the agent to honor it in replies and asides (D8). |
-| `GET/PUT /api/prompts`, `POST /api/prompts/reset` | settings page → daemon | new | Read and patch `prompts.json`; reset takes `{class}`. |
-| `GET/PUT /api/template/:type/blocks` | settings page → daemon | new | Read parsed prompts and rules for a type; PUT re-renders the blocks via `updateTemplateBlocks`. |
+| `parseTemplateOutline(html)` / `templateOutline(type)` | template-blocks → blocks API | new | A type's section list with each section's heading, level and the headings under it. Answers "where could guidance go", which the two existing parsers do not. |
+| `shippedLanguageContract()` | language-contract → prompts API | new | Reads `references/spec-language.md`, so the pane and the skills share one copy of the contract. |
+| `GET/PUT /api/prompts`, `POST /api/prompts/reset` | settings page → daemon | new | Read and patch `prompts.json`; reset takes `{class}`. The GET carries `language.contract` and `language.max` beside the stored value. |
+| `GET/PUT /api/template/:type/blocks`, `POST` to reset | settings page → daemon | new | Read parsed prompts and rules for a type, plus its section outline; PUT re-renders the blocks via `updateTemplateBlocks`. The reset POST names its class, `sections` or `rules`. |
 | `GET /settings` | browser → daemon | new | The pane, server-rendered like every page. |
 
 #### The settings page
 
-Four tabs matching the classes. Every entry renders the effective text with a default-or-customized marker (P5), an edit control, and a per-entry reset (P3); the tab header carries the class reset behind a confirm (P6). The Actions tab lists shipped actions with visibility toggles and edit affordances, then custom actions with create and delete. Sections and Rules tabs are grouped by spec type, mirroring where their data lives. The page reuses the home page's shell CSS and theme machinery; no build step, no framework.
+Four tabs matching the classes. Every entry renders the effective text with a default-or-customized marker (P5), an edit control, and a per-entry reset (P3); the tab header carries the class reset behind a confirm (P6). The page reuses the home page's shell CSS and theme machinery; no build step, no framework.
+
+**Language** shows the shipped contract read-only above the box and the user's addition below it, because a direction extends the contract rather than replacing it (axis A, D14). The box counts against the 4,000-character cap as it is typed and refuses a save over it: the store truncates silently, and this is the only place a person meets the limit.
+
+**Sections** and **Rules** are a tree beside an editor, per spec type. The Sections tree is the type's whole outline, not the list of sections that already carry guidance: the tab is where guidance is added, and a list of what exists cannot be added to (D15). A dot marks the sections that carry guidance; the headings inside a section are listed under it to show shape, and select that section, since guidance attaches per section. A section with no id is listed and disabled, because a prompt is written into a section by id and one without has nowhere to go. The Rules tree holds shipped and custom rules in one list; a shipped rule opens read-only in full (D9), a custom one opens on its sentence, fix and severity.
+
+**Actions** lists shipped actions with visibility toggles and edit affordances, then custom actions with create and delete.
 
 Below the tab content, on every tab, sits the Templates strip (P7): one card per spec type, each a link to `/spec/template-<type>`, where a template is edited the way it always has been. It sits under the tabs rather than in one, because a template is the object the Sections and Rules tabs write into: whichever tab is open, the thing being configured stays one click away. The home page's `.tpls` strip is deleted in the same change, and the templates keep their store ids, protection and collection, so nothing about how a template works changes; only where you find it does.
 
@@ -220,7 +228,7 @@ Structure and affordances, not styling: boxes are placement, the shipped CSS sup
 
 <!-- sf:svg id="design-2" -->
 
-*WF2 · The Language tab: one preamble, its provenance marker, save and both resets.*
+*WF2 · The Language tab: the shipped contract read-only above, the user’s addition below, and the cap counted where it is typed against.*
 
 ![Settings page, Actions tab](2026-08-18-configuration-pane-spec.assets/design-3.svg)
 
@@ -232,13 +240,13 @@ Structure and affordances, not styling: boxes are placement, the shipped CSS sup
 
 <!-- sf:svg id="design-4" -->
 
-*WF4 · The Sections tab: per-type section prompts, edited where they already live.*
+*WF4 · The Sections tab: the type’s outline on the left, that section’s guidance on the right.*
 
 ![Settings page, Rules tab](2026-08-18-configuration-pane-spec.assets/design-5.svg)
 
 <!-- sf:svg id="design-5" -->
 
-*WF5 · The Rules tab: shipped rules read-only per D9, custom rules editable, per type.*
+*WF5 · The Rules tab: shipped and custom in one list, the selected rule edited beside it.*
 
 ![Settings page, Templates strip](2026-08-18-configuration-pane-spec.assets/design-6.svg)
 
@@ -274,6 +282,8 @@ D1 through D4 were provisional and stand; D5 through D9 record the review answer
 | D11 | Where the customization merge lives | Inside `actions/all.mjs`'s existing exports | Zero call-site changes and no bypass trap: a parallel effective-set API would let a future consumer import the raw list and silently skip customization. Cost accepted: the module gains a store read. |
 | D12 | Custom action id namespace | Mandatory `x_` prefix; deleted custom ids resolve from tombstones | The prefix partitions user ids from shipped ids permanently, so neither an upgrade nor a customization can collide (E4). Tombstones keep D3's promise for custom ids too. |
 | D13 | Where templates are found | A strip at the bottom of `/settings`, under every tab; the home page strip is removed | Owner, 2026-08-18. Templates are configuration, and the Sections and Rules tabs write into them, so the configuration screen is where they belong; the foot of the home page put them below every spec. Editing is unchanged: a card opens the template's own page. Removal, not duplication, because two strips would drift and the home page loses its least-found furniture. |
+| D14 | What the Language box opens with | The shipped contract renders read-only above it; the box holds the user's addition only, with a control that copies the contract in | Owner, 2026-08-18. Prefilling the box would turn every save into an override of rules the user never chose to own, and the 4,000-character cap would truncate the tail of a 3,300-character document. Reference above, addition below, keeps axis A's model visible on screen. |
+| D15 | What the Sections tree lists | The type's whole outline: every section, marked where guidance exists, with the headings inside each shown and selecting it | Owner, 2026-08-18. Guidance is attached in this tab, and a list of sections that already carry guidance is a list nothing can be added to. Guidance stays per section rather than per block: a block-level prompt would have to keep pointing at the right block after the section was rewritten, and that failure is silent. |
 
 ## 8 · Open questions
 
@@ -432,6 +442,17 @@ Three defects across five stages, none of them visible to a green run.
 - Both shipped prompts reading as customized on an untouched store (the whitespace comparison above).
 - Two rows both labelled Delete, indistinguishable in the list.
 - `npm test` runs with `--test-force-exit`, which truncates the TAP summary: a real failure can show as zero `not ok` lines with exit code 1. The exit code is the only trustworthy signal.
+- A tree row classed `sub` inherited the page subtitle's 22px bottom margin, and renaming it `tsub` inherited a template card caption's `display:block`. The settings page has one flat class namespace and short names are already taken; rows are `subrow`. Two green suites in a row said nothing.
+- `font:13px/1.45 inherit` is invalid CSS, so the whole declaration was dropped and the rows rendered in the browser's default face. Longhand now.
+
+#### Second pass, 2026-08-18
+
+Three reports from using the pane, and what each one changed.
+
+- **The Language box opened empty** with nothing on screen saying what a direction is added to. Fixed by D14 rather than by prefilling, for the reasons recorded there.
+- **Sections listed only what already had guidance**, so the tab could not be used to add any. Fixed by D15 and a new read, `parseTemplateOutline`. The two existing parsers answer "what is written down"; nothing answered "where could something be written".
+- **Rules could be added and removed but not changed**, so a typo meant delete and retype. Both tabs are now a tree beside an editor, which is one shape for two lists rather than two list layouts.
+- The 4,000-character cap truncated silently in the store. The page now counts against it and refuses a save over it. The cap itself is unchanged: surfacing a limit where it is typed against costs nothing, and raising it is a data decision nobody has asked for.
 
 ## Appendix
 

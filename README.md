@@ -218,10 +218,19 @@ setting up: on a fresh install every field shows what ships, marked `default`.
 
 Every field shows the text in force beside a chip saying whether it is yours or
 shipped, and every one of them resets back to shipped, singly or a tab at a time.
-Sections and Rules write into that type's template spec rather than a second
-store, so there is no precedence rule to remember: the pane is a better editor
-over the data the template already holds. Shipped rules are read-only, since they
-are the floor every spec is checked against.
+
+**Language** shows SpecForge's own writing rules above the box, read-only. What
+you write is added on top of them rather than replacing them, so the box starts
+empty; a button copies the shipped rules in if you would rather edit from them.
+
+**Sections** and **Rules** are a list beside an editor. The Sections list is the
+whole outline of the spec type you picked, not just the sections that already
+have guidance, so you can attach some to any of them; a dot marks the ones that
+already carry it, and the headings inside a section are listed under it. Both
+tabs write into that type's template spec rather than a second store, so there is
+no precedence rule to remember: the pane is a better editor over the data the
+template already holds. Shipped rules read in full but cannot be changed, since
+they are the floor every spec is checked against.
 
 Hiding an action removes it from the menu and breaks nothing: a comment that
 already names it still resolves, because an id written into a thread has to keep

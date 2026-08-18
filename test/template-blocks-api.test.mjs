@@ -168,6 +168,30 @@ test('an unknown class is refused rather than resetting everything', () => {
     'and nothing was written on the way to the error');
 });
 
+test('the outline travels, so the tab can offer a section that has no prompt yet', () => {
+  const s = handleTemplateBlocksGet('design-impl');
+  const ids = s.sections.map((x) => x.id);
+  assert.ok(ids.includes('goals'), 'a section with nothing written for it');
+  assert.ok(ids.includes('decisions'));
+  assert.equal(s.sections.find((x) => x.id === 'decisions').hasPrompt, true);
+  assert.equal(s.sections.find((x) => x.id === 'goals').hasPrompt, false);
+});
+
+test('a section carries the headings under it, which is what the tree nests', () => {
+  const goals = handleTemplateBlocksGet('design-impl').sections.find((x) => x.id === 'goals');
+  assert.deepEqual(goals.subheadings.map((h) => h.text), ['Goals', 'Non-goals']);
+});
+
+test('hasPrompt follows the template rather than the shipped list', () => {
+  handleTemplateBlocksPut('design-impl', {
+    rules: [], prompts: [{ section: 'goals', text: 'One line per goal.' }],
+  });
+  const s = handleTemplateBlocksGet('design-impl');
+  assert.equal(s.sections.find((x) => x.id === 'goals').hasPrompt, true);
+  assert.equal(s.sections.find((x) => x.id === 'decisions').hasPrompt, false,
+    'the shipped prompt was not carried through the write and the outline says so');
+});
+
 test('an unknown type is refused rather than creating one', () => {
   assert.throws(() => handleTemplateBlocksGet('nonsense'), /unknown type/);
   assert.throws(() => handleTemplateBlocksPut('nonsense', {}), /unknown type/);

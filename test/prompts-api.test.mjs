@@ -38,6 +38,20 @@ test('a shipped action carries both its effective and its shipped text', () => {
   assert.equal(v.customized, true);
 });
 
+test('the shipped contract travels, so the page need not hold a copy of it', () => {
+  // The direction extends the contract rather than replacing it, so the page has
+  // to be able to show what is being extended. A copy in the page would drift
+  // the first time the contract was edited.
+  const s = handlePromptsGet();
+  assert.match(s.language.contract, /Spec language contract/);
+  assert.equal(s.language.value, '', 'and it is not the box’s value');
+  assert.equal(s.language.customized, false);
+});
+
+test('the cap travels too, because the store truncates at it silently', () => {
+  assert.equal(handlePromptsGet().language.max, 4000);
+});
+
 test('the groups travel, so the create form need not hardcode them', () => {
   const s = handlePromptsGet();
   assert.ok(s.actions.groups.length >= 3);

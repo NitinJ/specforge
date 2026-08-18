@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="Settings page, Rules tab"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}</style>
-        <rect x="8" y="8" width="704" height="324" rx="10" class="svg-box"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-label="Settings page, Rules tab"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}</style>
+        <rect x="8" y="8" width="704" height="404" rx="10" class="svg-box"/>
         <rect x="220" y="24" width="68" height="30" rx="8" class="svg-box-a"/><text x="236" y="44" class="svg-lbl">Rules</text>
         <rect x="24" y="24" width="92" height="30" rx="8" class="svg-box"/><text x="40" y="44" class="svg-lbl-m">Language</text>
         <rect x="124" y="24" width="88" height="30" rx="8" class="svg-box"/><text x="140" y="44" class="svg-lbl-m">Sections</text>
@@ -8,19 +8,28 @@
         <rect x="96" y="66" width="76" height="24" rx="12" class="svg-box-a"/><text x="106" y="82" class="svg-lbl">research</text>
         <rect x="24" y="66" width="66" height="24" rx="12" class="svg-box"/><text x="34" y="82" class="svg-lbl-m">design</text>
         <text x="180" y="82" class="svg-lbl-m">… the other four types</text>
-        <text x="24" y="118" class="svg-lbl-m">SHIPPED FOR THIS TYPE (5)</text>
-        <rect x="24" y="130" width="672" height="32" rx="8" class="svg-box"/>
-        <text x="38" y="151" class="svg-lbl">findings-cite-sources</text>
-        <text x="548" y="151" class="svg-lbl-m">🔒 shipped · read-only</text>
-        <rect x="24" y="168" width="672" height="32" rx="8" class="svg-box"/>
-        <text x="38" y="189" class="svg-lbl">method-states-scope</text>
-        <text x="548" y="189" class="svg-lbl-m">🔒 shipped · read-only</text>
-        <text x="38" y="220" class="svg-lbl-m">…3 more</text>
-        <text x="24" y="248" class="svg-lbl-m">CUSTOM</text>
-        <rect x="24" y="258" width="672" height="32" rx="8" class="svg-box"/>
-        <text x="38" y="279" class="svg-lbl">x_no-vendor-quotes</text>
-        <rect x="212" y="265" width="66" height="18" rx="9" class="svg-box"/><text x="222" y="278" class="svg-lbl-m">blocking</text>
-        <text x="600" y="279" class="svg-lbl-m">Edit · Delete</text>
-        <rect x="24" y="296" width="672" height="28" rx="8" class="svg-box" stroke-dasharray="5 4"/>
-        <text x="38" y="315" class="svg-lbl-m">+ Add rule · ask · fix · severity (blocking / advisory); verify reads it next run (D9)</text>
+        <rect x="24" y="104" width="228" height="220" rx="8" class="svg-box"/>
+        <text x="38" y="124" class="svg-lbl-m">SHIPPED FOR THIS TYPE</text>
+        <text x="38" y="148" class="svg-lbl-m">findings-cite-sources</text>
+        <text x="38" y="170" class="svg-lbl-m">method-states-scope</text>
+        <text x="38" y="192" class="svg-lbl-m">…3 more</text>
+        <text x="38" y="216" class="svg-lbl-m">CUSTOM</text>
+        <rect x="30" y="226" width="216" height="26" rx="6" class="svg-box-a"/>
+        <text x="38" y="244" class="svg-lbl">no-vendor-quotes</text><circle cx="238" cy="239" r="4" class="svg-box-a"/>
+        <text x="38" y="284" class="svg-lbl">+ New rule</text>
+        <text x="268" y="124" class="svg-lbl">no-vendor-quotes</text>
+        <rect x="410" y="110" width="58" height="18" rx="9" class="svg-box-a"/><text x="420" y="123" class="svg-lbl-m">custom</text>
+        <text x="268" y="146" class="svg-lbl-m">Judged on every spec of type research.</text>
+        <text x="268" y="172" class="svg-lbl-m">WHAT MUST BE TRUE</text>
+        <rect x="268" y="182" width="428" height="48" rx="8" class="svg-box"/>
+        <text x="282" y="206" class="svg-lbl-m">No vendor quotes outside a research doc.▎</text>
+        <text x="268" y="252" class="svg-lbl-m">HOW TO FIX IT</text>
+        <rect x="268" y="260" width="428" height="26" rx="8" class="svg-box"/>
+        <text x="282" y="278" class="svg-lbl-m">Cut the quote and state the claim.</text>
+        <text x="268" y="308" class="svg-lbl-m">SEVERITY</text>
+        <rect x="340" y="294" width="96" height="20" rx="6" class="svg-box"/><text x="350" y="308" class="svg-lbl-m">advisory ▾</text>
+        <rect x="268" y="326" width="64" height="28" rx="8" class="svg-box-a"/><text x="286" y="345" class="svg-lbl">Save</text>
+        <text x="348" y="345" class="svg-lbl-m">Remove</text>
+        <text x="24" y="382" class="svg-lbl-m">Selecting a shipped rule shows its sentence and its fix in full, with no controls: the</text>
+        <text x="24" y="400" class="svg-lbl-m">floor under every spec of the type is readable but not adjustable (D9).</text>
       </svg>

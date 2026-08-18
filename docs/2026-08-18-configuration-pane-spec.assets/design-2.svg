@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" role="img" aria-label="Settings page, Language tab"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}</style>
-        <rect x="8" y="8" width="704" height="384" rx="10" class="svg-box"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 470" role="img" aria-label="Settings page, Language tab"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}</style>
+        <rect x="8" y="8" width="704" height="454" rx="10" class="svg-box"/>
         <text x="24" y="38" class="svg-lbl-m">← Home</text>
         <text x="96" y="38" class="svg-lbl" font-size="15">Configuration</text>
         <rect x="662" y="20" width="32" height="26" rx="8" class="svg-box"/><text x="672" y="38" class="svg-lbl-m">☾</text>
@@ -8,13 +8,21 @@
         <rect x="220" y="58" width="68" height="30" rx="8" class="svg-box"/><text x="236" y="78" class="svg-lbl-m">Rules</text>
         <rect x="296" y="58" width="80" height="30" rx="8" class="svg-box"/><text x="312" y="78" class="svg-lbl-m">Actions</text>
         <text x="508" y="78" class="svg-lbl-m">Reset Language to shipped ⟲</text>
-        <text x="24" y="122" class="svg-lbl">Authoring direction</text>
-        <rect x="172" y="108" width="86" height="20" rx="10" class="svg-box-a"/><text x="182" y="122" class="svg-lbl-m">customized</text>
-        <text x="24" y="144" class="svg-lbl-m">Delivered wherever the agent writes spec prose: create, review replies, asides (D8).</text>
-        <rect x="24" y="156" width="672" height="150" rx="8" class="svg-box"/>
-        <text x="38" y="182" class="svg-lbl">Write terse. No metaphors, even in asides.</text>
-        <text x="38" y="202" class="svg-lbl">Prefer tables past two dimensions.▎</text>
-        <rect x="24" y="322" width="64" height="30" rx="8" class="svg-box-a"/><text x="42" y="342" class="svg-lbl">Save</text>
-        <rect x="96" y="322" width="128" height="30" rx="8" class="svg-box"/><text x="110" y="342" class="svg-lbl-m">Reset to default</text>
-        <text x="556" y="342" class="svg-lbl-m">4,000 characters max</text>
+        <text x="24" y="112" class="svg-lbl-m">Delivered wherever the agent writes spec prose: create, review replies, asides (D8).</text>
+        <text x="24" y="140" class="svg-lbl">SpecForge’s writing rules</text>
+        <rect x="196" y="126" width="62" height="20" rx="10" class="svg-box"/><text x="206" y="140" class="svg-lbl-m">shipped</text>
+        <rect x="24" y="152" width="672" height="96" rx="8" class="svg-box"/>
+        <text x="38" y="174" class="svg-lbl-m">Every sentence carries a decision, measurement, source, assumption or</text>
+        <text x="38" y="192" class="svg-lbl-m">specification. One that carries none gets cut.</text>
+        <text x="38" y="216" class="svg-lbl-m">No aphorisms. If a line works as a standalone tweet, cut it. …  (scrolls)</text>
+        <text x="24" y="268" class="svg-lbl-m">Copy into mine ↓</text>
+        <text x="152" y="268" class="svg-lbl-m">Read-only. Yours is added on top of these (D14).</text>
+        <text x="24" y="302" class="svg-lbl">Yours, on top of those</text>
+        <rect x="196" y="288" width="86" height="20" rx="10" class="svg-box-a"/><text x="206" y="302" class="svg-lbl-m">customized</text>
+        <rect x="24" y="316" width="672" height="86" rx="8" class="svg-box"/>
+        <text x="38" y="342" class="svg-lbl">Write terse. No metaphors, even in asides.</text>
+        <text x="38" y="362" class="svg-lbl">Prefer tables past two dimensions.▎</text>
+        <rect x="24" y="418" width="64" height="30" rx="8" class="svg-box-a"/><text x="42" y="438" class="svg-lbl">Save</text>
+        <rect x="96" y="418" width="128" height="30" rx="8" class="svg-box"/><text x="110" y="438" class="svg-lbl-m">Reset to default</text>
+        <text x="600" y="438" class="svg-lbl-m">77 / 4000</text>
       </svg>
