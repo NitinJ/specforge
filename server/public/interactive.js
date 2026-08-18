@@ -161,7 +161,14 @@
    * is worse than an ugly id.
    */
   function panelId(group, panel, gi, pi) {
-    if (panel.id) return panel.id;
+    // An authored id is kept, because it is a contract with whatever links to
+    // it — UNLESS the document already uses it twice, in which case it is not an
+    // identity at all: getElementById answers with the first one, so the
+    // fragment restores the wrong panel and every aria-controls pointing here
+    // resolves somewhere else. A duplicate is replaced rather than trusted.
+    if (panel.id && document.querySelectorAll('[id="' + panel.id.replace(/"/g, '\\"') + '"]').length === 1) {
+      return panel.id;
+    }
     var slug = labelOf(panel, pi).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     var base = TAB_PREFIX + (gi + 1) + '-' + (slug || pi + 1);
     var id = base;

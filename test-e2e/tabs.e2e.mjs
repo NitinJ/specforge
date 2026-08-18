@@ -153,6 +153,35 @@ test('panel ids do not collide with an id the author already used', needsChrome,
   });
 });
 
+test('an authored id is kept, and a duplicated one is not', needsChrome, async () => {
+  // An authored id is a contract with whatever links to it, so it stands. A
+  // DUPLICATED authored id is not an identity at all: getElementById answers
+  // with the first, so the fragment restores the wrong panel and every
+  // aria-controls pointing there resolves somewhere else.
+  const authored = baseSpec('Authored').replace('</main>',
+    '<section id="p"><h2>9 · P</h2><div class="tabs" id="t4">'
+    + '<div class="tab" id="mine" data-label="A"><p>alpha</p></div>'
+    + '<div class="tab" id="mine" data-label="B"><p>beta</p></div>'
+    + '<div class="tab" id="unique-one" data-label="C"><p>gamma</p></div>'
+    + '</div></section></main>');
+  await withSpec({ html: authored }, async ({ page }) => {
+    await page.waitForSelector('#t4 .sf-tablist');
+    const seen = await page.evaluate(() => {
+      const panels = [...document.querySelectorAll('#t4 > .tab')];
+      const btns = [...document.querySelectorAll('#t4 .sf-tab')];
+      return {
+        ids: panels.map((p) => p.id),
+        resolve: btns.map((b, i) =>
+          document.getElementById(b.getAttribute('aria-controls')) === panels[i]),
+      };
+    });
+    assert.equal(seen.ids[2], 'unique-one', 'a unique authored id is left alone');
+    assert.notEqual(seen.ids[0], seen.ids[1], 'the duplicate was resolved');
+    assert.deepEqual(seen.resolve, [true, true, true],
+      'every control points at its own panel');
+  });
+});
+
 test('switching does not scroll the page', needsChrome, async () => {
   // history.replaceState rather than assigning location.hash, which would jump
   // the panel to the top of the viewport and yank the page out from under a
