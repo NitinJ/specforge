@@ -58,9 +58,15 @@ inlines the images that sit beside it, and produces a lint-passing spec:
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import-md "<file>" [--title "<title>"] [--type <type>]
 ```
 
-It prints `{ id, htmlPath, url, type, status, report }`. **Then edit `htmlPath`**
-— the deterministic pass gives you a valid document to improve, never a blank
-scaffold to fill.
+It prints `{ id, htmlPath, url, type, status, language, report }`. **Then edit
+`htmlPath`** — the deterministic pass gives you a valid document to improve,
+never a blank scaffold to fill.
+
+**`language` is the user's authoring direction, and it outranks the house
+register.** A non-empty string is how this user wants prose written; apply it to
+everything you write while improving the converted document. Where it
+contradicts `references/spec-language.md`, the user's direction wins. Empty
+means no direction. Set in the Configuration pane, not here.
 
 Read the `report` before you touch anything; it is the list of what needs you:
 

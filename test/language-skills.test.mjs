@@ -19,6 +19,7 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 const CREATE = read('skills/create-spec/SKILL.md');
 const REVIEW = read('skills/review-spec/SKILL.md');
+const CONVERT = read('skills/convert-spec/SKILL.md');
 
 test('create-spec names the language field in the payload it documents', () => {
   assert.match(CREATE, /\blanguage\b[^`]*prompts\s*\}/,
@@ -40,15 +41,23 @@ test('review-spec extends the direction to replies and asides', () => {
   assert.match(REVIEW, /replies, amendments, and asides/i);
 });
 
-test('both skills say the user’s direction outranks the house contract', () => {
-  for (const [name, text] of [['create-spec', CREATE], ['review-spec', REVIEW]]) {
+test('convert-spec names the field and applies it while improving the result', () => {
+  // Converting runs a deterministic pass and then the agent improves the
+  // document, which is authoring. Raised in review of PR #203.
+  assert.match(CONVERT, /language, report \}/, 'the printed shape lists it');
+  assert.match(CONVERT, /authoring direction/i);
+  assert.match(CONVERT, /while improving the converted document/i);
+});
+
+test('every authoring skill says the user’s direction outranks the house contract', () => {
+  for (const [name, text] of [['create-spec', CREATE], ['review-spec', REVIEW], ['convert-spec', CONVERT]]) {
     assert.match(text, /user's direction wins/i, `${name} states the precedence`);
     assert.match(text, /spec-language\.md/, `${name} names the contract it outranks`);
   }
 });
 
-test('both skills point at the pane rather than at themselves for setting it', () => {
-  for (const [name, text] of [['create-spec', CREATE], ['review-spec', REVIEW]]) {
+test('every authoring skill points at the pane rather than at itself', () => {
+  for (const [name, text] of [['create-spec', CREATE], ['review-spec', REVIEW], ['convert-spec', CONVERT]]) {
     assert.match(text, /Configuration pane/i, `${name} says where the setting lives`);
   }
 });

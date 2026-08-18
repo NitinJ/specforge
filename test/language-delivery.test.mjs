@@ -60,6 +60,37 @@ test('the preamble is trimmed and capped on the way through', async () => {
   assert.equal(out.language, PREAMBLE, 'whitespace a textarea leaves behind does not travel');
 });
 
+test('import-md carries the preamble, because converting re-authors', async () => {
+  // Raised in review of PR #203: convert runs a deterministic pass and then the
+  // agent improves the result, which is authoring. Without this the converted
+  // spec would come out in the house register while every other spec came out
+  // in the user's.
+  const { writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  seedPrompts({ language: PREAMBLE });
+  const dir = mkdtempSync(join(tmpdir(), 'sf-md-'));
+  const md = join(dir, 'doc.md');
+  writeFileSync(md, '# A converted document\n\nSome prose.\n');
+  const { cmdImportMd } = await import('../lib/specforge-cli.mjs');
+  const out = await cmdImportMd({ file: md }, deps);
+  assert.equal(out.language, PREAMBLE);
+});
+
+test('import carries the preamble too', async () => {
+  const { writeFileSync, mkdtempSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  seedPrompts({ language: PREAMBLE });
+  const dir = mkdtempSync(join(tmpdir(), 'sf-html-'));
+  const file = join(dir, 'doc.html');
+  writeFileSync(file, '<!DOCTYPE html><html><body><h1>Doc</h1></body></html>');
+  const { cmdImport } = await import('../lib/specforge-cli.mjs');
+  const out = await cmdImport({ file }, deps);
+  assert.equal(out.language, PREAMBLE);
+});
+
 test('a malformed prompts file leaves both payloads working', async () => {
   const { writeFileSync } = await import('node:fs');
   const { promptsPath } = await import('../lib/store-paths.mjs');
