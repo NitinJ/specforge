@@ -33,6 +33,43 @@ import { spec } from './spec.mjs';
 export const FAMILIES = ['heading', 'notice', 'inline', 'data', 'code', 'structure', 'spec'];
 
 /**
+ * The two collections, and the field that decides which one a component is in.
+ *
+ * `static` is everything that is finished once the stylesheet is stamped.
+ * `interactive` is a block that responds to a reader. They differ in what they
+ * ship (a served script as well as the stamped CSS) and in where they are
+ * documented, and in nothing else: one registry, one build, one stamped block.
+ *
+ * A second definitions directory with a second builder was the alternative and
+ * is what this exists to avoid. Two builders emitting into one stamped block is
+ * how six copies of the table rules accumulated across five shells and the
+ * library page, one of which had silently disabled the heading family.
+ */
+export const LAYERS = ['static', 'interactive'];
+
+/** A component's layer. Undeclared is `static`, so the 39 that predate this field keep working. */
+export function layerOf(c) {
+  return c.layer === 'interactive' ? 'interactive' : 'static';
+}
+
+/** Every component in one layer, in definition order. */
+export function componentsIn(layer) {
+  return COMPONENTS.filter((c) => layerOf(c) === layer);
+}
+
+/**
+ * What a component needs at runtime beyond its stamped CSS.
+ *
+ * `none` covers both a static component and an interactive one built on an
+ * element that is already interactive (`<details>`). `script` is what makes the
+ * review layer fetch /public/interactive.js, and it is read per document rather
+ * than per component so a spec using only disclosures loads nothing.
+ */
+export function needsOf(c) {
+  return c.needs === 'script' ? 'script' : 'none';
+}
+
+/**
  * How the library spends color.
  *
  * Four tokens carry all of it, and each means one thing:
