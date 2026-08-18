@@ -183,6 +183,19 @@ test('a tag named in a summary reaches the reader as text', () => {
   const line = md.slice(md.indexOf('<summary>'), md.indexOf('</summary>'));
   assert.ok(line.includes('&lt;div&gt;'), `not escaped for display: ${line}`);
   assert.ok(!/<div>/.test(line), 'and no live tag was left in the raw block');
+  assert.ok(!line.includes('\\&lt;'), `a markdown escape leaked into the raw block: ${line}`);
+});
+
+test('a tag named in prose, outside a code span, is treated the same way', () => {
+  // `inline()` markdown-escapes a tag-shaped `<` so GFM will not read it as raw
+  // HTML. That is right everywhere except inside an HTML block, where no
+  // backslash escape means anything and the reader simply sees the backslash.
+  const body = '<details class="disclosure">'
+    + '<summary>When &lt;section&gt; is wrong</summary><p>x</p></details>';
+  const { md } = roundTrip(spec(body));
+  const line = md.slice(md.indexOf('<summary>'), md.indexOf('</summary>'));
+  assert.ok(line.includes('&lt;section&gt;'), `not escaped for display: ${line}`);
+  assert.ok(!line.includes('\\'), `a backslash reached the reader: ${line}`);
 });
 
 test('an actually-open disclosure keeps its open attribute, however it is spelled', () => {
