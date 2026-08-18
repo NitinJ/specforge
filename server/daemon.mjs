@@ -31,7 +31,7 @@
 import http from 'node:http';
 import { watch } from 'node:fs';
 import { readSpecHtml, specHtmlPath } from '../lib/store.mjs';
-import { inboxDir, isReservedId } from '../lib/store-paths.mjs';
+import { inboxDir, isReservedId, reservedIdForRoute } from '../lib/store-paths.mjs';
 import { agentBusy } from '../lib/store-inbox.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
@@ -40,7 +40,7 @@ import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/p
 import {
   handleTemplateBlocksGet, handleTemplateBlocksPut, handleTemplateBlocksReset,
 } from '../lib/template-blocks-api.mjs';
-import { readDoc, DOC_ID } from '../lib/components-doc.mjs';
+import { readDoc } from '../lib/components-doc.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
 import { SERVICE, daemonAt, daemonUrl, defaultPort } from '../lib/daemon-state.mjs';
@@ -163,10 +163,10 @@ function serveSpec(id, res) {
  * failure is this request's to report: thrown from here it would reach no
  * handler and take the daemon, and every other spec in the browser, down with it.
  */
-function serveComponentsDoc(res) {
+function serveComponentsDoc(id, res) {
   let html;
   try {
-    html = injectReviewLayer(readDoc(), { specId: DOC_ID });
+    html = injectReviewLayer(readDoc(id), { specId: id });
   } catch (e) {
     return send(res, 500, 'text/plain; charset=utf-8',
       `could not build the component library: ${e.message}`);
@@ -655,10 +655,13 @@ export function createDaemon({ publications: pubs = publications } = {}) {
       if (st) return sendJson(res, 200, readPublicationState(st[1]));
       const md = path.match(/^\/api\/spec\/([\w-]+)\/md$/);
       if (md) return serveMarkdown(md[1], res);
-      // The library document. Served with the review layer like a spec, because
-      // being commentable is the point of it living in the store, but it is not
-      // a spec: no lifecycle, no sections contract, and it is generated.
-      if (path === '/components') return serveComponentsDoc(res);
+      // The library documents, one per layer. Served with the review layer like a
+      // spec, because being commentable is the point of them living in the store,
+      // but they are not specs: no lifecycle, no sections contract, generated.
+      // Routed from the same map that store-paths uses to refuse them under
+      // /spec/, so a route and its refusal cannot disagree.
+      const reserved = reservedIdForRoute(path);
+      if (reserved) return serveComponentsDoc(reserved, res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
       if (sm) return serveSpec(sm[1], res);
       const pub = path.match(/^\/public\/([\w.-]+)$/);
