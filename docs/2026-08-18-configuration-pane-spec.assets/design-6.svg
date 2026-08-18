@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 250" role="img" aria-label="Settings page, Templates strip"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}</style>
+        <rect x="8" y="8" width="704" height="234" rx="10" class="svg-box"/>
+        <rect x="24" y="22" width="672" height="70" rx="8" class="svg-box"/>
+        <text x="40" y="52" class="svg-lbl-m">… active tab content (any of the four tabs) …</text>
+        <text x="24" y="126" class="svg-lbl-m">TEMPLATES</text>
+        <text x="130" y="126" class="svg-lbl-m">what every new spec of a type starts from · click to open and edit as a spec</text>
+        <rect x="24" y="138" width="102" height="64" rx="8" class="svg-box"/>
+        <text x="36" y="162" class="svg-lbl">design</text><text x="36" y="182" class="svg-lbl-m">template</text>
+        <rect x="134" y="138" width="102" height="64" rx="8" class="svg-box"/>
+        <text x="146" y="162" class="svg-lbl">research</text><text x="146" y="182" class="svg-lbl-m">template</text>
+        <rect x="244" y="138" width="110" height="64" rx="8" class="svg-box-a"/>
+        <text x="256" y="162" class="svg-lbl">design-impl</text><text x="256" y="182" class="svg-lbl-m">template</text>
+        <rect x="362" y="138" width="102" height="64" rx="8" class="svg-box"/>
+        <text x="374" y="162" class="svg-lbl">impl</text><text x="374" y="182" class="svg-lbl-m">template</text>
+        <rect x="472" y="138" width="102" height="64" rx="8" class="svg-box"/>
+        <text x="484" y="162" class="svg-lbl">general</text><text x="484" y="182" class="svg-lbl-m">template</text>
+        <rect x="582" y="138" width="102" height="64" rx="8" class="svg-box"/>
+        <text x="594" y="162" class="svg-lbl">deck</text><text x="594" y="182" class="svg-lbl-m">template</text>
+        <text x="24" y="228" class="svg-lbl-m">Cards link to /spec/template-&lt;type&gt;. The strip renders under every tab; the home page strip is removed.</text>
+      </svg>

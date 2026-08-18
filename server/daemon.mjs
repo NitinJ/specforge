@@ -37,6 +37,9 @@ import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
 import { renderSettings } from './settings-page.mjs';
 import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
+import {
+  handleTemplateBlocksGet, handleTemplateBlocksPut, handleTemplateBlocksReset,
+} from '../lib/template-blocks-api.mjs';
 import { readDoc, DOC_ID } from '../lib/components-doc.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -248,6 +251,26 @@ function serveEvents(id, req, res) {
   req.on('error', cleanup);
 }
 
+/** Methods that change nothing, so an Origin they came from does not matter. */
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * True when a request either carries no Origin or carries this daemon's own.
+ *
+ * Compared against the request's Host rather than a fixed origin, because the
+ * same daemon answers on 127.0.0.1 and on localhost and a page served from
+ * either is its own page.
+ */
+function sameOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Create the v2 daemon HTTP server (no listen — caller binds).
  * @returns {import('node:http').Server}
@@ -257,6 +280,16 @@ export function createDaemon({ publications: pubs = publications } = {}) {
     const url = new URL(req.url, 'http://localhost');
     const path = url.pathname;
     const method = req.method;
+
+    // Loopback is not a boundary a browser respects. A page on any site can
+    // aim a form at 127.0.0.1:4180, and the request arrives authenticated by
+    // nothing more than the user owning the machine, so every state-changing
+    // request has to have come from one of this daemon's own pages. Absent
+    // Origin means a non-browser client, the CLI or a test, which is the one
+    // thing a page cannot forge.
+    if (!SAFE_METHODS.has(method) && !sameOrigin(req)) {
+      return sendJson(res, 403, { error: 'cross-origin request refused' });
+    }
 
     // --- Store-wide prefs (the index theme) ---
     if (path === '/api/prefs') {
@@ -298,6 +331,34 @@ export function createDaemon({ publications: pubs = publications } = {}) {
           }
         })
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+
+    // Per-type prompts and rules, which live in the template specs rather than
+    // in prompts.json: the pane edits the blocks that were already there.
+    const tb = path.match(/^\/api\/template\/([\w-]+)\/blocks$/);
+    if (tb) {
+      const type = tb[1];
+      const answer = (fn, ...args) => {
+        try {
+          return sendJson(res, 200, fn(...args));
+        } catch (e) {
+          return sendJson(res, 400, { error: e.message });
+        }
+      };
+      if (method === 'GET') return answer(handleTemplateBlocksGet, type);
+      if (method === 'PUT') {
+        return readJsonBody(req)
+          .then((b) => answer(handleTemplateBlocksPut, type, b))
+          .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+      }
+      if (method === 'POST') {
+        // The class travels in the body: the two tabs share this route, and a
+        // reset that named neither used to clear both (raised in review).
+        return readJsonBody(req)
+          .then((b) => answer(handleTemplateBlocksReset, type, b && b.class))
+          .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
     }
 
     // --- Comments API (store-keyed) ---

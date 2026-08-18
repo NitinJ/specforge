@@ -11,6 +11,9 @@
 //
 // Spec 094abd0b9d §6.
 
+import { listSpecs } from '../lib/meta.mjs';
+import { ensureTemplates } from '../lib/store-templates.mjs';
+
 /** The classes, in tab order. Each becomes a tab in stage 3 and 4. */
 export const CLASSES = [
   { id: 'language', label: 'Language' },
@@ -25,6 +28,14 @@ function esc(s) {
     .replaceAll('"', '&quot;');
 }
 
+/** One template card. Opens the template spec, which is how it has always been edited. */
+function tplCard(m) {
+  return `<a class="tcard" href="/spec/${esc(m.id)}" data-id="${esc(m.id)}">
+      <span class="tname">${esc(m.type || m.id)}</span>
+      <span class="tsub">template</span>
+    </a>`;
+}
+
 /**
  * Render the settings page.
  *
@@ -34,6 +45,11 @@ function esc(s) {
  */
 export function renderSettings(opts = {}) {
   const active = CLASSES.some((c) => c.id === opts.tab) ? opts.tab : CLASSES[0].id;
+  // Seeded on demand, so a fresh store shows the strip rather than an empty box:
+  // the templates exist as soon as anything asks for them.
+  ensureTemplates();
+  const templates = listSpecs().filter((m) => m.template)
+    .sort((a, b) => String(a.type || '').localeCompare(String(b.type || '')));
 
   const tabs = CLASSES.map((c) => `
       <a class="tab${c.id === active ? ' on' : ''}" href="/settings?tab=${c.id}"
@@ -122,6 +138,21 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   .new input:focus,.new select:focus{outline:none;border-color:var(--accent)}
   .err{color:var(--red);font-size:12.5px;margin-top:8px}
   .saved{color:var(--green);font-size:12.5px}
+  .types{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 16px}
+  .chip.type{cursor:pointer;background:var(--panel);padding:4px 12px;font-weight:500}
+  .chip.type:hover{border-color:var(--accent);color:var(--accent)}
+  .chip.type.on{border-color:var(--accent);color:var(--ink);font-weight:650}
+  code{font-size:.9em;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:.05em .35em}
+
+  .tpls{margin:40px 0 0;padding-top:22px;border-top:1px solid var(--line)}
+  .tpls h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 4px}
+  .tstrip{display:flex;gap:10px;flex-wrap:wrap}
+  .tcard{flex:0 0 auto;min-width:110px;padding:11px 14px;border:1px solid var(--line);
+    border-radius:9px;background:var(--panel);text-decoration:none;color:var(--ink)}
+  .tcard:hover{border-color:var(--accent)}
+  .tname{display:block;font-weight:600;font-size:13.5px}
+  .tsub{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+
   @media (max-width:560px){
     .row{flex-wrap:wrap}
     .note{white-space:normal}
@@ -147,6 +178,15 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   <div id="sf-tabpanel" data-tab="${active}">
     <p class="empty" id="sf-loading">Loading…</p>
   </div>
+
+  <!-- Under the tabs rather than in one: a template is the object the Sections
+       and Rules tabs write into, so whichever tab is open it stays one click
+       away. It used to sit at the foot of the home page, below every spec. -->
+  <section class="tpls" id="sf-templates">
+    <h2>Templates</h2>
+    <p class="lede">What every new spec of a type starts from. Click one to open and edit it as a spec.</p>
+    <div class="tstrip">${templates.map(tplCard).join('')}</div>
+  </section>
 </main>
 <script>
 (function(){
@@ -452,25 +492,218 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     save({actions:{custom:rest.concat([made])}});
   }
 
+  // ---- Sections and Rules -------------------------------------------------
+  //
+  // These two live in the template specs rather than in prompts.json, because
+  // they are per type and that is where they already lived. The pane is a
+  // better editor over the same data, so the type picker is part of the tab.
+  var tmpl=null;
+  var TYPE=null;
+
+  function loadTemplate(type){
+    return api('GET','/api/template/'+encodeURIComponent(type)+'/blocks')
+      .then(function(t){ tmpl=t; TYPE=t.type; render(); return t; });
+  }
+  function saveTemplate(body){
+    return api('PUT','/api/template/'+encodeURIComponent(TYPE)+'/blocks',body)
+      .then(function(t){ tmpl=t; openId=null; render(); return t; });
+  }
+
+  function typePicker(){
+    return '<div class="types">'+tmpl.types.map(function(t){
+      return '<button class="chip type'+(t===TYPE?' on':'')+'" data-type="'+esc(t)+'" type="button">'
+        +esc(t)+'</button>';
+    }).join('')+'</div>';
+  }
+
+  function renderSections(){
+    panel.innerHTML='<p class="lede">Guidance the agent reads before it writes one section '
+      +'of a spec of this type. It is handed over at create and stripped from the file, so a '
+      +'reader never sees it.</p>'
+      +typePicker()
+      +'<div id="sf-prompts"></div>'
+      +'<div class="new" id="sf-newprompt">'
+      +'<div class="grid">'
+      +'<input id="np-section" type="text" placeholder="Section id, e.g. decisions" size="22">'
+      +'</div>'
+      +'<textarea id="np-text" placeholder="How this section should be written."></textarea>'
+      +'<div class="acts"><button class="btn primary" id="np-create" type="button">Add prompt</button>'
+      +'<span class="err" id="np-err"></span></div>'
+      +'</div>';
+
+    var host=document.getElementById('sf-prompts');
+    if(!tmpl.prompts.length){
+      host.appendChild(el('p',{class:'note'},'No prompts for this type yet.'));
+    }
+    tmpl.prompts.forEach(function(p){
+      var row=el('div',{class:'row','data-id':'prompt:'+p.section});
+      row.appendChild(el('span',{class:'nm'},p.section));
+      row.insertAdjacentHTML('beforeend',chip(p.customized));
+      row.appendChild(el('span',{class:'gap'}));
+      row.appendChild(el('button',{class:'btn quiet','data-act':'pedit',type:'button'},'Edit'));
+      row.appendChild(el('button',{class:'btn quiet','data-act':'pdel',type:'button'},'Remove'));
+      host.appendChild(row);
+      if(openId==='prompt:'+p.section){
+        var box=el('div',{class:'ed','data-id':'prompt:'+p.section});
+        box.innerHTML='<div class="fld"><h4>prompt</h4><textarea data-f="text"></textarea></div>'
+          +'<div class="acts"><button class="btn primary" data-act="psave" type="button">Save</button>'
+          +'<button class="btn quiet" data-act="close" type="button">Close</button></div>';
+        box.querySelector('[data-f="text"]').value=p.text;
+        host.appendChild(box);
+      }
+    });
+    document.getElementById('np-create').onclick=addPrompt;
+  }
+
+  function renderRules(){
+    panel.innerHTML='<p class="lede">What a spec of this type is judged against by '
+      +'<code>specforge verify</code>. Shipped rules come from SpecForge and are not '
+      +'editable here; add your own below.</p>'
+      +typePicker()
+      +'<div class="sec">Shipped for this type</div><div id="sf-shiprules"></div>'
+      +'<div class="sec">Custom</div><div id="sf-customrules"></div>'
+      +'<div class="new" id="sf-newrule">'
+      +'<div class="grid">'
+      +'<input id="nr-id" type="text" placeholder="Rule id, e.g. x_no_vendor_quotes" size="26">'
+      +'<select id="nr-sev"><option value="blocking">blocking</option>'
+      +'<option value="advisory">advisory</option></select>'
+      +'</div>'
+      +'<textarea id="nr-ask" placeholder="What must be true. This is what the reviewer reads."></textarea>'
+      +'<div class="grid" style="margin-top:10px">'
+      +'<input id="nr-fix" type="text" placeholder="How to fix it" size="46">'
+      +'</div>'
+      +'<div class="acts"><button class="btn primary" id="nr-create" type="button">Add rule</button>'
+      +'<span class="err" id="nr-err"></span></div>'
+      +'</div>';
+
+    var ship=document.getElementById('sf-shiprules');
+    var mine=document.getElementById('sf-customrules');
+    var anyCustom=false;
+    tmpl.rules.forEach(function(r){
+      var row=el('div',{class:'row','data-id':'rule:'+r.id});
+      row.appendChild(el('span',{class:'nm'},r.id));
+      if(r.severity) row.appendChild(el('span',{class:'chip'},r.severity));
+      row.appendChild(el('span',{class:'gap'}));
+      if(r.shipped){
+        row.appendChild(el('span',{class:'note'},'🔒 shipped · read-only'));
+        ship.appendChild(row);
+      }else{
+        anyCustom=true;
+        row.appendChild(el('button',{class:'btn quiet','data-act':'rdel',type:'button'},'Remove'));
+        mine.appendChild(row);
+      }
+    });
+    if(!anyCustom) mine.appendChild(el('p',{class:'note'},'None yet.'));
+    document.getElementById('nr-create').onclick=addRule;
+  }
+
+  function addPrompt(){
+    var section=document.getElementById('np-section').value.trim();
+    var text=document.getElementById('np-text').value.trim();
+    var err=document.getElementById('np-err');
+    err.textContent='';
+    if(!section||!text){ err.textContent='A section id and the guidance are both required.'; return; }
+    var next=tmpl.prompts.filter(function(p){return p.section!==section;})
+      .map(function(p){ return {section:p.section,text:p.text}; });
+    next.push({section:section,text:text});
+    saveTemplate({prompts:next,rules:tmpl.rules.filter(function(r){return !r.shipped;})});
+  }
+
+  function addRule(){
+    var id=document.getElementById('nr-id').value.trim();
+    var ask=document.getElementById('nr-ask').value.trim();
+    var err=document.getElementById('nr-err');
+    err.textContent='';
+    if(!id||!ask){ err.textContent='An id and what must be true are both required.'; return; }
+    if(!/^[a-z][a-z0-9_-]*$/.test(id)){
+      err.textContent='An id is lowercase letters, digits, underscore or dash.';
+      return;
+    }
+    if(tmpl.rules.some(function(r){return r.id===id;})){
+      err.textContent='This type already has a rule with that id.';
+      return;
+    }
+    var custom=tmpl.rules.filter(function(r){return !r.shipped;});
+    custom.push({
+      id:id, ask:ask,
+      fix:document.getElementById('nr-fix').value.trim(),
+      severity:document.getElementById('nr-sev').value,
+    });
+    saveTemplate({rules:custom,prompts:tmpl.prompts.map(function(p){
+      return {section:p.section,text:p.text};
+    })});
+  }
+
+  panel.addEventListener('click',function(e){
+    var t=e.target.closest?e.target.closest('.type'):null;
+    if(t) return void loadTemplate(t.getAttribute('data-type'));
+
+    var btn=e.target.closest?e.target.closest('[data-act]'):null;
+    if(!btn||!tmpl) return;
+    var holder=btn.closest('[data-id]');
+    if(!holder) return;
+    var key=holder.getAttribute('data-id');
+    var act=btn.getAttribute('data-act');
+    var otherRules=function(){ return tmpl.rules.filter(function(r){return !r.shipped;}); };
+    var allPrompts=function(){
+      return tmpl.prompts.map(function(p){ return {section:p.section,text:p.text}; });
+    };
+
+    if(act==='pedit'){ openId=(openId===key?null:key); return void render(); }
+    if(act==='pdel'){
+      var sec=key.slice('prompt:'.length);
+      return void saveTemplate({
+        prompts:allPrompts().filter(function(p){return p.section!==sec;}),
+        rules:otherRules(),
+      });
+    }
+    if(act==='psave'){
+      var s=key.slice('prompt:'.length);
+      var text=btn.closest('.ed').querySelector('[data-f="text"]').value.trim();
+      var next=allPrompts().map(function(p){
+        return p.section===s?{section:s,text:text}:p;
+      });
+      return void saveTemplate({prompts:next,rules:otherRules()});
+    }
+    if(act==='rdel'){
+      var rid=key.slice('rule:'.length);
+      return void saveTemplate({
+        rules:otherRules().filter(function(r){return r.id!==rid;}),
+        prompts:allPrompts(),
+      });
+    }
+  });
+
   // ---- shell --------------------------------------------------------------
   function render(){
-    if(!state) return;
-    if(TAB==='language') return void renderLanguage();
-    if(TAB==='actions') return void renderActions();
-    panel.innerHTML='<p class="empty">Nothing to configure here yet.</p>';
+    if(TAB==='language'||TAB==='actions'){
+      if(!state) return;
+      return void (TAB==='language'?renderLanguage():renderActions());
+    }
+    if(!tmpl) return;
+    return void (TAB==='sections'?renderSections():renderRules());
   }
 
   if(resetBtn){
-    resetBtn.hidden=(TAB!=='language'&&TAB!=='actions');
     resetBtn.onclick=function(){
-      if(!window.confirm('Reset every '+TAB+' setting to what SpecForge ships with?')) return;
+      var what=(TAB==='sections'||TAB==='rules')
+        ? 'every '+TAB.slice(0,-1)+' setting for '+TYPE
+        : 'every '+TAB+' setting';
+      if(!window.confirm('Reset '+what+' to what SpecForge ships with?')) return;
+      if(TAB==='sections'||TAB==='rules'){
+        // The class goes with it: both tabs share the route, and the confirm
+        // named only this one.
+        return void api('POST','/api/template/'+encodeURIComponent(TYPE)+'/blocks',{class:TAB})
+          .then(function(t){ tmpl=t; openId=null; render(); });
+      }
       api('POST','/api/prompts/reset',{class:TAB}).then(function(s){
         state=s; openId=null; render();
       });
     };
   }
 
-  load();
+  if(TAB==='sections'||TAB==='rules') loadTemplate('design-impl');
+  else load();
 })();
 </script>
 </body>

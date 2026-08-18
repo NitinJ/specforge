@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 430" role="img" aria-label="Rail with the gear row"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}.svg-arrow{stroke:var(--muted);stroke-width:1.4;fill:none}</style>
+        <rect x="8" y="8" width="220" height="414" rx="10" class="svg-box"/>
+        <text x="24" y="36" class="svg-lbl">SpecForge</text>
+        <text x="24" y="66" class="svg-lbl-m">PROJECTS</text>
+        <text x="32" y="86" class="svg-lbl">All projects</text><text x="196" y="86" class="svg-lbl-m">123</text>
+        <text x="32" y="106" class="svg-lbl">Figur design studio</text><text x="196" y="106" class="svg-lbl-m">20</text>
+        <text x="32" y="126" class="svg-lbl">specforge</text><text x="196" y="126" class="svg-lbl-m">26</text>
+        <text x="24" y="156" class="svg-lbl-m">VIEWS</text>
+        <text x="32" y="176" class="svg-lbl">All specs</text>
+        <text x="32" y="196" class="svg-lbl">Needs you</text>
+        <text x="24" y="226" class="svg-lbl-m">COLLECTIONS</text>
+        <text x="32" y="246" class="svg-lbl">Templates</text>
+        <text x="110" y="300" class="svg-lbl-m">⋮</text>
+        <rect x="16" y="378" width="204" height="32" rx="8" class="svg-box-a"/>
+        <text x="28" y="399" class="svg-lbl">⚙ Configuration</text>
+        <path d="M228 394 L268 394" class="svg-arrow" marker-end="url(#wfarrow)"/>
+        <defs><marker id="wfarrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="currentColor" opacity=".55"/></marker></defs>
+        <text x="276" y="384" class="svg-lbl">Gear row: new.</text>
+        <text x="276" y="402" class="svg-lbl-m">Pinned after every rail group,</text>
+        <text x="276" y="418" class="svg-lbl-m">a plain link to /settings (D10).</text>
+      </svg>
