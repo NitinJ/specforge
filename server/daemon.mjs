@@ -35,6 +35,7 @@ import { inboxDir, isReservedId } from '../lib/store-paths.mjs';
 import { agentBusy } from '../lib/store-inbox.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
+import { renderSettings } from './settings-page.mjs';
 import { readDoc, DOC_ID } from '../lib/components-doc.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -63,7 +64,7 @@ export const publications = createPublications();
 
 // The index page lives in index-page.mjs; re-exported here because tests and
 // callers import it from the daemon (the module that serves it).
-export { renderIndex };
+export { renderIndex, renderSettings };
 
 /**
  * Whether a URL names a shared project this machine has joined.
@@ -550,6 +551,12 @@ export function createDaemon({ publications: pubs = publications } = {}) {
             projectShareInfo: (name) => pubs.projectShareInfo(name),
             project: url.searchParams.get('project'),
           }));
+      }
+      // The configuration page. Loopback only, like every owner surface: it is
+      // not on the gateway socket, so no share token can reach it.
+      if (path === '/settings') {
+        return send(res, 200, 'text/html; charset=utf-8',
+          renderSettings({ tab: url.searchParams.get('tab') }));
       }
       if (path === '/events') return serveEvents(url.searchParams.get('spec') || '', req, res);
       // The same mtimes a published copy polls. A spec tab that let go of its
