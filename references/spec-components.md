@@ -31,6 +31,9 @@ point: a notice takes a type, and its tone follows from the type.
 | Nodes and the relationships between them | `pre[data-lang="mermaid"]` |
 | A picture where the exact placement carries meaning | `flow or figure, inline SVG` |
 | Anything that must reflow at the reader’s width | `table, grid, card, steps` |
+| Detail a reader needs on a second pass, not the first | `<details class="disclosure">` |
+| The same thing in two to five alternative forms | `.tabs` |
+| A long table a reader may want ordered differently | `table.sortable` |
 | None of the above | `a paragraph` |
 
 **Density.** A component is emphasis, and emphasis is a budget. No more than
@@ -56,6 +59,22 @@ Three ways, and the choice is not about how the result looks.
 **A diagram is one comment target.** A reviewer comments on the diagram, not on a node inside it, so a picture carrying several separate claims is several diagrams or a table.
 
 **It renders where the review layer runs**: the daemon and a published copy. From `file://` a diagram shows its source as a code block, the same trade the themes and the highlighter already make.
+
+## Interactive components
+
+Three blocks respond to a reader. They are documented at `/components-interactive` and they ship differently: the stylesheet is stamped into the spec as usual, but the behaviour is served by the review layer and is not part of the file.
+
+**Every one of them is complete with no JavaScript.** A spec opened from `file://`, or served where the script fails, shows every tab panel in order and every table row as written. The script REDUCES a document that is already whole; it never builds one. Write the content as though nothing will run, because sometimes nothing does.
+
+| Component | Without the script | The cost to weigh |
+|---|---|---|
+| `<details class="disclosure">` | Fully interactive: the element needs no script at all. | Its headings are **not in the contents rail**, and a reader skimming the outline will not know they exist. |
+| `.tabs` | Every panel, in order, each under its label. | Content behind a label a reader does not click is content they never read. |
+| `table.sortable` | The table, in the order you wrote it. | The authored order is what exports and what a reader sees first, so it still has to be the order that means something. |
+
+**The disclosure is the safe one.** Three document products ship it natively (Notion’s toggle list, Confluence’s Expand macro, Google Docs’ collapsible heading) and it needs no script. Tabs are shipped natively by none of them; reach for them only when a reader genuinely needs exactly one of the alternatives.
+
+**Never put the argument inside one.** A section heading behind a summary line is a part of the document a reader can miss, and the lint says so (`disclosure-depth`). A disclosure holds the working, not the conclusion.
 
 ## heading
 
@@ -297,6 +316,25 @@ Must contain: a final verdict column carrying a tag.
 <table class="compare"><thead><tr><th>Option</th><th>Verdict</th></tr></thead><tbody><tr><td>A</td><td><span class="tag good">chosen</span></td></tr></tbody></table>
 ```
 
+### `table.sortable` · interactive
+
+A table of ten or more rows where a reader may want an order other than the one the author chose. Below that, re-reading the table is cheaper than sorting it. The order you write is still the order that means something: it is what exports and what a reader with no script sees.
+
+Must contain: a thead whose cells name what they hold; ten or more body rows.
+
+Variants: `sf-sort`.
+
+```html
+<table class="sortable">
+  <thead><tr><th>Component</th><th>Uses</th></tr></thead>
+  <tbody>
+    <tr><td>callout</td><td>640</td></tr>
+    <tr><td>tag</td><td>1298</td></tr>
+    <tr><td>panel</td><td>97</td></tr>
+  </tbody>
+</table>
+```
+
 ### `.stat`
 
 Three to six headline numbers a reader should absorb before the prose.
@@ -343,7 +381,46 @@ Variants: `add`, `del`, `ctx`.
 <div class="diff"><span class="del">- old line</span><span class="add">+ new line</span></div>
 ```
 
+### `automatic on every .codeblock` · interactive
+
+Nothing to author. The review layer attaches a copy control to every code block, because code in a spec exists to be run. It is absent with no script, which costs a reader a selection rather than the code.
+
+Variants: `copied`.
+
+```html
+<div class="codeblock"><span class="filename">lib/config.mjs</span><pre><code>export const PALETTE_TOKENS = [];</code></pre></div>
+```
+
 ## Structure
+
+### `<details class="disclosure">` · interactive
+
+Detail a reader needs on a second pass and not on the first: the full error table behind a cited count, the working for a rejected option, a long transcript. Never for content the argument depends on, and never as a way to make a long section look short.
+
+Must contain: a summary that says what is inside, so the block can be skipped without opening it.
+
+```html
+<details class="disclosure">
+  <summary>How the 61% was measured</summary>
+  <p>Every spec in the store parsed for headings, counted against the levels the contents rail can reach. n=133, 2026-08-18.</p>
+</details>
+```
+
+### `.tabs` · interactive
+
+Two to five alternative forms of one thing, where a reader needs exactly one: the same command per platform, the same config per environment, before against after. Never for sequential content, and never where a reader has to compare two panels side by side.
+
+Must contain: each panel is a .tab with a data-label; the panels are alternatives, not steps.
+
+Variants: `tab`, `sf-tablist`, `sf-tab`, `sf-selected`.
+
+```html
+<div class="tabs">
+  <div class="tab" data-label="macOS"><pre><code>brew install specforge</code></pre></div>
+  <div class="tab" data-label="Linux"><pre><code>npm i -g specforge</code></pre></div>
+  <div class="tab" data-label="Windows"><pre><code>winget install specforge</code></pre></div>
+</div>
+```
 
 ### `.panel`
 

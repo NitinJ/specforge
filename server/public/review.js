@@ -8,6 +8,49 @@
  * Re-finding a block: try the stored index, else match by text; if the block was
  * edited away or removed, fall back to its section (then the parent section) so
  * the thread stays anchored instead of going stray. */
+
+/* A collapsed <details> hides its content from four things that all need it
+ * open first: scrolling to a comment anchored inside it, scrolling to a rail
+ * link that targets it, the comment rail's anchor/card bond, and printing.
+ *
+ * Declared at file scope rather than inside either layer below because both use
+ * it, and a second copy of a rule is how the last three defects in this codebase
+ * happened. It walks ancestors rather than calling closest() once: a disclosure
+ * may sit inside another one, and opening only the innermost leaves it hidden.
+ */
+function sfRevealDisclosures(el) {
+  for (var n = el; n; n = n.parentElement) {
+    if (n.tagName === 'DETAILS' && !n.open) n.open = true;
+  }
+  // A hidden tab panel is the same problem in a different container, and the
+  // component that owns it lives in interactive.js — which is loaded only for a
+  // document that has one, so this is a call that usually is not there.
+  if (typeof window.sfRevealTab === 'function') window.sfRevealTab(el);
+}
+
+/* Printing expands every disclosure, then puts them back.
+ *
+ * The stamped stylesheet asks for this too (`::details-content`), which is the
+ * only thing a spec opened from disk can do and is honoured by newer engines
+ * only. This is the half that works everywhere the review layer is present, and
+ * it restores the reader's own state afterwards so printing is not a mutation.
+ */
+(function () {
+  'use strict';
+  var reopened = [];
+  window.addEventListener('beforeprint', function () {
+    reopened = [];
+    Array.prototype.forEach.call(document.querySelectorAll('details:not([open])'), function (d) {
+      reopened.push(d);
+      d.open = true;
+    });
+  });
+  window.addEventListener('afterprint', function () {
+    reopened.forEach(function (d) { d.open = false; });
+    reopened = [];
+  });
+})();
+
 (function () {
   'use strict';
   var SPEC = (window.SPECFORGE || {}).specId;
@@ -284,6 +327,10 @@
   var HIGHLIGHT_SRC = '/public/prism.js';
   // The vendored diagram renderer, up here for exactly the same reason.
   var MERMAID_SRC = '/public/mermaid.js';
+  // The interactive components' behaviour, on the same terms: fetched only for a
+  // document that has one of them, and declared here rather than beside its
+  // loader for the `<script src="undefined">` reason above.
+  var INTERACTIVE_SRC = '/public/interactive.js';
   // A ceiling on the source one diagram may carry. Mermaid's own default is
   // 50000; this is lower because a published spec is read by strangers and an
   // imported one carries untrusted markdown, and no diagram legible at a spec's
@@ -317,6 +364,7 @@
     applyMono(initMono()); // the monospace face, which is a separate choice
     flagDeck();            // so the stylesheet can leave a paged spec's spacing alone
     initHighlight();       // and colour the code blocks whose author named a language
+    initInteractive();     // and give the interactive components their behaviour
     buildChrome();
     // Diagrams before the reconcile, never beside it. Rendering replaces a
     // block's contents, and the reconcile identifies a block by its text, so
@@ -606,6 +654,29 @@
       applyLang(b.el, b.lang);
       try { window.Prism.highlightElement(b.el); } catch (e) { /* a bad grammar is not a broken page */ }
     });
+  }
+
+  /**
+   * Load the interactive components' behaviour, once, and only for a document
+   * that has one of them. Same bargain as the highlighter below: a spec of prose
+   * and diagrams fetches nothing.
+   *
+   * The selectors come from the registry through the injected config rather than
+   * being listed here, so adding an interactive component does not mean
+   * remembering to teach this file about it.
+   *
+   * Nothing is hidden until that script runs, by construction — the stamped CSS
+   * keys every hiding rule on the attribute it sets — so a load that fails
+   * leaves a complete document rather than a broken one, and there is no
+   * fallback to write.
+   */
+  function initInteractive() {
+    var sel = ((window.SPECFORGE || {}).live || []).join(',');
+    if (!sel || !document.querySelector(sel)) return;
+    var s = document.createElement('script');
+    s.src = INTERACTIVE_SRC;
+    s.async = true;
+    document.head.appendChild(s);
   }
 
   /**
@@ -3303,6 +3374,10 @@
   // scrolled out of view the card would land off-screen. Bring the anchor back
   // into view first — the automatic-scrolling half of the anchor/card bond.
   function ensureAnchorVisible(el) {
+    // Before measuring: a block inside a closed disclosure has no box worth
+    // reading, so both the scroll decision and the card's placement would be
+    // computed against a collapsed height.
+    sfRevealDisclosures(el);
     var r = el.getBoundingClientRect();
     var h = window.innerHeight || 0;
     if (!h || !el.scrollIntoView) return;
@@ -3745,6 +3820,9 @@
     // On a deck the block may be on a slide that is not rendered, where a scroll
     // reaches nothing. Page there first; the slide change re-renders the rail.
     revealSlideFor(el);
+    // Same idea one container down: a deck hides a block on another slide, a
+    // disclosure hides one behind a summary, and a scroll reaches neither.
+    if (el) sfRevealDisclosures(el);
     if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
@@ -4016,6 +4094,12 @@
       // cannot tell a specimen from the document: the component library listed
       // its own examples in its contents. A marked subtree is illustration.
       if (h.closest('[data-sf-no-toc]')) return;
+      // A disclosure holds detail a reader needs on a second pass, and an
+      // outline that lists second-pass detail stops being an outline — the same
+      // rule that keeps h5 out. Tested on the element, not on `open`: whether it
+      // happens to be expanded is the reader's business and changes on a click,
+      // and an outline that rewrote itself on a click would be unusable.
+      if (h.closest('details')) return;
       var id = h.id;
       if (!id) { id = uniqueId(slug(txt(h)) || 'sub', seen); h.id = id; }
       seen[id] = 1;
@@ -4115,11 +4199,18 @@
     if (secs.length >= 3) {
       Array.prototype.forEach.call(secs, function (s) {
         if (s.parentElement && s.parentElement.closest('[data-sf-no-toc]')) return;
+        if (s.closest('details')) return; // see childrenOf: a disclosure is not the outline
         var h = s.querySelector('h1,h2,h3'); if (h) byId.push({ id: s.id, text: txt(h) });
       });
       return byId;
     }
+    // The last-resort path, for a document with fewer than three sections. It
+    // needs the same two exclusions as the two above it: the first version of
+    // this change taught childrenOf and the section path about disclosures and
+    // left this one listing headings nobody can see.
     Array.prototype.forEach.call(document.querySelectorAll('h2,h3'), function (h) {
+      if (h.closest('[data-sf-no-toc]')) return;
+      if (h.closest('details')) return;
       var id = h.id;
       if (!id) { id = slug(txt(h)) || 'sec'; if (seen[id]) id = id + '-' + byId.length; h.id = id; }
       seen[id] = 1; byId.push({ id: id, text: txt(h) });
