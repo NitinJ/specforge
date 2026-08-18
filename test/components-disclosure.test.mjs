@@ -168,18 +168,21 @@ test('a summary that contains a literal closing tag cannot end its own tag', () 
   const { md } = roundTrip(spec(body));
   const block = md.slice(md.indexOf('<details'), md.indexOf('</details>'));
   assert.equal((block.match(/<\/summary>/g) || []).length, 1, 'exactly one closing tag');
-  assert.ok(block.includes('&lt;/summary'), 'and the text is still readable');
+  assert.ok(block.includes('&lt;/summary&gt;'), 'and the text is still readable');
 });
 
-test('a summary mentioning any other tag is left as written', () => {
-  // Escaping every angle bracket also sealed the tag, and changed what a reader
-  // sees: a code span holding `<div>` rendered the entities instead of the tag.
-  // Only `</summary` can end a <summary>, so only that is neutralised.
+test('a tag named in a summary reaches the reader as text', () => {
+  // `<details>` opens a markdown HTML block, and markdown is not parsed inside
+  // one — so a code span in the summary stays literal backticks and a bare
+  // `<div>` is a tag the renderer acts on or drops. Emitting the entity is the
+  // only way to put the characters in front of a reader, and raw HTML renders
+  // `&lt;div&gt;` as `<div>`.
   const body = '<details class="disclosure">'
     + '<summary>What <code>&lt;div&gt;</code> costs</summary><p>x</p></details>';
   const { md } = roundTrip(spec(body));
   const line = md.slice(md.indexOf('<summary>'), md.indexOf('</summary>'));
-  assert.ok(line.includes('<div>'), `the tag was escaped: ${line}`);
+  assert.ok(line.includes('&lt;div&gt;'), `not escaped for display: ${line}`);
+  assert.ok(!/<div>/.test(line), 'and no live tag was left in the raw block');
 });
 
 test('an actually-open disclosure keeps its open attribute, however it is spelled', () => {
