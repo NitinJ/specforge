@@ -169,9 +169,17 @@ test('a summary that contains a literal closing tag cannot end its own tag', () 
   assert.ok(block.includes('&lt;/summary&gt;'), 'and the text is still readable');
 });
 
-test('an actually-open disclosure keeps its open attribute', () => {
-  const { md } = roundTrip(spec('<details class="disclosure" open><summary>S</summary><p>x</p></details>'));
-  assert.match(md, /<details open>/);
+test('an actually-open disclosure keeps its open attribute, however it is spelled', () => {
+  // `open`, `open=""` and `open="open"` are all the same boolean attribute.
+  // Stripping whole quoted runs to hide the word inside a class list took
+  // `open=""` with it and exported an expanded disclosure as collapsed — the
+  // same defect the guard exists to prevent, in the other direction.
+  for (const spelling of ['open', 'open=""', 'open="open"']) {
+    const { md } = roundTrip(spec(
+      `<details class="disclosure" ${spelling}><summary>S</summary><p>x</p></details>`,
+    ));
+    assert.match(md, /<details open>/, `${spelling} exported as collapsed`);
+  }
 });
 
 test('a multi-line summary is collapsed to one line', () => {
