@@ -88,3 +88,24 @@ test('an unknown tab falls back to the first rather than rendering nothing', (t)
   const { window } = loadSettings(t, { tab: 'nonsense' });
   assert.equal(window.document.getElementById('sf-tabpanel').getAttribute('data-tab'), 'language');
 });
+
+test('setScheme drives the page’s live OS-theme listener', (t) => {
+  // The harness is only useful for the theme path if its matchMedia fake is
+  // live. Raised in review of PR #201: a fake with a frozen `matches` and a
+  // no-op addEventListener leaves this path uncoverable while looking stubbed.
+  const { window, setScheme } = loadSettings(t, {}, { scheme: 'light' });
+  const btn = window.document.getElementById('sf-theme');
+  const showing = () => (btn.innerHTML.includes('circle') ? 'light' : 'dark');
+  assert.equal(showing(), 'light', 'the OS says light, so the icon says light');
+  setScheme('dark');
+  assert.equal(showing(), 'dark', 'and the icon follows when the OS flips');
+});
+
+test('a stored choice outranks the OS the harness reports', (t) => {
+  const { window, setScheme } = loadSettings(t, {}, { scheme: 'light' });
+  window.document.getElementById('sf-theme').click();
+  const chosen = window.document.documentElement.getAttribute('data-theme');
+  setScheme('dark');
+  assert.equal(window.document.documentElement.getAttribute('data-theme'), chosen,
+    'the reader’s choice survives an OS change');
+});

@@ -21,13 +21,23 @@ import { renderSettings } from '../../server/settings-page.mjs';
  * @param {(req:{method:string,url:string,body:any}) => any} [hostOpts.respond]
  *   override the JSON a stubbed fetch resolves with; defaults to echoing the
  *   request body back with ok:true
- * @returns {{window: Window, calls: Array}}
+ * @returns {{window: Window, calls: Array, setScheme: (s:'light'|'dark') => void}}
+ *   `setScheme` flips the OS preference and fires the change event, which is the
+ *   only way to exercise the page's live-theme listener: jsdom never evaluates
+ *   media queries, so a real scheme change cannot happen in it.
  */
 export function loadSettings(t, opts, hostOpts = {}) {
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (e) => { throw e; });
 
   const calls = [];
+  // Live, not fixed: `matches` reads this on every call and the listeners are
+  // kept, so setScheme below can flip the preference and fire the event the
+  // page subscribes to. A fake that froze its answer would make the page's
+  // live-theme path untestable while still looking stubbed.
+  let scheme = hostOpts.scheme || 'dark';
+  const mqListeners = [];
+
   const beforeParse = (window) => {
     window.fetch = (url, init) => {
       const method = (init && init.method) || 'GET';
@@ -39,14 +49,20 @@ export function loadSettings(t, opts, hostOpts = {}) {
     };
     // jsdom never evaluates media queries, so the page's theme code would read
     // an undefined preference. A fake keeps the OS answer explicit per test.
-    if (hostOpts.scheme) {
-      window.matchMedia = (media) => ({
-        media,
-        matches: hostOpts.scheme === 'light',
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      });
-    }
+    window.matchMedia = (media) => ({
+      media,
+      get matches() { return scheme === 'light'; },
+      addEventListener: (_, fn) => mqListeners.push(fn),
+      removeEventListener: (_, fn) => {
+        const at = mqListeners.indexOf(fn);
+        if (at >= 0) mqListeners.splice(at, 1);
+      },
+      addListener: (fn) => mqListeners.push(fn),
+      removeListener: (fn) => {
+        const at = mqListeners.indexOf(fn);
+        if (at >= 0) mqListeners.splice(at, 1);
+      },
+    });
   };
 
   const dom = new JSDOM(renderSettings(opts), {
@@ -57,7 +73,14 @@ export function loadSettings(t, opts, hostOpts = {}) {
   });
   const { window } = dom;
   t.after(() => window.close());
-  return { window, calls };
+  return {
+    window,
+    calls,
+    setScheme(next) {
+      scheme = next;
+      for (const fn of mqListeners) fn({ matches: next === 'light' });
+    },
+  };
 }
 
 /** Let the page's promise callbacks run. */
