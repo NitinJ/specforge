@@ -390,20 +390,27 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
       var box=btn.closest('.ed');
       var patch={};
       box.querySelectorAll('textarea[data-f]').forEach(function(t){
-        patch[t.getAttribute('data-f')]=t.value.trim()||null;
+        patch[t.getAttribute('data-f')]=t.value.trim();
       });
       if(isCustom(id)){
         var a=findAction(id);
         var merged={};
         for(var k in a){ if(k!=='hidden'&&k!=='customized') merged[k]=a[k]; }
-        for(var p in patch){ if(patch[p]!=null) merged[p]=patch[p]; }
+        // Assigned whatever the box now holds, empty included: emptying the
+        // import instruction has to fall back to the default rather than
+        // silently keeping the old text.
+        for(var p in patch){ merged[p]=patch[p]; }
         var rest=state.actions.custom.filter(function(c){return c.id!==id;})
           .map(function(c){ var o={}; for(var k2 in c){ if(k2!=='hidden') o[k2]=c[k2]; } return o; });
         return void save({actions:{custom:rest.concat([merged])}}).then(function(){ openId=null; render(); });
       }
-      var ov={};
-      ov[id]=patch;
-      return void save({actions:{overrides:ov}}).then(function(){ openId=null; render(); });
+      // setOverride, not a plain patch: a patch replaces the whole overrides map
+      // and would drop every other action's edits.
+      var body={id:id};
+      for(var f in patch){ body[f]=patch[f]; }
+      return void api('PUT','/api/prompts',{setOverride:body}).then(function(s){
+        state=s; openId=null; render();
+      });
     }
     if(act==='reset'){
       // A custom action has no shipped text to go back to; its editor shows the

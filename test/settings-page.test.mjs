@@ -128,11 +128,53 @@ test('editing a shipped action saves an override, not an identity change', async
   box.querySelector('[data-act="save"]').click();
   await settle(window);
   const put = calls.filter((c) => c.method === 'PUT').pop();
-  assert.deepEqual(Object.keys(put.body.actions.overrides.go_deeper).sort(),
-    ['importInstruction', 'instruction']);
+  assert.equal(put.body.setOverride.id, 'go_deeper');
+  assert.deepEqual(Object.keys(put.body.setOverride).sort(),
+    ['id', 'importInstruction', 'instruction'],
+    'text only: label, kind and scope are identity and are not sent');
   const stored = handlePromptsGet().actions.shipped.find((a) => a.id === 'go_deeper');
   assert.equal(stored.instruction, 'Answer the four questions.');
   assert.equal(stored.label, 'Go deeper', 'the label is identity and did not move');
+});
+
+test('saving one action does not drop another action’s edit', async (t) => {
+  // Raised in review of PR #204: the page sent a whole overrides map, so the
+  // second save replaced the first rather than joining it.
+  handlePromptsPut({ setOverride: { id: 'visualize', instruction: 'Mine for viz.' } });
+  const { window } = open(t, 'actions');
+  await settle(window);
+  window.document.querySelector('#sf-shipped .row[data-id="go_deeper"] [data-act="edit"]').click();
+  await settle(window);
+  const box = window.document.querySelector('.ed[data-id="go_deeper"]');
+  box.querySelector('[data-f="instruction"]').value = 'Mine for depth.';
+  box.querySelector('[data-act="save"]').click();
+  await settle(window);
+  const s = handlePromptsGet();
+  assert.equal(s.actions.shipped.find((a) => a.id === 'visualize').instruction, 'Mine for viz.');
+  assert.equal(s.actions.shipped.find((a) => a.id === 'go_deeper').instruction, 'Mine for depth.');
+});
+
+test('emptying a custom action’s import instruction falls back to the default', async (t) => {
+  const { DEFAULT_IMPORT_INSTRUCTION } = await import('../lib/store-prompts.mjs');
+  handlePromptsPut({
+    actions: {
+      custom: [{
+        id: 'x_glossary', label: 'Glossary', icon: '📖', kind: 'aside', scope: 'local',
+        instruction: 'Define every term.', importInstruction: 'Mine.',
+      }],
+    },
+  });
+  const { window } = open(t, 'actions');
+  await settle(window);
+  window.document.querySelector('#sf-custom .row[data-id="x_glossary"] [data-act="edit"]').click();
+  await settle(window);
+  const box = window.document.querySelector('.ed[data-id="x_glossary"]');
+  box.querySelector('[data-f="importInstruction"]').value = '';
+  box.querySelector('[data-act="save"]').click();
+  await settle(window);
+  const got = handlePromptsGet().actions.custom.find((a) => a.id === 'x_glossary');
+  assert.equal(got.importInstruction, DEFAULT_IMPORT_INSTRUCTION,
+    'an emptied field resets rather than silently keeping the old text');
 });
 
 test('resetting one action leaves the others customized', async (t) => {

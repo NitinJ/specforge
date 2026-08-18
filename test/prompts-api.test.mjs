@@ -56,6 +56,29 @@ test('a put answers with the new state rather than an ack', () => {
   assert.equal(s.language.customized, true);
 });
 
+test('setOverride merges rather than replacing the whole map', () => {
+  // Raised in review of PR #204: a plain patch replaces `overrides` wholesale,
+  // so saving one action's text dropped every other action's edits.
+  handlePromptsPut({ setOverride: { id: 'visualize', instruction: 'V' } });
+  handlePromptsPut({ setOverride: { id: 'go_deeper', instruction: 'G' } });
+  const s = handlePromptsGet();
+  assert.equal(find(s, 'visualize').instruction, 'V', 'the earlier edit survived');
+  assert.equal(find(s, 'go_deeper').instruction, 'G');
+});
+
+test('setOverride with every field emptied is a reset', () => {
+  handlePromptsPut({ setOverride: { id: 'visualize', instruction: 'V' } });
+  const after = handlePromptsPut({ setOverride: { id: 'visualize', instruction: '' } });
+  assert.equal(find(after, 'visualize').customized, false);
+});
+
+test('setOverride leaves other actions alone when it resets one', () => {
+  handlePromptsPut({ setOverride: { id: 'visualize', instruction: 'V' } });
+  handlePromptsPut({ setOverride: { id: 'go_deeper', instruction: 'G' } });
+  const after = handlePromptsPut({ setOverride: { id: 'visualize', instruction: '' } });
+  assert.equal(find(after, 'go_deeper').customized, true);
+});
+
 test('resetOverride clears one action and leaves the others', () => {
   handlePromptsPut({
     actions: { overrides: { visualize: { instruction: 'V' }, go_deeper: { instruction: 'G' } } },
