@@ -42,7 +42,12 @@
 
   function codeOf(block) {
     var el = block.querySelector('pre code') || block.querySelector('pre');
-    return el ? el.textContent.replace(/\s+$/, '') : '';
+    // Trailing NEWLINES only. `\s+$` also ate trailing spaces on the last line,
+    // and in a spec those are sometimes the content: two of them are a hard line
+    // break in markdown, and a fixture asserting exact bytes cares about the
+    // rest. The newline goes because it is an artifact of how the markup was
+    // written, not part of what the author wrote.
+    return el ? el.textContent.replace(/\n+$/, '') : '';
   }
 
   /* Clipboard, with the pre-permission fallback.
@@ -54,8 +59,17 @@
    */
   function write(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text);
+      // Falls THROUGH to the textarea on rejection, not just on absence. The API
+      // being present says nothing about it being permitted: a denied clipboard
+      // permission, or a document that was not focused at the moment of the
+      // call, rejects — and returning that rejection straight to the caller
+      // skipped a fallback that would have worked.
+      return navigator.clipboard.writeText(text).catch(function () { return legacyWrite(text); });
     }
+    return legacyWrite(text);
+  }
+
+  function legacyWrite(text) {
     return new Promise(function (resolve, reject) {
       var ta = document.createElement('textarea');
       ta.value = text;

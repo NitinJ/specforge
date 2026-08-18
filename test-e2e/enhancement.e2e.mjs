@@ -108,6 +108,47 @@ test('the control is reachable and operable by keyboard', needsChrome, async () 
   });
 });
 
+test('a refused Clipboard API still copies, through the fallback', needsChrome, async () => {
+  // The API being present says nothing about it being permitted: a denied
+  // permission, or a document that was not focused at the moment of the call,
+  // rejects. Returning that rejection to the caller skipped a fallback that
+  // would have worked, so the button said "Press ⌘C" on a page that could copy.
+  await withSpec({ html: withCode() }, async ({ page }) => {
+    await page.waitForSelector('#cb .copy');
+    await page.evaluate(() => {
+      window.__wrote = null;
+      navigator.clipboard.writeText = () => Promise.reject(new Error('denied'));
+      // Stand in for the textarea path's execCommand, which headless Chrome does
+      // not implement, and record what it was given.
+      document.execCommand = () => {
+        window.__wrote = document.activeElement && document.activeElement.value;
+        return true;
+      };
+    });
+    await page.click('#cb .copy');
+    await page.waitForSelector('#cb .copy.copied');
+    assert.equal(await page.evaluate(() => window.__wrote), CODE,
+      'the fallback ran and was handed the code');
+  });
+});
+
+test('trailing spaces on the last line are not eaten', needsChrome, async () => {
+  // `\s+$` trimmed them; two trailing spaces are a hard line break in markdown
+  // and a fixture asserting exact bytes cares about the rest.
+  const html = baseSpec('Trailing').replace('</main>',
+    '<section id="p"><h2>9 · P</h2><div class="codeblock" id="cb2">'
+    + '<pre><code>line one  \nline two</code></pre></div></section></main>');
+  await withSpec({
+    html,
+    permissions: ['clipboard-read', 'clipboard-write'],
+  }, async ({ page }) => {
+    await page.waitForSelector('#cb2 .copy');
+    await page.click('#cb2 .copy');
+    await page.waitForSelector('#cb2 .copy.copied');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'line one  \nline two');
+  });
+});
+
 test('the control returns to its resting label', needsChrome, async () => {
   await withSpec({ html: withCode() }, async ({ page }) => {
     await page.waitForSelector('#cb .copy');
