@@ -25,10 +25,13 @@ function verdictFor(html, id) {
   return runCheckRules([rule], html)[0] || null;
 }
 
-test('the global list is 32 rules, 14 answered by code and 18 by the agent', () => {
-  assert.equal(ALL_GLOBAL_RULES.length, 32);
+// 33 since `disclosure-depth`, which is answered by code: a section heading
+// behind a summary line is the one part of the disclosure's prose rule a machine
+// can see.
+test('the global list is 33 rules, 15 answered by code and 18 by the agent', () => {
+  assert.equal(ALL_GLOBAL_RULES.length, 33);
   const fn = ALL_GLOBAL_RULES.filter(isCheckRule);
-  assert.equal(fn.length, 14);
+  assert.equal(fn.length, 15);
   assert.equal(ALL_GLOBAL_RULES.length - fn.length, 18);
 });
 

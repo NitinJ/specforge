@@ -2331,6 +2331,55 @@ test('headings inside a demo are left out of the outline', async (t) => {
   assert.deepEqual(hrefs, ['#a', '#real', '#b', '#c']);
 });
 
+test('headings inside a disclosure are left out of the outline', async (t) => {
+  // D6. The same rule that keeps h5 out: a disclosure holds detail a reader
+  // needs on a second pass, and an outline that lists second-pass detail stops
+  // being an outline. It also stops a section from quietly hiding half its
+  // headings behind a summary line.
+  const body = `
+    <main>
+      <section id="a"><h2>Alpha</h2>
+        <h3 id="real">A real subsection</h3><p>x</p>
+        <details class="disclosure"><summary>Raw numbers</summary>
+          <h3 id="hidden3">Method</h3><h4 id="hidden4">Counting</h4>
+        </details>
+      </section>
+      <section id="b"><h2>Beta</h2><p>x</p></section>
+      <section id="c"><h2>Gamma</h2><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#real', '#b', '#c']);
+});
+
+test('an open disclosure hides its headings from the outline too', async (t) => {
+  // Whether it happens to be open is the reader's business and changes minute
+  // to minute; the outline cannot depend on it or it rewrites itself on a click.
+  const body = `
+    <main>
+      <section id="a"><h2>Alpha</h2>
+        <details class="disclosure" open><summary>Raw numbers</summary>
+          <h3 id="hidden3">Method</h3>
+        </details>
+      </section>
+      <section id="b"><h2>Beta</h2><p>x</p></section>
+      <section id="c"><h2>Gamma</h2><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#b', '#c']);
+});
+
 test('a whole section used as a demo is left out of the outline too', async (t) => {
   // The component library's h2 example IS a section, so it was collected as a
   // top-level entry and the library listed "4 · Design" among its own chapters.

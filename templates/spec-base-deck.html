@@ -130,6 +130,26 @@ dl dd{margin:2px 0 0 0;padding-left:14px;color:var(--muted);
 .diff .del{background:color-mix(in srgb,var(--red) 15%,transparent)}
 .diff .ctx{color:var(--muted)}
 /* structure */
+details.disclosure{border:1px solid var(--line);border-radius:10px;
+  background:var(--panel);margin:16px 0}
+details.disclosure > summary{cursor:pointer;padding:11px 16px;font-weight:650;
+  color:var(--accent);list-style:none;display:flex;align-items:center;gap:9px}
+details.disclosure > summary::-webkit-details-marker{display:none}
+details.disclosure > summary::before{content:"";flex:none;width:0;height:0;
+  border-left:5px solid currentColor;border-top:4px solid transparent;
+  border-bottom:4px solid transparent;transition:transform .15s ease}
+details.disclosure[open] > summary::before{transform:rotate(90deg)}
+details.disclosure > summary:hover{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+details.disclosure > summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+details.disclosure[open] > summary{border-bottom:1px solid var(--line)}
+details.disclosure > :not(summary){padding:0 16px}
+details.disclosure > :not(summary):first-of-type{padding-top:12px}
+details.disclosure > :last-child{padding-bottom:14px}
+@media print{
+  details.disclosure{break-inside:avoid}
+  details.disclosure > summary::before{display:none}
+  details.disclosure::details-content{content-visibility:visible}
+}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
   padding:18px 20px;margin:16px 0;box-shadow:var(--shadow)}
 .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
@@ -170,7 +190,7 @@ li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margi
 .evidence .val{font-size:19px;font-weight:700;line-height:1.3;color:var(--accent)}
 .evidence .meta{color:var(--muted);font-size:12px;margin-top:3px}
 
-/* specforge:components end sha=8653414c */
+/* specforge:components end sha=2770f891 */
 
   :root{
     --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --ink:#e6e8ee; --muted:#9aa3b2;
