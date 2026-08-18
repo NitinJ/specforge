@@ -8,6 +8,45 @@
  * Re-finding a block: try the stored index, else match by text; if the block was
  * edited away or removed, fall back to its section (then the parent section) so
  * the thread stays anchored instead of going stray. */
+
+/* A collapsed <details> hides its content from four things that all need it
+ * open first: scrolling to a comment anchored inside it, scrolling to a rail
+ * link that targets it, the comment rail's anchor/card bond, and printing.
+ *
+ * Declared at file scope rather than inside either layer below because both use
+ * it, and a second copy of a rule is how the last three defects in this codebase
+ * happened. It walks ancestors rather than calling closest() once: a disclosure
+ * may sit inside another one, and opening only the innermost leaves it hidden.
+ */
+function sfRevealDisclosures(el) {
+  for (var n = el; n; n = n.parentElement) {
+    if (n.tagName === 'DETAILS' && !n.open) n.open = true;
+  }
+}
+
+/* Printing expands every disclosure, then puts them back.
+ *
+ * The stamped stylesheet asks for this too (`::details-content`), which is the
+ * only thing a spec opened from disk can do and is honoured by newer engines
+ * only. This is the half that works everywhere the review layer is present, and
+ * it restores the reader's own state afterwards so printing is not a mutation.
+ */
+(function () {
+  'use strict';
+  var reopened = [];
+  window.addEventListener('beforeprint', function () {
+    reopened = [];
+    Array.prototype.forEach.call(document.querySelectorAll('details:not([open])'), function (d) {
+      reopened.push(d);
+      d.open = true;
+    });
+  });
+  window.addEventListener('afterprint', function () {
+    reopened.forEach(function (d) { d.open = false; });
+    reopened = [];
+  });
+})();
+
 (function () {
   'use strict';
   var SPEC = (window.SPECFORGE || {}).specId;
@@ -3303,6 +3342,10 @@
   // scrolled out of view the card would land off-screen. Bring the anchor back
   // into view first — the automatic-scrolling half of the anchor/card bond.
   function ensureAnchorVisible(el) {
+    // Before measuring: a block inside a closed disclosure has no box worth
+    // reading, so both the scroll decision and the card's placement would be
+    // computed against a collapsed height.
+    sfRevealDisclosures(el);
     var r = el.getBoundingClientRect();
     var h = window.innerHeight || 0;
     if (!h || !el.scrollIntoView) return;
@@ -3745,6 +3788,9 @@
     // On a deck the block may be on a slide that is not rendered, where a scroll
     // reaches nothing. Page there first; the slide change re-renders the rail.
     revealSlideFor(el);
+    // Same idea one container down: a deck hides a block on another slide, a
+    // disclosure hides one behind a summary, and a scroll reaches neither.
+    if (el) sfRevealDisclosures(el);
     if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
@@ -4016,6 +4062,12 @@
       // cannot tell a specimen from the document: the component library listed
       // its own examples in its contents. A marked subtree is illustration.
       if (h.closest('[data-sf-no-toc]')) return;
+      // A disclosure holds detail a reader needs on a second pass, and an
+      // outline that lists second-pass detail stops being an outline — the same
+      // rule that keeps h5 out. Tested on the element, not on `open`: whether it
+      // happens to be expanded is the reader's business and changes on a click,
+      // and an outline that rewrote itself on a click would be unusable.
+      if (h.closest('details')) return;
       var id = h.id;
       if (!id) { id = uniqueId(slug(txt(h)) || 'sub', seen); h.id = id; }
       seen[id] = 1;
@@ -4115,6 +4167,7 @@
     if (secs.length >= 3) {
       Array.prototype.forEach.call(secs, function (s) {
         if (s.parentElement && s.parentElement.closest('[data-sf-no-toc]')) return;
+        if (s.closest('details')) return; // see childrenOf: a disclosure is not the outline
         var h = s.querySelector('h1,h2,h3'); if (h) byId.push({ id: s.id, text: txt(h) });
       });
       return byId;

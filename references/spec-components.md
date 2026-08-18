@@ -345,6 +345,19 @@ Variants: `add`, `del`, `ctx`.
 
 ## Structure
 
+### `<details class="disclosure">`
+
+Detail a reader needs on a second pass and not on the first: the full error table behind a cited count, the working for a rejected option, a long transcript. Never for content the argument depends on, and never as a way to make a long section look short.
+
+Must contain: a summary that says what is inside, so the block can be skipped without opening it.
+
+```html
+<details class="disclosure">
+  <summary>How the 61% was measured</summary>
+  <p>Every spec in the store parsed for headings, counted against the levels the contents rail can reach. n=133, 2026-08-18.</p>
+</details>
+```
+
 ### `.panel`
 
 A block that stands apart from the flow and is read as a unit. The TL;DR is a panel.
