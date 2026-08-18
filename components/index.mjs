@@ -16,6 +16,7 @@
 // The prose rules live with the definitions rather than in a separate document
 // because a rule that is not beside the thing it governs goes stale.
 
+import { headings } from './headings.mjs';
 import { notices, calloutBase } from './notices.mjs';
 import { inline } from './inline.mjs';
 import { data } from './data.mjs';
@@ -23,8 +24,13 @@ import { code } from './code.mjs';
 import { structure } from './structure.mjs';
 import { spec } from './spec.mjs';
 
-/** Families, in the order the library document and the rules file present them. */
-export const FAMILIES = ['notice', 'inline', 'data', 'code', 'structure', 'spec'];
+/**
+ * Families, in the order the library document and the rules file present them.
+ *
+ * `heading` leads, because the outline is the first choice an author makes about
+ * a block of prose and every other family sits inside one.
+ */
+export const FAMILIES = ['heading', 'notice', 'inline', 'data', 'code', 'structure', 'spec'];
 
 /** The color axis. A notice names one; nothing else in the library has a tone. */
 export const TONES = ['neutral', 'positive', 'caution', 'critical'];
@@ -55,7 +61,7 @@ export const BASE_CLASSES = ['callout'];
  * @property {string} [css]
  * @property {string} example
  */
-export const COMPONENTS = [...notices, ...inline, ...data, ...code, ...structure, ...spec];
+export const COMPONENTS = [...headings, ...notices, ...inline, ...data, ...code, ...structure, ...spec];
 
 /** The class names the lint accepts. Elements are not classes and are excluded. */
 export function componentClasses() {

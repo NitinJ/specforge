@@ -2234,6 +2234,79 @@ test('every spec with sections gets the floating Contents TOC + docs (centered) 
   assert.ok(document.getElementById('sf-tocbtn'), 'the collapse chevron is built');
 });
 
+// Three real heading levels under a section title, plus the label level that is
+// deliberately not navigable.
+const DEPTH_BODY = `
+  <main>
+    <section id="a"><h2>Alpha</h2>
+      <h3 id="a1">Alpha one</h3><p>x</p>
+      <h4 id="a1a">Alpha one deep</h4><p>x</p>
+      <h5 id="a1a1">A label</h5><p>x</p>
+      <h3 id="a2">Alpha two</h3><p>x</p>
+    </section>
+    <section id="b"><h2>Beta</h2><h3 id="b1">Beta one</h3><p>x</p></section>
+    <section id="c"><h2>Gamma</h2><p>x</p></section>
+  </main>
+  <div id="sf-live">● live</div>
+`;
+
+test('the contents rail reaches three levels down, and stops at the label level', async (t) => {
+  // It nested exactly one level below a section title, so an h4 was unreachable
+  // on every spec built from the standard shell: 1,601 of them across the store.
+  // h5 is the label level (the uppercase kicker) and is deliberately left out —
+  // a rail that lists every label stops being an outline.
+  const { window } = await bootReviewLayer(t, { body: DEPTH_BODY, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#a1', '#a1a', '#a2', '#b', '#b1', '#c']);
+});
+
+test('the two nested levels are distinguishable, or the outline reads flat', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: DEPTH_BODY, innerWidth: 1500 });
+  const cls = (sel) => window.document.querySelector(sel).className;
+  assert.notEqual(cls('#sf-toc a[href="#a1"]'), cls('#sf-toc a[href="#a1a"]'),
+    'a subsection and a sub-subsection carry different classes');
+});
+
+test("a section titled below h2 still stops at the label level", async (t) => {
+  // Depth is absolute, not relative to the section's own title: a spec whose
+  // sections are titled h3 would otherwise pull h5 in and list its labels.
+  const body = `
+    <main>
+      <section id="a"><h3>Alpha</h3><h4 id="a1">Sub</h4><h5 id="a1a">A label</h5><p>x</p></section>
+      <section id="b"><h3>Beta</h3><p>x</p></section>
+      <section id="c"><h3>Gamma</h3><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#a1', '#b', '#c']);
+});
+
+test('a heading with no id of its own still gets a rail entry', async (t) => {
+  // Most headings in the store carry no id; the rail mints one so it can link.
+  const body = `
+    <main>
+      <section id="a"><h2>Alpha</h2><h3>Unnamed sub</h3><h4>Unnamed deeper</h4><p>x</p></section>
+      <section id="b"><h2>Beta</h2><p>x</p></section>
+      <section id="c"><h2>Gamma</h2><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const labels = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.textContent,
+  );
+  assert.deepEqual(labels, ['Alpha', 'Unnamed sub', 'Unnamed deeper', 'Beta', 'Gamma']);
+});
+
 test("a spec's own left TOC is replaced by the floating one (curated links reused)", async (t) => {
   const { window } = await bootReviewLayer(t, { body: TOC_BODY, innerWidth: 1500 });
   const { document } = window;

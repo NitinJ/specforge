@@ -3890,6 +3890,22 @@
   })();
   var docEl = document.documentElement;
   var TOC_W = 240; // keep in sync with --sf-toc-w in review.css
+  /**
+   * The deepest heading level the rail lists.
+   *
+   * Absolute, not relative to a section's own title. h2, h3 and h4 are the three
+   * heading levels; h5 is the label level (the uppercase kicker), and a rail that
+   * lists every label stops being an outline. Relative depth was wrong in both
+   * directions: a section titled h2 lost its h4s, and one titled h3 would have
+   * pulled its h5 labels in.
+   *
+   * Declared up here with TOC_W, not beside childrenOf, for the reason the review
+   * layer above documents twice: init() runs from the top of this IIFE, so a
+   * `var` written further down is hoisted but still undefined when the rail is
+   * first built — and an empty level list becomes querySelectorAll(''), which
+   * throws "Invalid selector" and takes the whole rail with it.
+   */
+  var TOC_DEEPEST = 4;
   var auto = (PREFS.toc !== 'shown' && PREFS.toc !== 'hidden'); // no explicit choice yet
   var done = false;
   var reResolve = null; // set by spy() to its geometry-based active-link recompute
@@ -3957,7 +3973,9 @@
     var row = mk('div', 'sf-toc-row');
     var sub = mk('div', 'sf-toc-sub');
     var subIn = mk('div', 'sf-toc-sub-in');
-    kids.forEach(function (k) { subIn.appendChild(topLink(k, 'sf-toc-child')); });
+    kids.forEach(function (k) {
+      subIn.appendChild(topLink(k, k.depth ? 'sf-toc-gchild' : 'sf-toc-child'));
+    });
     sub.appendChild(subIn);
     sub.inert = !!startCollapsed; // out of the tab order + a11y tree while collapsed
     var tw = mk('button', 'sf-toc-tw');
@@ -3985,14 +4003,21 @@
     if (!el || el.tagName !== 'SECTION') return [];
     var title = el.querySelector('h1,h2,h3,h4,h5,h6');
     if (!title) return [];
-    var want = hlevel(title) + 1;
-    if (want > 6) return [];
+    var from = hlevel(title) + 1;
+    if (from > TOC_DEEPEST) return [];
+    var sel = [];
+    for (var lvl = from; lvl <= TOC_DEEPEST; lvl++) sel.push('h' + lvl);
     var out = [], seen = {};
-    Array.prototype.forEach.call(el.querySelectorAll('h' + want), function (h) {
+    // In document order across both levels, so a sub-subsection follows the
+    // subsection it belongs to rather than being grouped by tag.
+    Array.prototype.forEach.call(el.querySelectorAll(sel.join(',')), function (h) {
       if (h.closest('section') !== el) return; // owned by a nested section
       var id = h.id;
       if (!id) { id = uniqueId(slug(txt(h)) || 'sub', seen); h.id = id; }
-      seen[id] = 1; out.push({ id: id, text: txt(h) });
+      seen[id] = 1;
+      // Depth relative to the first listed level, so the rail can indent the
+      // second one without knowing which tags a given spec happens to use.
+      out.push({ id: id, text: txt(h), depth: hlevel(h) - from });
     });
     return out;
   }
@@ -4133,7 +4158,11 @@
     function activeAnchor(id) {
       var a = links[id];
       if (!a) return null;
-      if (a.classList.contains('sf-toc-child')) {
+      // Asked structurally rather than by class: there are two nested levels now
+      // (.sf-toc-child and .sf-toc-gchild) and both are hidden when the group
+      // collapses, so naming one of them leaves the other highlighted while it
+      // cannot be seen.
+      if (a.closest('.sf-toc-sub')) {
         var g = a.closest('.sf-toc-group');
         if (g && g.classList.contains('sf-collapsed')) return g.querySelector('.sf-toc-top') || a;
       }
