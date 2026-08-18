@@ -41,7 +41,7 @@ li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margi
     variants: ['val', 'meta'],
     css: `.evidence{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--muted);
   border-radius:0 10px 10px 0;padding:11px 14px;margin:14px 0}
-.evidence .val{font-size:19px;font-weight:700;line-height:1.3}
+.evidence .val{font-size:19px;font-weight:700;line-height:1.3;color:var(--accent)}
 .evidence .meta{color:var(--muted);font-size:12px;margin-top:3px}`,
     example: '<div class="evidence"><p class="val">338 classes</p><p class="meta">Method: parse every spec.html · n=111 · 2026-08-14</p></div>',
   },

@@ -32,6 +32,37 @@ import { spec } from './spec.mjs';
  */
 export const FAMILIES = ['heading', 'notice', 'inline', 'data', 'code', 'structure', 'spec'];
 
+/**
+ * How the library spends color.
+ *
+ * Four tokens carry all of it, and each means one thing:
+ *
+ *   --accent   orients. Which section, which number, which step is next. It is
+ *              structural and it never judges.
+ *   --green    good: passed, met, chosen.
+ *   --amber    caution: unverified, risky, a hazard to know about.
+ *   --red      bad: broken, irreversible, departed from.
+ *
+ * Everything else is --ink, --muted, and the three surfaces. Two consequences
+ * worth stating because they are what stops the palette turning decorative:
+ *
+ * A container is never colored. A panel, a card and a figure hold other
+ * components, and a tinted container competes with whatever is inside it. What
+ * takes color is the thing a reader is looking for — the number in a stat, the
+ * header of a table, the counter on a step.
+ *
+ * Nothing is a literal color. Every rule above is a token or a color-mix of one,
+ * which is the whole reason the eight review-layer themes re-tint the library
+ * without knowing any component's name. A hex in a component definition is a
+ * component that has opted out of the themes.
+ */
+export const PALETTE_ROLES = {
+  accent: 'orientation: which section, which number, which step',
+  green: 'good: passed, met, chosen',
+  amber: 'caution: unverified, risky, a hazard',
+  red: 'bad: broken, irreversible, departed from',
+};
+
 /** The color axis. A notice names one; nothing else in the library has a tone. */
 export const TONES = ['neutral', 'positive', 'caution', 'critical'];
 

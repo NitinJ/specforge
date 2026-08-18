@@ -17,7 +17,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { withSpec, needsChrome } from './harness.mjs';
+import { withSpec, needsChrome, baseSpec } from './harness.mjs';
 import { headings } from '../components/headings.mjs';
 
 /** The px value a family member declares, e.g. 25 for `h2{font-size:25px;…}`. */
@@ -63,6 +63,40 @@ test('adjacent levels are far enough apart to read as different levels', needsCh
       const gap = seen[big] - seen[small];
       assert.ok(gap >= 2, `${big} ${seen[big]}px and ${small} ${seen[small]}px are ${gap}px apart`);
     }
+  });
+});
+
+// The library page is not where this shipped broken. Every shell carried its own
+// h2/h3/h4 after the stamped block, so a real spec rendered the shell's scale and
+// the library's was dead on arrival — visible nowhere except by opening a spec.
+test('a spec built from the real shell renders the family, not the shell', needsChrome, async () => {
+  const html = baseSpec('Heading scale').replace(
+    '</main>',
+    '<section id="probe"><h2>9 · Probe</h2><h3 id="p3">Sub</h3><h4 id="p4">Deeper</h4><h5 id="p5">Label</h5></section></main>',
+  );
+  await withSpec({ html }, async ({ page }) => {
+    const seen = await page.evaluate(() => {
+      const of = (sel) => {
+        const s = getComputedStyle(document.querySelector(sel));
+        return { size: parseFloat(s.fontSize), color: s.color };
+      };
+      const accent = getComputedStyle(document.documentElement)
+        .getPropertyValue('--accent').trim();
+      const h2 = document.querySelector('#probe h2');
+      return {
+        h2: of('#probe h2'), h3: of('#p3'), h4: of('#p4'), h5: of('#p5'),
+        accent,
+        tab: getComputedStyle(h2, '::before').backgroundColor,
+      };
+    });
+    for (const tag of ['h2', 'h3', 'h4', 'h5']) {
+      assert.equal(seen[tag].size, declaredSize(tag),
+        `${tag} renders at ${seen[tag].size}px, not the declared ${declaredSize(tag)}px`);
+    }
+    assert.ok(seen.accent, 'the shell defines --accent');
+    assert.notEqual(seen.h3.color, seen.h4.color,
+      'a subsection is accent and a sub-subsection is ink; equal colors means one of them lost its rule');
+    assert.notEqual(seen.tab, 'rgba(0, 0, 0, 0)', 'the section rule carries its accent tab');
   });
 });
 

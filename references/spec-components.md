@@ -284,7 +284,7 @@ Three or more items compared on two or more attributes. Fewer is a sentence.
 Must contain: a thead.
 
 ```html
-<table><thead><tr><th>Option</th><th>Cost</th></tr></thead><tbody><tr><td>A</td><td>8 KB</td></tr></tbody></table>
+<table><thead><tr><th>Option</th><th>Cost</th></tr></thead><tbody><tr><td>A</td><td>8 KB</td></tr><tr><td>B</td><td>31 KB</td></tr><tr><td>C</td><td>4 KB</td></tr></tbody></table>
 ```
 
 ### `.compare`
@@ -306,7 +306,7 @@ Must contain: a number; a unit; a label.
 Variants: `stats`, `n`, `k`.
 
 ```html
-<div class="stats"><div class="stat"><span class="n">669</span><span class="k">classes in use</span></div></div>
+<div class="stats"><div class="stat"><span class="n">669</span><span class="k">classes in use</span></div><div class="stat"><span class="n">39</span><span class="k">components</span></div><div class="stat"><span class="n">8</span><span class="k">themes</span></div></div>
 ```
 
 ### `<dl>`

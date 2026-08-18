@@ -30,8 +30,10 @@ export const structure = [
     css: `.steps{list-style:none;counter-reset:sfstep;padding-left:0;margin:14px 0}
 .steps > li{counter-increment:sfstep;position:relative;padding-left:34px;margin:10px 0}
 .steps > li::before{content:counter(sfstep);position:absolute;left:0;top:1px;
-  width:22px;height:22px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);
-  color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}`,
+  width:22px;height:22px;border-radius:50%;
+  background:color-mix(in srgb,var(--accent) 14%,var(--panel2));
+  border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));
+  color:var(--accent);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}`,
     example: '<ol class="steps"><li>Write the failing test.</li><li>Make it pass.</li></ol>',
   },
   {
@@ -49,7 +51,12 @@ export const structure = [
     name: 'figure', family: 'structure', kind: 'element', block: true,
     rule: 'Any diagram or image. The caption states what the reader should conclude, not what the picture contains.',
     requires: ['a figcaption'],
+    // The svg rule came from the general shell, which had grown its own copy of
+    // this component plus one rule the library was missing. An inline diagram
+    // that overflows its figure is the common failure, and it belongs here rather
+    // than in one of five shells.
     css: `figure{margin:18px 0}
+figure svg{max-width:100%;height:auto;display:block}
 figcaption{color:var(--muted);font-size:12.5px;margin-top:6px}`,
     example: `<figure><svg viewBox="0 0 220 48" role="img" aria-label="A spec, stamped and served">
   <rect class="svg-box" x="1" y="8" width="96" height="32" rx="8"/><text class="svg-lbl" x="49" y="28" text-anchor="middle">spec</text>
