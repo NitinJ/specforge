@@ -265,20 +265,25 @@ function sfRevealDisclosures(el) {
   // [data-theme="<id>"]). Order matters: it is the order of the picker, light
   // family first and then dark, and `group` is what the picker's two headings
   // read from rather than a second list that could disagree with this one.
+  // Seven of each, ordered by accent hue rather than by name, so scrolling the
+  // list walks the colour wheel: rose, amber, green, teal, azure, blue, violet.
+  // The set is chosen for separation — no two themes in a family sit close on
+  // both background and accent (scripts/profile-themes.mjs reports the table).
   var THEMES = [
     { id: 'light', name: 'Light', group: 'light' },
-    { id: 'github-light', name: 'GitHub Light', group: 'light' },
-    { id: 'solarized-light', name: 'Solarized Light', group: 'light' },
-    { id: 'catppuccin-latte', name: 'Catppuccin Latte', group: 'light' },
     { id: 'rose-pine-dawn', name: 'Rosé Pine Dawn', group: 'light' },
+    { id: 'ayu-light', name: 'Ayu Light', group: 'light' },
     { id: 'everforest-light', name: 'Everforest Light', group: 'light' },
+    { id: 'solarized-light', name: 'Solarized Light', group: 'light' },
+    { id: 'nord-light', name: 'Nord Light', group: 'light' },
+    { id: 'catppuccin-latte', name: 'Catppuccin Latte', group: 'light' },
     { id: 'dark', name: 'Dark', group: 'dark' },
-    { id: 'dracula', name: 'Dracula', group: 'dark' },
-    { id: 'nord', name: 'Nord', group: 'dark' },
-    { id: 'solarized-dark', name: 'Solarized Dark', group: 'dark' },
-    { id: 'tokyo-night', name: 'Tokyo Night', group: 'dark' },
-    { id: 'catppuccin-mocha', name: 'Catppuccin Mocha', group: 'dark' },
     { id: 'rose-pine', name: 'Rosé Pine', group: 'dark' },
+    { id: 'ayu-dark', name: 'Ayu Dark', group: 'dark' },
+    { id: 'everforest-dark', name: 'Everforest Dark', group: 'dark' },
+    { id: 'solarized-dark', name: 'Solarized Dark', group: 'dark' },
+    { id: 'nord', name: 'Nord', group: 'dark' },
+    { id: 'catppuccin-mocha', name: 'Catppuccin Mocha', group: 'dark' },
   ];
   var THEME_IDS = THEMES.map(function (t) { return t.id; });
   function themeById(id) {
@@ -474,11 +479,25 @@ function sfRevealDisclosures(el) {
     _themeSupported = changed;
     return changed;
   }
+  // Paint a theme, and say who painted it.
+  //
+  // `data-sf-variant` marks the palette as the review layer's own, which is what
+  // review.css keys the derived secondary vars (--code, --rowalt, the callout
+  // fills) on. Keying them on "any data-theme that is not light or dark" would
+  // claim an imported spec's own named theme and overwrite the palette it
+  // authored. light and dark are the spec's palettes even when we select them,
+  // so they carry no marker.
+  function paintTheme(id) {
+    var root = document.documentElement;
+    root.setAttribute('data-theme', id);
+    if (id === 'light' || id === 'dark') root.removeAttribute('data-sf-variant');
+    else root.setAttribute('data-sf-variant', id);
+  }
   function applyTheme(next) {
     if (!specSupportsTheme()) return; // single-theme spec — nothing to switch
     if (next == null) next = PREFS.theme;
     if (THEME_IDS.indexOf(next) === -1) return; // honor the spec/OS default
-    document.documentElement.setAttribute('data-theme', next);
+    paintTheme(next);
   }
   function currentTheme() {
     var a = document.documentElement.getAttribute('data-theme');
@@ -489,7 +508,7 @@ function sfRevealDisclosures(el) {
   }
   function setTheme(id) {
     if (THEME_IDS.indexOf(id) === -1) return;
-    document.documentElement.setAttribute('data-theme', id);
+    paintTheme(id);
     putPref({ theme: id });
   }
 

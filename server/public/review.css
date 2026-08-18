@@ -118,30 +118,43 @@
    specificity tie against the spec's :root[data-theme] rules — re-tinting the spec
    AND the review chrome together. (Imported specs that don't use the house vars
    keep their own colors — same limit as the light/dark toggle.) */
-:root[data-theme="dracula"] {
-  --bg: #282a36; --card: #343746; --panel: #343746; --panel2: #21222c;
-  --ink: #f8f8f2; --muted: #9aa0c4; --line: #44475a;
-  --accent: #bd93f9; --green: #50fa7b; --amber: #f1fa8c; --red: #ff5555;
-}
 :root[data-theme="nord"] {
   --bg: #2e3440; --card: #3b4252; --panel: #3b4252; --panel2: #353c4a;
   --ink: #eceff4; --muted: #9aa4b8; --line: #434c5e;
   --accent: #88c0d0; --green: #a3be8c; --amber: #ebcb8b; --red: #bf616a;
 }
+:root[data-theme="nord-light"] {
+  --bg: #eceff4; --card: #e5e9f0; --panel: #e5e9f0; --panel2: #dfe4ec;
+  --ink: #2e3440; --muted: #4c566a; --line: #d8dee9;
+  --accent: #4c7a99; --green: #61804f; --amber: #a3762a; --red: #a9525b;
+}
+/* Solarized takes its cyan rather than its blue for the accent. Both are in the
+   palette; the blue sat 11 degrees from the house theme's, which is two themes
+   that read the same. */
 :root[data-theme="solarized-dark"] {
   --bg: #002b36; --card: #073642; --panel: #073642; --panel2: #062d38;
   --ink: #93a1a1; --muted: #7d9392; --line: #0a3b47;
-  --accent: #268bd2; --green: #859900; --amber: #b58900; --red: #dc322f;
+  --accent: #2aa198; --green: #859900; --amber: #b58900; --red: #dc322f;
 }
 :root[data-theme="solarized-light"] {
   --bg: #fdf6e3; --card: #eee8d5; --panel: #eee8d5; --panel2: #f5efdc;
   --ink: #586e75; --muted: #93a1a1; --line: #e6e0cc;
-  --accent: #268bd2; --green: #859900; --amber: #b58900; --red: #dc322f;
+  --accent: #2aa198; --green: #859900; --amber: #b58900; --red: #dc322f;
 }
-:root[data-theme="github-light"] {
-  --bg: #ffffff; --card: #f6f8fa; --panel: #f6f8fa; --panel2: #eaeef2;
-  --ink: #1f2328; --muted: #59636e; --line: #d1d9e0;
-  --accent: #0969da; --green: #1a7f37; --amber: #9a6700; --red: #cf222e;
+:root[data-theme="ayu-light"] {
+  --bg: #fcfcfc; --card: #f3f4f5; --panel: #f3f4f5; --panel2: #eceef0;
+  --ink: #5c6166; --muted: #8a9199; --line: #e1e2e4;
+  --accent: #d97706; --green: #86b300; --amber: #f2ae49; --red: #e65050;
+}
+:root[data-theme="ayu-dark"] {
+  --bg: #0b0e14; --card: #131721; --panel: #131721; --panel2: #0f131c;
+  --ink: #bfbdb6; --muted: #7a8391; --line: #1f2430;
+  --accent: #e6b450; --green: #7fd962; --amber: #ffb454; --red: #f26d78;
+}
+:root[data-theme="everforest-dark"] {
+  --bg: #2d353b; --card: #343f44; --panel: #343f44; --panel2: #272e33;
+  --ink: #d3c6aa; --muted: #9da9a0; --line: #414b50;
+  --accent: #a7c080; --green: #83c092; --amber: #dbbc7f; --red: #e67e80;
 }
 :root[data-theme="catppuccin-latte"] {
   --bg: #eff1f5; --card: #e6e9ef; --panel: #e6e9ef; --panel2: #dce0e8;
@@ -151,17 +164,12 @@
 :root[data-theme="rose-pine-dawn"] {
   --bg: #faf4ed; --card: #fffaf3; --panel: #fffaf3; --panel2: #f2e9e1;
   --ink: #575279; --muted: #797593; --line: #dfdad9;
-  --accent: #286983; --green: #56949f; --amber: #ea9d34; --red: #b4637a;
+  --accent: #b4637a; --green: #56949f; --amber: #ea9d34; --red: #b4637a;
 }
 :root[data-theme="everforest-light"] {
   --bg: #fffbef; --card: #f8f5e4; --panel: #f8f5e4; --panel2: #f0eed9;
   --ink: #5c6a72; --muted: #829181; --line: #e0ddcc;
-  --accent: #35a77c; --green: #8da101; --amber: #dfa000; --red: #f85552;
-}
-:root[data-theme="tokyo-night"] {
-  --bg: #1a1b26; --card: #24283b; --panel: #24283b; --panel2: #1f2335;
-  --ink: #c0caf5; --muted: #7f87b0; --line: #2f334d;
-  --accent: #7aa2f7; --green: #9ece6a; --amber: #e0af68; --red: #f7768e;
+  --accent: #8da101; --green: #35a77c; --amber: #dfa000; --red: #f85552;
 }
 :root[data-theme="catppuccin-mocha"] {
   --bg: #1e1e2e; --card: #313244; --panel: #313244; --panel2: #181825;
@@ -171,7 +179,7 @@
 :root[data-theme="rose-pine"] {
   --bg: #191724; --card: #1f1d2e; --panel: #1f1d2e; --panel2: #26233a;
   --ink: #e0def4; --muted: #908caa; --line: #403d52;
-  --accent: #c4a7e7; --green: #9ccfd8; --amber: #f6c177; --red: #eb6f92;
+  --accent: #eb6f92; --green: #9ccfd8; --amber: #f6c177; --red: #eb6f92;
 }
 /* Secondary house vars, derived from each variant's core colors above so they stay
    coherent per theme. House specs come in palette dialects — some use --code for
@@ -182,11 +190,13 @@
    Tints are computed off var(--ink)/var(--bg)/the accent set in the matching
    block above.
 
-   Matched by exclusion rather than by listing every variant: `light` and `dark`
-   are the spec's own palettes and keep whatever the spec set, everything else is
-   a review-layer variant. A list had to be edited twice to add one theme, and
-   forgetting the second edit left that theme's code blocks near-black. */
-:root[data-theme]:not([data-theme="light"]):not([data-theme="dark"]) {
+   Keyed on the marker review.js sets beside data-theme, not on a list of
+   variant selectors and not on "any theme that is not light or dark". A list
+   had to be edited twice to add one theme and forgetting left that theme's code
+   blocks near-black; the exclusion would have claimed an imported spec's own
+   named theme and overwritten the palette it authored. The marker says who
+   painted, which is the actual question. */
+:root[data-sf-variant] {
   --code: color-mix(in srgb, var(--ink) 7%, var(--bg));   /* code-block surface */
   --shadow: color-mix(in srgb, #000 22%, transparent);
   --ecru: var(--panel2);                                  /* warm/secondary surface */
@@ -1385,19 +1395,20 @@ div.sf-menu-row.sf-menu-ctl:first-of-type::before {
   border-radius: 1px; background: var(--t-ink); opacity: .8; }
 .sf-thumb::after { content: ''; position: absolute; left: 3px; bottom: 3px; width: 7px; height: 7px;
   border-radius: 50%; background: var(--t-accent); }
-.sf-thumb[data-theme="light"] { --t-bg: #ffffff; --t-ink: #222629; --t-accent: #2f6feb; }
-.sf-thumb[data-theme="github-light"] { --t-bg: #ffffff; --t-ink: #1f2328; --t-accent: #0969da; }
-.sf-thumb[data-theme="solarized-light"] { --t-bg: #fdf6e3; --t-ink: #586e75; --t-accent: #268bd2; }
+.sf-thumb[data-theme="light"] { --t-bg: #fbfaf7; --t-ink: #222629; --t-accent: #2f6feb; }
+.sf-thumb[data-theme="rose-pine-dawn"] { --t-bg: #faf4ed; --t-ink: #575279; --t-accent: #b4637a; }
+.sf-thumb[data-theme="ayu-light"] { --t-bg: #fcfcfc; --t-ink: #5c6166; --t-accent: #d97706; }
+.sf-thumb[data-theme="everforest-light"] { --t-bg: #fffbef; --t-ink: #5c6a72; --t-accent: #8da101; }
+.sf-thumb[data-theme="solarized-light"] { --t-bg: #fdf6e3; --t-ink: #586e75; --t-accent: #2aa198; }
+.sf-thumb[data-theme="nord-light"] { --t-bg: #eceff4; --t-ink: #2e3440; --t-accent: #4c7a99; }
 .sf-thumb[data-theme="catppuccin-latte"] { --t-bg: #eff1f5; --t-ink: #4c4f69; --t-accent: #8839ef; }
-.sf-thumb[data-theme="rose-pine-dawn"] { --t-bg: #faf4ed; --t-ink: #575279; --t-accent: #286983; }
-.sf-thumb[data-theme="everforest-light"] { --t-bg: #fffbef; --t-ink: #5c6a72; --t-accent: #35a77c; }
-.sf-thumb[data-theme="dark"] { --t-bg: #171a21; --t-ink: #e6e8ee; --t-accent: #6ea8fe; }
-.sf-thumb[data-theme="dracula"] { --t-bg: #282a36; --t-ink: #f8f8f2; --t-accent: #bd93f9; }
+.sf-thumb[data-theme="dark"] { --t-bg: #0f1115; --t-ink: #e6e8ee; --t-accent: #6ea8fe; }
+.sf-thumb[data-theme="rose-pine"] { --t-bg: #191724; --t-ink: #e0def4; --t-accent: #eb6f92; }
+.sf-thumb[data-theme="ayu-dark"] { --t-bg: #0b0e14; --t-ink: #bfbdb6; --t-accent: #e6b450; }
+.sf-thumb[data-theme="everforest-dark"] { --t-bg: #2d353b; --t-ink: #d3c6aa; --t-accent: #a7c080; }
+.sf-thumb[data-theme="solarized-dark"] { --t-bg: #002b36; --t-ink: #93a1a1; --t-accent: #2aa198; }
 .sf-thumb[data-theme="nord"] { --t-bg: #2e3440; --t-ink: #eceff4; --t-accent: #88c0d0; }
-.sf-thumb[data-theme="solarized-dark"] { --t-bg: #002b36; --t-ink: #93a1a1; --t-accent: #268bd2; }
-.sf-thumb[data-theme="tokyo-night"] { --t-bg: #1a1b26; --t-ink: #c0caf5; --t-accent: #7aa2f7; }
 .sf-thumb[data-theme="catppuccin-mocha"] { --t-bg: #1e1e2e; --t-ink: #cdd6f4; --t-accent: #cba6f7; }
-.sf-thumb[data-theme="rose-pine"] { --t-bg: #191724; --t-ink: #e0def4; --t-accent: #c4a7e7; }
 
 .sf-theme-picker { position: relative; width: 100%; margin: 6px 0 2px; }
 .sf-theme-trigger { display: flex; align-items: center; gap: 9px; width: 100%; box-sizing: border-box;

@@ -82,17 +82,116 @@ test('a thumbnail shows the palette it stands for, not a colour of its own', () 
   }
 });
 
-test('the removed theme is gone from every file rather than from one', () => {
-  assert.equal(THEMES.includes('gruvbox-light'), false, 'not in the store whitelist');
-  assert.equal(/gruvbox/.test(JS), false, 'not in the picker');
-  assert.equal(/gruvbox/.test(CSS), false, 'and no orphan palette or thumbnail rule');
+test('a removed theme is gone from every file rather than from one', () => {
+  for (const dead of ['gruvbox-light', 'github-light', 'dracula', 'tokyo-night']) {
+    assert.equal(THEMES.includes(dead), false, `${dead} is not in the store whitelist`);
+    assert.equal(new RegExp(dead).test(JS), false, `${dead} is not in the picker`);
+    assert.equal(new RegExp(dead).test(CSS), false, `${dead} leaves no orphan rule`);
+  }
 });
 
-test('the derived secondary vars apply to every variant without naming one', () => {
-  // They used to be a list of selectors that had to be edited a second time for
-  // each new theme; forgetting left that theme's code blocks near-black.
-  assert.ok(
-    CSS.includes(':root[data-theme]:not([data-theme="light"]):not([data-theme="dark"])'),
-    'matched by exclusion, so a new theme inherits them',
-  );
+test('each family has seven themes', () => {
+  const by = (g) => catalog().filter((t) => t.group === g).length;
+  assert.equal(by('light'), 7);
+  assert.equal(by('dark'), 7);
+});
+
+// --- colour separation ------------------------------------------------------
+//
+// The set is chosen so no two themes in a family read as the same theme. Two
+// that share an accent hue and a background lightness are one theme with two
+// names, which is what a picker full of near-duplicates felt like.
+// scripts/profile-themes.mjs prints the full table.
+
+const HOUSE = {
+  light: { bg: '#fbfaf7', accent: '#2f6feb' },
+  dark: { bg: '#0f1115', accent: '#6ea8fe' },
+};
+const srgb = (h) => {
+  const n = parseInt(h.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const linear = (c) => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+function lab(hex) {
+  const [r, g, b] = srgb(hex).map(linear);
+  const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+function hue(hex) {
+  const [, a, b] = lab(hex);
+  const h = (Math.atan2(b, a) * 180) / Math.PI;
+  return h < 0 ? h + 360 : h;
+}
+const hueGap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+const deltaE = (p, q) => Math.hypot(...lab(p).map((v, i) => v - lab(q)[i]));
+
+function colours(id) {
+  if (HOUSE[id]) return HOUSE[id];
+  return { bg: decl(`:root[data-theme="${id}"]`, '--bg'), accent: decl(`:root[data-theme="${id}"]`, '--accent') };
+}
+
+test('no two themes in a family share an accent hue', () => {
+  // Accent hue is the separator, not background: every light theme is a shade
+  // of white by definition (they measure ΔE 2 to 10 apart), so two of them are
+  // told apart by the colour of their links and headings. 20° is the floor the
+  // set is chosen to clear; the tightest real pair is Light and Catppuccin
+  // Latte at 21°, blue against mauve.
+  for (const family of ['light', 'dark']) {
+    const set = catalog().filter((t) => t.group === family).map((t) => ({ id: t.id, ...colours(t.id) }));
+    for (let i = 0; i < set.length; i++) {
+      for (let j = i + 1; j < set.length; j++) {
+        const gap = hueGap(hue(set[i].accent), hue(set[j].accent));
+        assert.ok(gap >= 20,
+          `${set[i].id} and ${set[j].id} accents are ${gap.toFixed(0)}° apart in ${family}`);
+      }
+    }
+  }
+});
+
+test('a family covers the wheel rather than crowding one arc', () => {
+  // Seven themes over 360° average 51° apart. Requiring the widest empty arc to
+  // stay under 110° is what stops six blues and one green.
+  for (const family of ['light', 'dark']) {
+    const hues = catalog().filter((t) => t.group === family)
+      .map((t) => hue(colours(t.id).accent)).sort((a, b) => a - b);
+    const gaps = hues.map((h, i) => (i === hues.length - 1 ? 360 - h + hues[0] : hues[i + 1] - h));
+    assert.ok(Math.max(...gaps) <= 110,
+      `${family} leaves a ${Math.max(...gaps).toFixed(0)}° arc with no theme in it`);
+  }
+});
+
+test('a light background and a dark one are never confusable', () => {
+  const light = catalog().filter((t) => t.group === 'light').map((t) => lab(colours(t.id).bg)[0]);
+  const dark = catalog().filter((t) => t.group === 'dark').map((t) => lab(colours(t.id).bg)[0]);
+  assert.ok(Math.min(...light) - Math.max(...dark) > 50,
+    `lightest dark is L${Math.max(...dark).toFixed(0)}, darkest light is L${Math.min(...light).toFixed(0)}`);
+});
+
+test('the accent hues walk the wheel in list order', () => {
+  // The order is the picker's order, so scrolling the list is a tour of the
+  // colour wheel rather than an alphabet.
+  for (const family of ['light', 'dark']) {
+    const hues = catalog().filter((t) => t.group === family)
+      .map((t) => hue(colours(t.id).accent));
+    const house = hues.shift(); // the spec's own palette leads its family
+    assert.ok(house > 0);
+    for (let i = 1; i < hues.length; i++) {
+      assert.ok(hues[i] > hues[i - 1], `${family} accents ascend at position ${i}`);
+    }
+  }
+});
+
+test('the derived secondary vars key on who painted, not on which theme', () => {
+  // They used to be a list of selectors edited a second time per theme, and
+  // forgetting left that theme's code blocks near-black. Matching "any theme
+  // that is not light or dark" fixed that and broke something else: it claimed
+  // an imported spec's own named theme (raised in review of PR #217). The
+  // marker review.js sets beside data-theme says the review layer painted it.
+  assert.ok(CSS.includes(':root[data-sf-variant] {'), 'keyed on the marker');
+  assert.ok(/root\.setAttribute\('data-sf-variant', id\)/.test(JS), 'which review.js sets');
+  assert.ok(/removeAttribute\('data-sf-variant'\)/.test(JS),
+    'and clears for light and dark, which the spec owns');
 });

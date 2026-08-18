@@ -130,16 +130,15 @@ test('the Theme picker offers every named variant, grouped light then dark', asy
   const pick = themePicker(document);
   const ids = [...pick.list.querySelectorAll('.sf-theme-opt')].map((o) => o.getAttribute('data-theme'));
   assert.deepEqual(ids, [
-    'light', 'github-light', 'solarized-light',
-    'catppuccin-latte', 'rose-pine-dawn', 'everforest-light',
-    'dark', 'dracula', 'nord', 'solarized-dark',
-    'tokyo-night', 'catppuccin-mocha', 'rose-pine',
-  ], 'the light family first, then the dark one');
+    'light', 'rose-pine-dawn', 'ayu-light', 'everforest-light',
+    'solarized-light', 'nord-light', 'catppuccin-latte',
+    'dark', 'rose-pine', 'ayu-dark', 'everforest-dark',
+    'solarized-dark', 'nord', 'catppuccin-mocha',
+  ], 'seven of each, the light family first, ordered by accent hue');
   assert.deepEqual([...pick.list.querySelectorAll('.sf-theme-grp')]
     .map((g) => g.getAttribute('aria-label')), ['Light', 'Dark']);
-  assert.equal(ids.includes('gruvbox-light'), false, 'gruvbox-light is gone');
-  pick.opt('tokyo-night').click();
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'tokyo-night',
+  pick.opt('everforest-dark').click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'everforest-dark',
     'a variant applies to <html>');
 });
 
@@ -199,6 +198,25 @@ test('a click outside the picker closes the list', async (t) => {
   assert.equal(pick.list.hidden, false);
   document.body.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
   assert.equal(pick.list.hidden, true);
+});
+
+test('a review-layer variant is marked as ours; light and dark are not', async (t) => {
+  // The marker is what review.css keys the derived secondary vars on. An
+  // imported spec that sets its own data-theme must keep the palette it
+  // authored, so the vars follow who painted rather than which value is set
+  // (raised in review of PR #217).
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const pick = themePicker(document);
+  pick.opt('nord').click();
+  assert.equal(document.documentElement.getAttribute('data-sf-variant'), 'nord',
+    'a variant is the review layer repainting the spec');
+  pick.opt('light').click();
+  assert.equal(document.documentElement.hasAttribute('data-sf-variant'), false,
+    'light is the spec’s own palette, so it keeps its own secondary vars');
+  pick.opt('dark').click();
+  assert.equal(document.documentElement.hasAttribute('data-sf-variant'), false);
 });
 
 test('Theme picker reflects the rendered theme and switches a multi-theme spec', async (t) => {
@@ -3023,17 +3041,17 @@ test('a second reader with different settings does not disturb the first', async
 });
 
 test('the server values seed a browser that has none', async (t) => {
-  const { window } = await bootReviewLayer(t, { prefs: { theme: 'dracula', width: 1100 } });
-  assert.equal(window.document.documentElement.getAttribute('data-theme'), 'dracula',
+  const { window } = await bootReviewLayer(t, { prefs: { theme: 'catppuccin-mocha', width: 1100 } });
+  assert.equal(window.document.documentElement.getAttribute('data-theme'), 'catppuccin-mocha',
     'the stored spec prefs still decide what an unconfigured browser sees');
 });
 
 test('the picker reflects a persisted variant on boot', async (t) => {
-  const { window } = await bootReviewLayer(t, { prefs: { theme: 'dracula' } });
+  const { window } = await bootReviewLayer(t, { prefs: { theme: 'catppuccin-mocha' } });
   const { document } = window;
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'dracula', 'variant applied on boot');
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'catppuccin-mocha', 'variant applied on boot');
   document.getElementById('sf-launcher').click();
-  assert.equal(rowByLabel(document, 'Theme').querySelector('.sf-theme-opt.on').getAttribute('data-theme'), 'dracula',
+  assert.equal(rowByLabel(document, 'Theme').querySelector('.sf-theme-opt.on').getAttribute('data-theme'), 'catppuccin-mocha',
     'the active swatch matches the persisted theme');
 });
 
