@@ -52,6 +52,53 @@ details.disclosure > :last-child{padding-bottom:14px}
 </details>`,
   },
   {
+    // Authored as a run of labelled panels, all visible. The script adds the
+    // strip and hides all but one; with no script the reader gets every panel in
+    // order, which is longer and complete. That is the enhancement contract, and
+    // it is the same fallback GOV.UK ships for the same component.
+    //
+    // No document product surveyed ships tabs natively: Notion has none,
+    // Confluence sends you to the Marketplace, and Google Docs' tabs are
+    // document-level navigation. The demand is real (the Marketplace app exists)
+    // and the risk is too, which is why the rule below is narrow.
+    name: 'tabs', family: 'structure', kind: 'class', block: true,
+    layer: 'interactive', needs: 'script', detect: '.tabs',
+    rule: 'Two to five alternative forms of one thing, where a reader needs exactly one: the same command per platform, the same config per environment, before against after. Never for sequential content, and never where a reader has to compare two panels side by side.',
+    requires: ['each panel is a .tab with a data-label', 'the panels are alternatives, not steps'],
+    variants: ['tab', 'sf-tablist', 'sf-tab', 'sf-selected'],
+    // Every hiding rule is under [data-sf-live], which only the served script
+    // sets. Written as a bare `.tabs > .tab{display:none}` this would sit in the
+    // stamped block of every spec and a reader opening the file from disk would
+    // lose every panel but the first, permanently and silently.
+    css: `.tabs{margin:16px 0}
+.tabs > .tab{border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:10px 0}
+.tabs > .tab::before{content:attr(data-label);display:block;font-size:12.5px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+[data-sf-live] .tabs{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+[data-sf-live] .tabs > .tab{border:none;border-radius:0;margin:0;padding:14px 16px}
+[data-sf-live] .tabs > .tab::before{display:none}
+[data-sf-live] .tabs > .tab[hidden]{display:none}
+[data-sf-live] .sf-tablist{display:flex;flex-wrap:wrap;gap:2px;padding:4px 4px 0;
+  background:var(--panel2);border-bottom:1px solid var(--line)}
+[data-sf-live] .sf-tab{appearance:none;background:none;border:none;cursor:pointer;
+  font:600 13px inherit;color:var(--muted);padding:8px 14px;border-radius:8px 8px 0 0;
+  border-bottom:2px solid transparent}
+[data-sf-live] .sf-tab:hover{color:var(--ink);background:color-mix(in srgb,var(--accent) 7%,transparent)}
+[data-sf-live] .sf-tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+[data-sf-live] .sf-tab.sf-selected{color:var(--accent);background:var(--panel);
+  border-bottom-color:var(--accent)}
+@media print{
+  [data-sf-live] .sf-tablist{display:none}
+  [data-sf-live] .tabs > .tab[hidden]{display:block}
+  [data-sf-live] .tabs > .tab::before{display:block}
+}`,
+    example: `<div class="tabs">
+  <div class="tab" data-label="macOS"><pre><code>brew install specforge</code></pre></div>
+  <div class="tab" data-label="Linux"><pre><code>npm i -g specforge</code></pre></div>
+  <div class="tab" data-label="Windows"><pre><code>winget install specforge</code></pre></div>
+</div>`,
+  },
+  {
     name: 'panel', family: 'structure', kind: 'class', block: true,
     rule: 'A block that stands apart from the flow and is read as a unit. The TL;DR is a panel.',
     requires: [],

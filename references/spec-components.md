@@ -368,6 +368,22 @@ Must contain: a summary that says what is inside, so the block can be skipped wi
 </details>
 ```
 
+### `.tabs`
+
+Two to five alternative forms of one thing, where a reader needs exactly one: the same command per platform, the same config per environment, before against after. Never for sequential content, and never where a reader has to compare two panels side by side.
+
+Must contain: each panel is a .tab with a data-label; the panels are alternatives, not steps.
+
+Variants: `tab`, `sf-tablist`, `sf-tab`, `sf-selected`.
+
+```html
+<div class="tabs">
+  <div class="tab" data-label="macOS"><pre><code>brew install specforge</code></pre></div>
+  <div class="tab" data-label="Linux"><pre><code>npm i -g specforge</code></pre></div>
+  <div class="tab" data-label="Windows"><pre><code>winget install specforge</code></pre></div>
+</div>
+```
+
 ### `.panel`
 
 A block that stands apart from the flow and is read as a unit. The TL;DR is a panel.
