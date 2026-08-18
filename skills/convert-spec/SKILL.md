@@ -40,8 +40,10 @@ installed plugin directory.
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import "<file>" --title "<title>" --type <type>
 ```
 
-Prints `{ id, htmlPath, url, status, type }` — the file is copied into the store,
-attached to this session, daemon ensured. Lint `htmlPath` (step 3). If lint fails
+Prints `{ id, htmlPath, url, status, type, language }` — the file is copied into
+the store, attached to this session, daemon ensured. **Apply `language` to
+anything you write into this spec**, on the terms in 2B. Lint `htmlPath`
+(step 3). If lint fails
 because it isn't house-style, fall back to **2C** and author into the `htmlPath`
 you already have; 2C says so too, and running `create` there would leave this
 spec behind and attach a second one. Not 2B: that path runs a markdown parser,
@@ -110,7 +112,8 @@ styling, and there is nothing to map it onto mechanically. It gets authored.
 **Arriving from 2A** (an HTML spec that turned out not to be house-style): you
 already have an `htmlPath` in the store, attached to this session. **Author into
 that file.** Do not run `create` — it would make a second spec and leave the
-malformed one attached, so a later edit or handoff could pick up either.
+malformed one attached, so a later edit or handoff could pick up either. The
+`language` 2A printed still applies: this is the authoring pass it was for.
 
 **Arriving from step 1** with a freeform HTML doc and no spec yet, scaffold one:
 
@@ -118,8 +121,9 @@ malformed one attached, so a later edit or handoff could pick up either.
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type "<type>"
 ```
 
-It prints `{ id, htmlPath, url, type }`. **Author into `htmlPath`**, following the
-same house rules, section mapping and language contract as 2B above.
+It prints `{ id, htmlPath, url, type, language }`. **Author into `htmlPath`**,
+following the same house rules, section mapping and language contract as 2B
+above, and applying `language` on the same terms.
 
 ## 3. Lint (must pass)
 

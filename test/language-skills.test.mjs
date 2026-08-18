@@ -49,6 +49,18 @@ test('convert-spec names the field and applies it while improving the result', (
   assert.match(CONVERT, /while improving the converted document/i);
 });
 
+test('every convert branch tells the agent to apply the direction', () => {
+  // Three branches author: 2A ingests an HTML spec, 2B converts markdown, 2C
+  // authors freeform HTML. A branch that documented its payload without the
+  // field would leave that path in the house register. Raised in review of #203.
+  const branches = CONVERT.split(/^## /m);
+  for (const name of ['2A.', '2B.', '2C.']) {
+    const branch = branches.find((b) => b.startsWith(name));
+    assert.ok(branch, `${name} exists`);
+    assert.match(branch, /language/i, `${name} names the field`);
+  }
+});
+
 test('every authoring skill says the user’s direction outranks the house contract', () => {
   for (const [name, text] of [['create-spec', CREATE], ['review-spec', REVIEW], ['convert-spec', CONVERT]]) {
     assert.match(text, /user's direction wins/i, `${name} states the precedence`);
