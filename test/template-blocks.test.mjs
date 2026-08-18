@@ -80,6 +80,47 @@ test('the rules block is scaffolding and is not part of the outline', () => {
   assert.equal(parseTemplateOutline(OUTLINE).some((s) => /Rules/.test(s.heading)), false);
 });
 
+const NESTED = `<body>
+<section id="plan"><h2>11 · Plan</h2><p>Lead.</p>
+  <section id="stage-1"><h3>Stage 1</h3><h4>Tasks</h4></section>
+  <h4>After the stages</h4>
+</section>
+</body>`;
+
+test('a nested section is its own target, not a heading of its parent', () => {
+  // renderTemplateBlocks writes into any section by id, so a nested one can
+  // carry guidance. Raised in review of PR #213: the outline swallowed it and
+  // clicking its heading saved under the parent's id instead.
+  const out = parseTemplateOutline(NESTED);
+  assert.deepEqual(out.map((s) => s.id), ['plan', 'stage-1']);
+  assert.deepEqual(out[0].subheadings.map((h) => h.text), ['After the stages'],
+    'the parent claims only the headings that are its own');
+  assert.deepEqual(out[1].subheadings.map((h) => h.text), ['Tasks']);
+});
+
+test('nesting depth travels, so the tree can show which section owns which', () => {
+  const out = parseTemplateOutline(NESTED);
+  assert.deepEqual(out.map((s) => s.depth), [0, 1]);
+});
+
+test('a prompt inside a nested section is read as that section’s, not its parent’s', () => {
+  // Found while fixing the outline: the prompt scan cut at the first closing
+  // tag, so guidance written for a nested section was handed to the agent
+  // labelled with the enclosing one.
+  const html = `<body>
+<section id="plan"><h2>Plan</h2>
+  <div data-sf-prompt><p>For the plan.</p></div>
+  <section id="stage-1"><h3>Stage 1</h3>
+    <div data-sf-prompt><p>For stage one.</p></div>
+  </section>
+</section>
+</body>`;
+  assert.deepEqual(parseTemplatePrompts(html), [
+    { section: 'plan', text: 'For the plan.' },
+    { section: 'stage-1', text: 'For stage one.' },
+  ]);
+});
+
 test('a section with no id is listed but cannot carry guidance', () => {
   // renderTemplateBlocks targets a section by id, so a prompt for an unnamed one
   // has nowhere to go. Listing it and saying so beats hiding it.

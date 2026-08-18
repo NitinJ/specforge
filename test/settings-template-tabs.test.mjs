@@ -198,6 +198,38 @@ test('a section with no id is listed but cannot be selected', async (t) => {
   assert.match(dead.getAttribute('title'), /no id/);
 });
 
+test('a nested section is selectable in its own right, and indented', async (t) => {
+  // Raised in review of PR #213: the outline swallowed a nested section, so its
+  // heading read as the parent's and writing guidance there saved under the
+  // parent's id. renderTemplateBlocks writes into any section by id, so a
+  // nested one is a real target.
+  const { writeFileSync, readFileSync } = await import('node:fs');
+  const { specHtmlPath } = await import('../lib/store-paths.mjs');
+  ensureTemplates();
+  const path = specHtmlPath(templateId('design-impl'));
+  writeFileSync(path, readFileSync(path, 'utf8').replace(
+    /(<section id="goals"[^>]*>)/,
+    '$1<section id="goals-inner"><h3>Inner</h3></section>',
+  ));
+
+  const { window } = open(t, 'sections');
+  await settle(window);
+  const inner = window.document.querySelector('#sf-tree .tnode[data-sec="goals-inner"]');
+  assert.ok(inner, 'it is its own row');
+  const outer = window.document.querySelector('#sf-tree .tnode[data-sec="goals"]:not(.subrow)');
+  assert.ok(parseInt(inner.style.paddingLeft, 10) > parseInt(outer.style.paddingLeft, 10),
+    'and it reads as living inside its parent');
+
+  inner.click();
+  await settle(window);
+  window.document.getElementById('sd-text').value = 'Guidance for the inner one.';
+  window.document.getElementById('sd-save').click();
+  await settle(window);
+  assert.equal(templatePrompts('design-impl').some((p) => p.section === 'goals-inner'), true);
+  assert.equal(templatePrompts('design-impl').some((p) => p.section === 'goals'), false,
+    'and not under the parent');
+});
+
 test('switching type shows that type’s outline and clears the selection', async (t) => {
   const { window } = open(t, 'sections');
   await settle(window);

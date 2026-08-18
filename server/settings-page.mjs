@@ -166,7 +166,7 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   /* Only the section row is outlined. A selected section can own several rows,
      and outlining each of them draws three boxes for one selection. */
   .tnode.on{border-color:var(--accent);background:var(--panel2);font-weight:600}
-  .tnode.subrow{padding-left:26px;color:var(--muted);font-size:12.5px}
+  .tnode.subrow{color:var(--muted);font-size:12.5px}
   .tnode.subrow.in{background:var(--panel2);color:var(--ink)}
   .tnode.dead{cursor:default;opacity:.5}
   .tnode.dead:hover{background:none}
@@ -676,13 +676,17 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
       tree.appendChild(el('p',{class:'note'},'This template has no sections.'));
     }
     tmpl.sections.forEach(function(s){
+      // A nested section is a target of its own, so it is indented rather than
+      // folded into its parent. Indent is on the node because depth is data.
+      var indent=9+(s.depth||0)*14;
       if(!s.canHold){
-        tree.appendChild(treeNode({class:'tnode dead',
+        tree.appendChild(treeNode({class:'tnode dead',style:'padding-left:'+indent+'px',
           title:'This section has no id, so guidance has nowhere to attach'},s.heading,false));
         return;
       }
       tree.appendChild(treeNode({
         class:'tnode'+(s.id===pick?' on':''),'data-sec':s.id,
+        style:'padding-left:'+indent+'px',
       },s.heading,s.hasPrompt));
       // Sub-headings are the section's shape and are shown for that reason. They
       // select the section they belong to: guidance attaches per section, so a
@@ -690,6 +694,7 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
       s.subheadings.forEach(function(h){
         tree.appendChild(treeNode({
           class:'tnode subrow'+(s.id===pick?' in':''),'data-sec':s.id,
+          style:'padding-left:'+(indent+17)+'px',
         },h.text,false));
       });
     });
