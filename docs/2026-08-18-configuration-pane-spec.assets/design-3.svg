@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 560" role="img" aria-label="Settings page, Actions tab"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}</style>
+        <rect x="8" y="8" width="704" height="544" rx="10" class="svg-box"/>
+        <rect x="24" y="24" width="92" height="30" rx="8" class="svg-box"/><text x="40" y="44" class="svg-lbl-m">Language</text>
+        <rect x="124" y="24" width="88" height="30" rx="8" class="svg-box"/><text x="140" y="44" class="svg-lbl-m">Sections</text>
+        <rect x="220" y="24" width="68" height="30" rx="8" class="svg-box"/><text x="236" y="44" class="svg-lbl-m">Rules</text>
+        <rect x="296" y="24" width="80" height="30" rx="8" class="svg-box-a"/><text x="312" y="44" class="svg-lbl">Actions</text>
+        <text x="516" y="44" class="svg-lbl-m">Reset Actions to shipped ⟲</text>
+        <text x="24" y="86" class="svg-lbl-m">SHIPPED ACTIONS</text>
+        <rect x="24" y="98" width="672" height="32" rx="8" class="svg-box"/>
+        <text x="38" y="119" class="svg-lbl">👁</text><text x="64" y="119" class="svg-lbl">🔎 Go deeper</text>
+        <rect x="180" y="105" width="60" height="18" rx="9" class="svg-box"/><text x="190" y="118" class="svg-lbl-m">default</text>
+        <text x="648" y="119" class="svg-lbl-m">Edit</text>
+        <rect x="24" y="136" width="672" height="146" rx="8" class="svg-box-a"/>
+        <text x="38" y="157" class="svg-lbl">👁</text><text x="64" y="157" class="svg-lbl">⊞ Visualize</text>
+        <rect x="164" y="143" width="86" height="18" rx="9" class="svg-box-a"/><text x="174" y="156" class="svg-lbl-m">customized</text>
+        <text x="640" y="157" class="svg-lbl-m">Close</text>
+        <text x="40" y="182" class="svg-lbl-m">instruction</text>
+        <rect x="40" y="188" width="640" height="34" rx="6" class="svg-box"/>
+        <text x="52" y="209" class="svg-lbl">Prefer a table unless the content is a graph. Every node and edge you draw…</text>
+        <text x="40" y="240" class="svg-lbl-m">import instruction (aside actions only)</text>
+        <rect x="40" y="246" width="524" height="26" rx="6" class="svg-box"/>
+        <rect x="576" y="244" width="50" height="26" rx="8" class="svg-box-a"/><text x="588" y="262" class="svg-lbl">Save</text>
+        <rect x="632" y="244" width="52" height="26" rx="8" class="svg-box"/><text x="640" y="262" class="svg-lbl-m">Reset</text>
+        <rect x="24" y="288" width="672" height="32" rx="8" class="svg-box"/>
+        <text x="38" y="309" class="svg-lbl-m">⃠</text><text x="64" y="309" class="svg-lbl-m">Summarize</text>
+        <text x="360" y="309" class="svg-lbl-m">hidden from menus · still resolves on old threads (D6)</text>
+        <text x="24" y="356" class="svg-lbl-m">CUSTOM ACTIONS</text>
+        <rect x="24" y="368" width="672" height="32" rx="8" class="svg-box"/>
+        <text x="38" y="389" class="svg-lbl">📖 Glossary</text>
+        <rect x="150" y="375" width="80" height="18" rx="9" class="svg-box"/><text x="158" y="388" class="svg-lbl-m">x_glossary</text>
+        <rect x="238" y="375" width="88" height="18" rx="9" class="svg-box"/><text x="246" y="388" class="svg-lbl-m">aside · local</text>
+        <text x="592" y="389" class="svg-lbl-m">Edit · Delete</text>
+        <rect x="24" y="408" width="672" height="34" rx="8" class="svg-box" stroke-dasharray="5 4"/>
+        <text x="38" y="430" class="svg-lbl-m">+ New action · label · icon · kind · scope · group · instruction · id auto-prefixed x_ (D12)</text>
+        <text x="24" y="476" class="svg-lbl-m">Identity fields of shipped actions (label, icon, kind, scope, group) render fixed;</text>
+        <text x="24" y="494" class="svg-lbl-m">only instruction text is editable. Hiding never deletes: resolution keeps answering.</text>
+      </svg>

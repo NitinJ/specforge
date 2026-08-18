@@ -230,3 +230,94 @@ test('ensureServer refuses to start when the port is held by something else', as
 
   await assert.rejects(() => ensureServer({ port }), /not SpecForge/);
 });
+
+// --- Template blocks, and the origin guard on every write -------------------
+//
+// Raised in review of PR #207: loopback is not a boundary a browser respects, so
+// a page on any site could aim a form at the daemon and reset a user's rules.
+// The guard is on the method rather than the route, so the tests below use these
+// routes to prove a property that holds for every write.
+
+const post = (base, url, body, origin) => fetch(base + url, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', ...(origin ? { Origin: origin } : {}) },
+  body: JSON.stringify(body),
+});
+
+test('the blocks route answers with one type’s rules and prompts', async (t) => {
+  await withDaemon(t, async (base) => {
+    const res = await fetch(`${base}/api/template/design-impl/blocks`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.type, 'design-impl');
+    assert.ok(body.rules.some((r) => r.shipped));
+  });
+});
+
+test('a reset names its class, and leaves the other one alone', async (t) => {
+  await withDaemon(t, async (base) => {
+    await fetch(`${base}/api/template/design-impl/blocks`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rules: [{ id: 'no_vendor_quotes', ask: 'No vendor quotes.', fix: 'Cut it.' }],
+        prompts: [{ section: 'goals', text: 'One line per goal.' }],
+      }),
+    });
+    const res = await post(base, '/api/template/design-impl/blocks', { class: 'rules' });
+    const body = await res.json();
+    assert.equal(body.rules.some((r) => r.id === 'no_vendor_quotes'), false);
+    assert.ok(body.prompts.find((p) => p.section === 'goals'), 'the Sections tab is untouched');
+  });
+});
+
+test('an unknown reset class is a 400 rather than a reset of everything', async (t) => {
+  await withDaemon(t, async (base) => {
+    const res = await post(base, '/api/template/design-impl/blocks', { class: 'everything' });
+    assert.equal(res.status, 400);
+  });
+});
+
+test('a write from another site is refused', async (t) => {
+  await withDaemon(t, async (base) => {
+    const res = await post(base, '/api/template/design-impl/blocks', { class: 'rules' },
+      'https://attacker.example');
+    assert.equal(res.status, 403);
+  });
+});
+
+test('a write from the daemon’s own page is allowed', async (t) => {
+  await withDaemon(t, async (base) => {
+    const res = await post(base, '/api/template/design-impl/blocks', { class: 'rules' }, base);
+    assert.equal(res.status, 200);
+  });
+});
+
+test('a write with no Origin is allowed, because that is the CLI', async (t) => {
+  await withDaemon(t, async (base) => {
+    const res = await post(base, '/api/template/design-impl/blocks', { class: 'rules' });
+    assert.equal(res.status, 200);
+  });
+});
+
+test('a read from another site is not refused, since it changes nothing', async (t) => {
+  await withDaemon(t, async (base) => {
+    const res = await fetch(`${base}/api/template/design-impl/blocks`, {
+      headers: { Origin: 'https://attacker.example' },
+    });
+    assert.equal(res.status, 200, 'the guard is on writes; reading is already public over a share');
+  });
+});
+
+test('the guard covers every write, not the route it was found on', async (t) => {
+  await withDaemon(t, async (base) => {
+    const res = await fetch(`${base}/api/prompts`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://attacker.example' },
+      body: JSON.stringify({ language: 'Owned.' }),
+    });
+    assert.equal(res.status, 403);
+    const { handlePromptsGet } = await import('../lib/prompts-api.mjs');
+    assert.equal(handlePromptsGet().language.value, '', 'and nothing was written');
+  });
+});

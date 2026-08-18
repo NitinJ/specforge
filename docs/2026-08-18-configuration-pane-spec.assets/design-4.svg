@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" role="img" aria-label="Settings page, Sections tab"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}</style>
+        <rect x="8" y="8" width="704" height="314" rx="10" class="svg-box"/>
+        <rect x="124" y="24" width="88" height="30" rx="8" class="svg-box-a"/><text x="140" y="44" class="svg-lbl">Sections</text>
+        <rect x="24" y="24" width="92" height="30" rx="8" class="svg-box"/><text x="40" y="44" class="svg-lbl-m">Language</text>
+        <rect x="220" y="24" width="68" height="30" rx="8" class="svg-box"/><text x="236" y="44" class="svg-lbl-m">Rules</text>
+        <rect x="296" y="24" width="80" height="30" rx="8" class="svg-box"/><text x="312" y="44" class="svg-lbl-m">Actions</text>
+        <text x="512" y="44" class="svg-lbl-m">Reset Sections to shipped ⟲</text>
+        <rect x="24" y="66" width="66" height="24" rx="12" class="svg-box"/><text x="34" y="82" class="svg-lbl-m">design</text>
+        <rect x="96" y="66" width="76" height="24" rx="12" class="svg-box"/><text x="106" y="82" class="svg-lbl-m">research</text>
+        <rect x="178" y="66" width="96" height="24" rx="12" class="svg-box-a"/><text x="188" y="82" class="svg-lbl">design-impl</text>
+        <rect x="280" y="66" width="52" height="24" rx="12" class="svg-box"/><text x="290" y="82" class="svg-lbl-m">impl</text>
+        <rect x="338" y="66" width="70" height="24" rx="12" class="svg-box"/><text x="348" y="82" class="svg-lbl-m">general</text>
+        <rect x="414" y="66" width="54" height="24" rx="12" class="svg-box"/><text x="424" y="82" class="svg-lbl-m">deck</text>
+        <rect x="24" y="104" width="672" height="32" rx="8" class="svg-box"/>
+        <text x="38" y="125" class="svg-lbl">open-questions</text>
+        <rect x="160" y="111" width="60" height="18" rx="9" class="svg-box"/><text x="170" y="124" class="svg-lbl-m">default</text>
+        <text x="648" y="125" class="svg-lbl-m">Edit</text>
+        <rect x="24" y="142" width="672" height="32" rx="8" class="svg-box"/>
+        <text x="38" y="163" class="svg-lbl">decisions</text>
+        <rect x="118" y="149" width="86" height="18" rx="9" class="svg-box-a"/><text x="128" y="162" class="svg-lbl-m">customized</text>
+        <text x="600" y="163" class="svg-lbl-m">Edit · Reset</text>
+        <rect x="24" y="180" width="672" height="34" rx="8" class="svg-box" stroke-dasharray="5 4"/>
+        <text x="38" y="202" class="svg-lbl-m">+ Add section prompt · pick a section of this type's template · write the guidance</text>
+        <text x="24" y="248" class="svg-lbl-m">Writes the prompts block in template-design-impl (E2, D2). create hands these to the</text>
+        <text x="24" y="266" class="svg-lbl-m">agent and strips them from the scaffolded file, exactly as the shipped two work today.</text>
+      </svg>

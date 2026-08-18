@@ -160,7 +160,7 @@ under **No project**, exactly as ones with no collection gather under
 Make a project with **+ New project**, and move specs into one from a row's
 actions menu, or by ticking several and using the bulk bar. Deleting a project
 never deletes a spec: its specs move to **No project**, keeping the collections
-they were in. Templates sit outside projects and stay reachable from every view.
+they were in. Templates sit outside projects, on the configuration page.
 
 A spec's page names its project in the header; clicking it opens the home page on
 that project. `specforge create` files a new spec into whichever project the home
@@ -202,6 +202,34 @@ line a design spec may not. A template can also carry a **prompt**: guidance
 attached to one section, handed to the agent before that section is written and
 stripped out of the spec, for the things that shape how a section is written
 rather than testing what it became.
+
+### Change what the agent is told
+
+The gear at the bottom of the left rail opens **Configuration**, where every
+instruction SpecForge hands an agent is readable and editable. Nothing here needs
+setting up: on a fresh install every field shows what ships, marked `default`.
+
+| Tab | Governs | Scope |
+|---|---|---|
+| **Language** | a preamble prepended to everything an agent writes, spec prose and comment replies both | the whole store |
+| **Sections** | guidance the agent reads before writing one section, handed over at create and stripped from the file | one spec type |
+| **Rules** | the rules that type is verified against | one spec type |
+| **Actions** | the block actions in the review UI: their instructions, whether they appear, and your own | the whole store |
+
+Every field shows the text in force beside a chip saying whether it is yours or
+shipped, and every one of them resets back to shipped, singly or a tab at a time.
+Sections and Rules write into that type's template spec rather than a second
+store, so there is no precedence rule to remember: the pane is a better editor
+over the data the template already holds. Shipped rules are read-only, since they
+are the floor every spec is checked against.
+
+Hiding an action removes it from the menu and breaks nothing: a comment that
+already names it still resolves, because an id written into a thread has to keep
+answering forever. Deleting a custom action leaves the same tombstone, for the
+same reason.
+
+Templates sit at the bottom of the page. A card opens that type's template as a
+spec, which is how you change the scaffold new specs start from.
 
 ### Keep the spec and the work in step
 

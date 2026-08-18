@@ -691,7 +691,9 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
         : 'every '+TAB+' setting';
       if(!window.confirm('Reset '+what+' to what SpecForge ships with?')) return;
       if(TAB==='sections'||TAB==='rules'){
-        return void api('POST','/api/template/'+encodeURIComponent(TYPE)+'/blocks')
+        // The class goes with it: both tabs share the route, and the confirm
+        // named only this one.
+        return void api('POST','/api/template/'+encodeURIComponent(TYPE)+'/blocks',{class:TAB})
           .then(function(t){ tmpl=t; openId=null; render(); });
       }
       api('POST','/api/prompts/reset',{class:TAB}).then(function(s){

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" role="img" aria-label="Settings page, Language tab"><style>:root{--bg:#fbfaf7;--panel:#ffffff;--panel2:#f5f3ee;--ink:#222629;--muted:#5f6873;--line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06)}.svg-box{fill:var(--panel);stroke:var(--line);stroke-width:1}.svg-box-a{fill:var(--panel);stroke:var(--accent);stroke-width:1.5}.svg-lbl{fill:var(--ink);font-size:12px;font-weight:600}.svg-lbl-m{fill:var(--muted);font-size:11px}</style>
+        <rect x="8" y="8" width="704" height="384" rx="10" class="svg-box"/>
+        <text x="24" y="38" class="svg-lbl-m">← Home</text>
+        <text x="96" y="38" class="svg-lbl" font-size="15">Configuration</text>
+        <rect x="662" y="20" width="32" height="26" rx="8" class="svg-box"/><text x="672" y="38" class="svg-lbl-m">☾</text>
+        <rect x="24" y="58" width="92" height="30" rx="8" class="svg-box-a"/><text x="40" y="78" class="svg-lbl">Language</text>
+        <rect x="124" y="58" width="88" height="30" rx="8" class="svg-box"/><text x="140" y="78" class="svg-lbl-m">Sections</text>
+        <rect x="220" y="58" width="68" height="30" rx="8" class="svg-box"/><text x="236" y="78" class="svg-lbl-m">Rules</text>
+        <rect x="296" y="58" width="80" height="30" rx="8" class="svg-box"/><text x="312" y="78" class="svg-lbl-m">Actions</text>
+        <text x="508" y="78" class="svg-lbl-m">Reset Language to shipped ⟲</text>
+        <text x="24" y="122" class="svg-lbl">Authoring direction</text>
+        <rect x="172" y="108" width="86" height="20" rx="10" class="svg-box-a"/><text x="182" y="122" class="svg-lbl-m">customized</text>
+        <text x="24" y="144" class="svg-lbl-m">Delivered wherever the agent writes spec prose: create, review replies, asides (D8).</text>
+        <rect x="24" y="156" width="672" height="150" rx="8" class="svg-box"/>
+        <text x="38" y="182" class="svg-lbl">Write terse. No metaphors, even in asides.</text>
+        <text x="38" y="202" class="svg-lbl">Prefer tables past two dimensions.▎</text>
+        <rect x="24" y="322" width="64" height="30" rx="8" class="svg-box-a"/><text x="42" y="342" class="svg-lbl">Save</text>
+        <rect x="96" y="322" width="128" height="30" rx="8" class="svg-box"/><text x="110" y="342" class="svg-lbl-m">Reset to default</text>
+        <text x="556" y="342" class="svg-lbl-m">4,000 characters max</text>
+      </svg>

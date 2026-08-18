@@ -28,7 +28,9 @@ function open(t, tab) {
       const m = call.url.match(/^\/api\/template\/([\w-]+)\/blocks$/);
       if (m) {
         if (call.method === 'GET') return handleTemplateBlocksGet(m[1]);
-        if (call.method === 'POST') return handleTemplateBlocksReset(m[1]);
+        // The class comes off the body, exactly as the daemon reads it: a helper
+        // that ignored it would let a page that forgot to send one pass.
+        if (call.method === 'POST') return handleTemplateBlocksReset(m[1], call.body && call.body.class);
         return handleTemplateBlocksPut(m[1], call.body);
       }
       return handlePromptsGet();
@@ -149,6 +151,24 @@ test('the class reset restores the shipped blocks for the type on screen', async
   window.document.getElementById('sf-reset-class').click();
   await settle(window);
   assert.equal(templateRules('design-impl').some((r) => r.id === 'no_vendor_quotes'), false);
+});
+
+test('the reset names the tab it was pressed on, and spares the other', async (t) => {
+  // Raised in review of PR #207: the confirm names one tab, so the request has
+  // to as well. Without the class both tabs' blocks went.
+  handleTemplateBlocksPut('design-impl', {
+    rules: [{ id: 'no_vendor_quotes', ask: 'No vendor quotes.' }],
+    prompts: [{ section: 'goals', text: 'One line per goal.' }],
+  });
+  const { window, calls } = open(t, 'rules');
+  await settle(window);
+  window.confirm = () => true;
+  window.document.getElementById('sf-reset-class').click();
+  await settle(window);
+  assert.equal(calls.filter((c) => c.method === 'POST').pop().body.class, 'rules');
+  assert.equal(templateRules('design-impl').some((r) => r.id === 'no_vendor_quotes'), false);
+  assert.ok(templatePrompts('design-impl').find((p) => p.section === 'goals'),
+    'the Sections tab kept what was written there');
 });
 
 test('the templates strip is on the settings page, one card per type', (t) => {

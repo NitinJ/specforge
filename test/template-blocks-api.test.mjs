@@ -130,6 +130,44 @@ test('a reset restores the shipped blocks', () => {
   assert.equal(after.rules.length, TEMPLATE_RULES.research.length, 'and the shipped ones are back');
 });
 
+test('resetting rules keeps the type’s section prompts', () => {
+  // Raised in review of PR #207: both tabs share one route, so resetting Rules
+  // silently cleared the section prompts the confirm never mentioned.
+  handleTemplateBlocksPut('design-impl', {
+    rules: [custom()],
+    prompts: [{ section: 'goals', text: 'One line per goal.' }],
+  });
+  const after = handleTemplateBlocksReset('design-impl', 'rules');
+  assert.equal(after.rules.some((r) => !r.shipped), false, 'the custom rule is gone');
+  assert.match(after.prompts.find((p) => p.section === 'goals').text, /One line per goal/,
+    'and the other tab is where it was left');
+});
+
+test('resetting sections keeps the type’s custom rules', () => {
+  handleTemplateBlocksPut('design-impl', {
+    rules: [custom()],
+    prompts: [{ section: 'goals', text: 'One line per goal.' }],
+  });
+  const after = handleTemplateBlocksReset('design-impl', 'sections');
+  assert.equal(after.prompts.some((p) => p.section === 'goals'), false, 'the added prompt is gone');
+  assert.equal(after.rules.some((r) => r.id === 'no_vendor_quotes'), true,
+    'and the rule the other tab holds survived');
+});
+
+test('resetting sections restores the shipped prompts rather than emptying them', () => {
+  handleTemplateBlocksPut('design-impl', { rules: [], prompts: [] });
+  const after = handleTemplateBlocksReset('design-impl', 'sections');
+  assert.ok(after.prompts.filter((p) => p.shipped).length >= 2);
+  assert.equal(after.prompts.every((p) => !p.customized), true);
+});
+
+test('an unknown class is refused rather than resetting everything', () => {
+  handleTemplateBlocksPut('design', { rules: [custom()], prompts: [] });
+  assert.throws(() => handleTemplateBlocksReset('design', 'actions'), /unknown class/);
+  assert.equal(handleTemplateBlocksGet('design').rules.some((r) => !r.shipped), true,
+    'and nothing was written on the way to the error');
+});
+
 test('an unknown type is refused rather than creating one', () => {
   assert.throws(() => handleTemplateBlocksGet('nonsense'), /unknown type/);
   assert.throws(() => handleTemplateBlocksPut('nonsense', {}), /unknown type/);
