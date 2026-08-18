@@ -59,6 +59,27 @@ test('an h4 or a label does not', () => {
   assert.equal(r.ok, true);
 });
 
+test('a heading in the OUTER of two nested disclosures is still reported', () => {
+  // A non-greedy <details>…</details> pair stops at the first closing tag, so it
+  // sees the inner block and misses everything in the outer one after it. The
+  // outer is where an author is most likely to bury a section, because the inner
+  // one is already detail.
+  const r = check(spec(`<details class="disclosure"><summary>Outer</summary>
+    <details class="disclosure"><summary>Inner</summary><p>detail</p></details>
+    <h3>How the queue drains</h3><p>x</p>
+  </details>`), 'disclosure-depth');
+  assert.equal(r.ok, false);
+  assert.match(r.detail, /h3/);
+});
+
+test('a heading after a disclosure closes is not reported', () => {
+  // The other side of the same scan: depth returns to zero, so an h3 that
+  // follows the block is ordinary document structure.
+  const r = check(spec(`<details class="disclosure"><summary>S</summary><p>x</p></details>
+    <h3>A real subsection</h3><p>x</p>`), 'disclosure-depth');
+  assert.equal(r.ok, true);
+});
+
 test('it is advisory: a spec that means it still lints', () => {
   const html = spec(`<details class="disclosure"><summary>Design</summary>
     <h3>Buried</h3><p>x</p></details>`);
