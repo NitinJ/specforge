@@ -349,6 +349,20 @@
     return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   }
 
+  /**
+   * Anything in a header that a reader can already operate.
+   *
+   * Deliberately generous. Moving one of these inside the sort button nests
+   * interactive content, which is invalid, unreachable by keyboard, and makes
+   * every press of the inner control also sort the table. The cost of skipping a
+   * column that could have been sortable is one unsorted column; the cost of
+   * wrapping one that should not be is a broken control. A first version listed
+   * only links and form fields and missed `summary` and media controls, so this
+   * errs toward leaving the header alone.
+   */
+  var INTERACTIVE_IN_HEADER = 'a[href],button,input,select,textarea,details,summary,label,'
+    + 'audio,video,iframe,object,embed,area,[tabindex],[contenteditable]';
+
   function initSortable() {
     Array.prototype.forEach.call(document.querySelectorAll('table.sortable'), function (table) {
       if (table.hasAttribute('data-sf-sortable')) return;
@@ -402,7 +416,7 @@
         // interactive content — invalid, and unreachable by keyboard — and every
         // press of the inner control would also sort the table. An author who
         // put a control in a header meant it to do its own job.
-        if (th.querySelector('a[href], button, input, select, textarea, [tabindex]')) return;
+        if (th.querySelector(INTERACTIVE_IN_HEADER)) return;
 
         var btn = document.createElement('button');
         btn.type = 'button';

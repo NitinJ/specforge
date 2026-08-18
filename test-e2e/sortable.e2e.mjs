@@ -165,23 +165,28 @@ test('a header that already holds a control keeps it, and stays unsorted', needs
   const withLink = baseSpec('Linked').replace('</main>',
     '<section id="p"><h2>9 · P</h2><table class="sortable" id="tl">'
     + '<thead><tr><th>Component</th>'
-    + '<th>Uses <a href="#p">why</a></th></tr></thead>'
-    + '<tbody><tr><td>callout</td><td>640</td></tr>'
-    + '<tr><td>tag</td><td>1298</td></tr></tbody></table></section></main>');
+    + '<th>Uses <a href="#p">why</a></th>'
+    + '<th>Size <details><summary>?</summary>on disk</details></th></tr></thead>'
+    + '<tbody><tr><td>callout</td><td>640</td><td>8 KB</td></tr>'
+    + '<tr><td>tag</td><td>1298</td><td>10 KB</td></tr></tbody></table></section></main>');
   await withSpec({ html: withLink }, async ({ page }) => {
     await page.waitForSelector('#tl[data-sf-sortable]');
     const seen = await page.evaluate(() => {
       const heads = [...document.querySelectorAll('#tl thead th')];
       return {
         plainWrapped: !!heads[0].querySelector('.sf-sort'),
-        controlWrapped: !!heads[1].querySelector('.sf-sort'),
+        linkWrapped: !!heads[1].querySelector('.sf-sort'),
+        summaryWrapped: !!heads[2].querySelector('.sf-sort'),
         linkSurvives: !!heads[1].querySelector('a[href]'),
-        nested: !!heads[1].querySelector('.sf-sort a[href]'),
+        summarySurvives: !!heads[2].querySelector('summary'),
+        nested: heads.some((h) => !!h.querySelector('.sf-sort a[href], .sf-sort summary')),
       };
     });
     assert.equal(seen.plainWrapped, true, 'the ordinary header is still sortable');
-    assert.equal(seen.controlWrapped, false, 'the one with a link is not wrapped');
+    assert.equal(seen.linkWrapped, false, 'the one with a link is not wrapped');
+    assert.equal(seen.summaryWrapped, false, 'nor the one with a disclosure');
     assert.equal(seen.linkSurvives, true, 'and its link is untouched');
+    assert.equal(seen.summarySurvives, true, 'and so is its summary');
     assert.equal(seen.nested, false, 'nothing interactive was nested inside a button');
   });
 });
