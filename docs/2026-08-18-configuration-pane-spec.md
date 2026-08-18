@@ -315,11 +315,11 @@ Stages & Tasks. One stage = one PR. Tests first, each new test run red against t
 
 > Local only. Nothing here publishes or needs a tunnel; the daemon under test is the in-process one from `test-e2e/harness.mjs`.
 
-### Stage 0 · Test setup
+### Stage 0 · Test setup (PR 201)
 
-- [ ] 0.1 Add `seedPrompts(shape)` to `test/helpers/`: writes a `prompts.json` into the test store and returns the expected effective values per surface.
+- [x] 0.1 Add `seedPrompts(shape)` to `test/helpers/`: writes a `prompts.json` into the test store and returns the expected effective values per surface.
       verify: a test seeds an override, a hidden id and a custom action, and the helper's report matches a hand count
-- [ ] 0.2 Add `loadSettingsPage()`: renders `/settings` into a jsdom with `runScripts: 'dangerously'`, mirroring `test/helpers/index-dom.mjs`. Lands with a placeholder route so the harness exists before the page does.
+- [x] 0.2 Add `loadSettingsPage()`: renders `/settings` into a jsdom with `runScripts: 'dangerously'`, mirroring `test/helpers/index-dom.mjs`. Lands with a placeholder route so the harness exists before the page does.
       verify: the harness opens the route and executes its inline script
 
 Two helpers so every later stage tests against a store with known customizations, without each test hand-writing JSON.
@@ -328,13 +328,13 @@ Two helpers so every later stage tests against a store with known customizations
 
 **Verifiable output:** `node --test test/helpers-prompts.test.mjs` green
 
-### Stage 1 · The store module and the effective registry
+### Stage 1 · The store module and the effective registry (PR 202)
 
-- [ ] 1.1 Create `lib/store-prompts.mjs`: `readPrompts`, `writePrompts`, `resetPromptClass`, sanitize-on-read (unknown keys dropped, `x_` id grammar enforced, 4,000-char cap).
+- [x] 1.1 Create `lib/store-prompts.mjs`: `readPrompts`, `writePrompts`, `resetPromptClass`, sanitize-on-read (unknown keys dropped, `x_` id grammar enforced, 4,000-char cap).
       verify: unit tests over each export, including a malformed file reading as empty rather than throwing
-- [ ] 1.2 Merge in `lib/actions/all.mjs`: overrides applied, hidden ids dropped from `menuActions()` but resolvable via `actionById()`, custom actions appended to their group, deleted custom ids resolving from tombstones.
+- [x] 1.2 Merge in `lib/actions/all.mjs`: overrides applied, hidden ids dropped from `menuActions()` but resolvable via `actionById()`, custom actions appended to their group, deleted custom ids resolving from tombstones.
       verify: tests per behaviour, run red first; the existing action tests pass unchanged with no prompts file present
-- [ ] 1.3 Screenshot the served action menu with a custom action present and a shipped one hidden.
+- [x] 1.3 Screenshot the served action menu with a custom action present and a shipped one hidden.
       verify: the menu shows the custom entry in its group and omits the hidden one
 
 The data layer and the merge. After this stage, a hand-written `prompts.json` already customizes the product end to end; the pane is not yet built.
@@ -343,11 +343,11 @@ The data layer and the merge. After this stage, a hand-written `prompts.json` al
 
 **Verifiable output:** `npm test` green; the menu screenshot
 
-### Stage 2 · Language preamble delivery
+### Stage 2 · Language preamble delivery (PR 203)
 
-- [ ] 2.1 The `create` payload gains `language`; the `comments` payload gains a top-level `language` field. Both empty-string when unset.
+- [x] 2.1 The `create` payload gains `language`; the `comments` payload gains a top-level `language` field. Both empty-string when unset.
       verify: tests seed a preamble and assert both payloads carry it verbatim; unset yields ''
-- [ ] 2.2 The create-spec and review-spec skills instruct the agent to honor the field in everything it writes.
+- [x] 2.2 The create-spec and review-spec skills instruct the agent to honor the field in everything it writes.
       verify: both `SKILL.md` files name the field; the wait-batch hook text unchanged
 
 The one axis with no pipeline today gets its two read points, so a hand-written preamble reaches every surface D8 names.
@@ -356,17 +356,17 @@ The one axis with no pipeline today gets its two read points, so a hand-written 
 
 **Verifiable output:** a `create` run in a seeded store printing the preamble in its JSON
 
-### Stage 3 · The settings page: Language and Actions
+### Stage 3 · The settings page: Language and Actions (PR 204)
 
-- [ ] 3.1 Daemon routes: `GET/PUT /api/prompts`, `POST /api/prompts/reset` with `{class}`.
+- [x] 3.1 Daemon routes: `GET/PUT /api/prompts`, `POST /api/prompts/reset` with `{class}`.
       verify: route tests through the in-process daemon, including reset leaving other classes untouched
-- [ ] 3.2 `GET /settings`: server-rendered page, Language and Actions tabs; effective text with default-or-customized marking (P5), per-entry edit and reset (P3), class reset behind a confirm (P6), visibility toggles, custom-action create and delete.
+- [x] 3.2 `GET /settings`: server-rendered page, Language and Actions tabs; effective text with default-or-customized marking (P5), per-entry edit and reset (P3), class reset behind a confirm (P6), visibility toggles, custom-action create and delete.
       verify: jsdom tests drive edit, reset, hide, create and class-reset against seeded stores, each red first
-- [ ] 3.3 The gear row pinned at the bottom of the left rail, linking to `/settings`.
+- [x] 3.3 The gear row pinned at the bottom of the left rail, linking to `/settings`.
       verify: a test asserts the row renders after Collections and carries the link; the home page suite passes unchanged
-- [ ] 3.4 Screenshot the page in both themes and at 420px.
+- [x] 3.4 Screenshot the page in both themes and at 420px.
       verify: both tabs legible in light and dark; no horizontal overflow at 420px
-- [ ] 3.5 Move the Templates strip (P7, D13): render `tplCard` per type at the bottom of `/settings`, delete the home page's strip and its filter special-casing, rewrite the strip's home-page tests against the settings page.
+- [x] 3.5 Move the Templates strip (P7, D13): render `tplCard` per type at the bottom of `/settings`, delete the home page's strip and its filter special-casing, rewrite the strip's home-page tests against the settings page.
       verify: settings shows one card per type linking to its template; the home page renders no `.tpls`; a card click lands on the template spec page
 
 The pane itself, covering the two store-wide classes, plus the rail entry point.
@@ -375,13 +375,13 @@ The pane itself, covering the two store-wide classes, plus the rail entry point.
 
 **Verifiable output:** screenshots of both tabs, both themes
 
-### Stage 4 · Sections and Rules tabs, docs, journeys
+### Stage 4 · Sections and Rules tabs, docs, journeys (PR 207)
 
-- [ ] 4.1 `updateTemplateBlocks(type, {prompts, rules})` in `store-templates.mjs`, re-rendering only the block region of a template spec's HTML; routes `GET/PUT /api/template/:type/blocks`.
+- [x] 4.1 `updateTemplateBlocks(type, {prompts, rules})` in `store-templates.mjs`, re-rendering only the block region of a template spec's HTML; routes `GET/PUT /api/template/:type/blocks`.
       verify: a round-trip test writes a prompt and a custom rule, re-reads them through templatePrompts and templateRules, and the template's other content is byte-identical
-- [ ] 4.2 Sections and Rules tabs, grouped by type; class reset re-renders blocks from `template-defaults.mjs` (D9: shipped rules render read-only, custom rules editable).
+- [x] 4.2 Sections and Rules tabs, grouped by type; class reset re-renders blocks from `template-defaults.mjs` (D9: shipped rules render read-only, custom rules editable).
       verify: jsdom tests per control; a reset restores the shipped two prompts and leaves the template shell untouched
-- [ ] 4.3 Docs and journeys: README's configuration section; export this spec to `docs/`; a journey covering customize, deliver, reset.
+- [x] 4.3 Docs and journeys: README's configuration section; export this spec to `docs/`; a journey covering customize, deliver, reset.
       verify: the journey seeds an override, sees it in a create payload, resets the class, and sees the default again
 
 The per-type classes, edited where they already live, plus the closing documentation and journey work.
@@ -392,25 +392,46 @@ The per-type classes, edited where they already live, plus the closing documenta
 
 ## 13 · Runtime
 
-Filled during implementation.
+Built across PRs [\#201](https://github.com/NitinJ/specforge/pull/201), [\#202](https://github.com/NitinJ/specforge/pull/202), [\#203](https://github.com/NitinJ/specforge/pull/203), [\#204](https://github.com/NitinJ/specforge/pull/204) and [\#207](https://github.com/NitinJ/specforge/pull/207), all merged by 2026-08-18.
 
 #### Design decisions (implementation time)
 
 Choices made where the spec was ambiguous.
 
-- none yet
+- **A per-id `setOverride` operation beside the plain patch.** `writePrompts` merges `actions` one level down, so a patch carrying `overrides` replaced the whole map and saving one action dropped every other action's edits. Raised in review of #204.
+- **Shipped and effective prompts are compared with whitespace collapsed.** A prompt is rendered into a template as one `<p>` per paragraph and parsed back as joined text, so a byte comparison against the shipped constant never matched and every row on an untouched store read as customized. Found by looking at the rendered tab, not by the suite.
+- **Every action row carries its kind and scope.** Two shipped actions are both labelled Delete, one on a block and one on an aside, so the label alone did not say which row you were about to edit. Found by screenshot.
+- **An emptied Language box sends `null`, not `''`.** Clearing in the store is explicit; an empty string merges as a no-op and would look like a save that silently did nothing.
+- **A template reset names its class.** Sections and Rules share one file and one route, so a reset that named neither cleared both while the confirm named one tab. Raised in review of #207.
+- **Enum fields are validated, not coerced.** A custom action declaring `kind: 'inplace'` is refused rather than filed as an aside, because a silent correction produces a menu entry that behaves unlike the one the author described.
+- **Custom aside actions get a default import instruction.** `defineAction` requires one on an aside and the create form does not ask for it, so `DEFAULT_IMPORT_INSTRUCTION` is applied and can be edited afterwards.
 
 #### Deviations
 
 Intentional departures from the spec, and why.
 
-- none yet
+- **The daemon gained a same-origin guard on every state-changing request.** Not in the spec. Raised as a P1 in review of #207 against the new reset route: a page on any site can aim a form at 127.0.0.1:4180, and the daemon had no origin check anywhere, so the guard went on the method rather than the route. Requests with no `Origin` are allowed, since that is a non-browser client and a browser cannot omit it on a write.
+- **The blocks reset is `POST` on the blocks path with the class in the body.** Task 4.1 named `GET/PUT /api/template/:type/blocks` and did not say where a reset lives. A second route was rejected because the class is a body field on the prompts reset already.
+- **Task 3.5 landed in stage 4's PR.** The templates strip moves to the settings page, and stage 3's PR was already in review when the destination existed.
+- **Five journeys rather than the one task 4.3 named.** One per class, plus the custom-action lifecycle, in `test/config-journeys.test.mjs`. The single journey the plan described covers Language only, and the other three classes deliver through different readers.
 
 #### Tradeoffs
 
 Alternatives considered and why the chosen path won.
 
-- none yet
+- **Sections and Rules write into the template specs, not a second store.** A store keyed by type would need a precedence rule against the template and a migration for templates already edited by hand. Cost of the choice: a write is whole-file, so resetting one class means reading the other back out and writing it again unchanged.
+- **The merge lives inside `lib/actions/all.mjs`'s existing exports.** The alternative was an `effectiveActions()` a caller opts into, which is a second API a future consumer could import instead and silently skip customization. Cost: `SHIPPED_ACTIONS` stays exported for the settings page, which has to show what a reset would restore.
+- **Hiding an action does not delete it.** An id inside a comment sent months ago has to resolve whatever the menu looks like today. Cost: two states to render per row, and a tombstone list that only grows.
+- **State lives on the server.** Every write answers with the whole state and the page re-renders from it, so what is on screen is what the store holds rather than what the page hoped it wrote. Cost: a round trip per save, which is loopback.
+- **The origin guard allows a missing `Origin`.** A per-page CSRF token would also stop a local non-browser attacker. That attacker already has the filesystem the store sits on, so the token buys nothing and would break the CLI and the suite.
+
+#### What rendering caught that the suite did not
+
+Three defects across five stages, none of them visible to a green run.
+
+- Both shipped prompts reading as customized on an untouched store (the whitespace comparison above).
+- Two rows both labelled Delete, indistinguishable in the list.
+- `npm test` runs with `--test-force-exit`, which truncates the TAP summary: a real failure can show as zero `not ok` lines with exit code 1. The exit code is the only trustworthy signal.
 
 ## Appendix
 
