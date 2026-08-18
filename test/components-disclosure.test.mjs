@@ -146,6 +146,29 @@ test('a closed disclosure exports closed, whatever its other attributes say', ()
   assert.match(md, /<details>/);
 });
 
+test('the word "open" inside an attribute VALUE is not the open attribute', () => {
+  // Anchoring to a word boundary was not enough: `class="foo open bar"` and
+  // `title="open questions"` both put a bare `open` between spaces. Quoted
+  // values come off before the test now.
+  for (const attrs of ['class="disclosure open-question"', 'class="disclosure open bar"',
+    'title="open questions"', 'data-note="open"']) {
+    const { md } = roundTrip(spec(`<details ${attrs}><summary>Q</summary><p>x</p></details>`));
+    assert.ok(!md.includes('<details open>'), `${attrs} exported as open`);
+  }
+});
+
+test('a summary that contains a literal closing tag cannot end its own tag', () => {
+  // `<code>&lt;/summary&gt;</code>` decodes on the way through the exporter, and
+  // a literal `</summary>` inside the raw tag closes it early, spilling the rest
+  // of the summary into the document as loose text.
+  const body = '<details class="disclosure">'
+    + '<summary>Why <code>&lt;/summary&gt;</code> is awkward</summary><p>x</p></details>';
+  const { md } = roundTrip(spec(body));
+  const block = md.slice(md.indexOf('<details'), md.indexOf('</details>'));
+  assert.equal((block.match(/<\/summary>/g) || []).length, 1, 'exactly one closing tag');
+  assert.ok(block.includes('&lt;/summary&gt;'), 'and the text is still readable');
+});
+
 test('an actually-open disclosure keeps its open attribute', () => {
   const { md } = roundTrip(spec('<details class="disclosure" open><summary>S</summary><p>x</p></details>'));
   assert.match(md, /<details open>/);
