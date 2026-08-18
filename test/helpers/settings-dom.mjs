@@ -20,11 +20,12 @@ import { renderSettings } from '../../server/settings-page.mjs';
  * accident.
  */
 const EMPTY_STATE = {
-  language: { value: '', customized: false },
+  language: { value: '', customized: false, contract: '', max: 4000 },
   actions: { shipped: [], custom: [], groups: [] },
   type: 'design-impl',
   types: ['design-impl'],
   rules: [],
+  sections: [],
   prompts: [],
   shipped: { rules: [], prompts: [] },
 };

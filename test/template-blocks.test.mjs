@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import {
   parseTemplateRules,
   parseTemplatePrompts,
+  parseTemplateOutline,
   stripTemplateBlocks,
   hasTemplateBlocks,
   renderTemplateBlocks,
@@ -39,6 +40,52 @@ const WITH_PROMPTS = `<body>
   <div data-sf-prompt><p>Give the choice and what it costs.</p></div>
 </section>
 </body>`;
+
+// The outline is what the configuration pane's Sections tree lists. It has to
+// name every section a prompt could attach to, not only the ones that already
+// carry one: a tab that lists what exists cannot be used to add anything.
+const OUTLINE = `<body>
+<section id="tldr"><h4>TL;DR</h4><p>Body.</p></section>
+<section id="design"><h2>4 · Design</h2>
+  <div data-sf-prompt><p>Guidance.</p></div>
+  <h4>Summary</h4><p>x</p><h4>Architecture</h4><p>y</p>
+</section>
+<section><h2>No id here</h2></section>
+<section data-sf-rules hidden><h2>Rules</h2><ul><li data-sf-rule="r">R.</li></ul></section>
+</body>`;
+
+test('the outline names every section, not only the ones carrying a prompt', () => {
+  const out = parseTemplateOutline(OUTLINE);
+  assert.deepEqual(out.map((s) => s.id), ['tldr', 'design', null]);
+});
+
+test('a section reports its own heading and level', () => {
+  const [tldr, design] = parseTemplateOutline(OUTLINE);
+  assert.deepEqual({ heading: tldr.heading, level: tldr.level }, { heading: 'TL;DR', level: 4 });
+  assert.deepEqual({ heading: design.heading, level: design.level },
+    { heading: '4 · Design', level: 2 });
+});
+
+test('the headings under a section travel with it, which is the nesting the tree draws', () => {
+  const design = parseTemplateOutline(OUTLINE).find((s) => s.id === 'design');
+  assert.deepEqual(design.subheadings, [
+    { text: 'Summary', level: 4 },
+    { text: 'Architecture', level: 4 },
+  ]);
+});
+
+test('the rules block is scaffolding and is not part of the outline', () => {
+  // It is a section and it has a heading, so nothing but an explicit exclusion
+  // keeps it out of a list of places to attach guidance.
+  assert.equal(parseTemplateOutline(OUTLINE).some((s) => /Rules/.test(s.heading)), false);
+});
+
+test('a section with no id is listed but cannot carry guidance', () => {
+  // renderTemplateBlocks targets a section by id, so a prompt for an unnamed one
+  // has nowhere to go. Listing it and saying so beats hiding it.
+  const anon = parseTemplateOutline(OUTLINE).find((s) => s.id === null);
+  assert.equal(anon.heading, 'No id here');
+});
 
 test('a rules block parses to raw overrides', () => {
   assert.deepEqual(parseTemplateRules(WITH_RULES), [

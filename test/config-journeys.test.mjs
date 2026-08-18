@@ -71,7 +71,7 @@ test('journey: a house register set in the pane reaches every spec, and comes ba
 
   const after = await cmdCreate({ title: 'A spec written without it', type: 'design' }, deps);
   assert.equal(after.language, '', 'and the reset reaches the same payload');
-  assert.match(window.document.querySelector('.chip').textContent, /default/);
+  assert.match(window.document.querySelector('#sf-lang-state .chip').textContent, /default/);
 });
 
 test('journey: an action reworded in the pane is what the agent resolves', async (t) => {
@@ -128,9 +128,10 @@ test('journey: a section prompt added in the pane is handed over at create', asy
   const { window } = open(t, 'sections');
   await settle(window);
 
-  window.document.getElementById('np-section').value = 'goals';
-  window.document.getElementById('np-text').value = 'One line per goal, each one verifiable.';
-  window.document.getElementById('np-create').click();
+  window.document.querySelector('#sf-tree .tnode[data-sec="goals"]:not(.subrow)').click();
+  await settle(window);
+  window.document.getElementById('sd-text').value = 'One line per goal, each one verifiable.';
+  window.document.getElementById('sd-save').click();
   await settle(window);
 
   const out = await cmdCreate({ title: 'A plan', type: 'design-impl' }, deps);
@@ -156,6 +157,8 @@ test('journey: a rule added for one type is verified against, and cannot displac
   const present = (type) => allRules(type).map((r) => r.id);
   assert.ok(floor.every((id) => present('design-impl').includes(id)), 'the floor is in force');
 
+  window.document.querySelector('#sf-tree .tnode[data-rule="+new"]').click();
+  await settle(window);
   window.document.getElementById('nr-id').value = 'no_vendor_quotes';
   window.document.getElementById('nr-ask').value = 'No vendor quotes anywhere in the spec.';
   window.document.getElementById('nr-fix').value = 'Cut the quote and state the claim.';

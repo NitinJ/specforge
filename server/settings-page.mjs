@@ -144,6 +144,56 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   .chip.type.on{border-color:var(--accent);color:var(--ink);font-weight:650}
   code{font-size:.9em;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:.05em .35em}
 
+  /* Master and detail. The tree is the document's own shape, so it is read
+     top to bottom; the pane beside it edits whatever is selected. Below 760px
+     they stack, because a 264px column and a textarea do not share a phone. */
+  .split{display:grid;grid-template-columns:264px minmax(0,1fr);gap:18px;align-items:start}
+  .tree{border:1px solid var(--line);border-radius:9px;background:var(--panel);
+    padding:6px;max-height:min(70vh,620px);overflow:auto}
+  .tgroup{margin:10px 9px 4px;font-size:11px;text-transform:uppercase;
+    letter-spacing:.06em;color:var(--muted)}
+  .tgroup:first-child{margin-top:4px}
+  /* The font shorthand is avoided on purpose: font:13px/1.45 inherit is invalid
+     CSS and the whole declaration is dropped, which nothing shows until you
+     measure a rendered row. The class is subrow rather than sub or tsub: this
+     page has one flat class namespace, .sub is its subtitle (22px bottom
+     margin) and .tsub is a template card's caption (display:block), and a tree
+     row silently inherited each of them in turn. */
+  .tnode{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+    padding:6px 9px;border:1px solid transparent;border-radius:7px;background:none;
+    color:var(--ink);font-family:inherit;font-size:13px;line-height:1.45;cursor:pointer}
+  .tnode:hover{background:var(--panel2)}
+  /* Only the section row is outlined. A selected section can own several rows,
+     and outlining each of them draws three boxes for one selection. */
+  .tnode.on{border-color:var(--accent);background:var(--panel2);font-weight:600}
+  .tnode.subrow{padding-left:26px;color:var(--muted);font-size:12.5px}
+  .tnode.subrow.in{background:var(--panel2);color:var(--ink)}
+  .tnode.dead{cursor:default;opacity:.5}
+  .tnode.dead:hover{background:none}
+  .tnode .tlabel{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tnode .dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  .tnode.add{color:var(--accent);font-weight:600}
+  .detail{min-width:0}
+  .detail h3{margin:0 0 2px;font-size:15px}
+  .detail .path{color:var(--muted);font-size:12px;margin:0 0 14px}
+  .detail .fld{margin:0 0 12px}
+  .detail .fld h4{margin:0 0 4px;font-size:12px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--muted)}
+  .detail input,.detail select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel);color:var(--ink);font-size:13px}
+  .detail input:focus,.detail select:focus{outline:none;border-color:var(--accent)}
+  .ro{border:1px solid var(--line);border-radius:8px;background:var(--panel2);
+    padding:10px 12px;font-size:13px;color:var(--muted)}
+
+  /* The shipped contract, verbatim. It is a markdown document rather than a
+     field, so it is shown as written: a re-render could only lose fidelity. */
+  .contract{border:1px solid var(--line);border-radius:9px;background:var(--panel2);
+    padding:12px 14px;margin:0 0 6px;max-height:240px;overflow:auto}
+  .contract pre{margin:0;white-space:pre-wrap;word-break:break-word;color:var(--muted);
+    font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .count{color:var(--muted);font-size:12px;margin-left:auto}
+  .count.over{color:var(--red);font-weight:600}
+
   .tpls{margin:40px 0 0;padding-top:22px;border-top:1px solid var(--line)}
   .tpls h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 4px}
   .tstrip{display:flex;gap:10px;flex-wrap:wrap}
@@ -153,6 +203,10 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   .tname{display:block;font-weight:600;font-size:13.5px}
   .tsub{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 
+  @media (max-width:760px){
+    .split{grid-template-columns:minmax(0,1fr)}
+    .tree{max-height:250px}
+  }
   @media (max-width:560px){
     .row{flex-wrap:wrap}
     .note{white-space:normal}
@@ -268,21 +322,60 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   // ---- Language -----------------------------------------------------------
   function renderLanguage(){
     var L=state.language;
+    var max=L.max||4000;
     panel.innerHTML=''
       +'<p class="lede">Your authoring direction: tone, sentence length, language. '
       +'It reaches the agent wherever it writes spec prose, and where it disagrees '
       +'with the house register yours wins.</p>'
-      +'<p><b>Authoring direction</b> '+chip(L.customized)+'</p>'
+      +'<p><b>SpecForge’s writing rules</b> <span class="chip">shipped</span></p>'
+      +'<div class="contract"><pre id="sf-contract"></pre></div>'
+      +'<div class="acts" style="margin-bottom:22px">'
+      +'<button class="btn quiet" id="sf-lang-copy" type="button">Copy into mine ↓</button>'
+      +'<span class="note">Read-only. Yours is added on top of these, so copy them in '
+      +'only if you mean to restate them.</span>'
+      +'</div>'
+      +'<p><b>Yours, on top of those</b> <span id="sf-lang-state">'+chip(L.customized)+'</span></p>'
       +'<textarea id="sf-lang" placeholder="Write terse. No metaphors, even in asides."></textarea>'
       +'<div class="acts">'
       +'<button class="btn primary" id="sf-lang-save" type="button">Save</button>'
       +'<button class="btn" id="sf-lang-reset" type="button"'+(L.customized?'':' disabled')
       +'>Reset to default</button>'
       +'<span class="note" id="sf-lang-msg"></span>'
+      +'<span class="count" id="sf-lang-count"></span>'
       +'</div>';
+    // textContent, not innerHTML: the contract is a markdown document and is
+    // shown as written rather than rendered, so nothing in it can become markup.
+    document.getElementById('sf-contract').textContent=L.contract||'';
     var ta=document.getElementById('sf-lang');
+    var count=document.getElementById('sf-lang-count');
     ta.value=L.value;
+
+    // The store truncates silently at the cap, so the one place a human types
+    // this is where the limit has to be visible. Over the cap the save is
+    // refused rather than quietly losing the tail.
+    function tally(){
+      var n=ta.value.trim().length;
+      count.textContent=n+' / '+max;
+      count.className=n>max?'count over':'count';
+      return n;
+    }
+    ta.oninput=tally;
+    tally();
+
+    document.getElementById('sf-lang-copy').onclick=function(){
+      // Backslashes are doubled because this script is a template literal in
+      // the module that serves it: a lone \\n would arrive as a real newline
+      // inside a quoted string and stop the page parsing.
+      var mine=ta.value.replace(/\\s+$/,'');
+      ta.value=mine?mine+'\\n\\n'+L.contract:L.contract;
+      tally();
+      ta.focus();
+    };
     document.getElementById('sf-lang-save').onclick=function(){
+      if(tally()>max){
+        flash('sf-lang-msg','Too long by '+(tally()-max)+' characters. Nothing was saved.','err');
+        return;
+      }
       // Empty means "no direction", and clearing is explicit in the store: an
       // empty string would merge as a no-op, so it is sent as null.
       var v=ta.value.trim();
@@ -293,12 +386,15 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     };
   }
 
-  function flash(id,text){
+  function flash(id,text,tone){
     var n=document.getElementById(id);
     if(!n) return;
     n.textContent=text;
-    n.className='saved';
-    setTimeout(function(){ if(n){ n.textContent=''; n.className='note'; } },1400);
+    // A refusal is not a confirmation: it says why nothing was written, so it
+    // is red and stays up long enough to read a sentence.
+    n.className=tone==='err'?'err':'saved';
+    setTimeout(function(){ if(n){ n.textContent=''; n.className='note'; } },
+      tone==='err'?6000:1400);
   }
 
   // ---- Actions ------------------------------------------------------------
@@ -499,6 +595,22 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   // better editor over the same data, so the type picker is part of the tab.
   var tmpl=null;
   var TYPE=null;
+  // What the detail pane is showing. Held here rather than in the DOM so a
+  // re-render after a write lands the reader back where they were editing.
+  var pick=null;      // Sections: a section id
+  var pickRule=null;  // Rules: a rule id, or '+new'
+
+  /** The custom rules only. Shipped ones are re-attached by the API on write. */
+  function otherRules(){
+    return tmpl.rules.filter(function(r){return !r.shipped;}).map(function(r){
+      var o={id:r.id,ask:r.ask,fix:r.fix};
+      if(r.severity) o.severity=r.severity;
+      return o;
+    });
+  }
+  function allPrompts(){
+    return tmpl.prompts.map(function(p){ return {section:p.section,text:p.text}; });
+  }
 
   function loadTemplate(type){
     return api('GET','/api/template/'+encodeURIComponent(type)+'/blocks')
@@ -516,97 +628,238 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     }).join('')+'</div>';
   }
 
+  function promptFor(section){
+    for(var i=0;i<tmpl.prompts.length;i++){
+      if(tmpl.prompts[i].section===section) return tmpl.prompts[i];
+    }
+    return null;
+  }
+  function sectionFor(id){
+    for(var i=0;i<tmpl.sections.length;i++){
+      if(tmpl.sections[i].id===id) return tmpl.sections[i];
+    }
+    return null;
+  }
+  /** The first section a prompt could attach to, so the pane is never blank. */
+  function firstHolder(){
+    for(var i=0;i<tmpl.sections.length;i++){
+      if(tmpl.sections[i].canHold) return tmpl.sections[i].id;
+    }
+    return null;
+  }
+
+  function treeNode(attrs,label,dotted){
+    var n=el('button',attrs);
+    n.type='button';
+    n.appendChild(el('span',{class:'tlabel'},label));
+    // The dot is the whole answer to "which of these has guidance", which is the
+    // question the tree is scanned for. A chip per row would say it louder and
+    // make the column unreadable.
+    if(dotted) n.appendChild(el('span',{class:'dot',title:'has guidance'}));
+    return n;
+  }
+
   function renderSections(){
+    // The document's own shape, not a list of what has been written. A tab that
+    // showed only sections already carrying guidance could not be used to add
+    // any, which is what it is for.
     panel.innerHTML='<p class="lede">Guidance the agent reads before it writes one section '
       +'of a spec of this type. It is handed over at create and stripped from the file, so a '
       +'reader never sees it.</p>'
       +typePicker()
-      +'<div id="sf-prompts"></div>'
-      +'<div class="new" id="sf-newprompt">'
-      +'<div class="grid">'
-      +'<input id="np-section" type="text" placeholder="Section id, e.g. decisions" size="22">'
-      +'</div>'
-      +'<textarea id="np-text" placeholder="How this section should be written."></textarea>'
-      +'<div class="acts"><button class="btn primary" id="np-create" type="button">Add prompt</button>'
-      +'<span class="err" id="np-err"></span></div>'
-      +'</div>';
+      +'<div class="split"><div class="tree" id="sf-tree"></div>'
+      +'<div class="detail" id="sf-detail"></div></div>';
 
-    var host=document.getElementById('sf-prompts');
-    if(!tmpl.prompts.length){
-      host.appendChild(el('p',{class:'note'},'No prompts for this type yet.'));
+    if(pick===null||!sectionFor(pick)) pick=firstHolder();
+    var tree=document.getElementById('sf-tree');
+    if(!tmpl.sections.length){
+      tree.appendChild(el('p',{class:'note'},'This template has no sections.'));
     }
-    tmpl.prompts.forEach(function(p){
-      var row=el('div',{class:'row','data-id':'prompt:'+p.section});
-      row.appendChild(el('span',{class:'nm'},p.section));
-      row.insertAdjacentHTML('beforeend',chip(p.customized));
-      row.appendChild(el('span',{class:'gap'}));
-      row.appendChild(el('button',{class:'btn quiet','data-act':'pedit',type:'button'},'Edit'));
-      row.appendChild(el('button',{class:'btn quiet','data-act':'pdel',type:'button'},'Remove'));
-      host.appendChild(row);
-      if(openId==='prompt:'+p.section){
-        var box=el('div',{class:'ed','data-id':'prompt:'+p.section});
-        box.innerHTML='<div class="fld"><h4>prompt</h4><textarea data-f="text"></textarea></div>'
-          +'<div class="acts"><button class="btn primary" data-act="psave" type="button">Save</button>'
-          +'<button class="btn quiet" data-act="close" type="button">Close</button></div>';
-        box.querySelector('[data-f="text"]').value=p.text;
-        host.appendChild(box);
+    tmpl.sections.forEach(function(s){
+      if(!s.canHold){
+        tree.appendChild(treeNode({class:'tnode dead',
+          title:'This section has no id, so guidance has nowhere to attach'},s.heading,false));
+        return;
       }
+      tree.appendChild(treeNode({
+        class:'tnode'+(s.id===pick?' on':''),'data-sec':s.id,
+      },s.heading,s.hasPrompt));
+      // Sub-headings are the section's shape and are shown for that reason. They
+      // select the section they belong to: guidance attaches per section, so a
+      // row that selected nothing would be a row you can click and get nowhere.
+      s.subheadings.forEach(function(h){
+        tree.appendChild(treeNode({
+          class:'tnode subrow'+(s.id===pick?' in':''),'data-sec':s.id,
+        },h.text,false));
+      });
     });
-    document.getElementById('np-create').onclick=addPrompt;
+
+    renderSectionDetail();
+  }
+
+  function renderSectionDetail(){
+    var host=document.getElementById('sf-detail');
+    if(!host) return;
+    var s=sectionFor(pick);
+    if(!s){
+      host.innerHTML='<p class="note">Pick a section on the left.</p>';
+      return;
+    }
+    var p=promptFor(s.id);
+    var isShipped=(tmpl.shipped.prompts||[]).some(function(x){return x.section===s.id;});
+    host.innerHTML='<h3>'+esc(s.heading)+' '+chip(p?p.customized:false)+'</h3>'
+      +'<p class="path"><code>'+esc(s.id)+'</code>'
+      +(s.subheadings.length?' · '+esc(s.subheadings.map(function(h){return h.text;}).join(' · ')):'')
+      +'</p>'
+      +'<div class="fld"><h4>guidance</h4>'
+      +'<textarea id="sd-text" placeholder="How this section should be written."></textarea></div>'
+      +'<div class="acts">'
+      +'<button class="btn primary" id="sd-save" type="button">Save</button>'
+      +(isShipped?'<button class="btn" id="sd-reset" type="button">Reset to shipped</button>':'')
+      +'<button class="btn quiet" id="sd-del" type="button"'+(p?'':' disabled')+'>Remove</button>'
+      +'<span class="note" id="sd-msg"></span>'
+      +'</div>';
+    document.getElementById('sd-text').value=p?p.text:'';
+
+    document.getElementById('sd-save').onclick=function(){
+      var text=document.getElementById('sd-text').value.trim();
+      if(!text){
+        flash('sd-msg','Write the guidance, or use Remove to take it off.','err');
+        return;
+      }
+      writePrompt(s.id,text);
+    };
+    document.getElementById('sd-del').onclick=function(){ writePrompt(s.id,null); };
+    var reset=document.getElementById('sd-reset');
+    if(reset){
+      reset.onclick=function(){
+        var ship=(tmpl.shipped.prompts||[]).filter(function(x){return x.section===s.id;})[0];
+        writePrompt(s.id,ship?ship.text:null);
+      };
+    }
+  }
+
+  /** Write one section's guidance. A null text takes it off. */
+  function writePrompt(section,text){
+    var next=allPrompts().filter(function(p){return p.section!==section;});
+    if(text) next.push({section:section,text:text});
+    return saveTemplate({prompts:next,rules:otherRules()});
+  }
+
+  function ruleFor(id){
+    for(var i=0;i<tmpl.rules.length;i++){ if(tmpl.rules[i].id===id) return tmpl.rules[i]; }
+    return null;
   }
 
   function renderRules(){
     panel.innerHTML='<p class="lede">What a spec of this type is judged against by '
-      +'<code>specforge verify</code>. Shipped rules come from SpecForge and are not '
-      +'editable here; add your own below.</p>'
+      +'<code>specforge verify</code>. Shipped rules come from SpecForge and are the floor '
+      +'under every spec, so they are read-only; your own sit beside them.</p>'
       +typePicker()
-      +'<div class="sec">Shipped for this type</div><div id="sf-shiprules"></div>'
-      +'<div class="sec">Custom</div><div id="sf-customrules"></div>'
-      +'<div class="new" id="sf-newrule">'
-      +'<div class="grid">'
-      +'<input id="nr-id" type="text" placeholder="Rule id, e.g. x_no_vendor_quotes" size="26">'
-      +'<select id="nr-sev"><option value="blocking">blocking</option>'
-      +'<option value="advisory">advisory</option></select>'
-      +'</div>'
-      +'<textarea id="nr-ask" placeholder="What must be true. This is what the reviewer reads."></textarea>'
-      +'<div class="grid" style="margin-top:10px">'
-      +'<input id="nr-fix" type="text" placeholder="How to fix it" size="46">'
-      +'</div>'
-      +'<div class="acts"><button class="btn primary" id="nr-create" type="button">Add rule</button>'
-      +'<span class="err" id="nr-err"></span></div>'
-      +'</div>';
+      +'<div class="split"><div class="tree" id="sf-tree"></div>'
+      +'<div class="detail" id="sf-detail"></div></div>';
 
-    var ship=document.getElementById('sf-shiprules');
-    var mine=document.getElementById('sf-customrules');
-    var anyCustom=false;
-    tmpl.rules.forEach(function(r){
-      var row=el('div',{class:'row','data-id':'rule:'+r.id});
-      row.appendChild(el('span',{class:'nm'},r.id));
-      if(r.severity) row.appendChild(el('span',{class:'chip'},r.severity));
-      row.appendChild(el('span',{class:'gap'}));
-      if(r.shipped){
-        row.appendChild(el('span',{class:'note'},'🔒 shipped · read-only'));
-        ship.appendChild(row);
-      }else{
-        anyCustom=true;
-        row.appendChild(el('button',{class:'btn quiet','data-act':'rdel',type:'button'},'Remove'));
-        mine.appendChild(row);
-      }
+    var shipped=tmpl.rules.filter(function(r){return r.shipped;});
+    var mine=tmpl.rules.filter(function(r){return !r.shipped;});
+    if(pickRule!=='+new'&&!ruleFor(pickRule)){
+      pickRule=mine.length?mine[0].id:(shipped.length?shipped[0].id:'+new');
+    }
+
+    var tree=document.getElementById('sf-tree');
+    tree.appendChild(el('div',{class:'tgroup'},'Shipped for this type'));
+    if(!shipped.length) tree.appendChild(el('p',{class:'note'},'None for this type.'));
+    shipped.forEach(function(r){
+      tree.appendChild(treeNode({
+        class:'tnode'+(r.id===pickRule?' on':''),'data-rule':r.id,
+      },r.id,false));
     });
-    if(!anyCustom) mine.appendChild(el('p',{class:'note'},'None yet.'));
-    document.getElementById('nr-create').onclick=addRule;
+    tree.appendChild(el('div',{class:'tgroup'},'Custom'));
+    if(!mine.length) tree.appendChild(el('p',{class:'note'},'None yet.'));
+    mine.forEach(function(r){
+      tree.appendChild(treeNode({
+        class:'tnode'+(r.id===pickRule?' on':''),'data-rule':r.id,
+      },r.id,true));
+    });
+    tree.appendChild(treeNode({
+      class:'tnode add'+(pickRule==='+new'?' on':''),'data-rule':'+new',
+    },'+ New rule',false));
+
+    renderRuleDetail();
   }
 
-  function addPrompt(){
-    var section=document.getElementById('np-section').value.trim();
-    var text=document.getElementById('np-text').value.trim();
-    var err=document.getElementById('np-err');
-    err.textContent='';
-    if(!section||!text){ err.textContent='A section id and the guidance are both required.'; return; }
-    var next=tmpl.prompts.filter(function(p){return p.section!==section;})
-      .map(function(p){ return {section:p.section,text:p.text}; });
-    next.push({section:section,text:text});
-    saveTemplate({prompts:next,rules:tmpl.rules.filter(function(r){return !r.shipped;})});
+  function renderRuleDetail(){
+    var host=document.getElementById('sf-detail');
+    if(!host) return;
+    if(pickRule==='+new') return void renderNewRule(host);
+    var r=ruleFor(pickRule);
+    if(!r){ host.innerHTML='<p class="note">Pick a rule on the left.</p>'; return; }
+
+    if(r.shipped){
+      // Read, not edit (D9). Shown in full rather than hidden behind a lock:
+      // knowing what the floor says is the reason to add anything beside it.
+      host.innerHTML='<h3>'+esc(r.id)+' <span class="chip">shipped</span></h3>'
+        +'<p class="path">'+esc(r.severity||'blocking')+' · read-only</p>'
+        +'<div class="fld"><h4>what must be true</h4>'
+        +'<div class="ro">'+esc(r.ask||'(no sentence: this entry only changes severity)')+'</div></div>'
+        +(r.fix?'<div class="fld"><h4>how to fix it</h4><div class="ro">'+esc(r.fix)+'</div></div>':'')
+        +'<p class="note">Shipped rules are the floor under every spec of this type. '
+        +'Add your own instead.</p>';
+      return;
+    }
+
+    host.innerHTML='<h3>'+esc(r.id)+' <span class="chip on">custom</span></h3>'
+      +'<p class="path">Judged on every spec of type <code>'+esc(tmpl.type)+'</code>.</p>'
+      +'<div class="fld"><h4>what must be true</h4>'
+      +'<textarea id="rd-ask" placeholder="This is what the reviewer reads."></textarea></div>'
+      +'<div class="fld"><h4>how to fix it</h4>'
+      +'<input id="rd-fix" type="text" size="52" placeholder="What to do when it fails"></div>'
+      +'<div class="fld"><h4>severity</h4>'
+      +'<select id="rd-sev"><option value="blocking">blocking</option>'
+      +'<option value="advisory">advisory</option></select></div>'
+      +'<div class="acts">'
+      +'<button class="btn primary" id="rd-save" type="button">Save</button>'
+      +'<button class="btn quiet" id="rd-del" type="button">Remove</button>'
+      +'<span class="note" id="rd-msg"></span>'
+      +'</div>';
+    document.getElementById('rd-ask').value=r.ask||'';
+    document.getElementById('rd-fix').value=r.fix||'';
+    document.getElementById('rd-sev').value=r.severity||'blocking';
+
+    document.getElementById('rd-save').onclick=function(){
+      var ask=document.getElementById('rd-ask').value.trim();
+      if(!ask){ flash('rd-msg','A rule with no sentence checks nothing.','err'); return; }
+      var next=otherRules().map(function(x){
+        return x.id===r.id
+          ? {id:r.id,ask:ask,fix:document.getElementById('rd-fix').value.trim(),
+             severity:document.getElementById('rd-sev').value}
+          : x;
+      });
+      saveTemplate({rules:next,prompts:allPrompts()});
+    };
+    document.getElementById('rd-del').onclick=function(){
+      pickRule=null;
+      saveTemplate({
+        rules:otherRules().filter(function(x){return x.id!==r.id;}),
+        prompts:allPrompts(),
+      });
+    };
+  }
+
+  function renderNewRule(host){
+    host.innerHTML='<h3>New rule</h3>'
+      +'<p class="path">Judged on every spec of type <code>'+esc(tmpl.type)+'</code>.</p>'
+      +'<div class="fld"><h4>id</h4>'
+      +'<input id="nr-id" type="text" size="34" placeholder="e.g. no_vendor_quotes"></div>'
+      +'<div class="fld"><h4>what must be true</h4>'
+      +'<textarea id="nr-ask" placeholder="This is what the reviewer reads."></textarea></div>'
+      +'<div class="fld"><h4>how to fix it</h4>'
+      +'<input id="nr-fix" type="text" size="52" placeholder="What to do when it fails"></div>'
+      +'<div class="fld"><h4>severity</h4>'
+      +'<select id="nr-sev"><option value="blocking">blocking</option>'
+      +'<option value="advisory">advisory</option></select></div>'
+      +'<div class="acts"><button class="btn primary" id="nr-create" type="button">Add rule</button>'
+      +'<span class="err" id="nr-err"></span></div>';
+    document.getElementById('nr-create').onclick=addRule;
   }
 
   function addRule(){
@@ -619,59 +872,42 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
       err.textContent='An id is lowercase letters, digits, underscore or dash.';
       return;
     }
-    if(tmpl.rules.some(function(r){return r.id===id;})){
+    if(ruleFor(id)){
       err.textContent='This type already has a rule with that id.';
       return;
     }
-    var custom=tmpl.rules.filter(function(r){return !r.shipped;});
-    custom.push({
+    var next=otherRules();
+    next.push({
       id:id, ask:ask,
       fix:document.getElementById('nr-fix').value.trim(),
       severity:document.getElementById('nr-sev').value,
     });
-    saveTemplate({rules:custom,prompts:tmpl.prompts.map(function(p){
-      return {section:p.section,text:p.text};
-    })});
+    // Select what was just made, so the pane shows the new rule rather than
+    // dropping the reader back on whatever was open before.
+    pickRule=id;
+    saveTemplate({rules:next,prompts:allPrompts()});
   }
 
+  // Selection only. Every control inside the detail pane binds its own handler,
+  // so this listener answers one question: which thing is being edited.
   panel.addEventListener('click',function(e){
-    var t=e.target.closest?e.target.closest('.type'):null;
-    if(t) return void loadTemplate(t.getAttribute('data-type'));
-
-    var btn=e.target.closest?e.target.closest('[data-act]'):null;
-    if(!btn||!tmpl) return;
-    var holder=btn.closest('[data-id]');
-    if(!holder) return;
-    var key=holder.getAttribute('data-id');
-    var act=btn.getAttribute('data-act');
-    var otherRules=function(){ return tmpl.rules.filter(function(r){return !r.shipped;}); };
-    var allPrompts=function(){
-      return tmpl.prompts.map(function(p){ return {section:p.section,text:p.text}; });
-    };
-
-    if(act==='pedit'){ openId=(openId===key?null:key); return void render(); }
-    if(act==='pdel'){
-      var sec=key.slice('prompt:'.length);
-      return void saveTemplate({
-        prompts:allPrompts().filter(function(p){return p.section!==sec;}),
-        rules:otherRules(),
-      });
+    if(!e.target.closest) return;
+    var t=e.target.closest('.type');
+    if(t) {
+      // A different type is a different document: neither selection carries over.
+      pick=null;
+      pickRule=null;
+      return void loadTemplate(t.getAttribute('data-type'));
     }
-    if(act==='psave'){
-      var s=key.slice('prompt:'.length);
-      var text=btn.closest('.ed').querySelector('[data-f="text"]').value.trim();
-      var next=allPrompts().map(function(p){
-        return p.section===s?{section:s,text:text}:p;
-      });
-      return void saveTemplate({prompts:next,rules:otherRules()});
+    if(!tmpl) return;
+    var node=e.target.closest('[data-sec],[data-rule]');
+    if(!node) return;
+    if(node.hasAttribute('data-sec')){
+      pick=node.getAttribute('data-sec');
+      return void renderSections();
     }
-    if(act==='rdel'){
-      var rid=key.slice('rule:'.length);
-      return void saveTemplate({
-        rules:otherRules().filter(function(r){return r.id!==rid;}),
-        prompts:allPrompts(),
-      });
-    }
+    pickRule=node.getAttribute('data-rule');
+    return void renderRules();
   });
 
   // ---- shell --------------------------------------------------------------
