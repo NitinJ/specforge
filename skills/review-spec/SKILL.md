@@ -36,9 +36,17 @@ Threads can carry **several people**. Each comment has an `author` (a display
 name) and a `kind` of `human` or `agent`. Reply to the thread, not to one person,
 and never assume the person who opened it is the one who added the mention.
 
-It prints `{ specId, htmlPath, threads, pending }`. `htmlPath` is the spec file to
-edit; each thread has `anchor.block` (`{ index, tag, text }` — `text` is the
-commented block's normalized text) and the human comment(s).
+It prints `{ specId, htmlPath, language, threads, pending }`. `htmlPath` is the
+spec file to edit; each thread has `anchor.block` (`{ index, tag, text }` —
+`text` is the commented block's normalized text) and the human comment(s).
+
+**`language` is the user's authoring direction, and it outranks the house
+register.** A non-empty string is how this user wants prose written. It applies
+to everything you write here: replies, amendments, and asides alike, because a
+register that changed between the spec body and the drafts written into it would
+read as two authors. Where it contradicts
+`references/spec-language.md`, the user's direction wins. Empty means no
+direction. Set in the Configuration pane, not here.
 
 ## 1a. Read the batch's `origin` — it decides what you may do
 

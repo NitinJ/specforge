@@ -59,11 +59,19 @@ injects the review layer at serve time.
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type> [--project <name>]
 ```
 
-Prints `{ id, htmlPath, url, status, type, project, prompts }`. It has
+Prints `{ id, htmlPath, url, status, type, project, language, prompts }`. It has
 started/reused the daemon, copied the right shell to `htmlPath` (impl types → the
 full Stages/tracker/Runtime shell; design/research → a chrome-only doc shell;
 general → the scaffold and a TL;DR, nothing else), and attached the spec to this
 session. **Author into `htmlPath`** — that file IS the spec.
+
+**`language` is the user's authoring direction, and it outranks the house
+register.** A non-empty string is how this user wants specs written: their tone,
+their sentence length, their language. Apply it to everything you write into the
+spec. Where it contradicts the language contract in
+`references/spec-language.md`, the user's direction wins — the contract is the
+default, this is the setting. Empty means no direction, which is every store
+that has not customized one. Set in the Configuration pane, not here.
 
 **Read `prompts` before you write.** Each entry is `{ section, text }`: authoring
 guidance the spec type attaches to one section, written by the user into the
