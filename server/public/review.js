@@ -4012,6 +4012,10 @@
     // subsection it belongs to rather than being grouped by tag.
     Array.prototype.forEach.call(el.querySelectorAll(sel.join(',')), function (h) {
       if (h.closest('section') !== el) return; // owned by a nested section
+      // A page that demonstrates headings renders them for real, and the rail
+      // cannot tell a specimen from the document: the component library listed
+      // its own examples in its contents. A marked subtree is illustration.
+      if (h.closest('[data-sf-no-toc]')) return;
       var id = h.id;
       if (!id) { id = uniqueId(slug(txt(h)) || 'sub', seen); h.id = id; }
       seen[id] = 1;
@@ -4103,9 +4107,14 @@
     // until the reader imports or dismisses it, so listing it would rewrite the
     // contents every time an action runs. A spec with its own nav.toc excludes
     // asides by construction, since nothing links them; this is the other path.
-    var secs = document.querySelectorAll('section[id]:not([data-sf-aside])');
+    // `:not([data-sf-no-toc])` covers a section marked directly; the closest()
+    // test below covers one nested inside a marked subtree, which is the real
+    // case — the component library's h2 example is a whole <section>, and it
+    // appeared in the library's own contents as though it were a chapter.
+    var secs = document.querySelectorAll('section[id]:not([data-sf-aside]):not([data-sf-no-toc])');
     if (secs.length >= 3) {
       Array.prototype.forEach.call(secs, function (s) {
+        if (s.parentElement && s.parentElement.closest('[data-sf-no-toc]')) return;
         var h = s.querySelector('h1,h2,h3'); if (h) byId.push({ id: s.id, text: txt(h) });
       });
       return byId;

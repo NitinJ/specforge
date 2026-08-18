@@ -2307,6 +2307,52 @@ test('a heading with no id of its own still gets a rail entry', async (t) => {
   assert.deepEqual(labels, ['Alpha', 'Unnamed sub', 'Unnamed deeper', 'Beta', 'Gamma']);
 });
 
+test('headings inside a demo are left out of the outline', async (t) => {
+  // A page that DEMONSTRATES headings renders them for real, and the rail cannot
+  // tell a specimen from the document. The library page listed "Counting method"
+  // in its own contents because an h4 example rendered it. `data-sf-no-toc`
+  // marks a subtree as illustration.
+  const body = `
+    <main>
+      <section id="a"><h2>Alpha</h2>
+        <h3 id="real">A real subsection</h3><p>x</p>
+        <div data-sf-no-toc><h3 id="demo">A specimen</h3><h4 id="demo2">Deeper specimen</h4></div>
+      </section>
+      <section id="b"><h2>Beta</h2><p>x</p></section>
+      <section id="c"><h2>Gamma</h2><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#real', '#b', '#c']);
+});
+
+test('a whole section used as a demo is left out of the outline too', async (t) => {
+  // The component library's h2 example IS a section, so it was collected as a
+  // top-level entry and the library listed "4 · Design" among its own chapters.
+  const body = `
+    <main>
+      <section id="a"><h2>Alpha</h2>
+        <div data-sf-no-toc><section id="demo"><h2>4 · Design</h2><p>x</p></section></div>
+      </section>
+      <section id="b"><h2>Beta</h2><p>x</p></section>
+      <section id="c"><h2>Gamma</h2><p>x</p></section>
+      <section id="d" data-sf-no-toc><h2>Marked directly</h2><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#b', '#c']);
+});
+
 test("a spec's own left TOC is replaced by the floating one (curated links reused)", async (t) => {
   const { window } = await bootReviewLayer(t, { body: TOC_BODY, innerWidth: 1500 });
   const { document } = window;
