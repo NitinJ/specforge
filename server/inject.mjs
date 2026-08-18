@@ -5,7 +5,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { renderLiveTracker } from '../lib/tracker.mjs';
-import { blockComponents } from '../components/index.mjs';
+import { blockComponents, scriptSelectors } from '../components/index.mjs';
 import { menuActions, menuGroups } from '../lib/actions/all.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
@@ -210,6 +210,11 @@ function reviewSnippet(specId, prefs, transport, api, servedAt) {
     // lint's idea of what is commentable drift apart, and the lint silences a
     // warning about text nobody can actually comment on.
     blocks: blockComponents(),
+    // Selectors that mean the document has an interactive component needing
+    // behaviour. Sent rather than hardcoded in review.js for the same reason
+    // `blocks` is: a list the client keeps for itself drifts from the registry,
+    // and the drift shows up as a component that silently does nothing.
+    live: scriptSelectors(),
     // The context menu, without the instructions: the client shows a label and
     // writes an id, and the agent resolves that id against the registry. A page
     // carrying no `actions` opens no menu and leaves the browser's own alone,
