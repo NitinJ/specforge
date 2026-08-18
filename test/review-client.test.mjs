@@ -101,27 +101,104 @@ test('the Comments row toggles the single sidebar', async (t) => {
   assert.ok(!sidebar.classList.contains('open'), 'Comments row closes the sidebar');
 });
 
-test('the Theme picker sets data-theme on <html> from a swatch', async (t) => {
+/** Open the SF menu and return the Theme row's picker parts. */
+function themePicker(document) {
+  const row = rowByLabel(document, 'Theme');
+  return {
+    row,
+    trigger: row.querySelector('.sf-theme-trigger'),
+    list: row.querySelector('.sf-theme-list'),
+    opt: (id) => row.querySelector('.sf-theme-opt[data-theme="' + id + '"]'),
+  };
+}
+
+test('the Theme picker sets data-theme on <html> from the list', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  const theme = rowByLabel(document, 'Theme');
-  theme.querySelector('.sf-swatch[data-theme="dark"]').click();
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'dark swatch → dark');
-  theme.querySelector('.sf-swatch[data-theme="light"]').click();
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'light', 'light swatch → light');
+  const pick = themePicker(document);
+  pick.opt('dark').click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'dark → dark');
+  pick.opt('light').click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'light', 'light → light');
 });
 
-test('the Theme picker offers the named variants and applies one', async (t) => {
+test('the Theme picker offers every named variant, grouped light then dark', async (t) => {
   const { window } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  const theme = rowByLabel(document, 'Theme');
-  for (const id of ['light', 'dark', 'dracula', 'nord', 'solarized-dark', 'solarized-light', 'github-light', 'gruvbox-light']) {
-    assert.ok(theme.querySelector('.sf-swatch[data-theme="' + id + '"]'), id + ' swatch present');
-  }
-  theme.querySelector('.sf-swatch[data-theme="dracula"]').click();
-  assert.equal(document.documentElement.getAttribute('data-theme'), 'dracula', 'a variant applies to <html>');
+  const pick = themePicker(document);
+  const ids = [...pick.list.querySelectorAll('.sf-theme-opt')].map((o) => o.getAttribute('data-theme'));
+  assert.deepEqual(ids, [
+    'light', 'github-light', 'solarized-light',
+    'catppuccin-latte', 'rose-pine-dawn', 'everforest-light',
+    'dark', 'dracula', 'nord', 'solarized-dark',
+    'tokyo-night', 'catppuccin-mocha', 'rose-pine',
+  ], 'the light family first, then the dark one');
+  assert.deepEqual([...pick.list.querySelectorAll('.sf-theme-grp')]
+    .map((g) => g.getAttribute('aria-label')), ['Light', 'Dark']);
+  assert.equal(ids.includes('gruvbox-light'), false, 'gruvbox-light is gone');
+  pick.opt('tokyo-night').click();
+  assert.equal(document.documentElement.getAttribute('data-theme'), 'tokyo-night',
+    'a variant applies to <html>');
+});
+
+test('every option carries a thumbnail and a name, which is why it is not a select', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const pick = themePicker(document);
+  const opt = pick.opt('rose-pine');
+  assert.ok(opt.querySelector('.sf-thumb[data-theme="rose-pine"]'), 'a thumbnail of that theme');
+  assert.equal(opt.querySelector('.sf-t-name').textContent, 'Rosé Pine');
+});
+
+test('the trigger shows the current theme, and follows a pick', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { theme: 'nord' } });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const pick = themePicker(document);
+  assert.equal(pick.trigger.querySelector('.sf-t-name').textContent, 'Nord');
+  assert.equal(pick.trigger.querySelector('.sf-thumb').getAttribute('data-theme'), 'nord');
+  pick.opt('catppuccin-mocha').click();
+  assert.equal(pick.trigger.querySelector('.sf-t-name').textContent, 'Catppuccin Mocha');
+  assert.equal(pick.trigger.querySelector('.sf-thumb').getAttribute('data-theme'), 'catppuccin-mocha');
+});
+
+test('the list opens on the trigger and closes on a pick', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const pick = themePicker(document);
+  assert.equal(pick.list.hidden, true, 'closed to begin with');
+  assert.equal(pick.trigger.getAttribute('aria-expanded'), 'false');
+  pick.trigger.click();
+  assert.equal(pick.list.hidden, false, 'the trigger opens it');
+  assert.equal(pick.trigger.getAttribute('aria-expanded'), 'true');
+  pick.opt('nord').click();
+  assert.equal(pick.list.hidden, true, 'picking closes it');
+});
+
+test('Escape closes the list without closing the menu around it', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const pick = themePicker(document);
+  pick.trigger.click();
+  pick.list.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(pick.list.hidden, true, 'the list closed');
+  assert.ok(document.querySelector('#sf-menu.open'), 'and the menu it sits in did not');
+});
+
+test('a click outside the picker closes the list', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const pick = themePicker(document);
+  pick.trigger.click();
+  assert.equal(pick.list.hidden, false);
+  document.body.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert.equal(pick.list.hidden, true);
 });
 
 test('Theme picker reflects the rendered theme and switches a multi-theme spec', async (t) => {
@@ -131,11 +208,11 @@ test('Theme picker reflects the rendered theme and switches a multi-theme spec',
   const { window } = await bootReviewLayer(t, { computedBg });
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  const theme = rowByLabel(document, 'Theme');
-  assert.ok(theme.querySelector('.sf-themes'), 'a multi-theme spec shows the picker');
-  assert.equal(theme.querySelector('.sf-swatch.on').getAttribute('data-theme'), 'light',
-    'the active swatch reflects the rendered light theme — not a hardcoded default');
-  theme.querySelector('.sf-swatch[data-theme="dark"]').click();
+  const pick = themePicker(document);
+  assert.ok(pick.list, 'a multi-theme spec shows the picker');
+  assert.equal(pick.row.querySelector('.sf-theme-opt.on').getAttribute('data-theme'), 'light',
+    'the marked option reflects the rendered light theme — not a hardcoded default');
+  pick.opt('dark').click();
   assert.equal(document.documentElement.getAttribute('data-theme'), 'dark', 'switches to dark');
 });
 
@@ -145,7 +222,7 @@ test('Theme row is fixed (no picker) when the spec defines a single theme', asyn
   const { document } = window;
   document.getElementById('sf-launcher').click();
   const theme = rowByLabel(document, 'Theme');
-  assert.ok(!theme.querySelector('.sf-themes'), 'a single-theme spec offers no picker');
+  assert.ok(!theme.querySelector('.sf-theme-picker'), 'a single-theme spec offers no picker');
   assert.match(theme.querySelector('.sf-row-val').textContent, /light · fixed/,
     'shows the actual (light) theme, marked fixed — the selector never lies');
 });
@@ -2908,7 +2985,7 @@ test('picking a theme stores it in this browser, not on the server', async (t) =
   const { window, puts } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  rowByLabel(document, 'Theme').querySelector('.sf-swatch[data-theme="nord"]').click();
+  rowByLabel(document, 'Theme').querySelector('.sf-theme-opt[data-theme="nord"]').click();
   assert.equal(localPrefs(window, 'sf-prefs').theme, 'nord', 'persisted locally');
   assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'nothing was written to the store');
 });
@@ -2917,7 +2994,7 @@ test('theme and font apply to every spec; width, fit and filter to this one', as
   const { window } = await bootReviewLayer(t);
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  rowByLabel(document, 'Theme').querySelector('.sf-swatch[data-theme="nord"]').click();
+  rowByLabel(document, 'Theme').querySelector('.sf-theme-opt[data-theme="nord"]').click();
   const fsel = rowByLabel(document, 'Font').querySelector('select.sf-font-select');
   fsel.value = 'lora'; fsel.dispatchEvent(new window.Event('change'));
   const range = rowByLabel(document, 'Width').querySelector('input[type=range]');
@@ -2934,7 +3011,7 @@ test('theme and font apply to every spec; width, fit and filter to this one', as
 test('a second reader with different settings does not disturb the first', async (t) => {
   const a = await bootReviewLayer(t);
   a.window.document.getElementById('sf-launcher').click();
-  rowByLabel(a.window.document, 'Theme').querySelector('.sf-swatch[data-theme="nord"]').click();
+  rowByLabel(a.window.document, 'Theme').querySelector('.sf-theme-opt[data-theme="nord"]').click();
   assert.equal(a.window.document.documentElement.getAttribute('data-theme'), 'nord');
 
   // A different browser: its own storage, and the same server-seeded prefs.
@@ -2956,7 +3033,7 @@ test('the picker reflects a persisted variant on boot', async (t) => {
   const { document } = window;
   assert.equal(document.documentElement.getAttribute('data-theme'), 'dracula', 'variant applied on boot');
   document.getElementById('sf-launcher').click();
-  assert.equal(rowByLabel(document, 'Theme').querySelector('.sf-swatch.on').getAttribute('data-theme'), 'dracula',
+  assert.equal(rowByLabel(document, 'Theme').querySelector('.sf-theme-opt.on').getAttribute('data-theme'), 'dracula',
     'the active swatch matches the persisted theme');
 });
 

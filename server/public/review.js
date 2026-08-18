@@ -262,19 +262,29 @@ function sfRevealDisclosures(el) {
   // runs on the readyState check before that section's top-level code executes —
   // applyTheme reads THEME_IDS on boot). The two spec-native palettes plus the
   // review-layer variants whose palettes live in review.css (keyed on
-  // [data-theme="<id>"]). Order matters: light family first, then dark — the 4-up
-  // swatch grid then lands each family on its own row.
+  // [data-theme="<id>"]). Order matters: it is the order of the picker, light
+  // family first and then dark, and `group` is what the picker's two headings
+  // read from rather than a second list that could disagree with this one.
   var THEMES = [
-    { id: 'light', name: 'Light' },
-    { id: 'solarized-light', name: 'Solarized Light' },
-    { id: 'github-light', name: 'GitHub Light' },
-    { id: 'gruvbox-light', name: 'Gruvbox Light' },
-    { id: 'dark', name: 'Dark' },
-    { id: 'dracula', name: 'Dracula' },
-    { id: 'nord', name: 'Nord' },
-    { id: 'solarized-dark', name: 'Solarized Dark' },
+    { id: 'light', name: 'Light', group: 'light' },
+    { id: 'github-light', name: 'GitHub Light', group: 'light' },
+    { id: 'solarized-light', name: 'Solarized Light', group: 'light' },
+    { id: 'catppuccin-latte', name: 'Catppuccin Latte', group: 'light' },
+    { id: 'rose-pine-dawn', name: 'Rosé Pine Dawn', group: 'light' },
+    { id: 'everforest-light', name: 'Everforest Light', group: 'light' },
+    { id: 'dark', name: 'Dark', group: 'dark' },
+    { id: 'dracula', name: 'Dracula', group: 'dark' },
+    { id: 'nord', name: 'Nord', group: 'dark' },
+    { id: 'solarized-dark', name: 'Solarized Dark', group: 'dark' },
+    { id: 'tokyo-night', name: 'Tokyo Night', group: 'dark' },
+    { id: 'catppuccin-mocha', name: 'Catppuccin Mocha', group: 'dark' },
+    { id: 'rose-pine', name: 'Rosé Pine', group: 'dark' },
   ];
   var THEME_IDS = THEMES.map(function (t) { return t.id; });
+  function themeById(id) {
+    for (var i = 0; i < THEMES.length; i++) if (THEMES[i].id === id) return THEMES[i];
+    return null;
+  }
 
   // Submit shortcut label: ⌘↵ on Mac, Ctrl+↵ elsewhere (the handler accepts both).
   var IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
@@ -2092,21 +2102,116 @@ function sfRevealDisclosures(el) {
       row.setAttribute('title', 'This spec defines a single theme');
       return row;
     }
-    // Swatch picker — light family then dark, each swatch tinted in review.css.
-    var cur = currentTheme();
-    var grid = create('span', { class: 'sf-themes' });
-    THEMES.forEach(function (th) {
-      var sw = create('button', { class: 'sf-swatch', type: 'button', 'data-theme': th.id, title: th.name, 'aria-label': th.name });
-      if (th.id === cur) sw.classList.add('on');
-      sw.onclick = function () {
-        Array.prototype.forEach.call(grid.querySelectorAll('.sf-swatch'), function (x) { x.classList.remove('on'); });
-        sw.classList.add('on');
-        setTheme(th.id);
-      };
-      grid.appendChild(sw);
-    });
-    row.appendChild(grid);
+    row.appendChild(themePicker());
     return row;
+  }
+
+  // A thumbnail of one theme: background, an ink bar, an accent dot. Tinted per
+  // theme in review.css, because a thumbnail inside a page rendered in a
+  // different theme cannot read that theme's variables.
+  function themeThumb(id) {
+    return create('span', { class: 'sf-thumb', 'data-theme': id, 'aria-hidden': 'true' });
+  }
+
+  // The Theme control: a trigger showing the current theme, opening a list of
+  // thumbnail and name grouped Light / Dark. Built rather than a <select>,
+  // because a native option cannot draw a colour and a theme is picked by
+  // looking at it. Shaped like the Font and Code font rows either side of it.
+  function themePicker() {
+    var box = create('span', { class: 'sf-theme-picker' });
+    var trigger = create('button', {
+      class: 'sf-theme-trigger', type: 'button',
+      'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': 'Theme',
+    });
+    var list = create('span', { class: 'sf-theme-list', role: 'listbox', hidden: '' });
+    var name = create('span', { class: 'sf-t-name' });
+    var thumb = themeThumb(currentTheme());
+
+    function paintTrigger(id) {
+      var th = themeById(id);
+      thumb.setAttribute('data-theme', id);
+      name.textContent = th ? th.name : id;
+    }
+    trigger.appendChild(thumb);
+    trigger.appendChild(name);
+    trigger.appendChild(create('span', { class: 'sf-t-caret' }, '▼'));
+    paintTrigger(currentTheme());
+
+    // The document listener exists only while the list is open, and drops itself
+    // if the row was rebuilt underneath it: buildMenuRows() runs on every menu
+    // open, so a listener registered per build would accumulate one per open and
+    // hold a detached node each time.
+    function onDocClick(e) {
+      if (!box.isConnected) { document.removeEventListener('click', onDocClick); return; }
+      if (!box.contains(e.target)) close();
+    }
+    function close() {
+      list.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('click', onDocClick);
+    }
+    function open() {
+      list.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      document.addEventListener('click', onDocClick);
+      var on = list.querySelector('.sf-theme-opt.on') || list.querySelector('.sf-theme-opt');
+      if (on) on.focus();
+    }
+
+    var groups = {};
+    THEMES.forEach(function (th) {
+      if (!groups[th.group]) {
+        var label = th.group === 'light' ? 'Light' : 'Dark';
+        // A labelled group rather than a loose heading, so the two families are
+        // announced as families and not as an option that cannot be picked.
+        var g = create('span', { class: 'sf-theme-grp', role: 'group', 'aria-label': label });
+        g.appendChild(create('span', { class: 'sf-theme-group', 'aria-hidden': 'true' }, label));
+        list.appendChild(g);
+        groups[th.group] = g;
+      }
+      var opt = create('button', {
+        class: 'sf-theme-opt', type: 'button', role: 'option', 'data-theme': th.id,
+      });
+      opt.appendChild(themeThumb(th.id));
+      opt.appendChild(create('span', { class: 'sf-t-name' }, th.name));
+      opt.appendChild(create('span', { class: 'sf-t-tick' }, '✓'));
+      opt.setAttribute('aria-selected', String(th.id === currentTheme()));
+      if (th.id === currentTheme()) opt.classList.add('on');
+      opt.onclick = function () {
+        Array.prototype.forEach.call(list.querySelectorAll('.sf-theme-opt'), function (x) {
+          x.classList.remove('on');
+          x.setAttribute('aria-selected', 'false');
+        });
+        opt.classList.add('on');
+        opt.setAttribute('aria-selected', 'true');
+        paintTrigger(th.id);
+        setTheme(th.id);
+        close();
+        trigger.focus();
+      };
+      groups[th.group].appendChild(opt);
+    });
+
+    trigger.onclick = function (e) {
+      // Stopped here so the listener open() is about to register does not see
+      // this same click and close the list immediately.
+      e.stopPropagation();
+      if (list.hidden) open(); else close();
+    };
+    // Escape closes the list without closing the menu around it: the list sits
+    // inside a menu that stays open, so without this it is a panel with no way
+    // back out except picking something.
+    box.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (list.hidden) return;
+      e.stopPropagation();
+      close();
+      trigger.focus();
+    });
+
+    box.appendChild(trigger);
+    box.appendChild(list);
+    return box;
   }
   // Font — a dropdown of reading fonts grouped Sans/Serif/Presentation; applies
   // live and persists the pick. "Default" leaves the spec's own font alone. The
