@@ -6,6 +6,99 @@
 
 export const structure = [
   {
+    // The native layer, entire. `<details>` is interactive with no script, so
+    // this ships exactly like a static component — a stamped stylesheet and
+    // nothing else — and a spec carrying one is fully usable opened from disk.
+    //
+    // Built on the element rather than on a custom accordion because the element
+    // brings keyboard operation, the correct screen-reader announcement,
+    // find-in-page expansion and a markdown form, and a hand-rolled one buys
+    // styling freedom by giving up all four.
+    // `class`, not `element`, though the author writes a tag too. The kind is
+    // what decides two lists: the classes the lint accepts, and the blocks a
+    // reviewer can comment on. Registered as an element it would be neither, so
+    // a disclosure would fail the lint that governs it and refuse comments (I4).
+    // `selector` carries what an author actually types.
+    name: 'disclosure', family: 'structure', kind: 'class', block: true,
+    selector: '<details class="disclosure">', layer: 'interactive', needs: 'none',
+    rule: 'Detail a reader needs on a second pass and not on the first: the full error table behind a cited count, the working for a rejected option, a long transcript. Never for content the argument depends on, and never as a way to make a long section look short.',
+    requires: ['a summary that says what is inside, so the block can be skipped without opening it'],
+    // No rule here hides content, because there is no script to bring it back:
+    // the collapsing is the element's own, which every engine can undo and
+    // find-in-page already does.
+    css: `details.disclosure{border:1px solid var(--line);border-radius:10px;
+  background:var(--panel);margin:16px 0}
+details.disclosure > summary{cursor:pointer;padding:11px 16px;font-weight:650;
+  color:var(--accent);list-style:none;display:flex;align-items:center;gap:9px}
+details.disclosure > summary::-webkit-details-marker{display:none}
+details.disclosure > summary::before{content:"";flex:none;width:0;height:0;
+  border-left:5px solid currentColor;border-top:4px solid transparent;
+  border-bottom:4px solid transparent;transition:transform .15s ease}
+details.disclosure[open] > summary::before{transform:rotate(90deg)}
+details.disclosure > summary:hover{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+details.disclosure > summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+details.disclosure[open] > summary{border-bottom:1px solid var(--line)}
+details.disclosure > :not(summary){padding:0 16px}
+details.disclosure > :not(summary):first-of-type{padding-top:12px}
+details.disclosure > :last-child{padding-bottom:14px}
+@media print{
+  details.disclosure{break-inside:avoid}
+  details.disclosure > summary::before{display:none}
+  details.disclosure::details-content{content-visibility:visible}
+}`,
+    example: `<details class="disclosure">
+  <summary>How the 61% was measured</summary>
+  <p>Every spec in the store parsed for headings, counted against the levels the contents rail can reach. n=133, 2026-08-18.</p>
+</details>`,
+  },
+  {
+    // Authored as a run of labelled panels, all visible. The script adds the
+    // strip and hides all but one; with no script the reader gets every panel in
+    // order, which is longer and complete. That is the enhancement contract, and
+    // it is the same fallback GOV.UK ships for the same component.
+    //
+    // No document product surveyed ships tabs natively: Notion has none,
+    // Confluence sends you to the Marketplace, and Google Docs' tabs are
+    // document-level navigation. The demand is real (the Marketplace app exists)
+    // and the risk is too, which is why the rule below is narrow.
+    name: 'tabs', family: 'structure', kind: 'class', block: true,
+    layer: 'interactive', needs: 'script', detect: '.tabs',
+    rule: 'Two to five alternative forms of one thing, where a reader needs exactly one: the same command per platform, the same config per environment, before against after. Never for sequential content, and never where a reader has to compare two panels side by side.',
+    requires: ['each panel is a .tab with a data-label', 'the panels are alternatives, not steps'],
+    variants: ['tab', 'sf-tablist', 'sf-tab', 'sf-selected'],
+    // Every hiding rule is under [data-sf-live], which only the served script
+    // sets. Written as a bare `.tabs > .tab{display:none}` this would sit in the
+    // stamped block of every spec and a reader opening the file from disk would
+    // lose every panel but the first, permanently and silently.
+    css: `.tabs{margin:16px 0}
+.tabs > .tab{border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:10px 0}
+.tabs > .tab::before{content:attr(data-label);display:block;font-size:12.5px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+[data-sf-live] .tabs{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+[data-sf-live] .tabs > .tab{border:none;border-radius:0;margin:0;padding:14px 16px}
+[data-sf-live] .tabs > .tab::before{display:none}
+[data-sf-live] .tabs > .tab[hidden]{display:none}
+[data-sf-live] .sf-tablist{display:flex;flex-wrap:wrap;gap:2px;padding:4px 4px 0;
+  background:var(--panel2);border-bottom:1px solid var(--line)}
+[data-sf-live] .sf-tab{appearance:none;background:none;border:none;cursor:pointer;
+  font:600 13px inherit;color:var(--muted);padding:8px 14px;border-radius:8px 8px 0 0;
+  border-bottom:2px solid transparent}
+[data-sf-live] .sf-tab:hover{color:var(--ink);background:color-mix(in srgb,var(--accent) 7%,transparent)}
+[data-sf-live] .sf-tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+[data-sf-live] .sf-tab.sf-selected{color:var(--accent);background:var(--panel);
+  border-bottom-color:var(--accent)}
+@media print{
+  [data-sf-live] .sf-tablist{display:none}
+  [data-sf-live] .tabs > .tab[hidden]{display:block}
+  [data-sf-live] .tabs > .tab::before{display:block}
+}`,
+    example: `<div class="tabs">
+  <div class="tab" data-label="macOS"><pre><code>brew install specforge</code></pre></div>
+  <div class="tab" data-label="Linux"><pre><code>npm i -g specforge</code></pre></div>
+  <div class="tab" data-label="Windows"><pre><code>winget install specforge</code></pre></div>
+</div>`,
+  },
+  {
     name: 'panel', family: 'structure', kind: 'class', block: true,
     rule: 'A block that stands apart from the flow and is read as a unit. The TL;DR is a panel.',
     requires: [],

@@ -42,7 +42,7 @@ injects the review layer at serve time.
     never to avoid choosing.
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
 - Read the component rules: `${CLAUDE_PLUGIN_ROOT}/references/spec-components.md`.
-  35 components, each with the rule for when it applies. Pick by what a block
+  43 components, each with the rule for when it applies. Pick by what a block
   **asserts**, never by how it should look. Its **Drawing** section is the choice
   between the three ways to draw; read it before writing any diagram, because the
   cheapest option and the most powerful one are different choices:
@@ -52,6 +52,15 @@ injects the review layer at serve time.
   - a picture where exact placement carries meaning is inline SVG;
   - a comparison, peer items, or anything that must reflow is a table or a grid,
     not a diagram at all.
+
+  Its **Interactive components** section covers the three blocks that respond to
+  a reader (`<details class="disclosure">`, `.tabs`, `table.sortable`). Read it
+  before reaching for one. All three are complete with no JavaScript, so write
+  the content as though nothing will run; what they cost is a reader's attention,
+  not their access. The disclosure is the safe one and the only one three
+  document products ship natively. **Never put a section heading inside a
+  disclosure** — a part of the argument behind a summary line is a part a reader
+  misses, and the lint reports it.
 
 ## 2. Scaffold into the store
 

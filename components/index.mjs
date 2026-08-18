@@ -33,6 +33,93 @@ import { spec } from './spec.mjs';
 export const FAMILIES = ['heading', 'notice', 'inline', 'data', 'code', 'structure', 'spec'];
 
 /**
+ * The two collections, and the field that decides which one a component is in.
+ *
+ * `static` is everything that is finished once the stylesheet is stamped.
+ * `interactive` is a block that responds to a reader. They differ in what they
+ * ship (a served script as well as the stamped CSS) and in where they are
+ * documented, and in nothing else: one registry, one build, one stamped block.
+ *
+ * A second definitions directory with a second builder was the alternative and
+ * is what this exists to avoid. Two builders emitting into one stamped block is
+ * how six copies of the table rules accumulated across five shells and the
+ * library page, one of which had silently disabled the heading family.
+ */
+export const LAYERS = ['static', 'interactive'];
+
+/** What a component may declare it needs at runtime beyond its stamped CSS. */
+export const NEEDS = ['none', 'script'];
+
+/**
+ * A component's layer. Undeclared is `static`, so the 39 that predate this field
+ * keep working.
+ *
+ * An unrecognised value throws rather than falling back. The default exists for
+ * a component that says nothing; a component that says `interactve` has made a
+ * claim, and quietly reading it as `static` would file it in the wrong document,
+ * leave it out of the collection it belongs to, and report nothing. Thrown at
+ * module load, so the typo fails the build rather than shipping.
+ */
+export function layerOf(c) {
+  if (c.layer === undefined || c.layer === null) return 'static';
+  if (!LAYERS.includes(c.layer)) {
+    throw new Error(`component ${c.name}: unknown layer ${JSON.stringify(c.layer)}, expected one of ${LAYERS.join(', ')}`);
+  }
+  return c.layer;
+}
+
+/** Every component in one layer, in definition order. */
+export function componentsIn(layer) {
+  return COMPONENTS.filter((c) => layerOf(c) === layer);
+}
+
+/**
+ * What a component needs at runtime beyond its stamped CSS.
+ *
+ * `none` covers both a static component and an interactive one built on an
+ * element that is already interactive (`<details>`). `script` is what makes the
+ * review layer fetch /public/interactive.js, and it is read per document rather
+ * than per component so a spec using only disclosures loads nothing.
+ *
+ * Refuses an unrecognised value for the same reason `layerOf` does: read as
+ * `none`, a misspelled `script` would leave the component's behaviour unloaded
+ * on every page that uses it, with no error anywhere.
+ */
+export function needsOf(c) {
+  if (c.needs === undefined || c.needs === null) return 'none';
+  if (!NEEDS.includes(c.needs)) {
+    throw new Error(`component ${c.name}: unknown needs ${JSON.stringify(c.needs)}, expected one of ${NEEDS.join(', ')}`);
+  }
+  return c.needs;
+}
+
+/**
+ * The attribute that says the enhancement script is running.
+ *
+ * The contract the whole enhanced layer rests on: the stamped stylesheet may not
+ * hide content, and every rule that hides is written under this attribute, which
+ * only the script sets. A document that never runs the script therefore never
+ * hides anything, which is what makes an enhanced component complete from
+ * file:// rather than truncated.
+ *
+ * Named here rather than typed into the CSS and the client separately, because
+ * those two disagreeing is a failure with no symptom until someone opens a spec
+ * from disk.
+ */
+export const LIVE_ATTR = 'data-sf-live';
+
+/**
+ * Selectors that mean "this document has something for the script to do".
+ *
+ * The review layer fetches /public/interactive.js only when one of these
+ * matches, which is the same bargain the highlighter and the reading fonts
+ * make: a spec of prose and diagrams fetches nothing.
+ */
+export function scriptSelectors() {
+  return COMPONENTS.filter((c) => needsOf(c) === 'script' && c.detect).map((c) => c.detect);
+}
+
+/**
  * How the library spends color.
  *
  * Four tokens carry all of it, and each means one thing:
