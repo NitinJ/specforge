@@ -118,46 +118,85 @@
    specificity tie against the spec's :root[data-theme] rules — re-tinting the spec
    AND the review chrome together. (Imported specs that don't use the house vars
    keep their own colors — same limit as the light/dark toggle.) */
-:root[data-theme="dracula"] {
-  --bg: #282a36; --card: #343746; --panel: #343746; --panel2: #21222c;
-  --ink: #f8f8f2; --muted: #9aa0c4; --line: #44475a;
-  --accent: #bd93f9; --green: #50fa7b; --amber: #f1fa8c; --red: #ff5555;
-}
 :root[data-theme="nord"] {
   --bg: #2e3440; --card: #3b4252; --panel: #3b4252; --panel2: #353c4a;
   --ink: #eceff4; --muted: #9aa4b8; --line: #434c5e;
   --accent: #88c0d0; --green: #a3be8c; --amber: #ebcb8b; --red: #bf616a;
 }
+:root[data-theme="nord-light"] {
+  --bg: #eceff4; --card: #e5e9f0; --panel: #e5e9f0; --panel2: #dfe4ec;
+  --ink: #2e3440; --muted: #4c566a; --line: #d8dee9;
+  --accent: #4c7a99; --green: #61804f; --amber: #a3762a; --red: #a9525b;
+}
+/* Solarized takes its cyan rather than its blue for the accent. Both are in the
+   palette; the blue sat 11 degrees from the house theme's, which is two themes
+   that read the same. */
 :root[data-theme="solarized-dark"] {
   --bg: #002b36; --card: #073642; --panel: #073642; --panel2: #062d38;
   --ink: #93a1a1; --muted: #7d9392; --line: #0a3b47;
-  --accent: #268bd2; --green: #859900; --amber: #b58900; --red: #dc322f;
+  --accent: #2aa198; --green: #859900; --amber: #b58900; --red: #dc322f;
 }
 :root[data-theme="solarized-light"] {
   --bg: #fdf6e3; --card: #eee8d5; --panel: #eee8d5; --panel2: #f5efdc;
   --ink: #586e75; --muted: #93a1a1; --line: #e6e0cc;
-  --accent: #268bd2; --green: #859900; --amber: #b58900; --red: #dc322f;
+  --accent: #2aa198; --green: #859900; --amber: #b58900; --red: #dc322f;
 }
-:root[data-theme="github-light"] {
-  --bg: #ffffff; --card: #f6f8fa; --panel: #f6f8fa; --panel2: #eaeef2;
-  --ink: #1f2328; --muted: #59636e; --line: #d1d9e0;
-  --accent: #0969da; --green: #1a7f37; --amber: #9a6700; --red: #cf222e;
+:root[data-theme="ayu-light"] {
+  --bg: #fcfcfc; --card: #f3f4f5; --panel: #f3f4f5; --panel2: #eceef0;
+  --ink: #5c6166; --muted: #8a9199; --line: #e1e2e4;
+  --accent: #d97706; --green: #86b300; --amber: #f2ae49; --red: #e65050;
 }
-:root[data-theme="gruvbox-light"] {
-  --bg: #fbf1c7; --card: #f2e5bc; --panel: #f2e5bc; --panel2: #ebdbb2;
-  --ink: #3c3836; --muted: #7c6f64; --line: #e6d8a8;
-  --accent: #076678; --green: #79740e; --amber: #b57614; --red: #9d0006;
+:root[data-theme="ayu-dark"] {
+  --bg: #0b0e14; --card: #131721; --panel: #131721; --panel2: #0f131c;
+  --ink: #bfbdb6; --muted: #7a8391; --line: #1f2430;
+  --accent: #e6b450; --green: #7fd962; --amber: #ffb454; --red: #f26d78;
+}
+:root[data-theme="everforest-dark"] {
+  --bg: #2d353b; --card: #343f44; --panel: #343f44; --panel2: #272e33;
+  --ink: #d3c6aa; --muted: #9da9a0; --line: #414b50;
+  --accent: #a7c080; --green: #83c092; --amber: #dbbc7f; --red: #e67e80;
+}
+:root[data-theme="catppuccin-latte"] {
+  --bg: #eff1f5; --card: #e6e9ef; --panel: #e6e9ef; --panel2: #dce0e8;
+  --ink: #4c4f69; --muted: #6c6f85; --line: #ccd0da;
+  --accent: #8839ef; --green: #40a02b; --amber: #df8e1d; --red: #d20f39;
+}
+:root[data-theme="rose-pine-dawn"] {
+  --bg: #faf4ed; --card: #fffaf3; --panel: #fffaf3; --panel2: #f2e9e1;
+  --ink: #575279; --muted: #797593; --line: #dfdad9;
+  --accent: #b4637a; --green: #56949f; --amber: #ea9d34; --red: #b4637a;
+}
+:root[data-theme="everforest-light"] {
+  --bg: #fffbef; --card: #f8f5e4; --panel: #f8f5e4; --panel2: #f0eed9;
+  --ink: #5c6a72; --muted: #829181; --line: #e0ddcc;
+  --accent: #8da101; --green: #35a77c; --amber: #dfa000; --red: #f85552;
+}
+:root[data-theme="catppuccin-mocha"] {
+  --bg: #1e1e2e; --card: #313244; --panel: #313244; --panel2: #181825;
+  --ink: #cdd6f4; --muted: #a6adc8; --line: #45475a;
+  --accent: #cba6f7; --green: #a6e3a1; --amber: #f9e2af; --red: #f38ba8;
+}
+:root[data-theme="rose-pine"] {
+  --bg: #191724; --card: #1f1d2e; --panel: #1f1d2e; --panel2: #26233a;
+  --ink: #e0def4; --muted: #908caa; --line: #403d52;
+  --accent: #eb6f92; --green: #9ccfd8; --amber: #f6c177; --red: #eb6f92;
 }
 /* Secondary house vars, derived from each variant's core colors above so they stay
    coherent per theme. House specs come in palette dialects — some use --code for
    code blocks, --redbg/--greybg/… for callouts, --rowalt for table stripes, --ecru
    for a warm surface — and a variant that left those un-mapped kept the spec's
    original (often dark) value, so e.g. code blocks rendered near-black under a light
-   variant. These mixes win the same specificity tie (loaded after the spec) for any
-   of the listed variants. Tints are computed off var(--ink)/var(--bg)/the accent
-   set in the matching block above. */
-:root[data-theme="dracula"], :root[data-theme="nord"], :root[data-theme="solarized-dark"],
-:root[data-theme="solarized-light"], :root[data-theme="github-light"], :root[data-theme="gruvbox-light"] {
+   variant. These mixes win the same specificity tie (loaded after the spec).
+   Tints are computed off var(--ink)/var(--bg)/the accent set in the matching
+   block above.
+
+   Keyed on the marker review.js sets beside data-theme, not on a list of
+   variant selectors and not on "any theme that is not light or dark". A list
+   had to be edited twice to add one theme and forgetting left that theme's code
+   blocks near-black; the exclusion would have claimed an imported spec's own
+   named theme and overwritten the palette it authored. The marker says who
+   painted, which is the actual question. */
+:root[data-sf-variant] {
   --code: color-mix(in srgb, var(--ink) 7%, var(--bg));   /* code-block surface */
   --shadow: color-mix(in srgb, #000 22%, transparent);
   --ecru: var(--panel2);                                  /* warm/secondary surface */
@@ -1338,26 +1377,68 @@ div.sf-menu-row.sf-menu-ctl:first-of-type::before {
   transition: border-color var(--sf-dur-fast) var(--sf-ease); }
 .sf-font-select:hover, .sf-mono-select:hover { border-color: color-mix(in srgb, var(--sf-accent) 40%, var(--sf-line)); }
 .sf-font-select:focus, .sf-mono-select:focus { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
-/* Theme swatch picker — 4 columns, so the light family lands on the top row and
-   the dark family on the bottom. Each swatch shows the theme bg + an accent dot. */
-.sf-themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; margin: 8px 0 2px; }
-.sf-swatch { position: relative; height: 28px; padding: 0; border: 1px solid var(--sf-line);
-  border-radius: var(--sf-r-xs); cursor: pointer;
-  transition: border-color var(--sf-dur-fast) var(--sf-ease), transform var(--sf-dur-fast) var(--sf-ease); }
-.sf-swatch::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 7px; height: 7px;
-  border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .15); }
-.sf-swatch:hover { border-color: var(--sf-accent); transform: translateY(-1px); }
-.sf-swatch:active { transform: translateY(0) scale(.94); }
-.sf-swatch.on { outline: 2px solid var(--sf-accent); outline-offset: 1px; border-color: transparent; }
-@media (prefers-reduced-motion: reduce) { .sf-swatch { transition: border-color var(--sf-dur-fast) linear; } }
-.sf-swatch[data-theme="light"] { background: #ffffff; } .sf-swatch[data-theme="light"]::after { background: #2f6feb; }
-.sf-swatch[data-theme="dark"] { background: #171a21; } .sf-swatch[data-theme="dark"]::after { background: #6ea8fe; }
-.sf-swatch[data-theme="solarized-light"] { background: #fdf6e3; } .sf-swatch[data-theme="solarized-light"]::after { background: #268bd2; }
-.sf-swatch[data-theme="github-light"] { background: #ffffff; } .sf-swatch[data-theme="github-light"]::after { background: #0969da; }
-.sf-swatch[data-theme="gruvbox-light"] { background: #fbf1c7; } .sf-swatch[data-theme="gruvbox-light"]::after { background: #076678; }
-.sf-swatch[data-theme="dracula"] { background: #282a36; } .sf-swatch[data-theme="dracula"]::after { background: #bd93f9; }
-.sf-swatch[data-theme="nord"] { background: #2e3440; } .sf-swatch[data-theme="nord"]::after { background: #88c0d0; }
-.sf-swatch[data-theme="solarized-dark"] { background: #002b36; } .sf-swatch[data-theme="solarized-dark"]::after { background: #268bd2; }
+/* Theme picker — a dropdown, matching the Font and Code font rows. A native
+   <select> cannot draw a colour, and a theme is chosen by looking at it, so the
+   control is built rather than borrowed: a trigger showing the current theme's
+   thumbnail and name, opening a list of the same.
+
+   Each thumbnail is one rule per theme setting three custom properties, because
+   the palettes above live under :root[data-theme] and a thumbnail sitting inside
+   an differently-themed page cannot read them. */
+.sf-thumb {
+  --t-bg: #ffffff; --t-ink: #222629; --t-accent: #2f6feb;
+  position: relative; flex: none; width: 26px; height: 18px; border-radius: 3px;
+  background: var(--t-bg); border: 1px solid var(--sf-line); overflow: hidden;
+}
+/* The ink bar and the accent dot: enough of a theme to recognise it at 26px. */
+.sf-thumb::before { content: ''; position: absolute; left: 3px; top: 4px; right: 9px; height: 2px;
+  border-radius: 1px; background: var(--t-ink); opacity: .8; }
+.sf-thumb::after { content: ''; position: absolute; left: 3px; bottom: 3px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--t-accent); }
+.sf-thumb[data-theme="light"] { --t-bg: #fbfaf7; --t-ink: #222629; --t-accent: #2f6feb; }
+.sf-thumb[data-theme="rose-pine-dawn"] { --t-bg: #faf4ed; --t-ink: #575279; --t-accent: #b4637a; }
+.sf-thumb[data-theme="ayu-light"] { --t-bg: #fcfcfc; --t-ink: #5c6166; --t-accent: #d97706; }
+.sf-thumb[data-theme="everforest-light"] { --t-bg: #fffbef; --t-ink: #5c6a72; --t-accent: #8da101; }
+.sf-thumb[data-theme="solarized-light"] { --t-bg: #fdf6e3; --t-ink: #586e75; --t-accent: #2aa198; }
+.sf-thumb[data-theme="nord-light"] { --t-bg: #eceff4; --t-ink: #2e3440; --t-accent: #4c7a99; }
+.sf-thumb[data-theme="catppuccin-latte"] { --t-bg: #eff1f5; --t-ink: #4c4f69; --t-accent: #8839ef; }
+.sf-thumb[data-theme="dark"] { --t-bg: #0f1115; --t-ink: #e6e8ee; --t-accent: #6ea8fe; }
+.sf-thumb[data-theme="rose-pine"] { --t-bg: #191724; --t-ink: #e0def4; --t-accent: #eb6f92; }
+.sf-thumb[data-theme="ayu-dark"] { --t-bg: #0b0e14; --t-ink: #bfbdb6; --t-accent: #e6b450; }
+.sf-thumb[data-theme="everforest-dark"] { --t-bg: #2d353b; --t-ink: #d3c6aa; --t-accent: #a7c080; }
+.sf-thumb[data-theme="solarized-dark"] { --t-bg: #002b36; --t-ink: #93a1a1; --t-accent: #2aa198; }
+.sf-thumb[data-theme="nord"] { --t-bg: #2e3440; --t-ink: #eceff4; --t-accent: #88c0d0; }
+.sf-thumb[data-theme="catppuccin-mocha"] { --t-bg: #1e1e2e; --t-ink: #cdd6f4; --t-accent: #cba6f7; }
+
+.sf-theme-picker { position: relative; width: 100%; margin: 6px 0 2px; }
+.sf-theme-trigger { display: flex; align-items: center; gap: 9px; width: 100%; box-sizing: border-box;
+  background: var(--sf-panel2); color: var(--sf-ink); border: 1px solid var(--sf-line);
+  border-radius: var(--sf-r-sm); padding: 5px 8px; font: 12px/1.4 system-ui, sans-serif;
+  cursor: pointer; text-align: left;
+  transition: border-color var(--sf-dur-fast) var(--sf-ease); }
+.sf-theme-trigger:hover { border-color: color-mix(in srgb, var(--sf-accent) 40%, var(--sf-line)); }
+.sf-theme-trigger:focus-visible { outline: none; border-color: var(--sf-accent); box-shadow: var(--sf-ring); }
+.sf-theme-trigger .sf-t-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-theme-trigger .sf-t-caret { flex: none; color: var(--sf-muted); font-size: 9px; }
+
+/* Opens upward as often as down: the menu it lives in is anchored near the
+   bottom of the viewport, so a list dropped below would fall off screen. */
+.sf-theme-list { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 5;
+  max-height: min(56vh, 340px); overflow: auto; padding: 4px;
+  background: var(--sf-panel); border: 1px solid var(--sf-line); border-radius: var(--sf-r-sm);
+  box-shadow: var(--sf-shadow-3); }
+.sf-theme-list[hidden] { display: none; }
+.sf-theme-grp { display: block; }
+.sf-theme-group { display: block; padding: 6px 8px 3px; font: 700 9.5px/1.4 system-ui, sans-serif;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--sf-muted); }
+.sf-theme-opt { display: flex; align-items: center; gap: 9px; width: 100%; box-sizing: border-box;
+  background: none; border: none; border-radius: var(--sf-r-xs); color: var(--sf-ink);
+  padding: 5px 8px; font: 12px/1.4 system-ui, sans-serif; text-align: left; cursor: pointer; }
+.sf-theme-opt:hover, .sf-theme-opt:focus-visible { outline: none; background: var(--sf-panel2); }
+.sf-theme-opt .sf-t-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-theme-opt .sf-t-tick { flex: none; color: var(--sf-accent); font-size: 11px; visibility: hidden; }
+.sf-theme-opt.on { font-weight: 650; }
+.sf-theme-opt.on .sf-t-tick { visibility: visible; }
 .sf-detach { margin-left: auto; background: none; border: 1px solid var(--sf-line); color: var(--sf-muted);
   border-radius: var(--sf-r-xs); font-size: 11px; padding: 3px 9px; cursor: pointer;
   transition: color var(--sf-dur-fast) var(--sf-ease), border-color var(--sf-dur-fast) var(--sf-ease); }

@@ -34,10 +34,17 @@ test('writeGlobalPrefs persists theme + font and round-trips', () => {
 });
 
 test('sanitize accepts every named theme variant (store-wide)', () => {
-  for (const t of ['light', 'dark', 'dracula', 'nord', 'solarized-dark', 'solarized-light', 'github-light', 'gruvbox-light']) {
+  for (const t of ['light', 'rose-pine-dawn', 'ayu-light', 'everforest-light',
+    'solarized-light', 'nord-light', 'catppuccin-latte',
+    'dark', 'rose-pine', 'ayu-dark', 'everforest-dark',
+    'solarized-dark', 'nord', 'catppuccin-mocha']) {
     assert.equal(sanitizeGlobalPrefs({ theme: t }).theme, t, `${t} is a valid theme`);
   }
   assert.equal('theme' in sanitizeGlobalPrefs({ theme: 'monokai' }), false, 'unknown theme dropped');
+  for (const gone of ['gruvbox-light', 'github-light', 'dracula', 'tokyo-night']) {
+    assert.equal('theme' in sanitizeGlobalPrefs({ theme: gone }), false,
+      `${gone} was removed, so a pref naming it falls back rather than breaking`);
+  }
 });
 
 test('sanitize accepts a named font and drops invalid ones', () => {

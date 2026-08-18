@@ -76,15 +76,15 @@ test('PUT merges a partial patch and drops invalid values', async () => {
 
 test('theme + font are store-wide via /api/prefs and reach every served spec', async () => {
   const other = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  const g = await put('/api/prefs', { theme: 'dracula', font: 'lora' });
+  const g = await put('/api/prefs', { theme: 'catppuccin-mocha', font: 'lora' });
   assert.equal(g.status, 200);
-  assert.deepEqual((await g.json()).prefs, { theme: 'dracula', font: 'lora' });
+  assert.deepEqual((await g.json()).prefs, { theme: 'catppuccin-mocha', font: 'lora' });
   // Both specs' served HTML embed the store-wide theme/font.
   for (const sid of [specId, other]) {
     const html = await (await fetch(`${base}/spec/${sid}`)).text();
     const cfg = injectedConfig(html);
     assert.ok(cfg, `config embedded for ${sid}`);
-    assert.equal(cfg.prefs.theme, 'dracula');
+    assert.equal(cfg.prefs.theme, 'catppuccin-mocha');
     assert.equal(cfg.prefs.font, 'lora');
   }
 });
