@@ -22,6 +22,10 @@ function sfRevealDisclosures(el) {
   for (var n = el; n; n = n.parentElement) {
     if (n.tagName === 'DETAILS' && !n.open) n.open = true;
   }
+  // A hidden tab panel is the same problem in a different container, and the
+  // component that owns it lives in interactive.js — which is loaded only for a
+  // document that has one, so this is a call that usually is not there.
+  if (typeof window.sfRevealTab === 'function') window.sfRevealTab(el);
 }
 
 /* Printing expands every disclosure, then puts them back.
