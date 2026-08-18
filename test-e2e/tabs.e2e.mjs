@@ -77,8 +77,11 @@ test('clicking a label switches the panel', needsChrome, async () => {
 });
 
 test('selection lands in the URL and survives a reload', needsChrome, async () => {
-  // D7. No stored reader state, a working back button, and a reload during
+  // D7. No stored reader state, a deep-linkable panel, and a reload during
   // review that lands where the reviewer was rather than back at panel one.
+  // Deliberately NOT a back-button test: replaceState does not create history
+  // entries, which is the trade taken to avoid both a scroll on every switch and
+  // a dozen history entries nobody asked for.
   await withSpec({ html: html() }, async ({ page }) => {
     await page.waitForSelector('#t1 .sf-tablist');
     await page.click('#t1 .sf-tab:nth-child(3)');
@@ -88,6 +91,65 @@ test('selection lands in the URL and survives a reload', needsChrome, async () =
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#t1 .sf-tablist');
     assert.deepEqual(await visible(page), [PANELS[2][1]], 'and it opens there');
+  });
+});
+
+test('the keyboard updates the fragment too, not only the click', needsChrome, async () => {
+  // They went through different paths, so arrowing to a panel and reloading put
+  // the reader back on whichever one was last CLICKED. Both go through one
+  // entry point now.
+  await withSpec({ html: html() }, async ({ page }) => {
+    await page.waitForSelector('#t1 .sf-tablist');
+    await page.focus('#t1 .sf-tab:nth-child(1)');
+    await page.keyboard.press('ArrowRight');
+    assert.match(await page.evaluate(() => location.hash), /linux/i);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#t1 .sf-tablist');
+    assert.deepEqual(await visible(page), [PANELS[1][1]], 'and the reload agrees');
+  });
+});
+
+test('a malformed fragment does not stop later groups being built', needsChrome, async () => {
+  // decodeURIComponent throws on a lone `%`. Thrown from inside the group loop
+  // it aborted initTabs part-way, so a URL somebody pasted broke every tab group
+  // below it.
+  const two = html().replace('</main>',
+    '<section id="p2"><h2>10 · Second</h2><div class="tabs" id="t2">'
+    + '<div class="tab" data-label="A"><p>alpha</p></div>'
+    + '<div class="tab" data-label="B"><p>beta</p></div></div></section></main>');
+  await withSpec({ html: two }, async ({ page, base, id }) => {
+    await page.goto(`${base}/spec/${id}#%E0%A4%A`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#t2 .sf-tablist');
+    assert.ok(await page.evaluate(() => !!document.querySelector('#t1 .sf-tablist')),
+      'the first group built');
+    assert.ok(await page.evaluate(() => !!document.querySelector('#t2 .sf-tablist')),
+      'and so did the one after it');
+  });
+});
+
+test('panel ids do not collide with an id the author already used', needsChrome, async () => {
+  // A collision points a deep link and an aria-controls at the wrong element,
+  // which is worse than an ugly id.
+  const clash = baseSpec('Clash').replace('</main>',
+    '<section id="p"><h2>9 · P</h2>'
+    + '<p id="tab-1-macos">an element that got there first</p>'
+    + '<div class="tabs" id="t3">'
+    + '<div class="tab" data-label="macOS"><p>alpha</p></div>'
+    + '<div class="tab" data-label="Linux"><p>beta</p></div></div></section></main>');
+  await withSpec({ html: clash }, async ({ page }) => {
+    await page.waitForSelector('#t3 .sf-tablist');
+    const seen = await page.evaluate(() => {
+      const panel = document.querySelectorAll('#t3 > .tab')[0];
+      const btn = document.querySelector('#t3 .sf-tab');
+      return {
+        panelId: panel.id,
+        controls: btn.getAttribute('aria-controls'),
+        resolvesToPanel: document.getElementById(btn.getAttribute('aria-controls')) === panel,
+      };
+    });
+    assert.notEqual(seen.panelId, 'tab-1-macos', 'it stepped around the taken id');
+    assert.equal(seen.resolvesToPanel, true, 'and aria-controls points at the panel');
   });
 });
 

@@ -127,10 +127,17 @@
   // rather than truncated — the same fallback GOV.UK ships for their tabs.
   //
   // Selection lives in the URL fragment (D7). Nothing is written to the store or
-  // to local storage, so no reader state is persisted; the back button moves
-  // between panels; a live reload during review lands on the same one; and a
-  // panel becomes deep-linkable, which is what lets a comment anchored inside a
-  // hidden panel be scrolled to at all.
+  // to local storage, so no reader state is persisted; a live reload during
+  // review lands on the same panel; and a panel becomes deep-linkable, which is
+  // what lets a comment anchored inside a hidden one be scrolled to at all.
+  //
+  // Written with replaceState, which means the BACK BUTTON DOES NOT step through
+  // selections. That is the trade: pushState would give back-between-tabs and
+  // fill the history with a dozen entries a reader never asked for, and
+  // assigning location.hash would scroll the panel to the top of the viewport on
+  // every switch. An earlier draft of this file claimed back navigation worked;
+  // it did not, and the claim is corrected here and in the spec rather than in
+  // the behaviour.
 
   var TAB_PREFIX = 'tab-';
 
@@ -144,13 +151,39 @@
     return panel.getAttribute('data-label') || 'Panel ' + (i + 1);
   }
 
-  /** A stable, document-unique id for a panel, so the fragment survives edits. */
+  /**
+   * A stable, document-unique id for a panel, so the fragment survives edits.
+   *
+   * Uniqueness is checked against the document rather than assumed from the
+   * group index and the label: two panels in one group can carry the same label,
+   * and the slug can collide with an id the author already used. A collision
+   * would point a deep link and an `aria-controls` at the wrong element, which
+   * is worse than an ugly id.
+   */
   function panelId(group, panel, gi, pi) {
     if (panel.id) return panel.id;
     var slug = labelOf(panel, pi).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    var id = TAB_PREFIX + (gi + 1) + '-' + (slug || pi + 1);
+    var base = TAB_PREFIX + (gi + 1) + '-' + (slug || pi + 1);
+    var id = base;
+    var n = 2;
+    while (document.getElementById(id)) { id = base + '-' + n; n += 1; }
     panel.id = id;
     return id;
+  }
+
+  /** The fragment, or '' when it is malformed. */
+  function currentFragment() {
+    var raw = (location.hash || '').slice(1);
+    if (!raw) return '';
+    // decodeURIComponent throws on a lone `%` or a bad escape. Thrown from
+    // inside the group loop it aborted initTabs part-way, leaving every later
+    // tab group on the page unbuilt — a malformed URL somebody pasted breaking
+    // components further down the document.
+    try {
+      return decodeURIComponent(raw);
+    } catch (e) {
+      return raw;
+    }
   }
 
   function select(group, index) {
@@ -169,8 +202,25 @@
     });
   }
 
+  /**
+   * Select a panel AND record it in the fragment. Every control uses this.
+   *
+   * replaceState rather than assigning location.hash, which would scroll the
+   * panel to the top of the viewport and yank the page out from under a reader
+   * who only wanted a different tab. See the note above on what that costs.
+   */
+  function choose(group, index) {
+    select(group, index);
+    var panel = panelsOf(group)[index];
+    if (!panel || !panel.id) return;
+    try {
+      history.replaceState(null, '', '#' + encodeURIComponent(panel.id));
+    } catch (e) { /* file:// refuses; the selection still stands */ }
+  }
+
   function initTabs() {
     var groups = document.querySelectorAll('.tabs');
+    var want = currentFragment();
     Array.prototype.forEach.call(groups, function (group, gi) {
       if (group.querySelector(':scope > .sf-tablist')) return;
       var panels = panelsOf(group);
@@ -188,21 +238,17 @@
         btn.textContent = labelOf(panel, pi);
         btn.setAttribute('role', 'tab');
         btn.setAttribute('aria-controls', id);
-        btn.addEventListener('click', function () {
-          select(group, pi);
-          // replaceState, not a hash assignment: setting location.hash scrolls
-          // the panel to the top of the viewport, which yanks the page out from
-          // under a reader who only wanted to switch tabs.
-          try {
-            history.replaceState(null, '', '#' + id);
-          } catch (e) { /* file:// refuses; selection still works */ }
-        });
+        // One entry point for both, so the fragment cannot fall out of step with
+        // what is on screen. It did: the click handler updated the URL and the
+        // arrow keys did not, so navigating by keyboard and then reloading put
+        // the reader back on whichever panel was last CLICKED.
+        btn.addEventListener('click', function () { choose(group, pi); });
         btn.addEventListener('keydown', function (e) {
           var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
           if (!d) return;
           e.preventDefault();
           var next = (pi + d + panels.length) % panels.length;
-          select(group, next);
+          choose(group, next);
           strip.children[next].focus();
         });
         panel.setAttribute('role', 'tabpanel');
@@ -213,7 +259,8 @@
       group.insertBefore(strip, group.firstChild);
 
       // The fragment wins over the default, so a link into a panel opens it.
-      var want = decodeURIComponent((location.hash || '').slice(1));
+      // `select`, not `choose`: reading the URL must not rewrite it, or the
+      // first group on the page would claim the fragment from a later one.
       var found = panels.findIndex(function (p) { return p.id === want; });
       select(group, found >= 0 ? found : 0);
     });
