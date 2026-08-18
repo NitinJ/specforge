@@ -280,8 +280,12 @@
       if (!n.classList || !n.classList.contains('tab')) continue;
       var group = n.parentElement;
       if (!group || !group.classList.contains('tabs')) continue;
+      // `choose`, not `select`: revealing a panel to scroll a comment into it IS
+      // a selection, and leaving the fragment behind meant a reload took the
+      // reviewer back to whichever panel was last clicked rather than the one
+      // they were reading.
       var i = panelsOf(group).indexOf(n);
-      if (i >= 0 && n.hidden) { select(group, i); moved = true; }
+      if (i >= 0 && n.hidden) { choose(group, i); moved = true; }
     }
     return moved;
   }

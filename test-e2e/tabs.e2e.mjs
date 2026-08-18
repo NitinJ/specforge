@@ -235,6 +235,10 @@ test('scrolling to something in a hidden panel opens that panel', needsChrome, a
       return [...document.querySelectorAll('#t1 > .tab')].map((p) => !p.hidden);
     });
     assert.deepEqual(opened, [false, false, true], 'the third panel is the one showing');
+    // And the URL follows, because revealing a panel to read a comment in it is
+    // a selection. Without this a reload took the reviewer back to whichever
+    // panel was last clicked rather than the one they were reading.
+    assert.match(await page.evaluate(() => location.hash), /windows/i);
   });
 });
 
