@@ -84,15 +84,17 @@ test('every definition carries what all five consumers need', () => {
 // same 7 families: a layer decides which document a component is documented in,
 // a family decides how it is grouped inside that document, and the two are
 // independent on purpose.
-test('the inventory is 42 components across 7 families', () => {
-  assert.equal(COMPONENTS.length, 42);
+test('the inventory is 43 components across 7 families', () => {
+  assert.equal(COMPONENTS.length, 43);
   assert.deepEqual(
     FAMILIES.map((f) => [f, COMPONENTS.filter((c) => c.family === f).length]),
-    [['heading', 4], ['notice', 12], ['inline', 7], ['data', 4], ['code', 3], ['structure', 9], ['spec', 3]],
+    [['heading', 4], ['notice', 12], ['inline', 7], ['data', 5], ['code', 3], ['structure', 9], ['spec', 3]],
   );
+  // The static 39 are untouched by any of this, which is the property the layer
+  // field exists to preserve.
   assert.deepEqual(
     ['static', 'interactive'].map((l) => [l, COMPONENTS.filter((c) => (c.layer || 'static') === l).length]),
-    [['static', 39], ['interactive', 3]],
+    [['static', 39], ['interactive', 4]],
   );
 });
 

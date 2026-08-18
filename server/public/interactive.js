@@ -313,6 +313,89 @@
   }
   window.sfRevealTab = revealTab;
 
+  // ---------- sortable ----------
+  //
+  // Sorting is a view a reader asks for, never a change to the document. The
+  // authored order is kept and restored on the third activation of a column, so
+  // a reader can always get back to what the author meant, and nothing here
+  // touches the markdown export or the un-enhanced page.
+
+  /* Compare two cells the way a reader expects rather than the way strings sort.
+   *
+   * A spec's tables are mostly measurements, and lexical order puts 1601 before
+   * 97 and "10 MB" before "9 MB". Numbers are compared as numbers when BOTH
+   * cells parse as one; everything else falls back to a locale compare, which
+   * gets accented names and case right where a raw < does not.
+   *
+   * The leading symbol strip is for currency and the trailing one for units, so
+   * "$1,200" and "8 KB" both read as numbers. A cell that is a number followed
+   * by prose is not one, which is why the pattern is anchored.
+   */
+  function cellValue(td) {
+    return (td ? td.textContent : '').trim();
+  }
+
+  function asNumber(s) {
+    var m = /^[^\d\-+.]*([-+]?[\d,]*\.?\d+)(?:\s*[^\s\d]*)?$/.exec(s);
+    if (!m) return null;
+    var n = parseFloat(m[1].replace(/,/g, ''));
+    return isNaN(n) ? null : n;
+  }
+
+  function compare(a, b) {
+    var na = asNumber(a);
+    var nb = asNumber(b);
+    if (na !== null && nb !== null) return na - nb;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  function initSortable() {
+    Array.prototype.forEach.call(document.querySelectorAll('table.sortable'), function (table) {
+      if (table.hasAttribute('data-sf-sortable')) return;
+      table.setAttribute('data-sf-sortable', '');
+      var body = table.querySelector('tbody');
+      var heads = table.querySelectorAll('thead th');
+      if (!body || !heads.length) return;
+
+      // The authored order, captured before anything moves. Restoring from a
+      // stored copy rather than by sorting on an implied column is what makes
+      // "back to what the author wrote" exact.
+      var original = Array.prototype.slice.call(body.rows);
+
+      Array.prototype.forEach.call(heads, function (th, col) {
+        th.tabIndex = 0;
+        th.setAttribute('role', 'button');
+        var state = 0; // 0 authored, 1 ascending, 2 descending
+
+        function apply() {
+          Array.prototype.forEach.call(heads, function (o) {
+            if (o !== th) o.removeAttribute('aria-sort');
+          });
+          if (state === 0) {
+            th.removeAttribute('aria-sort');
+            original.forEach(function (r) { body.appendChild(r); });
+            return;
+          }
+          th.setAttribute('aria-sort', state === 1 ? 'ascending' : 'descending');
+          var rows = Array.prototype.slice.call(body.rows);
+          rows.sort(function (x, y) {
+            var d = compare(cellValue(x.cells[col]), cellValue(y.cells[col]));
+            return state === 1 ? d : -d;
+          });
+          rows.forEach(function (r) { body.appendChild(r); });
+        }
+
+        function activate() { state = (state + 1) % 3; apply(); }
+        th.addEventListener('click', activate);
+        th.addEventListener('keydown', function (e) {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          activate();
+        });
+      });
+    });
+  }
+
   // ---------- boot ----------
 
   var booted = false;
@@ -322,6 +405,7 @@
     goLive();
     initCopy();
     initTabs();
+    initSortable();
   }
 
   if (document.readyState === 'loading') {
@@ -333,5 +417,9 @@
   // Re-run after a live reload replaces the document's blocks. review.js
   // reloads the whole page rather than patching it, so this is for the aside
   // and action paths that rewrite a section in place.
-  document.addEventListener('sf-content-changed', function () { initCopy(); initTabs(); });
+  document.addEventListener('sf-content-changed', function () {
+    initCopy();
+    initTabs();
+    initSortable();
+  });
 })();
