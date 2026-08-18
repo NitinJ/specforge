@@ -257,8 +257,16 @@ li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margi
      stage, so that rule draws a line across the top of every slide and pushes
      its content down. Overridden here rather than excluded from the generated
      block, so a deck still gets h3/h4/h5 and only the section-level rule
-     changes. Same reason the injected stylesheet skips a deck entirely. */
-  main>section>h2{margin-top:0;padding-top:0;border-top:none}
+     changes. Same reason the injected stylesheet skips a deck entirely.
+
+     Scoped to the slide, not to a child of the section: every heading on a deck
+     sits inside a .slide, so `main>section>h2` matched nothing here and the
+     override it was supposed to make never applied. The accent tab needs saying
+     separately because it is an absolutely-positioned pseudo-element, so the
+     divider's own `border:none` does not remove it and it renders as a bar
+     floating over the part title. */
+  .slide h2{margin-top:0;padding-top:0;border-top:none}
+  .slide h2::before{display:none}
   p{margin:9px 0}
   ul,ol{margin:9px 0;padding-left:20px}
   li{margin:4px 0}

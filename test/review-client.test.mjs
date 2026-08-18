@@ -2550,7 +2550,12 @@ test('a native TOC that also lists h3 subsections does not render them twice', a
   assert.equal(hrefs.filter((h) => h === '#d-data').length, 1, 'exactly one link per subsection');
 });
 
-test('a native TOC link deeper than one level below its section is kept', async (t) => {
+test('a curated link two levels below its section is nested, not duplicated', async (t) => {
+  // The regression this exists for. While the rail nested exactly one level,
+  // dropNested kept any curated link deeper than that, because nothing would
+  // recreate it. Once the rail reached h4, childrenOf started nesting the same
+  // heading and the curated link became a second copy of it. The two must agree
+  // on one range, and this is the case that proves they do.
   const body = `
     <div class="layout">
       <nav class="toc">
@@ -2568,8 +2573,38 @@ test('a native TOC link deeper than one level below its section is kept', async 
     <div id="sf-live">● live</div>
   `;
   const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const { document } = window;
+  const hrefs = [].map.call(document.querySelectorAll('#sf-toc a'), (a) => a.getAttribute('href'));
+  assert.equal(hrefs.filter((h) => h === '#d-deep').length, 1, 'reachable exactly once');
+  const tops = [].map.call(document.querySelectorAll('#sf-toc .sf-toc-top'), (a) => a.textContent);
+  assert.deepEqual(tops, ['1 · Intro', '2 · Design', '3 · Plan'], 'and not as a top-level entry');
+  const design = groupByHref(document, '#s-design');
+  assert.ok(design.querySelector('a[href="#d-deep"]'), 'it lives under its section');
+});
+
+test('a curated link below the rail\'s reach keeps its flat entry', async (t) => {
+  // h5 is past TOC_DEEPEST, so childrenOf will never nest it. Dropping the
+  // curated link would remove the heading from the rail entirely rather than
+  // move it, which is the failure the range check has to avoid on the other side.
+  const body = `
+    <div class="layout">
+      <nav class="toc">
+        <a href="#s-intro">1 · Intro</a>
+        <a href="#s-design">2 · Design</a>
+        <a href="#d-label" class="sub">A label</a>
+        <a href="#s-plan">3 · Plan</a>
+      </nav>
+      <main>
+        <section id="s-intro"><h2>Intro</h2><p>x</p></section>
+        <section id="s-design"><h2>Design</h2><h5 id="d-label">A label</h5></section>
+        <section id="s-plan"><h2>Plan</h2><p>x</p></section>
+      </main>
+    </div>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
   const hrefs = [].map.call(window.document.querySelectorAll('#sf-toc a'), (a) => a.getAttribute('href'));
-  assert.ok(hrefs.includes('#d-deep'), 'an h4 has no h3 group to nest into, so its curated link survives');
+  assert.equal(hrefs.filter((h) => h === '#d-label').length, 1, 'still reachable, exactly once');
 });
 
 test('a native TOC link for an h3 inside an id-less nested section is kept (never dropped nor nested)', async (t) => {

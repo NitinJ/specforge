@@ -4128,9 +4128,15 @@
   }
   // A spec's own TOC often lists a section's subsections as flat siblings of the
   // section itself. The rail nests those subsections under their parent group
-  // (childrenOf), so keeping the flat link too renders them twice. Drop a link
-  // only when its target is exactly the heading the parent group will nest —
-  // anything deeper (an h4 under an h2) has no group to live in, so it stays.
+  // (childrenOf), so keeping the flat link too renders them twice.
+  //
+  // This has to mirror childrenOf's range EXACTLY, and the two drifting apart is
+  // a defect that has already happened once: this read `hlevel(el) !== hlevel(
+  // ownerTitle) + 1`, which was right while the rail nested a single level, and
+  // became wrong the moment it reached TOC_DEEPEST. An h4 under an h2 section was
+  // then both nested by childrenOf and kept here, so every curated h4 link
+  // rendered twice. Written as the same two bounds childrenOf uses, so a change
+  // to its reach cannot leave this behind.
   function dropNested(items) {
     var listed = {};
     items.forEach(function (it) { listed[it.id] = 1; });
@@ -4144,7 +4150,12 @@
       var owner = el.closest('section');
       if (!owner || !owner.id || owner.id === it.id || !listed[owner.id]) return true;
       var ownerTitle = owner.querySelector('h1,h2,h3,h4,h5,h6');
-      return !ownerTitle || hlevel(el) !== hlevel(ownerTitle) + 1;
+      if (!ownerTitle) return true;
+      // childrenOf refuses a marked subtree, so nothing will recreate this link
+      // and the curated one is the only one there is.
+      if (el.closest('[data-sf-no-toc]')) return true;
+      var lvl = hlevel(el);
+      return lvl <= hlevel(ownerTitle) || lvl > TOC_DEEPEST;
     });
   }
   // Scroll-spy over every anchor's target (top-level sections AND nested
