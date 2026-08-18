@@ -79,7 +79,12 @@ test('a document with none of them asks for nothing', () => {
 test('the client script exists and is served from public', () => {
   const src = readFileSync(join(ROOT, 'server', 'public', 'interactive.js'), 'utf8');
   assert.match(src, new RegExp(LIVE_ATTR), 'it sets the attribute the CSS keys on');
-  assert.ok(!/\bexport\b|\bimport\s/.test(src), 'a plain script, like review.js: no module syntax');
+  // Anchored to the start of a line, because module syntax is statement-level
+  // and the bare words appear in prose: this file talks about the markdown
+  // export a good deal, which the first version of this check read as an
+  // `export` statement.
+  assert.ok(!/^\s*(export|import)\s/m.test(src),
+    'a plain script, like review.js: no module syntax');
 });
 
 test('review.js loads it, and only when the document needs it', () => {

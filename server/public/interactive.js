@@ -313,6 +313,126 @@
   }
   window.sfRevealTab = revealTab;
 
+  // ---------- sortable ----------
+  //
+  // Sorting is a view a reader asks for, never a change to the document. The
+  // authored order is kept and restored on the third activation of a column, so
+  // a reader can always get back to what the author meant, and nothing here
+  // touches the markdown export or the un-enhanced page.
+
+  /* Compare two cells the way a reader expects rather than the way strings sort.
+   *
+   * A spec's tables are mostly measurements, and lexical order puts 1601 before
+   * 97 and "10 MB" before "9 MB". Numbers are compared as numbers when BOTH
+   * cells parse as one; everything else falls back to a locale compare, which
+   * gets accented names and case right where a raw < does not.
+   *
+   * The leading symbol strip is for currency and the trailing one for units, so
+   * "$1,200" and "8 KB" both read as numbers. A cell that is a number followed
+   * by prose is not one, which is why the pattern is anchored.
+   */
+  function cellValue(td) {
+    return (td ? td.textContent : '').trim();
+  }
+
+  function asNumber(s) {
+    var m = /^[^\d\-+.]*([-+]?[\d,]*\.?\d+)(?:\s*[^\s\d]*)?$/.exec(s);
+    if (!m) return null;
+    var n = parseFloat(m[1].replace(/,/g, ''));
+    return isNaN(n) ? null : n;
+  }
+
+  function compare(a, b) {
+    var na = asNumber(a);
+    var nb = asNumber(b);
+    if (na !== null && nb !== null) return na - nb;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  /**
+   * Anything in a header that a reader can already operate.
+   *
+   * Deliberately generous. Moving one of these inside the sort button nests
+   * interactive content, which is invalid, unreachable by keyboard, and makes
+   * every press of the inner control also sort the table. The cost of skipping a
+   * column that could have been sortable is one unsorted column; the cost of
+   * wrapping one that should not be is a broken control. A first version listed
+   * only links and form fields and missed `summary` and media controls, so this
+   * errs toward leaving the header alone.
+   */
+  var INTERACTIVE_IN_HEADER = 'a[href],button,input,select,textarea,details,summary,label,'
+    + 'audio,video,iframe,object,embed,area,[tabindex],[contenteditable]';
+
+  function initSortable() {
+    Array.prototype.forEach.call(document.querySelectorAll('table.sortable'), function (table) {
+      if (table.hasAttribute('data-sf-sortable')) return;
+      table.setAttribute('data-sf-sortable', '');
+      var body = table.querySelector('tbody');
+      var heads = table.querySelectorAll('thead th');
+      if (!body || !heads.length) return;
+
+      // The authored order, captured before anything moves. Restoring from a
+      // stored copy rather than by sorting on an implied column is what makes
+      // "back to what the author wrote" exact.
+      var original = Array.prototype.slice.call(body.rows);
+
+      // ONE cycle for the table, not one per column. Held per column, clicking
+      // A then B then A resumed A's old position and jumped straight to
+      // descending, so returning to a column you had already sorted skipped
+      // ascending entirely.
+      var activeCol = -1;
+      var state = 0; // 0 authored, 1 ascending, 2 descending
+
+      function apply(col) {
+        Array.prototype.forEach.call(heads, function (o, i) {
+          if (i === col && state !== 0) {
+            o.setAttribute('aria-sort', state === 1 ? 'ascending' : 'descending');
+          } else {
+            o.removeAttribute('aria-sort');
+          }
+        });
+        if (state === 0) {
+          original.forEach(function (r) { body.appendChild(r); });
+          return;
+        }
+        var rows = Array.prototype.slice.call(body.rows);
+        rows.sort(function (x, y) {
+          var d = compare(cellValue(x.cells[col]), cellValue(y.cells[col]));
+          return state === 1 ? d : -d;
+        });
+        rows.forEach(function (r) { body.appendChild(r); });
+      }
+
+      Array.prototype.forEach.call(heads, function (th, col) {
+        // A real <button> INSIDE the th, which is what the ARIA authoring
+        // practices' sortable-table example does. Putting role="button" on the
+        // th itself overrides its native `columnheader` role, and a cell that is
+        // no longer a column header loses its association with the cells below
+        // it and makes aria-sort meaningless — the attribute is defined on a
+        // header, not on a button. The button also brings Enter and Space and
+        // the tab stop for free, which is three fewer things to implement.
+        // A header that already holds a control is left alone, and its column
+        // stays unsorted. Moving a link or a button inside this one would nest
+        // interactive content — invalid, and unreachable by keyboard — and every
+        // press of the inner control would also sort the table. An author who
+        // put a control in a header meant it to do its own job.
+        if (th.querySelector(INTERACTIVE_IN_HEADER)) return;
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sf-sort';
+        while (th.firstChild) btn.appendChild(th.firstChild);
+        th.appendChild(btn);
+
+        btn.addEventListener('click', function () {
+          if (activeCol !== col) { activeCol = col; state = 1; } else { state = (state + 1) % 3; }
+          if (state === 0) activeCol = -1;
+          apply(col);
+        });
+      });
+    });
+  }
+
   // ---------- boot ----------
 
   var booted = false;
@@ -322,6 +442,7 @@
     goLive();
     initCopy();
     initTabs();
+    initSortable();
   }
 
   if (document.readyState === 'loading') {
@@ -333,5 +454,9 @@
   // Re-run after a live reload replaces the document's blocks. review.js
   // reloads the whole page rather than patching it, so this is for the aside
   // and action paths that rewrite a section in place.
-  document.addEventListener('sf-content-changed', function () { initCopy(); initTabs(); });
+  document.addEventListener('sf-content-changed', function () {
+    initCopy();
+    initTabs();
+    initSortable();
+  });
 })();

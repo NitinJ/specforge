@@ -37,6 +37,50 @@ tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--ink) 3.5%,transpa
     example: '<table class="compare"><thead><tr><th>Option</th><th>Verdict</th></tr></thead><tbody><tr><td>A</td><td><span class="tag good">chosen</span></td></tr></tbody></table>',
   },
   {
+    // A variant on `table`, not a second table component. Notion and Confluence
+    // both attach ordering to the table rather than introducing a block, and a
+    // second table component would split the vocabulary an author chooses from.
+    //
+    // The authored order stays canonical: sorting is a view a reader asks for,
+    // never a change to the document. Export and the un-enhanced page both show
+    // what the author wrote, which is why sorting can be offered at all.
+    name: 'sortable', family: 'data', kind: 'class', block: true,
+    selector: 'table.sortable',
+    layer: 'interactive', needs: 'script', detect: 'table.sortable',
+    rule: 'A table of ten or more rows where a reader may want an order other than the one the author chose. Below that, re-reading the table is cheaper than sorting it. The order you write is still the order that means something: it is what exports and what a reader with no script sees.',
+    requires: ['a thead whose cells name what they hold', 'ten or more body rows'],
+    variants: ['sf-sort'],
+    // Nothing here hides anything, so there is no [data-sf-live] guard to write:
+    // sorting reorders rows, it never removes them. The cursor and the marker
+    // are the only things that change before the script runs, and both are
+    // affordances rather than content.
+    // The control is a real <button> the script puts INSIDE the th, never a role
+    // on the th itself: a cell that stops being a `columnheader` loses its
+    // association with the column and makes `aria-sort` meaningless. The th
+    // keeps the sort state, because that is where the attribute belongs; the
+    // button is only what a reader presses.
+    css: `table.sortable th{white-space:nowrap;padding:0}
+table.sortable th .sf-sort{appearance:none;background:none;border:none;width:100%;
+  font:inherit;color:inherit;text-align:inherit;cursor:pointer;user-select:none;
+  padding:9px 12px;display:flex;align-items:center;gap:7px}
+table.sortable th .sf-sort::after{content:"";flex:none;width:0;height:0;opacity:.35;
+  border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:5px solid currentColor}
+table.sortable th[aria-sort="ascending"] .sf-sort::after{opacity:1;
+  border-top:none;border-bottom:5px solid currentColor}
+table.sortable th[aria-sort="descending"] .sf-sort::after{opacity:1}
+table.sortable th .sf-sort:hover{color:var(--accent)}
+table.sortable th .sf-sort:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}`,
+    example: `<table class="sortable">
+  <thead><tr><th>Component</th><th>Uses</th></tr></thead>
+  <tbody>
+    <tr><td>callout</td><td>640</td></tr>
+    <tr><td>tag</td><td>1298</td></tr>
+    <tr><td>panel</td><td>97</td></tr>
+  </tbody>
+</table>`,
+  },
+  {
     name: 'stat', family: 'data', kind: 'class', block: true,
     rule: 'Three to six headline numbers a reader should absorb before the prose.',
     requires: ['a number', 'a unit', 'a label'],
