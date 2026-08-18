@@ -42,12 +42,12 @@
 
   function codeOf(block) {
     var el = block.querySelector('pre code') || block.querySelector('pre');
-    // Trailing NEWLINES only. `\s+$` also ate trailing spaces on the last line,
-    // and in a spec those are sometimes the content: two of them are a hard line
-    // break in markdown, and a fixture asserting exact bytes cares about the
-    // rest. The newline goes because it is an artifact of how the markup was
-    // written, not part of what the author wrote.
-    return el ? el.textContent.replace(/\n+$/, '') : '';
+    // Exactly ONE trailing newline, which is the artifact of writing
+    // `…code\n</code></pre>` across lines. Everything else is the author's:
+    // `\s+$` ate trailing spaces that are a hard line break in markdown, and
+    // `\n+$` ate a deliberate final blank line. One newline is what the markup
+    // added, so one newline is what comes off.
+    return el ? el.textContent.replace(/\n$/, '') : '';
   }
 
   /* Clipboard, with the pre-permission fallback.

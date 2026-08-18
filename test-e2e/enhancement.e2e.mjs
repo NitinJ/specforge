@@ -132,6 +132,25 @@ test('a refused Clipboard API still copies, through the fallback', needsChrome, 
   });
 });
 
+test('a deliberate final blank line survives', needsChrome, async () => {
+  // Only the ONE newline the markup added comes off. `\n+$` ate a blank line an
+  // author had put there on purpose, which in a config sample or a diff is
+  // content.
+  const html = baseSpec('Blank').replace('</main>',
+    '<section id="p"><h2>9 · P</h2><div class="codeblock" id="cb3">'
+    + '<pre><code>[server]\nport = 4180\n\n</code></pre></div></section></main>');
+  await withSpec({
+    html,
+    permissions: ['clipboard-read', 'clipboard-write'],
+  }, async ({ page }) => {
+    await page.waitForSelector('#cb3 .copy');
+    await page.click('#cb3 .copy');
+    await page.waitForSelector('#cb3 .copy.copied');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()),
+      '[server]\nport = 4180\n');
+  });
+});
+
 test('trailing spaces on the last line are not eaten', needsChrome, async () => {
   // `\s+$` trimmed them; two trailing spaces are a hard line break in markdown
   // and a fixture asserting exact bytes cares about the rest.
