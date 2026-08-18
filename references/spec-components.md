@@ -57,6 +57,42 @@ Three ways, and the choice is not about how the result looks.
 
 **It renders where the review layer runs**: the daemon and a published copy. From `file://` a diagram shows its source as a code block, the same trade the themes and the highlighter already make.
 
+## heading
+
+### `<h2>`
+
+A section: one of the numbered parts the spec is built from. Always titles a section element, and is the level the contents rail treats as the spine.
+
+Must contain: a section element to title.
+
+```html
+<section id="design"><h2>4 · Design</h2><p>The shape of it.</p></section>
+```
+
+### `<h3>`
+
+A subsection: a division of a section big enough that a reader would navigate to it. In the contents rail, nested under its section.
+
+```html
+<h3>4.1 · Where the boundary sits</h3>
+```
+
+### `<h4>`
+
+A sub-subsection: the deepest level the contents rail lists. Reach for it when a subsection has parts worth navigating to; if they are not worth navigating to, they are a label.
+
+```html
+<h4>Counting method</h4>
+```
+
+### `<h5>`
+
+A label over a run of prose, not a division of the document. Deliberately absent from the contents rail: a rail that lists every label stops being an outline. If it belongs in the outline it is an h4.
+
+```html
+<h5>Worked example</h5>
+```
+
 ## Notices
 
 ### `.callout.note` · neutral
@@ -248,7 +284,7 @@ Three or more items compared on two or more attributes. Fewer is a sentence.
 Must contain: a thead.
 
 ```html
-<table><thead><tr><th>Option</th><th>Cost</th></tr></thead><tbody><tr><td>A</td><td>8 KB</td></tr></tbody></table>
+<table><thead><tr><th>Option</th><th>Cost</th></tr></thead><tbody><tr><td>A</td><td>8 KB</td></tr><tr><td>B</td><td>31 KB</td></tr><tr><td>C</td><td>4 KB</td></tr></tbody></table>
 ```
 
 ### `.compare`
@@ -270,7 +306,7 @@ Must contain: a number; a unit; a label.
 Variants: `stats`, `n`, `k`.
 
 ```html
-<div class="stats"><div class="stat"><span class="n">669</span><span class="k">classes in use</span></div></div>
+<div class="stats"><div class="stat"><span class="n">669</span><span class="k">classes in use</span></div><div class="stat"><span class="n">39</span><span class="k">components</span></div><div class="stat"><span class="n">8</span><span class="k">themes</span></div></div>
 ```
 
 ### `<dl>`

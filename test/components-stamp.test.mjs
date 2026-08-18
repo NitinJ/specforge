@@ -346,6 +346,42 @@ test('no stamped template redefines a class the library owns', async () => {
   }
 });
 
+// The class check above cannot see the failure that actually shipped.
+//
+// h2 to h5, `table` and `dl` are components written as ELEMENT selectors, and
+// every shell carried its own copy of them after the stamped block — so the
+// heading family landed in each shell and was immediately overridden by the same
+// file. `definedBy` returns classes, so nothing fired. The library page had the
+// same bug against `h2` and against `table`.
+//
+// This compares whole selectors instead, whitespace removed, which draws the line
+// where it belongs: `.slide table` and `section[data-family] > h2` adjust a
+// component where it sits and are fine, while a bare `table` or `h2` replaces it
+// and is not.
+test('nothing that carries the stamped block redefines a selector inside it', async () => {
+  const { STAMPED_TEMPLATES, buildBody, selectors } = await import('../lib/components-build.mjs');
+  const { buildDoc } = await import('../lib/components-doc.mjs');
+  const { fileURLToPath } = await import('node:url');
+  const root = join(fileURLToPath(new URL('../', import.meta.url)));
+
+  const tight = (s) => s.replace(/\s+/g, '');
+  const stamped = new Set(selectors(buildBody()).map(tight));
+
+  const sources = STAMPED_TEMPLATES.map((name) => ({
+    name, html: readFileSync(join(root, 'templates', name), 'utf8'),
+  }));
+  // The library page is generated rather than a template, and is the one page
+  // where a shadowed component is invisible: it looks like the component itself
+  // is wrong.
+  sources.push({ name: '/components', html: buildDoc() });
+
+  for (const { name, html } of sources) {
+    const own = html.split('specforge:components end')[1].split('</style>')[0];
+    const dup = selectors(own).map(tight).filter((s) => stamped.has(s));
+    assert.deepEqual(dup, [], `${name} redefines stamped selectors`);
+  }
+});
+
 // Both the generated vocabulary and the duplication test read the same parser,
 // so a blind spot in it hides a shell class and lets a redefinition through at
 // once.

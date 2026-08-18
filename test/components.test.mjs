@@ -76,13 +76,15 @@ test('every definition carries what all five consumers need', () => {
   }
 });
 
-// The count is pinned so it moves deliberately. It has moved once: the mermaid
-// spec added `pre[data-lang="mermaid"]` to structure, making 35 across 6.
-test('the inventory is 35 components across 6 families', () => {
-  assert.equal(COMPONENTS.length, 35);
+// The count is pinned so it moves deliberately. It has moved twice: the mermaid
+// spec added `pre[data-lang="mermaid"]` to structure, making 35 across 6; then
+// the heading family added h2/h3/h4/h5, making 39 across 7. Headings were used
+// 4,536 times across the store before anything defined them.
+test('the inventory is 39 components across 7 families', () => {
+  assert.equal(COMPONENTS.length, 39);
   assert.deepEqual(
     FAMILIES.map((f) => [f, COMPONENTS.filter((c) => c.family === f).length]),
-    [['notice', 12], ['inline', 7], ['data', 4], ['code', 2], ['structure', 7], ['spec', 3]],
+    [['heading', 4], ['notice', 12], ['inline', 7], ['data', 4], ['code', 2], ['structure', 7], ['spec', 3]],
   );
 });
 

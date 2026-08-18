@@ -2234,6 +2234,125 @@ test('every spec with sections gets the floating Contents TOC + docs (centered) 
   assert.ok(document.getElementById('sf-tocbtn'), 'the collapse chevron is built');
 });
 
+// Three real heading levels under a section title, plus the label level that is
+// deliberately not navigable.
+const DEPTH_BODY = `
+  <main>
+    <section id="a"><h2>Alpha</h2>
+      <h3 id="a1">Alpha one</h3><p>x</p>
+      <h4 id="a1a">Alpha one deep</h4><p>x</p>
+      <h5 id="a1a1">A label</h5><p>x</p>
+      <h3 id="a2">Alpha two</h3><p>x</p>
+    </section>
+    <section id="b"><h2>Beta</h2><h3 id="b1">Beta one</h3><p>x</p></section>
+    <section id="c"><h2>Gamma</h2><p>x</p></section>
+  </main>
+  <div id="sf-live">● live</div>
+`;
+
+test('the contents rail reaches three levels down, and stops at the label level', async (t) => {
+  // It nested exactly one level below a section title, so an h4 was unreachable
+  // on every spec built from the standard shell: 1,601 of them across the store.
+  // h5 is the label level (the uppercase kicker) and is deliberately left out —
+  // a rail that lists every label stops being an outline.
+  const { window } = await bootReviewLayer(t, { body: DEPTH_BODY, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#a1', '#a1a', '#a2', '#b', '#b1', '#c']);
+});
+
+test('the two nested levels are distinguishable, or the outline reads flat', async (t) => {
+  const { window } = await bootReviewLayer(t, { body: DEPTH_BODY, innerWidth: 1500 });
+  const cls = (sel) => window.document.querySelector(sel).className;
+  assert.notEqual(cls('#sf-toc a[href="#a1"]'), cls('#sf-toc a[href="#a1a"]'),
+    'a subsection and a sub-subsection carry different classes');
+});
+
+test("a section titled below h2 still stops at the label level", async (t) => {
+  // Depth is absolute, not relative to the section's own title: a spec whose
+  // sections are titled h3 would otherwise pull h5 in and list its labels.
+  const body = `
+    <main>
+      <section id="a"><h3>Alpha</h3><h4 id="a1">Sub</h4><h5 id="a1a">A label</h5><p>x</p></section>
+      <section id="b"><h3>Beta</h3><p>x</p></section>
+      <section id="c"><h3>Gamma</h3><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#a1', '#b', '#c']);
+});
+
+test('a heading with no id of its own still gets a rail entry', async (t) => {
+  // Most headings in the store carry no id; the rail mints one so it can link.
+  const body = `
+    <main>
+      <section id="a"><h2>Alpha</h2><h3>Unnamed sub</h3><h4>Unnamed deeper</h4><p>x</p></section>
+      <section id="b"><h2>Beta</h2><p>x</p></section>
+      <section id="c"><h2>Gamma</h2><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const labels = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.textContent,
+  );
+  assert.deepEqual(labels, ['Alpha', 'Unnamed sub', 'Unnamed deeper', 'Beta', 'Gamma']);
+});
+
+test('headings inside a demo are left out of the outline', async (t) => {
+  // A page that DEMONSTRATES headings renders them for real, and the rail cannot
+  // tell a specimen from the document. The library page listed "Counting method"
+  // in its own contents because an h4 example rendered it. `data-sf-no-toc`
+  // marks a subtree as illustration.
+  const body = `
+    <main>
+      <section id="a"><h2>Alpha</h2>
+        <h3 id="real">A real subsection</h3><p>x</p>
+        <div data-sf-no-toc><h3 id="demo">A specimen</h3><h4 id="demo2">Deeper specimen</h4></div>
+      </section>
+      <section id="b"><h2>Beta</h2><p>x</p></section>
+      <section id="c"><h2>Gamma</h2><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#real', '#b', '#c']);
+});
+
+test('a whole section used as a demo is left out of the outline too', async (t) => {
+  // The component library's h2 example IS a section, so it was collected as a
+  // top-level entry and the library listed "4 · Design" among its own chapters.
+  const body = `
+    <main>
+      <section id="a"><h2>Alpha</h2>
+        <div data-sf-no-toc><section id="demo"><h2>4 · Design</h2><p>x</p></section></div>
+      </section>
+      <section id="b"><h2>Beta</h2><p>x</p></section>
+      <section id="c"><h2>Gamma</h2><p>x</p></section>
+      <section id="d" data-sf-no-toc><h2>Marked directly</h2><p>x</p></section>
+    </main>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const hrefs = [].map.call(
+    window.document.querySelectorAll('#sf-toc a'),
+    (a) => a.getAttribute('href'),
+  );
+  assert.deepEqual(hrefs, ['#a', '#b', '#c']);
+});
+
 test("a spec's own left TOC is replaced by the floating one (curated links reused)", async (t) => {
   const { window } = await bootReviewLayer(t, { body: TOC_BODY, innerWidth: 1500 });
   const { document } = window;
@@ -2431,7 +2550,12 @@ test('a native TOC that also lists h3 subsections does not render them twice', a
   assert.equal(hrefs.filter((h) => h === '#d-data').length, 1, 'exactly one link per subsection');
 });
 
-test('a native TOC link deeper than one level below its section is kept', async (t) => {
+test('a curated link two levels below its section is nested, not duplicated', async (t) => {
+  // The regression this exists for. While the rail nested exactly one level,
+  // dropNested kept any curated link deeper than that, because nothing would
+  // recreate it. Once the rail reached h4, childrenOf started nesting the same
+  // heading and the curated link became a second copy of it. The two must agree
+  // on one range, and this is the case that proves they do.
   const body = `
     <div class="layout">
       <nav class="toc">
@@ -2449,8 +2573,38 @@ test('a native TOC link deeper than one level below its section is kept', async 
     <div id="sf-live">● live</div>
   `;
   const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
+  const { document } = window;
+  const hrefs = [].map.call(document.querySelectorAll('#sf-toc a'), (a) => a.getAttribute('href'));
+  assert.equal(hrefs.filter((h) => h === '#d-deep').length, 1, 'reachable exactly once');
+  const tops = [].map.call(document.querySelectorAll('#sf-toc .sf-toc-top'), (a) => a.textContent);
+  assert.deepEqual(tops, ['1 · Intro', '2 · Design', '3 · Plan'], 'and not as a top-level entry');
+  const design = groupByHref(document, '#s-design');
+  assert.ok(design.querySelector('a[href="#d-deep"]'), 'it lives under its section');
+});
+
+test('a curated link below the rail\'s reach keeps its flat entry', async (t) => {
+  // h5 is past TOC_DEEPEST, so childrenOf will never nest it. Dropping the
+  // curated link would remove the heading from the rail entirely rather than
+  // move it, which is the failure the range check has to avoid on the other side.
+  const body = `
+    <div class="layout">
+      <nav class="toc">
+        <a href="#s-intro">1 · Intro</a>
+        <a href="#s-design">2 · Design</a>
+        <a href="#d-label" class="sub">A label</a>
+        <a href="#s-plan">3 · Plan</a>
+      </nav>
+      <main>
+        <section id="s-intro"><h2>Intro</h2><p>x</p></section>
+        <section id="s-design"><h2>Design</h2><h5 id="d-label">A label</h5></section>
+        <section id="s-plan"><h2>Plan</h2><p>x</p></section>
+      </main>
+    </div>
+    <div id="sf-live">● live</div>
+  `;
+  const { window } = await bootReviewLayer(t, { body, innerWidth: 1500 });
   const hrefs = [].map.call(window.document.querySelectorAll('#sf-toc a'), (a) => a.getAttribute('href'));
-  assert.ok(hrefs.includes('#d-deep'), 'an h4 has no h3 group to nest into, so its curated link survives');
+  assert.equal(hrefs.filter((h) => h === '#d-label').length, 1, 'still reachable, exactly once');
 });
 
 test('a native TOC link for an h3 inside an id-less nested section is kept (never dropped nor nested)', async (t) => {
