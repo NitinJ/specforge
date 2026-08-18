@@ -159,10 +159,10 @@ test('the word "open" inside an attribute VALUE is not the open attribute', () =
   }
 });
 
-test('a summary that contains a literal closing tag cannot end its own tag', () => {
-  // `<code>&lt;/summary&gt;</code>` decodes on the way through the exporter, and
-  // a literal `</summary>` inside the raw tag closes it early, spilling the rest
-  // of the summary into the document as loose text.
+test('a summary that names a closing tag cannot end its own tag', () => {
+  // The author wrote it encoded, and it stays encoded because nothing decodes
+  // it: a literal `</summary>` cannot reach the output, since it would have
+  // ended the tag in the source too.
   const body = '<details class="disclosure">'
     + '<summary>Why <code>&lt;/summary&gt;</code> is awkward</summary><p>x</p></details>';
   const { md } = roundTrip(spec(body));
@@ -171,31 +171,27 @@ test('a summary that contains a literal closing tag cannot end its own tag', () 
   assert.ok(block.includes('&lt;/summary&gt;'), 'and the text is still readable');
 });
 
-test('a tag named in a summary reaches the reader as text', () => {
-  // `<details>` opens a markdown HTML block, and markdown is not parsed inside
-  // one — so a code span in the summary stays literal backticks and a bare
-  // `<div>` is a tag the renderer acts on or drops. Emitting the entity is the
-  // only way to put the characters in front of a reader, and raw HTML renders
-  // `&lt;div&gt;` as `<div>`.
+test('a summary keeps its own markup, and shows no markdown delimiters', () => {
+  // A raw HTML block renders HTML, so the author's markup is already right:
+  // `<code>` renders as code and `&lt;div&gt;` as the text `<div>`. Converting
+  // to markdown first put literal backticks on the page.
   const body = '<details class="disclosure">'
     + '<summary>What <code>&lt;div&gt;</code> costs</summary><p>x</p></details>';
   const { md } = roundTrip(spec(body));
   const line = md.slice(md.indexOf('<summary>'), md.indexOf('</summary>'));
-  assert.ok(line.includes('&lt;div&gt;'), `not escaped for display: ${line}`);
-  assert.ok(!/<div>/.test(line), 'and no live tag was left in the raw block');
-  assert.ok(!line.includes('\\&lt;'), `a markdown escape leaked into the raw block: ${line}`);
+  assert.ok(line.includes('<code>'), `the markup was converted away: ${line}`);
+  assert.ok(line.includes('&lt;div&gt;'), 'and the named tag is still encoded for display');
+  assert.ok(!line.includes('`'), `a markdown delimiter reached the reader: ${line}`);
+  assert.ok(!line.includes('\\'), `a markdown escape reached the reader: ${line}`);
 });
 
-test('a tag named in prose, outside a code span, is treated the same way', () => {
-  // `inline()` markdown-escapes a tag-shaped `<` so GFM will not read it as raw
-  // HTML. That is right everywhere except inside an HTML block, where no
-  // backslash escape means anything and the reader simply sees the backslash.
+test('emphasis in a summary stays HTML rather than becoming asterisks', () => {
   const body = '<details class="disclosure">'
-    + '<summary>When &lt;section&gt; is wrong</summary><p>x</p></details>';
+    + '<summary>Why <strong>this</strong> matters</summary><p>x</p></details>';
   const { md } = roundTrip(spec(body));
   const line = md.slice(md.indexOf('<summary>'), md.indexOf('</summary>'));
-  assert.ok(line.includes('&lt;section&gt;'), `not escaped for display: ${line}`);
-  assert.ok(!line.includes('\\'), `a backslash reached the reader: ${line}`);
+  assert.ok(line.includes('<strong>'), `converted to markdown: ${line}`);
+  assert.ok(!line.includes('**'), 'no literal asterisks on the page');
 });
 
 test('an actually-open disclosure keeps its open attribute, however it is spelled', () => {
