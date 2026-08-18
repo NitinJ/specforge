@@ -213,17 +213,17 @@ test('No project is selectable in its own right', () => {
   assert.match(html, /id="htitle">No project</);
 });
 
-test('templates stay outside every project group and render once', async () => {
+test('templates appear in no project group, being off this page entirely', async () => {
+  // The strip moved to /settings (P7). What still has to hold here is that a
+  // template never turns up inside somebody's project.
   const { ensureTemplates } = await import('../lib/store-templates.mjs');
   ensureTemplates();
   writeGlobalPrefs({ projects: ['figur'] });
   seedProjects({ figur: { UI: 1 } });
   const html = renderIndex();
 
-  assert.equal(html.match(/<section class="tpls">/g).length, 1);
-  // The strip sits after the project groups, never inside one.
+  assert.equal(html.match(/<section class="tpls">/g), null, 'no strip on the home page');
   for (const [, colls] of groupTree(html)) assert.ok(!colls.includes('Templates'));
-  assert.ok(html.indexOf('<section class="tpls">') > html.lastIndexOf('<section class="pgrp'));
 });
 
 test('the project rail offers a way to make a new one', () => {

@@ -37,6 +37,9 @@ import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
 import { renderSettings } from './settings-page.mjs';
 import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
+import {
+  handleTemplateBlocksGet, handleTemplateBlocksPut, handleTemplateBlocksReset,
+} from '../lib/template-blocks-api.mjs';
 import { readDoc, DOC_ID } from '../lib/components-doc.mjs';
 import { injectReviewLayer } from './inject.mjs';
 import { serveStatic } from './static.mjs';
@@ -298,6 +301,28 @@ export function createDaemon({ publications: pubs = publications } = {}) {
           }
         })
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+
+    // Per-type prompts and rules, which live in the template specs rather than
+    // in prompts.json: the pane edits the blocks that were already there.
+    const tb = path.match(/^\/api\/template\/([\w-]+)\/blocks$/);
+    if (tb) {
+      const type = tb[1];
+      const answer = (fn, ...args) => {
+        try {
+          return sendJson(res, 200, fn(...args));
+        } catch (e) {
+          return sendJson(res, 400, { error: e.message });
+        }
+      };
+      if (method === 'GET') return answer(handleTemplateBlocksGet, type);
+      if (method === 'PUT') {
+        return readJsonBody(req)
+          .then((b) => answer(handleTemplateBlocksPut, type, b))
+          .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+      }
+      if (method === 'POST') return answer(handleTemplateBlocksReset, type);
+      return sendJson(res, 405, { error: 'method not allowed' });
     }
 
     // --- Comments API (store-keyed) ---

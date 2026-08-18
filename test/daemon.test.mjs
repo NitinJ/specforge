@@ -111,7 +111,7 @@ test('GET /spec/<unknown> returns 404', async (t) => {
   });
 });
 
-test('ensureServer seeds the template specs and the index shows them as templates', async (t) => {
+test('ensureServer seeds the template specs, and settings lists them', async (t) => {
   const first = await ensureServer({ port: 0 });
   t.after(() => new Promise((r) => first.server.close(r)));
 
@@ -119,9 +119,14 @@ test('ensureServer seeds the template specs and the index shows them as template
   const { readMeta } = await import('../lib/meta.mjs');
   assert.ok(readMeta(templateId('design')), 'daemon start seeds the templates');
 
-  const body = await (await fetch(first.url)).text();
-  assert.match(body, new RegExp(`/spec/${templateId('design')}`), 'templates are listed on the index');
-  assert.match(body, /badge tpl/, 'template rows carry the template badge');
+  // They are listed on /settings rather than the index: they are configuration,
+  // and at the foot of the home page they sat below every spec (P7).
+  const home = await (await fetch(first.url)).text();
+  assert.doesNotMatch(home, new RegExp(`/spec/${templateId('design')}`), 'not on the index');
+
+  const settings = await (await fetch(`${first.url}settings`)).text();
+  assert.match(settings, new RegExp(`/spec/${templateId('design')}`), 'listed on settings');
+  assert.match(settings, /class="tcard"/, 'as cards that open the template');
 });
 
 test('the daemon also answers on IPv6 loopback — localhost from a Windows browser', async (t) => {

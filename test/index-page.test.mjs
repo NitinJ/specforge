@@ -348,30 +348,20 @@ test('"/" focuses the search input', (t) => {
   assert.equal(document.activeElement, document.getElementById('search'), 'search focused via /');
 });
 
-test('template specs render as a bottom strip, excluded from rows and filters', async (t) => {
+test('templates are not on the home page at all, and never were rows', async (t) => {
+  // They moved to /settings (spec 094abd0b9d, P7): at the foot of this page they
+  // sat below every spec, which is where a thing is hardest to find. The strip
+  // and its show-only-when-unfiltered rule went with them; what stays true here
+  // is that a template is not a row and does not count.
   const { ensureTemplates, templateId } = await import('../lib/store-templates.mjs');
   createSpec({ title: 'Working spec', html: '<h1>W</h1>' });
   ensureTemplates();
   const { window } = loadIndex(t);
   const { document } = window;
-  // One card per spec type, badge included. Counted off SPEC_TYPES rather than a
-  // literal, so adding a type (deck) does not fail a test about the strip.
-  const { SPEC_TYPES } = await import('../lib/meta.mjs');
-  const n = SPEC_TYPES.length;
-  assert.equal(document.querySelectorAll('.tcard').length, n, `${n} template cards`);
-  assert.ok(document.querySelector(`.tcard[data-id="${templateId('design')}"]`), 'design template card');
-  assert.equal(document.querySelectorAll('.tcard .badge.tpl').length, n, 'template badge on each card');
-  // templates are not filterable rows
+  assert.equal(document.querySelectorAll('.tcard').length, 0, 'no template cards here');
+  assert.equal(document.querySelector('.tpls'), null, 'and no strip to hide');
   assert.equal(document.querySelectorAll(`.row[data-id="${templateId('design')}"]`).length, 0, 'no template row');
   assert.match(document.getElementById('count').textContent, /1 spec/, 'count excludes templates');
-  // and they step aside under a filter rather than posing as results
-  const search = document.getElementById('search');
-  search.value = 'nothing matches this';
-  search.dispatchEvent(new window.Event('input'));
-  assert.equal(document.querySelector('.tpls').style.display, 'none', 'strip hidden while filtering');
-  search.value = '';
-  search.dispatchEvent(new window.Event('input'));
-  assert.equal(document.querySelector('.tpls').style.display, '', 'strip back when the filter clears');
 });
 
 // ---- move to a collection (the picker) ----

@@ -170,17 +170,25 @@ test('journey: the header chip opens the home page on that project', async () =>
   assert.equal(readGlobalPrefs().project, 'figur', 'the GET itself stores nothing');
 });
 
-test('journey: templates stay reachable from inside every project', async () => {
-  const { ensureTemplates } = await import('../lib/store-templates.mjs');
+test('journey: templates belong to no project, and are reached from settings', async () => {
+  // They used to sit at the foot of the home page, reachable from inside every
+  // project because they belong to none. They now sit on /settings, which is
+  // reachable from every project for the same reason (spec 094abd0b9d, P7).
+  const { ensureTemplates, templateId } = await import('../lib/store-templates.mjs');
+  const { renderSettings } = await import('../server/settings-page.mjs');
   ensureTemplates();
   await putPrefs({ projects: ['figur'], project: 'figur' });
   seedProjects({ figur: { UI: 1 } });
 
-  const html = renderIndex();
-  assert.equal((html.match(/<section class="tpls">/g) || []).length, 1);
-  assert.equal(html.indexOf('<section class="tpls">') > html.lastIndexOf('<section class="pgrp'), true);
-  // And a template cannot be filed into one.
-  const { templateId } = await import('../lib/store-templates.mjs');
+  const home = renderIndex();
+  assert.equal((home.match(/<section class="tpls">/g) || []).length, 0, 'gone from the home page');
+  assert.match(home, /id="cfg"[^>]*href="\/settings"/, 'and reachable from its rail');
+
+  const settings = renderSettings();
+  assert.equal((settings.match(/<section class="tpls"/g) || []).length, 1, 'one strip, on settings');
+  assert.match(settings, new RegExp(`href="/spec/${templateId('design')}"`), 'cards open the template');
+
+  // And a template still cannot be filed into a project.
   assert.equal((await organize(templateId('design'), { project: 'figur' })).status, 403);
   assert.equal(readMeta(templateId('design')).project ?? null, null);
 });

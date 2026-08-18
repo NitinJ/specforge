@@ -175,15 +175,6 @@ function rowHtml(m, sig) {
 </li>`;
 }
 
-/** One protected template card (bottom strip). */
-function tplCard(m) {
-  const id = esc(m.id);
-  return `<a class="tcard" href="/spec/${id}" data-id="${id}">
-  <span class="tname">${esc(m.title || id)}</span>
-  <span class="trow"><span class="badge t">${esc(m.type || LEGACY_TYPE)}</span><span class="badge tpl">template</span></span>
-</a>`;
-}
-
 /**
  * One collection in the rail: the filter button, plus the actions menu.
  *
@@ -261,7 +252,8 @@ export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   const subs = readSubscriptions();
   const theme = prefs.theme === 'dark' ? 'dark' : 'light';
   const all = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
-  const tpls = all.filter((m) => m.template);
+  // Templates are excluded from the list; they are configuration and live on
+  // /settings now (spec 094abd0b9d, P7).
   const specs = all.filter((m) => !m.template);
   const n = specs.length;
   const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, shareInfo, m)]));
@@ -350,10 +342,10 @@ ${inner}
 </section>`;
   }).join('\n');
 
-  const strip = tpls.length ? `<section class="tpls">
-  <h2>Templates <span class="gcount">${tpls.length}</span></h2>
-  <div class="tstrip">${tpls.map(tplCard).join('\n')}</div>
-</section>` : '';
+  // The templates strip moved to /settings (spec 094abd0b9d, P7): at the foot of
+  // this page it sat below every spec, which is where a thing is hardest to
+  // find, and it is configuration rather than work in progress.
+  const strip = '';
 
   return `<!DOCTYPE html><html lang="en" data-theme="${theme}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>SpecForge</title>
@@ -1390,7 +1382,7 @@ ${strip}
   var search=document.getElementById('search'), count=document.getElementById('count'), nohits=document.getElementById('nohits');
   var ftype=document.getElementById('ftype'), fsort=document.getElementById('fsort'), htitle=document.getElementById('htitle');
   var rows=[].slice.call(document.querySelectorAll('.row[data-id]')), total=rows.length;
-  var grps=[].slice.call(document.querySelectorAll('.grp')), tplstrip=document.querySelector('.tpls');
+  var grps=[].slice.call(document.querySelectorAll('.grp'));
   var chips=[].slice.call(document.querySelectorAll('.fchip'));
   var navs=[].slice.call(document.querySelectorAll('.nav[data-view]'));
   var cnavs=[].slice.call(document.querySelectorAll('.cnav'));
@@ -1478,10 +1470,6 @@ ${strip}
     var filtered=!!q||fstatus!=='all'||!!ty||fview!=='all'||fcoll!==null||fproj!==null;
     if(count) count.textContent=filtered?(shown+' of '+total):(total+' spec'+(total===1?'':'s'));
     if(nohits) nohits.style.display=shown?'none':'block';
-    // Templates are not rows and never match a filter; showing them under one
-    // reads as "these are your results". They belong to no project, so a project
-    // selection alone still shows them: they are reachable from everywhere.
-    if(tplstrip) tplstrip.style.display=(filtered&&!onlyProject())?'none':'';
     // Inside a project the page header names it, so the project headings in the
     // body would be repeating it back.
     document.body.classList.toggle('inproj',fproj!==null);
@@ -1611,11 +1599,6 @@ ${strip}
     });
   }
 
-  /** True when a project is the only thing narrowing the page. */
-  function onlyProject(){
-    var q=(search&&search.value.trim())||'';
-    return fproj!==null&&!q&&fstatus==='all'&&!(ftype&&ftype.value)&&fview==='all'&&fcoll===null;
-  }
   // Drop a deleted row from the in-memory set and refresh counts/groups.
   function removeRow(id){
     rows=rows.filter(function(r){return r.getAttribute('data-id')!==id;});
