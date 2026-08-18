@@ -21,7 +21,9 @@ import { tmpdir } from 'node:os';
 import { createDaemon, renderIndex } from '../server/daemon.mjs';
 import { specUrl } from '../lib/daemon-client.mjs';
 import { isReservedId, RESERVED_IDS, reservedRoute } from '../lib/store-paths.mjs';
-import { COMPONENTS, LAYERS, componentsIn, layerOf } from '../components/index.mjs';
+import {
+  COMPONENTS, LAYERS, NEEDS, componentsIn, layerOf, needsOf,
+} from '../components/index.mjs';
 import { buildBody } from '../lib/components-build.mjs';
 import {
   buildDoc, docPath, writeDoc, DOC_ID, INTERACTIVE_DOC_ID, docIdFor,
@@ -57,6 +59,31 @@ test('a component that declares no layer is static', () => {
   // once every real component has been given an explicit layer.
   assert.equal(layerOf({ name: 'x', family: 'data' }), 'static');
   assert.equal(layerOf({ name: 'x', family: 'data', layer: 'interactive' }), 'interactive');
+});
+
+test('a misspelled layer or need is refused, not defaulted', () => {
+  // The default is for a component that says NOTHING. A component that says
+  // `interactve` has made a claim, and reading it as `static` would file it in
+  // the wrong document, leave it out of the collection it belongs to, and report
+  // nothing at all. Same for `needs`: read as `none`, a misspelled `script`
+  // leaves the behaviour unloaded on every page that uses the component.
+  assert.throws(
+    () => layerOf({ name: 'x', family: 'data', layer: 'interactve' }),
+    /unknown layer "interactve"/,
+  );
+  assert.throws(
+    () => needsOf({ name: 'x', family: 'data', needs: 'scripts' }),
+    /unknown needs "scripts"/,
+  );
+  // And the error names the component, because the build reports it with no
+  // other context about where it came from.
+  assert.throws(() => layerOf({ name: 'sortable', layer: 'nope' }), /component sortable/);
+});
+
+test('the declared vocabularies are the ones the code checks against', () => {
+  assert.deepEqual(NEEDS, ['none', 'script']);
+  for (const l of LAYERS) assert.equal(layerOf({ name: 'x', layer: l }), l);
+  for (const n of NEEDS) assert.equal(needsOf({ name: 'x', needs: n }), n);
 });
 
 test('every component resolves to a declared layer', () => {

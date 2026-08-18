@@ -47,9 +47,25 @@ export const FAMILIES = ['heading', 'notice', 'inline', 'data', 'code', 'structu
  */
 export const LAYERS = ['static', 'interactive'];
 
-/** A component's layer. Undeclared is `static`, so the 39 that predate this field keep working. */
+/** What a component may declare it needs at runtime beyond its stamped CSS. */
+export const NEEDS = ['none', 'script'];
+
+/**
+ * A component's layer. Undeclared is `static`, so the 39 that predate this field
+ * keep working.
+ *
+ * An unrecognised value throws rather than falling back. The default exists for
+ * a component that says nothing; a component that says `interactve` has made a
+ * claim, and quietly reading it as `static` would file it in the wrong document,
+ * leave it out of the collection it belongs to, and report nothing. Thrown at
+ * module load, so the typo fails the build rather than shipping.
+ */
 export function layerOf(c) {
-  return c.layer === 'interactive' ? 'interactive' : 'static';
+  if (c.layer === undefined || c.layer === null) return 'static';
+  if (!LAYERS.includes(c.layer)) {
+    throw new Error(`component ${c.name}: unknown layer ${JSON.stringify(c.layer)}, expected one of ${LAYERS.join(', ')}`);
+  }
+  return c.layer;
 }
 
 /** Every component in one layer, in definition order. */
@@ -64,9 +80,17 @@ export function componentsIn(layer) {
  * element that is already interactive (`<details>`). `script` is what makes the
  * review layer fetch /public/interactive.js, and it is read per document rather
  * than per component so a spec using only disclosures loads nothing.
+ *
+ * Refuses an unrecognised value for the same reason `layerOf` does: read as
+ * `none`, a misspelled `script` would leave the component's behaviour unloaded
+ * on every page that uses it, with no error anywhere.
  */
 export function needsOf(c) {
-  return c.needs === 'script' ? 'script' : 'none';
+  if (c.needs === undefined || c.needs === null) return 'none';
+  if (!NEEDS.includes(c.needs)) {
+    throw new Error(`component ${c.name}: unknown needs ${JSON.stringify(c.needs)}, expected one of ${NEEDS.join(', ')}`);
+  }
+  return c.needs;
 }
 
 /**
