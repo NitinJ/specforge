@@ -362,35 +362,51 @@
       // "back to what the author wrote" exact.
       var original = Array.prototype.slice.call(body.rows);
 
-      Array.prototype.forEach.call(heads, function (th, col) {
-        th.tabIndex = 0;
-        th.setAttribute('role', 'button');
-        var state = 0; // 0 authored, 1 ascending, 2 descending
+      // ONE cycle for the table, not one per column. Held per column, clicking
+      // A then B then A resumed A's old position and jumped straight to
+      // descending, so returning to a column you had already sorted skipped
+      // ascending entirely.
+      var activeCol = -1;
+      var state = 0; // 0 authored, 1 ascending, 2 descending
 
-        function apply() {
-          Array.prototype.forEach.call(heads, function (o) {
-            if (o !== th) o.removeAttribute('aria-sort');
-          });
-          if (state === 0) {
-            th.removeAttribute('aria-sort');
-            original.forEach(function (r) { body.appendChild(r); });
-            return;
+      function apply(col) {
+        Array.prototype.forEach.call(heads, function (o, i) {
+          if (i === col && state !== 0) {
+            o.setAttribute('aria-sort', state === 1 ? 'ascending' : 'descending');
+          } else {
+            o.removeAttribute('aria-sort');
           }
-          th.setAttribute('aria-sort', state === 1 ? 'ascending' : 'descending');
-          var rows = Array.prototype.slice.call(body.rows);
-          rows.sort(function (x, y) {
-            var d = compare(cellValue(x.cells[col]), cellValue(y.cells[col]));
-            return state === 1 ? d : -d;
-          });
-          rows.forEach(function (r) { body.appendChild(r); });
+        });
+        if (state === 0) {
+          original.forEach(function (r) { body.appendChild(r); });
+          return;
         }
+        var rows = Array.prototype.slice.call(body.rows);
+        rows.sort(function (x, y) {
+          var d = compare(cellValue(x.cells[col]), cellValue(y.cells[col]));
+          return state === 1 ? d : -d;
+        });
+        rows.forEach(function (r) { body.appendChild(r); });
+      }
 
-        function activate() { state = (state + 1) % 3; apply(); }
-        th.addEventListener('click', activate);
-        th.addEventListener('keydown', function (e) {
-          if (e.key !== 'Enter' && e.key !== ' ') return;
-          e.preventDefault();
-          activate();
+      Array.prototype.forEach.call(heads, function (th, col) {
+        // A real <button> INSIDE the th, which is what the ARIA authoring
+        // practices' sortable-table example does. Putting role="button" on the
+        // th itself overrides its native `columnheader` role, and a cell that is
+        // no longer a column header loses its association with the cells below
+        // it and makes aria-sort meaningless — the attribute is defined on a
+        // header, not on a button. The button also brings Enter and Space and
+        // the tab stop for free, which is three fewer things to implement.
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sf-sort';
+        while (th.firstChild) btn.appendChild(th.firstChild);
+        th.appendChild(btn);
+
+        btn.addEventListener('click', function () {
+          if (activeCol !== col) { activeCol = col; state = 1; } else { state = (state + 1) % 3; }
+          if (state === 0) activeCol = -1;
+          apply(col);
         });
       });
     });

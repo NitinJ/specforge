@@ -54,16 +54,23 @@ tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--ink) 3.5%,transpa
     // sorting reorders rows, it never removes them. The cursor and the marker
     // are the only things that change before the script runs, and both are
     // affordances rather than content.
-    css: `table.sortable th{cursor:pointer;user-select:none;white-space:nowrap}
-table.sortable th::after{content:"";display:inline-block;width:0;height:0;margin-left:7px;
-  vertical-align:middle;opacity:.35;
+    // The control is a real <button> the script puts INSIDE the th, never a role
+    // on the th itself: a cell that stops being a `columnheader` loses its
+    // association with the column and makes `aria-sort` meaningless. The th
+    // keeps the sort state, because that is where the attribute belongs; the
+    // button is only what a reader presses.
+    css: `table.sortable th{white-space:nowrap;padding:0}
+table.sortable th .sf-sort{appearance:none;background:none;border:none;width:100%;
+  font:inherit;color:inherit;text-align:inherit;cursor:pointer;user-select:none;
+  padding:9px 12px;display:flex;align-items:center;gap:7px}
+table.sortable th .sf-sort::after{content:"";flex:none;width:0;height:0;opacity:.35;
   border-left:4px solid transparent;border-right:4px solid transparent;
   border-top:5px solid currentColor}
-table.sortable th[aria-sort="ascending"]::after{opacity:1;
+table.sortable th[aria-sort="ascending"] .sf-sort::after{opacity:1;
   border-top:none;border-bottom:5px solid currentColor}
-table.sortable th[aria-sort="descending"]::after{opacity:1}
-table.sortable th:hover{color:var(--accent)}
-table.sortable th:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}`,
+table.sortable th[aria-sort="descending"] .sf-sort::after{opacity:1}
+table.sortable th .sf-sort:hover{color:var(--accent)}
+table.sortable th .sf-sort:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}`,
     example: `<table class="sortable">
   <thead><tr><th>Component</th><th>Uses</th></tr></thead>
   <tbody>
