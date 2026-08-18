@@ -182,6 +182,32 @@ test('an authored id is kept, and a duplicated one is not', needsChrome, async (
   });
 });
 
+test('an id full of CSS punctuation neither throws nor is misread', needsChrome, async () => {
+  // The uniqueness check used to build a `[id="…"]` selector. An id may contain
+  // almost anything, and a selector built from one with a backslash or a bracket
+  // in it either matches the wrong element or throws — and a throw would abort
+  // initTabs part-way, leaving every later group unbuilt.
+  const odd = baseSpec('Odd').replace('</main>',
+    '<section id="p"><h2>9 · P</h2>'
+    + '<div class="tabs" id="t5">'
+    + '<div class="tab" id="a[1]:x" data-label="A"><p>alpha</p></div>'
+    + '<div class="tab" id="b\\c" data-label="B"><p>beta</p></div>'
+    + '</div>'
+    + '<div class="tabs" id="t6">'
+    + '<div class="tab" data-label="C"><p>gamma</p></div>'
+    + '<div class="tab" data-label="D"><p>delta</p></div>'
+    + '</div></section></main>');
+  await withSpec({ html: odd }, async ({ page }) => {
+    await page.waitForSelector('#t6 .sf-tablist');
+    const seen = await page.evaluate(() => ({
+      first: [...document.querySelectorAll('#t5 > .tab')].map((p) => p.id),
+      laterGroupBuilt: !!document.querySelector('#t6 .sf-tablist'),
+    }));
+    assert.deepEqual(seen.first, ['a[1]:x', 'b\\c'], 'the odd ids are unique, so they stand');
+    assert.equal(seen.laterGroupBuilt, true, 'and the group after them was still built');
+  });
+});
+
 test('switching does not scroll the page', needsChrome, async () => {
   // history.replaceState rather than assigning location.hash, which would jump
   // the panel to the top of the viewport and yank the page out from under a

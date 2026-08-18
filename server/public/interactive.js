@@ -152,6 +152,23 @@
   }
 
   /**
+   * How many elements in the document carry this id.
+   *
+   * Counted by comparing `.id`, never by building a `[id="…"]` selector. An id
+   * is allowed almost any character, and a selector built from one with a
+   * backslash, a bracket or a newline in it either matches the wrong thing or
+   * throws — and a throw here would abort initTabs part-way and leave every
+   * later group on the page unbuilt, which is the failure this file already had
+   * once from decodeURIComponent.
+   */
+  function idCount(id) {
+    var all = document.querySelectorAll('[id]');
+    var n = 0;
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) n += 1;
+    return n;
+  }
+
+  /**
    * A stable, document-unique id for a panel, so the fragment survives edits.
    *
    * Uniqueness is checked against the document rather than assumed from the
@@ -166,9 +183,7 @@
     // identity at all: getElementById answers with the first one, so the
     // fragment restores the wrong panel and every aria-controls pointing here
     // resolves somewhere else. A duplicate is replaced rather than trusted.
-    if (panel.id && document.querySelectorAll('[id="' + panel.id.replace(/"/g, '\\"') + '"]').length === 1) {
-      return panel.id;
-    }
+    if (panel.id && idCount(panel.id) === 1) return panel.id;
     var slug = labelOf(panel, pi).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     var base = TAB_PREFIX + (gi + 1) + '-' + (slug || pi + 1);
     var id = base;
