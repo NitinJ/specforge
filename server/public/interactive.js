@@ -363,13 +363,38 @@
   var INTERACTIVE_IN_HEADER = 'a[href],button,input,select,textarea,details,summary,label,'
     + 'audio,video,iframe,object,embed,area,[tabindex],[contenteditable]';
 
+  /**
+   * Whether a column index means the same thing in the header and in every row.
+   *
+   * `row.cells[col]` counts cells, not grid columns. One `colspan` or `rowspan`
+   * anywhere shifts every cell after it into a different column than the header
+   * it is being compared against, and the table reorders — plausibly, with no
+   * visible sign — on the wrong values. A second header row does the same, since
+   * the header cells of both rows arrive as one flat list, and a second tbody
+   * leaves its rows behind while the first is reordered around them.
+   *
+   * None of these can be sorted correctly on a column index, so the table keeps
+   * the order the author wrote and gains no controls. A table a reader cannot
+   * sort is a smaller loss than one that sorts and is wrong.
+   */
+  function rectangular(table) {
+    if (table.tHead && table.tHead.rows.length > 1) return false;
+    if (table.tBodies.length > 1) return false;
+    var cells = table.querySelectorAll('th,td');
+    for (var i = 0; i < cells.length; i += 1) {
+      if (cells[i].colSpan > 1 || cells[i].rowSpan > 1) return false;
+    }
+    return true;
+  }
+
   function initSortable() {
     Array.prototype.forEach.call(document.querySelectorAll('table.sortable'), function (table) {
       if (table.hasAttribute('data-sf-sortable')) return;
-      table.setAttribute('data-sf-sortable', '');
       var body = table.querySelector('tbody');
       var heads = table.querySelectorAll('thead th');
       if (!body || !heads.length) return;
+      if (!rectangular(table)) return;
+      table.setAttribute('data-sf-sortable', '');
 
       // The authored order, captured before anything moves. Restoring from a
       // stored copy rather than by sorting on an implied column is what makes

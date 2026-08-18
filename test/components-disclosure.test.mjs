@@ -194,6 +194,48 @@ test('emphasis in a summary stays HTML rather than becoming asterisks', () => {
   assert.ok(!line.includes('**'), 'no literal asterisks on the page');
 });
 
+test('a summary cannot carry a script into the export', () => {
+  // The summary is the one place author markup reaches a reader's renderer
+  // verbatim, because it is emitted as raw HTML rather than converted. A spec
+  // is imported from untrusted markdown and then published to people who are
+  // not its author, so anything executable in there runs for them.
+  const attacks = [
+    '<script>alert(1)</script>',
+    '<img src=x onerror="alert(1)">',
+    '<a href="javascript:alert(1)">click</a>',
+    '<iframe src="//evil"></iframe>',
+    '<style>body{display:none}</style>',
+    '<svg><animate onbegin="alert(1)"/></svg>',
+  ];
+  // Asserted on the tags, not on the payload's text. The payload does still
+  // appear, escaped, exactly as `&lt;div&gt;` already did: an author who writes
+  // markup the summary will not carry gets shown it rather than losing the line.
+  const tags = (s) => [...s.matchAll(/<[^>]*>/g)].map((m) => m[0]);
+  for (const payload of attacks) {
+    const { md } = roundTrip(spec(
+      `<details class="disclosure"><summary>Q ${payload}</summary><p>x</p></details>`,
+    ));
+    const line = md.slice(md.indexOf('<summary>'), md.indexOf('</summary>'));
+    assert.deepEqual(tags(line), ['<summary>'], `markup survived: ${line}`);
+    assert.ok(line.includes('&lt;'), 'and it is shown as text instead');
+  }
+});
+
+test('the formatting a summary is allowed keeps its tags and loses its attributes', () => {
+  // The allow-list keeps no attributes at all, which is what makes it hold: an
+  // event handler needs an attribute, so there is nothing to enumerate and miss.
+  const body = '<details class="disclosure">'
+    + '<summary>Press <kbd class="key" onclick="alert(1)">Esc</kbd> to '
+    + '<em data-x="y">stop</em></summary><p>x</p></details>';
+  const { md } = roundTrip(spec(body));
+  const line = md.slice(md.indexOf('<summary>'), md.indexOf('</summary>'));
+  assert.ok(line.includes('<kbd>'), `formatting was dropped: ${line}`);
+  assert.ok(line.includes('<em>'));
+  assert.ok(!line.includes('onclick'), `a handler survived: ${line}`);
+  assert.ok(!line.includes('class='), `an attribute survived: ${line}`);
+  assert.ok(line.includes('Esc') && line.includes('stop'), 'and the words are intact');
+});
+
 test('an actually-open disclosure keeps its open attribute, however it is spelled', () => {
   // `open`, `open=""` and `open="open"` are all the same boolean attribute.
   // Stripping whole quoted runs to hide the word inside a class list took

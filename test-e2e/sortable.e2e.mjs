@@ -191,6 +191,51 @@ test('a header that already holds a control keeps it, and stays unsorted', needs
   });
 });
 
+// A column index counts cells, not grid columns, so a single span anywhere puts
+// the header and the cells below it out of step. Every shape here would have
+// reordered the rows on a column the reader did not ask for, with nothing on the
+// page to say so.
+const SPANS = {
+  'a spanning cell in the body': '<table class="sortable" id="t">'
+    + '<thead><tr><th>A</th><th>B</th><th>C</th></tr></thead>'
+    + '<tbody><tr><td colspan="2">merged</td><td>9</td></tr>'
+    + '<tr><td>x</td><td>1</td><td>2</td></tr></tbody></table>',
+  'a spanning header cell': '<table class="sortable" id="t">'
+    + '<thead><tr><th colspan="2">Measured</th><th>C</th></tr></thead>'
+    + '<tbody><tr><td>x</td><td>1</td><td>2</td></tr>'
+    + '<tr><td>y</td><td>3</td><td>4</td></tr></tbody></table>',
+  'a rowspan': '<table class="sortable" id="t">'
+    + '<thead><tr><th>A</th><th>B</th></tr></thead>'
+    + '<tbody><tr><td rowspan="2">grouped</td><td>1</td></tr>'
+    + '<tr><td>2</td></tr></tbody></table>',
+  'a two-row header': '<table class="sortable" id="t">'
+    + '<thead><tr><th>A</th><th>B</th></tr><tr><th>n</th><th>KB</th></tr></thead>'
+    + '<tbody><tr><td>x</td><td>1</td></tr><tr><td>y</td><td>2</td></tr></tbody></table>',
+  'a second tbody': '<table class="sortable" id="t">'
+    + '<thead><tr><th>A</th><th>B</th></tr></thead>'
+    + '<tbody><tr><td>x</td><td>1</td></tr></tbody>'
+    + '<tbody><tr><td>y</td><td>2</td></tr></tbody></table>',
+};
+
+for (const [shape, table] of Object.entries(SPANS)) {
+  test(`${shape} leaves the table unsorted rather than sorted wrong`, needsChrome, async () => {
+    const page1 = baseSpec('Spans').replace('</main>',
+      `<section id="p"><h2>9 · P</h2>${table}</section></main>`);
+    await withSpec({ html: page1 }, async ({ page }) => {
+      await page.waitForSelector('#sf-launcher');
+      await page.waitForTimeout(300);
+      const seen = await page.evaluate(() => ({
+        wired: document.querySelector('#t').hasAttribute('data-sf-sortable'),
+        control: !!document.querySelector('#t .sf-sort'),
+        rows: [...document.querySelectorAll('#t tbody tr')].map((r) => r.textContent.trim()),
+      }));
+      assert.equal(seen.wired, false, 'not wired');
+      assert.equal(seen.control, false, 'and offers no control it cannot honour');
+      assert.ok(seen.rows.length, 'the rows are still there');
+    });
+  });
+}
+
 test('an ordinary table is left alone', needsChrome, async () => {
   await withSpec({ html: html('') }, async ({ page }) => {
     await page.waitForSelector('#sf-launcher');
