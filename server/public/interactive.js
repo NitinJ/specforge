@@ -42,12 +42,16 @@
 
   function codeOf(block) {
     var el = block.querySelector('pre code') || block.querySelector('pre');
-    // Exactly ONE trailing newline, which is the artifact of writing
-    // `…code\n</code></pre>` across lines. Everything else is the author's:
-    // `\s+$` ate trailing spaces that are a hard line break in markdown, and
-    // `\n+$` ate a deliberate final blank line. One newline is what the markup
-    // added, so one newline is what comes off.
-    return el ? el.textContent.replace(/\n$/, '') : '';
+    // Verbatim. Nothing is trimmed, because nothing here can tell an artifact of
+    // the markup from the author's own text: a hand-written block usually has a
+    // newline before `</code>` that means nothing, and a block imported from a
+    // fenced markdown block has one that means something, and they are the same
+    // character. Two guesses were tried and both lost real content — `\s+$` took
+    // the two trailing spaces that are a hard line break, `\n+$` took a
+    // deliberate final blank line. The control hands over what the block
+    // contains, which is a rule with no edge cases, and a trailing newline
+    // pasted into a shell simply runs the command.
+    return el ? el.textContent : '';
   }
 
   /* Clipboard, with the pre-permission fallback.
