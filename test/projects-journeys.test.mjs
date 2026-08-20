@@ -184,8 +184,8 @@ test('journey: templates belong to no project, and are reached from settings', a
   assert.equal((home.match(/<section class="tpls">/g) || []).length, 0, 'gone from the home page');
   assert.match(home, /id="cfg"[^>]*href="\/settings"/, 'and reachable from its rail');
 
-  const settings = renderSettings();
-  assert.equal((settings.match(/<section class="tpls"/g) || []).length, 1, 'one strip, on settings');
+  const settings = renderSettings({ tab: 'templates' });
+  assert.equal((settings.match(/class="tstrip"/g) || []).length, 1, 'one strip, on the settings templates tab');
   assert.match(settings, new RegExp(`href="/spec/${templateId('design')}"`), 'cards open the template');
 
   // And a template still cannot be filed into a project.
