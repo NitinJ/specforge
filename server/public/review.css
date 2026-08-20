@@ -1150,9 +1150,17 @@ body.sf-side-open #sf-launcher { right: calc(var(--sf-side-w) + 18px); }
    96px label column plus the widest thing a control shows. That is the theme
    name: "Catppuccin Mocha" beside its thumbnail needs 190px, and a trigger
    reading "Catppuccin…" is the one label in the menu you cannot infer from
-   context. scripts/probe-theme-list-width.mjs measures it. */
+   context. scripts/probe-theme-list-width.mjs measures it.
+
+   336px is what it wants, not what it takes: the width clamps to whatever the
+   window leaves, because a fixed panel anchored to the right edge runs off the
+   LEFT one on a narrow window, and a menu with its controls off-screen has no
+   recovery. `--sf-menu-right` carries the offset so the clamp stays correct
+   when something else (the comments drawer) moves the menu inward. */
 #sf-menu {
-  position: fixed; right: 18px; bottom: 74px; z-index: 48; width: 336px;
+  --sf-menu-right: 18px;
+  position: fixed; right: var(--sf-menu-right); bottom: 74px; z-index: 48;
+  width: min(336px, calc(100vw - var(--sf-menu-right) - 12px));
   background: var(--sf-glass);
   -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
   backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
@@ -1182,7 +1190,15 @@ body.sf-side-open #sf-launcher { right: calc(var(--sf-side-w) + 18px); }
 @media (prefers-reduced-motion: reduce) {
   #sf-menu { transition: opacity var(--sf-dur-fast) linear, visibility 0s linear; transform: none !important; }
 }
-body.sf-side-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
+/* The menu steps clear of the comments drawer only where it still fits beside
+   it at full width: 340px of drawer + 18px + the menu's own 336px + the 12px
+   gutter the clamp reserves is 706px. Under that it stays in its corner and
+   overlays the drawer instead, which is the trade #sf-rail already makes below
+   1100px — overlapping is recoverable, and a menu shoved past the left edge is
+   not. scripts/probe-sf-menu-viewport.mjs walks the boundary. */
+@media (min-width: 706px) {
+  body.sf-side-open #sf-menu { --sf-menu-right: calc(var(--sf-side-w) + 18px); }
+}
 /* asides — modelled as a section of the spec, rendered in a panel beside it.
    The panel is solid rather than glass for the same reason the comments drawer
    is: it is a reading surface you leave open, not a popover. It shares the right
@@ -1236,7 +1252,9 @@ html[data-sf-header] .sf-asides { top: var(--sf-header-h); height: calc(100vh - 
 @media (min-width: 1100px) {
   body.sf-asides-open #sf-rail { right: calc(max(50vw, 480px) + 8px); }
   body.sf-asides-open #sf-top { right: calc(max(50vw, 480px) + 18px); }
-  body.sf-asides-open #sf-menu { right: calc(max(50vw, 480px) + 18px); }
+  /* Through --sf-menu-right, not `right`, so the width clamp above sees the
+     offset the menu actually sits at. */
+  body.sf-asides-open #sf-menu { --sf-menu-right: calc(max(50vw, 480px) + 18px); }
 }
 /* The composer overlays the panel on a narrow window, so it has to sit above it
    rather than behind. */

@@ -2179,6 +2179,10 @@ test('once done, the row opens the Google Doc and offers re-export', async (t) =
 });
 
 // ---------- launcher menu structure (groups · no Contents · inline controls) ----------
+// jsdom does no layout, so the geometry rules below are checked as the CSS they
+// are. The measured counterpart is scripts/probe-theme-list-width.mjs, run
+// against a real browser.
+const REVIEW_CSS = readFileSync(new URL('../server/public/review.css', import.meta.url), 'utf8');
 const menuHeads = (document) =>
   [...document.querySelectorAll('#sf-menu .sf-menu-head')].map((h) => h.textContent);
 
@@ -2223,8 +2227,39 @@ test('Theme, Font and Code font put their control on the label\'s line', async (
   // Width is deliberately not: a range needs travel to be draggable, and what is
   // left beside a label is not enough of it.
   assert.equal(rowByLabel(document, 'Width').classList.contains('sf-menu-inline'), false);
-  const css = readFileSync(new URL('../server/public/review.css', import.meta.url), 'utf8');
-  assert.match(css, /\.sf-menu-row\.sf-menu-inline \{ flex-wrap: nowrap; \}/);
+  assert.match(REVIEW_CSS, /\.sf-menu-row\.sf-menu-inline \{ flex-wrap: nowrap; \}/);
+});
+
+test('a single-theme spec\'s Theme row is not inline', async (t) => {
+  // sf-menu-inline pins a 96px label column so a control can start beside it.
+  // This branch has no control — it has a status ("light · fixed") that wants
+  // the rest of the row, and the label column would crush it. Raised in review
+  // of PR #218.
+  const { window } = await bootReviewLayer(t, { computedBg: () => 'rgb(244, 239, 230)' });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const theme = rowByLabel(document, 'Theme');
+  assert.ok(!theme.querySelector('.sf-theme-picker'), 'no picker, as the fixture is single-theme');
+  assert.equal(theme.classList.contains('sf-menu-inline'), false, 'so no label column either');
+});
+
+test('the menu never renders wider than the window leaves it', () => {
+  // A fixed panel anchored to the right edge runs off the LEFT one when it is
+  // wider than the window, and a menu with its controls off-screen has no
+  // recovery. Two halves, both raised in review of PR #218: the width clamps to
+  // the space at whatever offset the menu sits at, and it only steps clear of
+  // the 340px comments drawer where 336px still fits beside it (706px, the
+  // gutter included).
+  assert.match(REVIEW_CSS, /width: min\(336px, calc\(100vw - var\(--sf-menu-right\) - 12px\)\)/);
+  assert.match(REVIEW_CSS, /@media \(min-width: 706px\) \{\s*\n\s*body\.sf-side-open #sf-menu \{ --sf-menu-right/);
+  // Every rule that moves the menu has to move it through the variable, or the
+  // clamp above measures against an offset the menu is not at. The base rule's
+  // `right: var(--sf-menu-right)` is the one legitimate use.
+  // The lookbehind matters: `--sf-menu-right:` ends in "right:" too.
+  const offsets = [...REVIEW_CSS.matchAll(/#sf-menu[^{}]*\{[^}]*?(?<![-\w])right:\s*([^;}]+)/g)]
+    .map((m) => m[1].trim());
+  assert.deepEqual(offsets, ['var(--sf-menu-right)'],
+    'the offset is set once, on the variable, and every mover writes the variable');
 });
 
 // ---------- launcher footer (detach) ----------

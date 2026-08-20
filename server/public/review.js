@@ -2099,15 +2099,18 @@ function sfRevealDisclosures(el) {
     return row;
   }
   function themeRow() {
-    var row = create('div', { class: 'sf-menu-row sf-menu-ctl sf-menu-inline' });
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
     row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">◐</span><span>Theme</span></span>';
     // A spec that hardcodes one palette can't be re-themed — show it fixed.
+    // Not inline: sf-menu-inline exists to pin a label column beside a control,
+    // and there is no control here. The status takes the rest of the row.
     if (!specSupportsTheme()) {
       var shown = renderedTheme() || currentTheme();
       row.querySelector('.sf-row-main').appendChild(create('span', { class: 'sf-row-val' }, shown + ' · fixed'));
       row.setAttribute('title', 'This spec defines a single theme');
       return row;
     }
+    row.classList.add('sf-menu-inline');
     row.appendChild(themePicker());
     return row;
   }
