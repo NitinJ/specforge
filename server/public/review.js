@@ -1436,7 +1436,6 @@ function sfRevealDisclosures(el) {
 
     els.menu = create('div', { id: 'sf-menu', role: 'menu' });
     document.body.appendChild(els.menu);
-    els.live = document.getElementById('sf-live'); // capture once — survives menu innerHTML resets
 
     document.addEventListener('click', function (e) { // click-outside closes
       if (els.menu.classList.contains('open') && !inMenu(e.target)) closeMenu();
@@ -1988,12 +1987,26 @@ function sfRevealDisclosures(el) {
     els.launcher.setAttribute('aria-expanded', 'false');
   }
 
+  // A titled run of rows. The heading is written only when the group has rows in
+  // it: Export and Share both lose entries on a published copy, and a heading
+  // over nothing reads as a group that failed to load rather than one that does
+  // not apply here.
+  function menuGroup(title, rows) {
+    var kept = rows.filter(Boolean);
+    if (!kept.length) return;
+    els.menu.appendChild(create('div', { class: 'sf-menu-head' }, title));
+    kept.forEach(function (row) { els.menu.appendChild(row); });
+  }
+
   function buildMenuRows() {
     // Every rebuild is a new view, so anything still in flight for the old one
     // is dropped rather than rendered over this.
     menuView += 1;
     els.menu.innerHTML = '';
     var unresolved = unresolvedCount();
+    // Share, Contribute and Download-as-markdown are the daemon's routes. A
+    // published page is served by the gateway, which does not carry them.
+    var loopback = (window.SPECFORGE || {}).transport !== 'poll';
 
     // Comments — toggles the sidebar; carries the unresolved-count badge (mirrors
     // the launcher pill, so the two never disagree).
@@ -2002,73 +2015,47 @@ function sfRevealDisclosures(el) {
       var badge = create('span', { class: 'sf-menu-badge' }, String(unresolved));
       comments.querySelector('.sf-row-main').appendChild(badge);
     }
-    els.menu.appendChild(comments);
+    menuGroup('Review', [comments]);
 
-    // Contents — show/hide the floating TOC. Delegates to the chevron so the two
-    // controls (and the persisted state) never disagree.
-    var tocBtn = document.getElementById('sf-tocbtn');
-    if (tocBtn) {
-      els.menu.appendChild(menuRow('📑', 'Contents', function () { tocBtn.click(); closeMenu(); }));
-    }
+    // Everything that changes how the page looks and nothing that changes what
+    // it says. Width is an inline range; the other three are dropdowns.
+    menuGroup('Reading', [widthRow(), themeRow(), fontRow(), monoRow()]);
 
-    // Width — inline range, persisted.
-    els.menu.appendChild(widthRow());
+    menuGroup('Export', [
+      // Export PDF — open the print dialog (pick "Save as PDF"); the review
+      // chrome is hidden by the print stylesheet so the PDF is just the spec.
+      menuRow('⤓', 'Export PDF', function () { closeMenu(); window.print(); }),
+      // Google Docs — relayed through the attached session (it runs the Drive
+      // MCP); the row reflects meta.export and updates live on the poll.
+      exportRow(),
+      // Markdown needs no relay and no state: the daemon renders it per request
+      // and the browser saves what comes back.
+      loopback ? downloadMdRow() : null,
+    ]);
 
-    // Theme — light/dark toggle.
-    els.menu.appendChild(themeRow());
+    // Share publishes this spec on a public URL; Contribute lists it in a
+    // project a teammate shared. Both are the owner's to do: offering a reviewer
+    // a button to re-publish what they are already reading is noise, and they
+    // cannot contribute someone else's spec anywhere.
+    menuGroup('Share', loopback ? [shareRow(), contributeRow()] : []);
 
-    // Font — sans/serif/mono reading font, persisted.
-    els.menu.appendChild(fontRow());
-    els.menu.appendChild(monoRow());
-
-    // Export — open the print dialog (pick "Save as PDF"); the review chrome is
-    // hidden by the print stylesheet so the PDF is just the spec.
-    els.menu.appendChild(menuRow('⤓', 'Export PDF', function () { closeMenu(); window.print(); }));
-
-    // Export to Google Docs — relayed through the attached session (it runs the
-    // Drive MCP); the row reflects meta.export and updates live on the poll.
-    els.menu.appendChild(exportRow());
-
-    // Download as markdown. Unlike the two rows above this needs no relay and no
-    // state: the daemon renders it per request and the browser saves what comes
-    // back. Loopback only — the route lives on the daemon, not on the gateway a
-    // published page is served from, so offering it there would 404.
-    if ((window.SPECFORGE || {}).transport !== 'poll') els.menu.appendChild(downloadMdRow());
-
-    // Share — publish this spec on a public URL. Only offered on the loopback
-    // copy: a published page has no share route behind it, and offering a
-    // reviewer a button to re-publish what they are already reading is noise.
-    if ((window.SPECFORGE || {}).transport !== 'poll') els.menu.appendChild(shareRow());
-
-    // Add to a shared project — list this spec in a project a teammate shared
-    // with you. Loopback only, for the same reason Share is: the routes are the
-    // daemon's, and a reviewer cannot contribute someone else's spec anywhere.
-    if ((window.SPECFORGE || {}).transport !== 'poll') els.menu.appendChild(contributeRow());
-
-    // Footer — one bottom row: the live pill (left), the attached session id
-    // (center), and Detach (right). els.live survives the innerHTML reset above
-    // (#sf-live, the same node re-appended each rebuild).
-    els.menu.appendChild(sessionFoot());
+    var foot = sessionFoot();
+    if (foot) els.menu.appendChild(foot);
   }
 
-  // The bottom row: [● live]  [session id / "Not attached"]  [Detach].
+  // The bottom row: [Detach], or nothing.
   //
-  // The session's NAME stays here — it answers "which window", which is a detail
-  // you go looking for. Whether that window is still listening moved to the
-  // header (renderConn), because that is not a detail: a spec nobody is watching
-  // takes comments all day and delivers none of them.
+  // The live pill and the session name used to sit here beside it. Neither was
+  // something you act on: whether the connection is up is answered by the header
+  // (renderConn) and the disconnected banner, and which window owns the spec is
+  // a fact, not a control. Detaching is the one thing this row is for, and with
+  // nothing attached there is nothing to detach.
   function sessionFoot() {
+    if (!(state.meta && state.meta.attachedSession)) return null;
     var foot = create('div', { class: 'sf-menu-foot' });
-    if (els.live) foot.appendChild(els.live); // the green SSE live pill, left
-    var attached = state.meta && state.meta.attachedSession;
-    var friendly = state.meta && state.meta.sessionLabel;
-    var label = attached ? (friendly || ('Session ' + String(attached).slice(0, 8))) : 'Not attached';
-    foot.appendChild(create('span', { class: 'sf-foot-session', title: label }, label));
-    if (attached) {
-      var btn = create('button', { class: 'sf-detach', type: 'button' }, 'Detach');
-      btn.onclick = function (e) { e.stopPropagation(); detachSpec(); };
-      foot.appendChild(btn);
-    }
+    var btn = create('button', { class: 'sf-detach', type: 'button' }, 'Detach');
+    btn.onclick = function (e) { e.stopPropagation(); detachSpec(); };
+    foot.appendChild(btn);
     return foot;
   }
 
@@ -2112,7 +2099,7 @@ function sfRevealDisclosures(el) {
     return row;
   }
   function themeRow() {
-    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl sf-menu-inline' });
     row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">◐</span><span>Theme</span></span>';
     // A spec that hardcodes one palette can't be re-themed — show it fixed.
     if (!specSupportsTheme()) {
@@ -2236,7 +2223,7 @@ function sfRevealDisclosures(el) {
   // live and persists the pick. "Default" leaves the spec's own font alone. The
   // monospace faces are not here: they are the Code font row below.
   function fontRow() {
-    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl sf-menu-inline' });
     row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">A</span><span>Font</span></span>';
     var sel = create('select', { class: 'sf-font-select', 'aria-label': 'Reading font' });
     sel.appendChild(create('option', { value: 'default' }, 'Default'));
@@ -2255,7 +2242,7 @@ function sfRevealDisclosures(el) {
   // Code font — the monospace face, everywhere the document uses one. Composes
   // with the reading font rather than replacing it.
   function monoRow() {
-    var row = create('div', { class: 'sf-menu-row sf-menu-ctl' });
+    var row = create('div', { class: 'sf-menu-row sf-menu-ctl sf-menu-inline' });
     row.innerHTML = '<span class="sf-row-main"><span class="sf-row-ic">&#123;&#125;</span><span>Code font</span></span>';
     var sel = create('select', { class: 'sf-mono-select', 'aria-label': 'Code font' });
     sel.appendChild(create('option', { value: 'default' }, 'Default'));
