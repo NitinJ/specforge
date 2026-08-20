@@ -3236,10 +3236,17 @@ test('the dialog refuses an empty or reserved name', async (t) => {
   assert.equal(err.hasAttribute('hidden'), false, 'an empty name is refused');
   assert.ok(window.document.getElementById('sf-welcome'), 'and the dialog stays');
 
-  dlg.querySelector('#sf-welcome-name').value = 'agent';
-  dlg.querySelector('.sf-welcome-go').click();
-  assert.match(err.textContent, /reserved/);
-  assert.equal(window.localStorage.getItem('sf-author'), null, 'nothing was stored');
+  // All three of RESERVED_NAMES, checked here so the reader is told before
+  // writing a comment rather than by a 400 after it. `human` joined the set for
+  // the project page's Collaborators line: it is what a nameless write is
+  // recorded under, so a reviewer taking it would be filed as the owner.
+  for (const taken of ['agent', 'claude', 'Human']) {
+    dlg.querySelector('#sf-welcome-name').value = taken;
+    dlg.querySelector('.sf-welcome-go').click();
+    assert.match(err.textContent, /reserved/, `${taken} is refused`);
+    assert.equal(window.localStorage.getItem('sf-author'), null, 'nothing was stored');
+    assert.ok(window.document.getElementById('sf-welcome'), 'and the dialog stays');
+  }
 });
 
 test('the footer counts agent threads and discussion separately', async (t) => {

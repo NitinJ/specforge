@@ -22,7 +22,8 @@ import { join } from 'node:path';
 const home = mkdtempSync(join(tmpdir(), 'sf-collab-'));
 process.env.SPECFORGE_HOME = home;
 
-const { projectCollaborators } = await import('../lib/collaborators.mjs');
+const { projectCollaborators, OWNER_DEFAULT } = await import('../lib/collaborators.mjs');
+const { normalizeAuthor, isReservedName, mentionsAgent } = await import('../lib/mentions.mjs');
 const { specDir } = await import('../lib/store-paths.mjs');
 
 /** Seed a spec's comment store from [author, kind, ...] tuples. */
@@ -96,6 +97,19 @@ test('a comment stored before kind existed is still classified', () => {
   // is what these depend on: author 'claude' was the agent's only name.
   seed('old', [['claude'], ['human'], ['Priya']]);
   assert.deepEqual(projectCollaborators(['old']), [{ name: 'Priya', comments: 1, specs: 1 }]);
+});
+
+test('no reviewer can be recorded under the owner\'s default name', () => {
+  // The exclusion above reads a name, so the name has to mean one thing. It is
+  // reserved on the write path for exactly that reason — without it a reviewer
+  // who typed "human" would be filed as the owner and vanish from this list,
+  // counts and all. Raised in review of PR #219.
+  assert.equal(normalizeAuthor(OWNER_DEFAULT), null, 'the store refuses it');
+  assert.equal(normalizeAuthor('Human'), null, 'in any casing');
+  assert.equal(isReservedName(OWNER_DEFAULT), true);
+  // And it is still an ordinary name to everything that is not a display name:
+  // reserving it must not make the WORD unusable in a comment.
+  assert.equal(mentionsAgent('a human wrote this'), false);
 });
 
 test('one person who typed their name two ways is one person', () => {
