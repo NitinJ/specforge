@@ -11,6 +11,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 // The boot helper and the default fixture live in test/helpers/review-dom.mjs,
 // shared with the context-menu tests rather than copied a fifth time.
 import { SPEC_BODY, bootReviewLayer } from './helpers/review-dom.mjs';
@@ -2177,16 +2178,102 @@ test('once done, the row opens the Google Doc and offers re-export', async (t) =
   assert.ok(posts.some((p) => /\/export$/.test(p.url)), 're-export POSTs /export again');
 });
 
-// ---------- launcher footer (live pill · session id · detach) ----------
-test('the footer shows the attached session id + Detach (posts /detach), alongside the live pill', async (t) => {
+// ---------- launcher menu structure (groups · no Contents · inline controls) ----------
+// jsdom does no layout, so the geometry rules below are checked as the CSS they
+// are. The measured counterpart is scripts/probe-theme-list-width.mjs, run
+// against a real browser.
+const REVIEW_CSS = readFileSync(new URL('../server/public/review.css', import.meta.url), 'utf8');
+const menuHeads = (document) =>
+  [...document.querySelectorAll('#sf-menu .sf-menu-head')].map((h) => h.textContent);
+
+test('the menu is grouped under headings, in reading order', async (t) => {
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  assert.deepEqual(menuHeads(document), ['Review', 'Reading', 'Export', 'Share']);
+});
+
+test('a group with no rows left prints no heading', async (t) => {
+  // A published copy is served by the gateway, which carries none of the share
+  // or contribute routes. A "Share" heading over nothing reads as a group that
+  // failed to load rather than one that does not apply.
+  const { window } = await bootReviewLayer(t, { transport: 'poll' });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  assert.deepEqual(menuHeads(document), ['Review', 'Reading', 'Export']);
+  assert.equal(rowByLabel(document, 'Share'), undefined, 'and no share row under Export');
+});
+
+test('Contents is not a menu entry — the TOC chevron is the one control', async (t) => {
+  // Two controls for one piece of state, and the menu one needed the chevron to
+  // exist anyway (it delegated the click to it).
+  const { window } = await bootReviewLayer(t, { body: SECTIONS_BODY, innerWidth: 1500 });
+  const { document } = window;
+  assert.ok(document.getElementById('sf-tocbtn'), 'the chevron exists on a spec with a TOC');
+  document.getElementById('sf-launcher').click();
+  assert.equal(rowByLabel(document, 'Contents'), undefined, 'and the menu does not repeat it');
+});
+
+test('Theme, Font and Code font put their control on the label\'s line', async (t) => {
+  // jsdom does no layout, so the pair being checked is the marker class the rows
+  // carry and the rule in review.css that acts on it. Dropping either half is
+  // what would silently put them back on two lines.
+  const { window } = await bootReviewLayer(t);
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  for (const label of ['Theme', 'Font', 'Code font']) {
+    assert.ok(rowByLabel(document, label).classList.contains('sf-menu-inline'), `${label} is inline`);
+  }
+  // Width is deliberately not: a range needs travel to be draggable, and what is
+  // left beside a label is not enough of it.
+  assert.equal(rowByLabel(document, 'Width').classList.contains('sf-menu-inline'), false);
+  assert.match(REVIEW_CSS, /\.sf-menu-row\.sf-menu-inline \{ flex-wrap: nowrap; \}/);
+});
+
+test('a single-theme spec\'s Theme row is not inline', async (t) => {
+  // sf-menu-inline pins a 96px label column so a control can start beside it.
+  // This branch has no control — it has a status ("light · fixed") that wants
+  // the rest of the row, and the label column would crush it. Raised in review
+  // of PR #218.
+  const { window } = await bootReviewLayer(t, { computedBg: () => 'rgb(244, 239, 230)' });
+  const { document } = window;
+  document.getElementById('sf-launcher').click();
+  const theme = rowByLabel(document, 'Theme');
+  assert.ok(!theme.querySelector('.sf-theme-picker'), 'no picker, as the fixture is single-theme');
+  assert.equal(theme.classList.contains('sf-menu-inline'), false, 'so no label column either');
+});
+
+test('the menu never renders wider than the window leaves it', () => {
+  // A fixed panel anchored to the right edge runs off the LEFT one when it is
+  // wider than the window, and a menu with its controls off-screen has no
+  // recovery. Two halves, both raised in review of PR #218: the width clamps to
+  // the space at whatever offset the menu sits at, and it only steps clear of
+  // the 340px comments drawer where 336px still fits beside it (706px, the
+  // gutter included).
+  assert.match(REVIEW_CSS, /width: min\(336px, calc\(100vw - var\(--sf-menu-right\) - 12px\)\)/);
+  assert.match(REVIEW_CSS, /@media \(min-width: 706px\) \{\s*\n\s*body\.sf-side-open #sf-menu \{ --sf-menu-right/);
+  // Every rule that moves the menu has to move it through the variable, or the
+  // clamp above measures against an offset the menu is not at. The base rule's
+  // `right: var(--sf-menu-right)` is the one legitimate use.
+  // The lookbehind matters: `--sf-menu-right:` ends in "right:" too.
+  const offsets = [...REVIEW_CSS.matchAll(/#sf-menu[^{}]*\{[^}]*?(?<![-\w])right:\s*([^;}]+)/g)]
+    .map((m) => m[1].trim());
+  assert.deepEqual(offsets, ['var(--sf-menu-right)'],
+    'the offset is set once, on the variable, and every mover writes the variable');
+});
+
+// ---------- launcher footer (detach) ----------
+test('the footer is Detach and nothing else (posts /detach)', async (t) => {
   const { window, posts } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: 'sess-12345678' } });
   const { document } = window;
   document.getElementById('sf-launcher').click();
   const foot = document.querySelector('#sf-menu .sf-menu-foot');
   assert.ok(foot, 'a single bottom footer row');
-  assert.ok(foot.querySelector('#sf-live'), 'the live pill sits in the footer');
-  const session = foot.querySelector('.sf-foot-session');
-  assert.match(session.textContent, /Session sess-123/, 'the session id is shown centered');
+  // The live pill and the session name were dropped: neither is something you
+  // act on, and the footer is a row of controls. Connection state is the
+  // header's (renderConn) and the disconnected banner's.
+  assert.equal(foot.querySelector('#sf-live'), null, 'no live pill in the footer');
+  assert.equal(foot.querySelector('.sf-foot-session'), null, 'no session id in the footer');
   const detach = foot.querySelector('.sf-detach');
   assert.ok(detach, 'Detach present when attached');
   detach.click();
@@ -3073,13 +3160,14 @@ test('changing the comments filter persists it to this browser', async (t) => {
   assert.equal(puts.find((x) => /\/prefs$/.test(x.url)), undefined, 'and not to the store');
 });
 
-test('the footer shows "Not attached" with no Detach when free', async (t) => {
+test('an unattached spec gets no footer at all', async (t) => {
+  // Detach is the only thing the footer holds, so with nothing attached the row
+  // would be an empty hairline under the last group.
   const { window } = await bootReviewLayer(t, { meta: { status: 'draft', attachedSession: null } });
   const { document } = window;
   document.getElementById('sf-launcher').click();
-  const foot = document.querySelector('#sf-menu .sf-menu-foot');
-  assert.match(foot.querySelector('.sf-foot-session').textContent, /Not attached/, 'shows Not attached');
-  assert.equal(foot.querySelector('.sf-detach'), null, 'no Detach button when free');
+  assert.equal(document.querySelector('#sf-menu .sf-menu-foot'), null, 'no footer row');
+  assert.equal(document.querySelector('#sf-menu .sf-detach'), null, 'and no Detach');
 });
 
 

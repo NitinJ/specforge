@@ -441,10 +441,11 @@
   padding: 11px 14px;
 }
 
-/* live-status pill — relocated into the launcher menu footer by review.js.
-   Hidden until then so it never renders as a stray block in the document flow. */
+/* live-status pill — never rendered. The node stays because inject.mjs's inline
+   SSE script writes the connection state into it before review.js has loaded;
+   what a reader sees of that state is the disconnected banner below, which
+   surfaces on its own when the connection stays down. */
 .sf-live { display: none; }
-.sf-menu-foot .sf-live { display: block; font: 11px/1.4 ui-monospace, Menlo, monospace; color: var(--sf-muted); }
 
 /* persistent disconnection banner — surfaced when the live (SSE) connection to
    the daemon stays down past a short grace period. Signals a stale tab where
@@ -1144,8 +1145,22 @@ body.sf-side-open #sf-launcher { right: calc(var(--sf-side-w) + 18px); }
 /* launcher popover menu — glass, anchored above the launcher. Base state stays
    laid out (opacity/transform/visibility) so open AND close animate; visibility
    flips at the tail so the closed menu is unreachable by keyboard/AT. */
+/* 332px, not the 248px this was. Theme, Font and Code font put their control on
+   the label's line rather than under it, so the menu's width now has to hold a
+   96px label column plus the widest thing a control shows. That is the theme
+   name: "Catppuccin Mocha" beside its thumbnail needs 190px, and a trigger
+   reading "Catppuccin…" is the one label in the menu you cannot infer from
+   context. scripts/probe-theme-list-width.mjs measures it.
+
+   336px is what it wants, not what it takes: the width clamps to whatever the
+   window leaves, because a fixed panel anchored to the right edge runs off the
+   LEFT one on a narrow window, and a menu with its controls off-screen has no
+   recovery. `--sf-menu-right` carries the offset so the clamp stays correct
+   when something else (the comments drawer) moves the menu inward. */
 #sf-menu {
-  position: fixed; right: 18px; bottom: 74px; z-index: 48; width: 248px;
+  --sf-menu-right: 18px;
+  position: fixed; right: var(--sf-menu-right); bottom: 74px; z-index: 48;
+  width: min(336px, calc(100vw - var(--sf-menu-right) - 12px));
   background: var(--sf-glass);
   -webkit-backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
   backdrop-filter: blur(var(--sf-blur)) saturate(var(--sf-blur-sat));
@@ -1175,7 +1190,15 @@ body.sf-side-open #sf-launcher { right: calc(var(--sf-side-w) + 18px); }
 @media (prefers-reduced-motion: reduce) {
   #sf-menu { transition: opacity var(--sf-dur-fast) linear, visibility 0s linear; transform: none !important; }
 }
-body.sf-side-open #sf-menu { right: calc(var(--sf-side-w) + 18px); }
+/* The menu steps clear of the comments drawer only where it still fits beside
+   it at full width: 340px of drawer + 18px + the menu's own 336px + the 12px
+   gutter the clamp reserves is 706px. Under that it stays in its corner and
+   overlays the drawer instead, which is the trade #sf-rail already makes below
+   1100px — overlapping is recoverable, and a menu shoved past the left edge is
+   not. scripts/probe-sf-menu-viewport.mjs walks the boundary. */
+@media (min-width: 706px) {
+  body.sf-side-open #sf-menu { --sf-menu-right: calc(var(--sf-side-w) + 18px); }
+}
 /* asides — modelled as a section of the spec, rendered in a panel beside it.
    The panel is solid rather than glass for the same reason the comments drawer
    is: it is a reading surface you leave open, not a popover. It shares the right
@@ -1229,7 +1252,9 @@ html[data-sf-header] .sf-asides { top: var(--sf-header-h); height: calc(100vh - 
 @media (min-width: 1100px) {
   body.sf-asides-open #sf-rail { right: calc(max(50vw, 480px) + 8px); }
   body.sf-asides-open #sf-top { right: calc(max(50vw, 480px) + 18px); }
-  body.sf-asides-open #sf-menu { right: calc(max(50vw, 480px) + 18px); }
+  /* Through --sf-menu-right, not `right`, so the width clamp above sees the
+     offset the menu actually sits at. */
+  body.sf-asides-open #sf-menu { --sf-menu-right: calc(max(50vw, 480px) + 18px); }
 }
 /* The composer overlays the panel on a narrow window, so it has to sit above it
    rather than behind. */
@@ -1354,15 +1379,20 @@ section.sf-has-aside { position: relative; }
 button.sf-menu-row:hover { background: var(--sf-panel2); }
 button.sf-menu-row:focus-visible { outline: none; box-shadow: var(--sf-ring); }
 .sf-menu-row.sf-menu-ctl { cursor: default; flex-wrap: wrap; }
-/* Section rhythm: a hairline before the first control row (the start of the
-   Width/Theme/Font controls) — every other row separates by gap + hover fill.
-   Row order is fixed by buildMenuRows(), so first-of-type is stable: control
-   rows are <div>s, action rows are <button>s. */
-div.sf-menu-row.sf-menu-ctl:first-of-type { margin-top: 4px; padding-top: 12px; position: relative; }
-div.sf-menu-row.sf-menu-ctl:first-of-type::before {
-  content: ''; position: absolute; top: 0; left: 8px; right: 8px; height: 1px;
-  background: var(--sf-hairline);
-}
+/* Theme, Font and Code font put their control beside the label instead of on a
+   second line: three dropdowns stacked two rows each was half the menu's height
+   spent on labels. Width keeps its second line — a range is dragged, and the
+   ~160px left beside a label is not enough travel to pick a width with.
+   Sizing: the label takes what it needs, the control takes the rest. */
+.sf-menu-row.sf-menu-inline { flex-wrap: nowrap; }
+/* One label column, not three: sized to the longest of the three labels ("Code
+   font") so the dropdowns start on a shared edge. Left to their own content the
+   three controls began at three different x positions, which reads as three
+   unrelated rows that happen to be adjacent. */
+.sf-menu-inline .sf-row-main { flex: none; width: 96px; }
+.sf-menu-inline .sf-font-select,
+.sf-menu-inline .sf-mono-select,
+.sf-menu-inline .sf-theme-picker { flex: 1; width: auto; min-width: 0; margin: 0; }
 .sf-row-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
 .sf-row-ic { width: 18px; text-align: center; color: var(--sf-muted); font-size: 14px; }
 .sf-row-val { margin-left: auto; color: var(--sf-muted); font-size: 11px; }
@@ -1422,7 +1452,10 @@ div.sf-menu-row.sf-menu-ctl:first-of-type::before {
 .sf-theme-trigger .sf-t-caret { flex: none; color: var(--sf-muted); font-size: 9px; }
 
 /* Opens upward as often as down: the menu it lives in is anchored near the
-   bottom of the viewport, so a list dropped below would fall off screen. */
+   bottom of the viewport, so a list dropped below would fall off screen.
+   Matches the trigger's width, which is now a control sharing a row with a
+   label rather than the full row: the label column is fixed, so what is left is
+   still wide enough for the longest theme name. */
 .sf-theme-list { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 5;
   max-height: min(56vh, 340px); overflow: auto; padding: 4px;
   background: var(--sf-panel); border: 1px solid var(--sf-line); border-radius: var(--sf-r-sm);
@@ -1458,12 +1491,9 @@ a.sf-doc-link:hover { color: var(--sf-accent); }
 }
 .sf-share-off { color: var(--sf-amber, #b45309); }
 .sf-reexport:hover { color: var(--sf-accent); border-color: var(--sf-accent); }
-/* Footer — one bottom row: live pill (left) · session id (center, truncates) ·
-   Detach (right). */
+/* Footer — Detach, and only when something is attached to detach from. */
 .sf-menu-foot { border-top: 1px solid var(--sf-hairline); margin-top: 5px; padding: 8px 10px 4px;
   display: flex; align-items: center; gap: 8px; }
-.sf-foot-session { flex: 1; min-width: 0; text-align: center; color: var(--sf-muted);
-  font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* view options — fit-to-width + collapsible left TOC */
 /* "Fit" pill in the Width row: stretch the layout to the viewport. */
