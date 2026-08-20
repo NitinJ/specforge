@@ -12,6 +12,7 @@ import { listSpecs } from '../lib/meta.mjs';
 import { listContributions } from '../lib/store-project-shares.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { groupByCollection, UNCOLLECTED } from '../lib/collections.mjs';
+import { projectCollaborators } from '../lib/collaborators.mjs';
 
 function esc(s) {
   return String(s ?? '')
@@ -91,6 +92,27 @@ export function renderProjectPage(name, token) {
   </section>` : '';
 
   const rows = `${local}${contributed}`;
+
+  // Who else is in here. A reader arriving at the link cannot otherwise tell
+  // whether they are the first person on the project or the fifth, and the names
+  // are already on every comment in every spec — this only gathers them where
+  // the reader meets them first.
+  //
+  // Local specs only. A contributed row is served by another machine and its
+  // comments live there; the person who contributed it is named on the row
+  // itself, which is a different fact from having reviewed the project.
+  //
+  // Read per request from each spec's comment store, like every other number on
+  // this page. Nothing is cached: a project's rows are already recomputed per
+  // request, and a stale collaborator list would be worse than none.
+  const people = projectCollaborators(specs.map((m) => m.id));
+  const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  const collaborators = people.length ? `
+  <section class="collab">
+    <h2>Collaborators <span class="gcount">${people.length}</span></h2>
+    <ul class="people">${people.map((p) => `
+      <li class="person" title="${esc(`${plural(p.comments, 'comment')} on ${plural(p.specs, 'spec')}`)}">${esc(p.name)}</li>`).join('')}</ul>
+  </section>` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -172,6 +194,24 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     background:var(--panel);color:var(--ink);font-size:12.5px;cursor:pointer}
   .cmd button:hover{border-color:var(--accent);color:var(--accent)}
 
+  /* Collaborators — names, laid out as a wrapping row of chips rather than a
+     list, because the set is read as a group ("who is in here") and never
+     scanned down. Sits directly under the title, above the join panel: it is
+     one line about the project, not a section of it. The heading borrows .grp's
+     size and its count pill, so it reads as the same kind of label as the
+     collection headings further down. */
+  .collab{margin:0 0 20px}
+  .collab h2{display:flex;align-items:baseline;gap:8px;font-size:13px;font-weight:650;
+    letter-spacing:.02em;color:var(--muted);margin:0 0 7px;padding:0 2px}
+  .people{display:flex;flex-wrap:wrap;gap:7px}
+  /* No link and no hover lift: a name here is a fact, and dressing it as a
+     control promises a person page this product does not have. The tooltip
+     carries the counts rather than the chip, which keeps the row scannable at
+     any project size. */
+  .person{font-size:12.5px;color:var(--ink);background:var(--panel);
+    border:1px solid var(--line);border-radius:999px;padding:3px 11px;
+    max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
   /* Type, status and the stamp never wrap, so on a narrow viewport the title is
      the only item left to give and it collapses toward an ellipsis. Drop the
      least informative field first. Title, status and recency are what a row is
@@ -190,7 +230,7 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     </div>
     <button class="theme" id="sf-theme" type="button" aria-label="Toggle theme" title="Toggle theme"></button>
   </div>
-
+${collaborators}
   <section class="join">
     <h2>Add to my SpecForge</h2>
     <p>Use SpecForge yourself? Join this project and it appears on your own home
