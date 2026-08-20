@@ -120,12 +120,13 @@ test('ensureServer seeds the template specs, and settings lists them', async (t)
   assert.ok(readMeta(templateId('design')), 'daemon start seeds the templates');
 
   // They are listed on /settings rather than the index: they are configuration,
-  // and at the foot of the home page they sat below every spec (P7).
+  // and at the foot of the home page they sat below every spec (P7). On the
+  // settings page they are a tab of their own.
   const home = await (await fetch(first.url)).text();
   assert.doesNotMatch(home, new RegExp(`/spec/${templateId('design')}`), 'not on the index');
 
-  const settings = await (await fetch(`${first.url}settings`)).text();
-  assert.match(settings, new RegExp(`/spec/${templateId('design')}`), 'listed on settings');
+  const settings = await (await fetch(`${first.url}settings?tab=templates`)).text();
+  assert.match(settings, new RegExp(`/spec/${templateId('design')}`), 'listed on the templates tab');
   assert.match(settings, /class="tcard"/, 'as cards that open the template');
 });
 

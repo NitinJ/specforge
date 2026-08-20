@@ -362,12 +362,12 @@ test('the reset names the tab it was pressed on, and spares the other', async (t
     'the Sections tab kept what was written there');
 });
 
-// --- Templates strip --------------------------------------------------------
+// --- Templates tab ----------------------------------------------------------
 
-test('the templates strip is on the settings page, one card per type', (t) => {
+test('the templates tab shows one card per type, inside the tab panel', (t) => {
   ensureTemplates();
-  const { window } = open(t, 'language');
-  const cards = [...window.document.querySelectorAll('.tcard')];
+  const { window } = open(t, 'templates');
+  const cards = [...window.document.querySelectorAll('#sf-tabpanel .tcard')];
   assert.equal(cards.length, SPEC_TYPES.length);
   const design = cards.find((c) => c.getAttribute('data-id') === templateId('design'));
   assert.ok(design, 'the design template has a card');
@@ -375,19 +375,31 @@ test('the templates strip is on the settings page, one card per type', (t) => {
     'and it opens the template as a spec, which is how it has always been edited');
 });
 
-test('the strip renders under every tab, not inside one', (t) => {
+test('templates is a tab of its own, beside the other four', (t) => {
+  ensureTemplates();
+  const { window } = open(t, 'templates');
+  const tabs = [...window.document.querySelectorAll('#sf-tabs .tab')];
+  assert.deepEqual(tabs.map((a) => a.getAttribute('data-tab')),
+    ['language', 'sections', 'rules', 'actions', 'templates']);
+  const on = tabs.find((a) => a.classList.contains('on'));
+  assert.equal(on.getAttribute('data-tab'), 'templates');
+  // Nothing on this tab is stored in prompts.json or a template block, so the
+  // reset control has nothing to reset and is not offered.
+  assert.equal(window.document.getElementById('sf-reset-class'), null);
+});
+
+test('the other tabs carry no template cards', (t) => {
   ensureTemplates();
   for (const tab of ['language', 'sections', 'rules', 'actions']) {
     const { window } = open(t, tab);
-    const strip = window.document.getElementById('sf-templates');
-    assert.ok(strip, `the strip is present on ${tab}`);
-    assert.equal(strip.closest('#sf-tabpanel'), null, 'and outside the tab panel');
+    assert.equal(window.document.querySelectorAll('.tcard').length, 0, `no cards on ${tab}`);
+    assert.ok(window.document.getElementById('sf-reset-class'), `reset is still offered on ${tab}`);
   }
 });
 
-test('a fresh store still shows the strip, seeding on demand', (t) => {
+test('a fresh store still shows the cards, seeding on demand', (t) => {
   // No ensureTemplates here: the page seeds them, so a first-run store shows
   // cards rather than an empty box.
-  const { window } = open(t, 'language');
+  const { window } = open(t, 'templates');
   assert.equal(window.document.querySelectorAll('.tcard').length, SPEC_TYPES.length);
 });

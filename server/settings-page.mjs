@@ -1,7 +1,7 @@
 // The configuration page, served at /settings.
 //
 // Where the prompt text that steers agents is read and edited: a tab per class
-// (Language, Sections, Rules, Actions), and the Templates strip beneath them.
+// (Language, Sections, Rules, Actions), and a Templates tab beside them.
 // Server-rendered like every other page in this product, for the same reason:
 // the shell is one string, the theme is CSS variables, and there is no build
 // step to keep working.
@@ -14,12 +14,17 @@
 import { listSpecs } from '../lib/meta.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
 
-/** The classes, in tab order. Each becomes a tab in stage 3 and 4. */
+/**
+ * The tabs, in order. The first four are prompt classes; Templates is the
+ * objects the Sections and Rules tabs write into, given a tab of its own so it
+ * sits beside them rather than beneath every one of them.
+ */
 export const CLASSES = [
   { id: 'language', label: 'Language' },
   { id: 'sections', label: 'Sections' },
   { id: 'rules', label: 'Rules' },
   { id: 'actions', label: 'Actions' },
+  { id: 'templates', label: 'Templates' },
 ];
 
 function esc(s) {
@@ -54,6 +59,19 @@ export function renderSettings(opts = {}) {
   const tabs = CLASSES.map((c) => `
       <a class="tab${c.id === active ? ' on' : ''}" href="/settings?tab=${c.id}"
          data-tab="${c.id}"${c.id === active ? ' aria-current="page"' : ''}>${esc(c.label)}</a>`).join('');
+
+  // The Templates tab is rendered here rather than by the page script: it is a
+  // list of links, nothing on it is fetched or written, and a tab that needs
+  // no request should not start with "Loading…".
+  const panel = active === 'templates'
+    ? `<p class="lede">What every new spec of a type starts from. Click one to open and edit it as a spec.</p>
+    <div class="tstrip">${templates.map(tplCard).join('')}</div>`
+    : '<p class="empty" id="sf-loading">Loading…</p>';
+  // Nothing on the Templates tab lives in prompts.json or a template block, so
+  // there is nothing for the reset control to reset.
+  const reset = active === 'templates' ? '' : `
+    <span class="spacer"></span>
+    <button class="btn quiet" id="sf-reset-class" type="button">Reset this section to shipped ⟲</button>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -194,8 +212,6 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   .count{color:var(--muted);font-size:12px;margin-left:auto}
   .count.over{color:var(--red);font-weight:600}
 
-  .tpls{margin:40px 0 0;padding-top:22px;border-top:1px solid var(--line)}
-  .tpls h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 4px}
   .tstrip{display:flex;gap:10px;flex-wrap:wrap}
   .tcard{flex:0 0 auto;min-width:110px;padding:11px 14px;border:1px solid var(--line);
     border-radius:9px;background:var(--panel);text-decoration:none;color:var(--ink)}
@@ -224,23 +240,12 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     <button class="theme" id="sf-theme" type="button" aria-label="Toggle theme" title="Toggle theme"></button>
   </div>
 
-  <nav class="tabs" id="sf-tabs" aria-label="Settings sections">${tabs}
-    <span class="spacer"></span>
-    <button class="btn quiet" id="sf-reset-class" type="button">Reset this section to shipped ⟲</button>
+  <nav class="tabs" id="sf-tabs" aria-label="Settings sections">${tabs}${reset}
   </nav>
 
   <div id="sf-tabpanel" data-tab="${active}">
-    <p class="empty" id="sf-loading">Loading…</p>
+    ${panel}
   </div>
-
-  <!-- Under the tabs rather than in one: a template is the object the Sections
-       and Rules tabs write into, so whichever tab is open it stays one click
-       away. It used to sit at the foot of the home page, below every spec. -->
-  <section class="tpls" id="sf-templates">
-    <h2>Templates</h2>
-    <p class="lede">What every new spec of a type starts from. Click one to open and edit it as a spec.</p>
-    <div class="tstrip">${templates.map(tplCard).join('')}</div>
-  </section>
 </main>
 <script>
 (function(){
@@ -917,6 +922,9 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
 
   // ---- shell --------------------------------------------------------------
   function render(){
+    // Templates arrived rendered: a list of links the server wrote into the
+    // panel, with nothing to fetch and nothing to write.
+    if(TAB==='templates') return;
     if(TAB==='language'||TAB==='actions'){
       if(!state) return;
       return void (TAB==='language'?renderLanguage():renderActions());
@@ -944,7 +952,7 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   }
 
   if(TAB==='sections'||TAB==='rules') loadTemplate('design-impl');
-  else load();
+  else if(TAB!=='templates') load();
 })();
 </script>
 </body>
