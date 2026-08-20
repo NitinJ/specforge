@@ -429,9 +429,11 @@ function sfRevealDisclosures(el) {
     function submit() {
       var v = (input.value || '').trim();
       if (!v) return fail('Please enter a name so your comments are attributed.');
-      // `agent` would make an @agent mention ambiguous; the server refuses it
-      // too, and finding that out after writing a comment would be worse.
-      if (/^(agent|claude)$/i.test(v)) return fail('That name is reserved. Please use your own.');
+      // `agent` would make an @agent mention ambiguous, `claude` is the agent's
+      // old author string, and `human` is what a write with no name at all is
+      // recorded as. The server refuses all three (mentions.mjs RESERVED_NAMES),
+      // and finding that out after writing a comment would be worse.
+      if (/^(agent|claude|human)$/i.test(v)) return fail('That name is reserved. Please use your own.');
       setMeAuthor(v);
       wrap.remove();
     }

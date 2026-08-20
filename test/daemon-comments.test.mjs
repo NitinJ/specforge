@@ -289,6 +289,20 @@ test('a named author can edit their own unsubmitted comment', async () => {
   assert.equal((await r.json()).comment.body, 'second pass');
 });
 
+test('a reviewer cannot claim the name a nameless write is recorded under', async () => {
+  // "human" is what authorFor stores when a request carries no name, which in
+  // practice is the owner's own browser — the one review.js never asks. A
+  // reviewer allowed to take it would be filed as the owner and disappear from
+  // the project page's Collaborators line. Raised in review of PR #219.
+  const r = await post(`/api/spec/${specId}/comments`, { anchor, body: 'hello', author: 'Human' });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /reserved/);
+  // The default itself is untouched: a request with no author at all still works.
+  const ok = await post(`/api/spec/${specId}/comments`, { anchor, body: 'from the owner' });
+  assert.equal(ok.status, 201);
+  assert.equal((await ok.json()).thread.comments[0].author, 'human');
+});
+
 test('a named author cannot edit someone else\'s comment', async () => {
   const { thread } = await (await post(`/api/spec/${specId}/comments`, { anchor, body: 'mine', author: 'lavee' })).json();
   const cid = thread.comments[0].id;
