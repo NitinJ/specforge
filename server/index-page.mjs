@@ -14,7 +14,8 @@
 //
 // All state is in-memory; everything inlined (CSP-friendly).
 
-import { listSpecs, LEGACY_TYPE, SPEC_TYPES } from '../lib/meta.mjs';
+import { listSpecs, LEGACY_TYPE } from '../lib/meta.mjs';
+import { specTypes } from '../lib/spec-types.mjs';
 import { sessionDisplay } from '../lib/session-label.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
@@ -698,7 +699,7 @@ ${inner}
     : '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7.5" cy="7.5" r="3.2"/><path d="M7.5 1v1.8M7.5 12.2V14M1 7.5h1.8M12.2 7.5H14M2.9 2.9l1.3 1.3M10.8 10.8l1.3 1.3M12.1 2.9l-1.3 1.3M4.2 10.8l-1.3 1.3"/></svg>'}</button>
 </header>
 ${n ? `<div class="toolbar">${chipsBar}
-  <select class="tsel" id="ftype" aria-label="Filter by type"><option value="">All types</option>${SPEC_TYPES.map((t) => `<option>${esc(t)}</option>`).join('')}</select>
+  <select class="tsel" id="ftype" aria-label="Filter by type"><option value="">All types</option>${specTypes().map((t) => `<option>${esc(t)}</option>`).join('')}</select>
   <select class="tsel" id="fsort" aria-label="Sort"><option value="recent">Recent</option><option value="title">Title A–Z</option><option value="status">Status</option></select>
   <span class="count" id="count">${n} spec${n === 1 ? '' : 's'}</span>
 </div>` : ''}

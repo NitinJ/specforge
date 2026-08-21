@@ -13,13 +13,13 @@ import { useTempStore } from './helpers/temp-store.mjs';
 import { ensureTemplates, templateId, templateHtmlFor } from '../lib/store-templates.mjs';
 import { specHtmlPath } from '../lib/store-paths.mjs';
 import { lintSpec } from '../lib/lint-spec.mjs';
-import { SPEC_TYPES } from '../lib/meta.mjs';
+import { specTypes } from '../lib/spec-types.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-template-lint-');
 
 test('every seeded template lints as cleanly as it did before it carried rules', () => {
   ensureTemplates();
-  for (const type of SPEC_TYPES) {
+  for (const type of specTypes()) {
     const html = readFileSync(specHtmlPath(templateId(type)), 'utf8');
     const { checks } = lintSpec(html);
     const failed = checks.filter((c) => !c.ok && !c.advisory).map((c) => c.name);
@@ -29,7 +29,7 @@ test('every seeded template lints as cleanly as it did before it carried rules',
 
 test('the blocks introduce no class outside the component library', () => {
   ensureTemplates();
-  for (const type of SPEC_TYPES) {
+  for (const type of specTypes()) {
     const withBlocks = templateHtmlFor(type);
     const comp = lintSpec(withBlocks).checks.find((c) => c.name === 'spec-components');
     if (!comp) continue; // this type never opted into the library
@@ -39,7 +39,7 @@ test('the blocks introduce no class outside the component library', () => {
 
 test('the blocks keep text in places the review layer can anchor a comment to', () => {
   ensureTemplates();
-  for (const type of SPEC_TYPES) {
+  for (const type of specTypes()) {
     const comm = lintSpec(templateHtmlFor(type)).checks.find((c) => c.name === 'commentability');
     assert.equal(comm.ok, true, `${type}: ${comm.detail}`);
   }
