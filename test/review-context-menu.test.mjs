@@ -8,9 +8,19 @@
 //
 // Spec: docs/2026-08-16-context-menu-actions-spec.md §8, §9.
 
-import { test } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { useTempStore } from './helpers/temp-store.mjs';
 import { HARNESS_BODY, bootReviewLayer, rightClick } from './helpers/review-dom.mjs';
+
+// An empty store. The boot helper injects `menuActions()`, which is the
+// EFFECTIVE set: shipped plus the reader's custom actions. Reading the
+// developer's own store made the two order assertions below fail the moment
+// anyone added one, reporting a code defect where there was a custom action.
+// What a custom action does to the menu belongs in actions-effective.test.mjs;
+// what these tests are for is the shipped list reaching the rendered menu in
+// registry order.
+useTempStore({ beforeEach, afterEach }, 'sf-ctxmenu-');
 
 const boot = (t, opts = {}) => bootReviewLayer(t, { body: HARNESS_BODY, ...opts });
 const tick = (window) => new Promise((r) => window.setTimeout(r, 0));

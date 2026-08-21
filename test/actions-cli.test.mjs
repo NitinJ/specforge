@@ -5,16 +5,29 @@
 // carried its own copy, improving an instruction would mean editing it in two
 // files and noticing when they drifted, which nobody does.
 
-import { test } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
 
+import { useTempStore } from './helpers/temp-store.mjs';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = join(ROOT, 'lib', 'specforge-cli.mjs');
 
-const run = (...args) => execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
+// `actions` prints the EFFECTIVE set, shipped plus the reader's own. The counts
+// below are the shipped ones, so the store has to be empty for them to mean
+// anything; inheriting the developer's made them assert that nobody had ever
+// added a custom action, which stopped being true and read as a code failure.
+const store = useTempStore({ beforeEach, afterEach }, 'sf-actions-cli-');
+
+// Passed explicitly rather than inherited: this is a subprocess, so the env the
+// hooks set on `process.env` is the only thing that reaches it.
+const run = (...args) => execFileSync(process.execPath, [CLI, ...args], {
+  encoding: 'utf8',
+  env: { ...process.env, SPECFORGE_HOME: store.dir },
+});
 
 test('actions prints every action as JSON, and exits 0', () => {
   const out = JSON.parse(run('actions'));
