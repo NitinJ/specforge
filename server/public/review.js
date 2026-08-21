@@ -400,6 +400,68 @@ function sfRevealDisclosures(el) {
     // needs telling how comments work, and asking them to name themselves on a
     // spec they wrote would be noise.
     if ((window.SPECFORGE || {}).transport === 'poll' && !meAuthor()) openWelcome();
+    // The configuration page sends you here the moment your template is written.
+    // Loopback only: a reviewer arriving at someone else's template created
+    // nothing, and the command it names is not theirs to run.
+    if ((window.SPECFORGE || {}).transport !== 'poll') maybeCreated();
+  }
+
+  /**
+   * The dialog that greets a template you just created.
+   *
+   * Keyed on a marker in the URL rather than on anything stored, because it is a
+   * fact about this navigation and not about the spec: opening the same
+   * template tomorrow is not an arrival. The marker is stripped as it is read,
+   * so a reload is not a second one.
+   */
+  function maybeCreated() {
+    var params;
+    try { params = new URLSearchParams(location.search); } catch (e) { return; }
+    if (params.get('created') !== 'template') return;
+    params.delete('created');
+    var rest = params.toString();
+    try {
+      history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+    } catch (e) { /* older browser: the dialog shows once more on reload */ }
+    // Armed, not opened. The dialog names the kind, and the kind is on the meta,
+    // which has not arrived at boot: opening here would offer "specforge create
+    // --type your-kind" on every creation. render() opens it on the first pass
+    // that has a meta to read.
+    pendingCreated = true;
+  }
+
+  // Set by maybeCreated, cleared by the render that opens the dialog.
+  //
+  // Declared without a value on purpose. boot() runs at the readyState check
+  // near the top of this file, which is above this line, so `var x = false`
+  // here would execute AFTER boot and overwrite what maybeCreated just set. The
+  // hoisted `undefined` is falsy, which is the only initial value this needs.
+  var pendingCreated;
+
+  function openCreated() {
+    var kind = (state.meta && state.meta.type) || '';
+    var wrap = create('div', {
+      id: 'sf-created', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Template created',
+    });
+    // The three things the wait promised, in the order they happen: it exists,
+    // you change it by commenting, you use it by creating a spec.
+    wrap.innerHTML =
+      '<div class="sf-created-card">' +
+      '<h2>Your template is ready</h2>' +
+      '<p>This is the template ' + (kind ? '<b>' + esc(kind) + '</b> specs' : 'specs of this kind')
+      + ' will start from. Read what it chose below.</p>' +
+      '<p><b>To change it, comment on it.</b> Click any section and say what you want '
+      + 'different, with <code>@agent</code> in the comment. It is edited exactly the way '
+      + 'every other spec is.</p>' +
+      '<p>To write one:</p>' +
+      '<pre class="sf-created-cmd">specforge create --title "…" --type '
+      + esc(kind || 'your-kind') + '</pre>' +
+      '<button type="button" class="sf-primary sf-created-go">Read the template</button>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    var go = wrap.querySelector('.sf-created-go');
+    go.onclick = function () { wrap.remove(); };
+    try { go.focus(); } catch (e) { /* jsdom */ }
   }
 
   // Shown once per browser on a published spec: who you are, and how the two
@@ -2877,7 +2939,13 @@ function sfRevealDisclosures(el) {
   }
 
   // ---------- render ----------
-  function render() { renderSidebar(); renderHighlights(); renderRail(); renderSlideCounts(); renderLauncher(); renderAction(); renderShared(); renderConn(); renderProject(); syncTitle(); }
+  function render() {
+    renderSidebar(); renderHighlights(); renderRail(); renderSlideCounts();
+    renderLauncher(); renderAction(); renderShared(); renderConn(); renderProject(); syncTitle();
+    // Once, on the first pass that has a meta: the arrival dialog names the kind
+    // this template is for, and that is only knowable after the meta lands.
+    if (pendingCreated && state.meta) { pendingCreated = false; openCreated(); }
+  }
 
   function visible() {
     return state.threads.filter(function (t) {

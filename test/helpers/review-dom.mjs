@@ -86,7 +86,14 @@ export async function bootReviewLayer(t, opts = {}) {
   // that left the owner out would put every state under test in the second one.
   const meta = { id: 'test-spec', title: 'Test', status: 'draft', attachedSession: 's1', ...(opts.meta || {}) };
   const html = `<!doctype html><html><head></head><body>${body}</body></html>`;
-  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'http://localhost/' });
+  // The page's own URL. Settable because the review layer reads the query
+  // string: `?created=template` is how the configuration page tells a spec page
+  // that this arrival is a creation.
+  const dom = new JSDOM(html, {
+    runScripts: 'dangerously',
+    pretendToBeVisual: true,
+    url: opts.url || 'http://localhost/',
+  });
   const { window } = dom;
   // review.js installs a setInterval poll; close the window after the test so
   // the timer is cleared and the test runner can exit.

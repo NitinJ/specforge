@@ -64,6 +64,12 @@ light and dark themes, a floating table of contents, and stable anchors.
 | `impl` | build an existing design | light scope, plus a Stages/Tasks plan and a live tracker |
 | `general` *(fallback)* | anything the others do not cover | the scaffold and a TL;DR: theme, TOC, anchors, review layer. Sections are yours |
 
+**Add your own kind.** If you keep writing the same shape of document, describe
+it once on the configuration page under **Templates → Add a template**: a name,
+and a few lines saying what sections it has and when it should be used. Claude
+writes the template, and from then on it is a kind like the six above, with its
+own `--type`, its own template to comment on, and its own row in the type filter.
+
 Already have a doc? `/specforge:convert <file>` brings a `.md` or `.html` into
 the store, either as-is or re-authored into house style.
 

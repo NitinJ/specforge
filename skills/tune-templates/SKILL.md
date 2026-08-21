@@ -15,11 +15,19 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 # tune-templates
 
 Turn the review-comment history into better templates. The templates are the
-per-type spec shells, one `template-<type>` per entry in `SPEC_TYPES`
-(`lib/meta.mjs`), stored — and edited — as ordinary specs. Editing a template spec
-changes what every future spec of that type scaffolds from. Read the list from
-`SPEC_TYPES` at run time rather than from memory; enumerating it here is how a
-type gets silently skipped.
+per-type spec shells, one `template-<type>` per kind of spec, stored — and
+edited — as ordinary specs. Editing a template spec changes what every future
+spec of that type scaffolds from.
+
+**Read the list at run time, never from memory:**
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/lib/spec-types-cli.mjs"
+```
+
+Six kinds ship with the plugin and the user can add more from the configuration
+page, so the list is not knowable when this file is written. Enumerating it here
+is how a type gets silently skipped.
 
 `template-general` is deliberately section-free: tune its chrome and its authoring
 comment, never add sections to it.
@@ -56,10 +64,11 @@ one concrete template change, with an evidence index back to the comments. Prese
 
 - the ranked themes (spread + representative quotes),
 - redundant / missing sections per template,
-- the exact change proposed for each template in `SPEC_TYPES` (`lib/meta.mjs` is
-  the list; a new type appears here without this file changing). For
-  `template-general` the proposal covers chrome and the authoring comment only,
-  since adding sections to it would defeat the type,
+- the exact change proposed for each template the command above lists, the user's
+  own types included (a kind added from the configuration page appears there
+  without this file changing). For `template-general` the proposal covers chrome
+  and the authoring comment only, since adding sections to it would defeat the
+  type,
 - open questions the user must decide.
 
 Attach it and **wait for the user's decisions**. Do not proceed to §3 until they
