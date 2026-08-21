@@ -42,6 +42,82 @@ function tplCard(m) {
 }
 
 /**
+ * The Add form: a name, a prompt, and which shell family the kind uses.
+ *
+ * The shell is asked rather than inferred (Q2). A kind either carries an
+ * implementation plan or it does not, the words for that are plain, and it
+ * removes a guess from the one step that takes a minute to redo.
+ */
+function addForm() {
+  return `<div class="addform" id="sf-add-form" hidden>
+      <div class="fld">
+        <label for="sf-add-name">Name</label>
+        <input id="sf-add-name" type="text" maxlength="60" placeholder="Postmortem" autocomplete="off">
+      </div>
+      <div class="fld">
+        <label for="sf-add-prompt">What it is for, and what is in it</label>
+        <textarea id="sf-add-prompt" rows="5" maxlength="4000"
+          placeholder="A postmortem for a production incident. Sections: what happened, timeline, impact with numbers, root cause, what we are changing. Use it when an incident is over and we are writing up what went wrong."></textarea>
+        <p class="hint">Describe the sections and when this kind should be used. An agent writes the
+          template from this, and you refine it afterwards by commenting on it.</p>
+      </div>
+      <div class="fld">
+        <label>Does this kind of spec carry an implementation plan?</label>
+        <label class="radio"><input type="radio" name="sf-add-shell" value="doc" checked> No, it is a document</label>
+        <label class="radio"><input type="radio" name="sf-add-shell" value="impl"> Yes, stages and a task tracker</label>
+      </div>
+      <p class="adderr" id="sf-add-err" hidden></p>
+      <div class="addacts">
+        <button class="btn" id="sf-add-go" type="button">Create template</button>
+        <button class="btn quiet" id="sf-add-cancel" type="button">Cancel</button>
+      </div>
+    </div>`;
+}
+
+/**
+ * The wait.
+ *
+ * The user chose to be held here rather than land on a half-written spec (D5),
+ * which makes this dialog's honesty the feature. The bar is indeterminate
+ * because the daemon cannot see how far along the skill is and a bar claiming
+ * 70% would be invented (D6); the elapsed counter is the true signal. The three
+ * lines say what the wait buys, which is the only reason to sit through it.
+ */
+function waitDialog() {
+  return `<div class="waitmask" id="sf-wait" role="dialog" aria-modal="true"
+      aria-labelledby="sf-wait-title" hidden>
+      <div class="waitcard">
+        <h3 id="sf-wait-title">Writing your template</h3>
+
+        <div class="waitrun" id="sf-wait-run">
+          <div class="bar" id="sf-wait-bar" role="progressbar" aria-label="Working"><span></span></div>
+          <p class="waitmeta"><span id="sf-wait-elapsed">0:00</span>
+            <span class="eta" id="sf-wait-eta">Usually under a minute.</span></p>
+          <p class="waitwhat">Claude is turning your description into a template spec.
+            When it lands you will be able to:</p>
+          <ul class="waitnext" id="sf-wait-next">
+            <li>read the sections it chose</li>
+            <li>comment on any section to change it</li>
+            <li>create specs of this kind from now on</li>
+          </ul>
+        </div>
+
+        <p class="waitslow" id="sf-wait-slow" hidden>This is taking longer than usual. The session
+          will finish it whenever it next settles, and the template is already there to open.</p>
+        <p class="waiterr" id="sf-wait-err" hidden></p>
+        <p class="waitkept" id="sf-wait-kept" hidden>The kind was still created, and its template is
+          the plain shell it started as. Open it and comment on a section to build it up by hand.</p>
+
+        <div class="addacts">
+          <a class="btn" id="sf-wait-open" href="" hidden>Open it anyway</a>
+          <button class="btn" id="sf-wait-keep" type="button" hidden>Keep waiting</button>
+          <button class="btn quiet" id="sf-wait-cancel" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+/**
  * Render the settings page.
  *
  * @param {object} [opts]
@@ -65,7 +141,14 @@ export function renderSettings(opts = {}) {
   // no request should not start with "Loading…".
   const panel = active === 'templates'
     ? `<p class="lede">What every new spec of a type starts from. Click one to open and edit it as a spec.</p>
-    <div class="tstrip">${templates.map(tplCard).join('')}</div>`
+    <div class="tstrip">${templates.map(tplCard).join('')}
+      <button class="tcard addcard" id="sf-add-type" type="button">
+        <span class="tname">+ Add a template</span>
+        <span class="tsub">a new kind of spec</span>
+      </button>
+    </div>
+    ${addForm()}
+    ${waitDialog()}`
     : '<p class="empty" id="sf-loading">Loading…</p>';
   // Nothing on the Templates tab lives in prompts.json or a template block, so
   // there is nothing for the reset control to reset.
@@ -218,6 +301,64 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   .tcard:hover{border-color:var(--accent)}
   .tname{display:block;font-weight:600;font-size:13.5px}
   .tsub{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  /* The Add card is a button among links, so it says so with a dashed edge
+     rather than by looking identical to the six things it is not. */
+  .addcard{border-style:dashed;cursor:pointer;text-align:left;font-family:inherit}
+  .addcard .tname{color:var(--accent)}
+
+  .addform{margin:18px 0 0;padding:16px;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel);max-width:620px}
+  .addform .fld{margin:0 0 14px}
+  .addform label{display:block;font-size:12px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--muted);margin:0 0 5px}
+  .addform label.radio{display:flex;align-items:center;gap:7px;text-transform:none;
+    letter-spacing:normal;font-size:13px;color:var(--ink);margin:0 0 4px}
+  .addform input[type=text],.addform textarea{width:100%;box-sizing:border-box;
+    padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel2);color:var(--ink);font-family:inherit;font-size:13px;line-height:1.5}
+  .addform textarea{resize:vertical}
+  .addform input[type=text]:focus,.addform textarea:focus{outline:none;border-color:var(--accent)}
+  .addform .hint{color:var(--muted);font-size:12px;margin:6px 0 0;max-width:58ch}
+  .adderr{color:var(--red);font-size:12.5px;margin:0 0 12px}
+  .addacts{display:flex;gap:8px;align-items:center}
+  .addacts .btn{text-decoration:none}
+
+  /* The wait. Fixed rather than inline: it is the only thing happening, and a
+     dialog you can scroll away from is one you can lose. */
+  .waitmask{position:fixed;inset:0;z-index:60;display:flex;align-items:center;
+    justify-content:center;padding:20px;background:rgba(0,0,0,.45)}
+  .waitmask[hidden]{display:none}
+  .waitcard{width:min(460px,100%);padding:20px 22px;border:1px solid var(--line);
+    border-radius:12px;background:var(--panel);box-shadow:0 18px 48px rgba(0,0,0,.35)}
+  .waitcard h3{margin:0 0 14px;font-size:16px}
+  /* Indeterminate on purpose (D6): it says work is happening and claims nothing
+     about how much is left.
+
+     A moving stripe rather than a travelling block: a block that leaves the
+     track spends part of every cycle off-screen, and a screenshot at one of
+     those moments shows an empty bar. This is filled at every instant, so there
+     is no frame where the dialog looks stalled. */
+  .bar{height:6px;border-radius:999px;background:var(--panel2);overflow:hidden;margin:0 0 12px}
+  .bar span{display:block;height:100%;border-radius:999px;
+    background:linear-gradient(90deg,
+      color-mix(in srgb,var(--accent) 25%,transparent) 0%,
+      var(--accent) 50%,
+      color-mix(in srgb,var(--accent) 25%,transparent) 100%);
+    background-size:220% 100%;animation:sweep 1.6s linear infinite}
+  @keyframes sweep{0%{background-position:120% 0}100%{background-position:-120% 0}}
+  @media (prefers-reduced-motion:reduce){.bar span{animation:none;background:var(--accent);opacity:.55}}
+  .waitmeta{display:flex;gap:10px;align-items:baseline;margin:0 0 14px;
+    font-size:12.5px;line-height:1.4;color:var(--muted)}
+  /* Monospace on the counter alone: it changes every second, and a proportional
+     digit shifts the words beside it on every tick. */
+  .waitmeta #sf-wait-elapsed{color:var(--ink);font-weight:600;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .waitwhat{margin:0 0 6px;font-size:13px;color:var(--ink)}
+  .waitnext{margin:0 0 16px;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.7}
+  .waitslow,.waiterr,.waitkept{margin:0 0 14px;font-size:13px;line-height:1.55}
+  .waitslow{color:var(--amber)}
+  .waiterr{color:var(--red)}
+  .waitkept{color:var(--muted)}
 
   @media (max-width:760px){
     .split{grid-template-columns:minmax(0,1fr)}
@@ -953,6 +1094,165 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
 
   if(TAB==='sections'||TAB==='rules') loadTemplate('design-impl');
   else if(TAB!=='templates') load();
+})();
+
+(function(){
+  // Add a template: the form, and the wait.
+  //
+  // Its own unit rather than part of the tab machinery above, because it shares
+  // nothing with it: no state object, no re-render, one route in and one out.
+  var addBtn=document.getElementById('sf-add-type');
+  if(!addBtn) return;
+
+  var POLL_MS=2000;
+  // Past this the dialog stops claiming and offers a way out (E4). Nothing is
+  // cancelled: the request stays queued and the session finishes it when it
+  // next settles, which is what the copy says.
+  var DEADLINE_MS=180000;
+
+  var form=document.getElementById('sf-add-form');
+  var nameEl=document.getElementById('sf-add-name');
+  var promptEl=document.getElementById('sf-add-prompt');
+  var errEl=document.getElementById('sf-add-err');
+  var wait=document.getElementById('sf-wait');
+  var runEl=document.getElementById('sf-wait-run');
+  var elapsedEl=document.getElementById('sf-wait-elapsed');
+  var slowEl=document.getElementById('sf-wait-slow');
+  var waitErrEl=document.getElementById('sf-wait-err');
+  var openEl=document.getElementById('sf-wait-open');
+  var keepEl=document.getElementById('sf-wait-keep');
+
+  var startedAt=0, ticker=null, poller=null;
+
+  function show(el,on){ if(on) el.removeAttribute('hidden'); else el.setAttribute('hidden',''); }
+  function fail(msg){ errEl.textContent=msg; show(errEl,true); }
+
+  function shell(){
+    var picked=document.querySelector('input[name="sf-add-shell"]:checked');
+    return picked?picked.value:'doc';
+  }
+
+  function mmss(ms){
+    var s=Math.floor(ms/1000);
+    var sec=s%60;
+    return Math.floor(s/60)+':'+(sec<10?'0':'')+sec;
+  }
+
+  function stop(){
+    if(ticker){ clearInterval(ticker); ticker=null; }
+    if(poller){ clearInterval(poller); poller=null; }
+  }
+
+  addBtn.onclick=function(){
+    show(form,true);
+    show(errEl,false);
+    try{ nameEl.focus(); }catch(e){}
+  };
+  document.getElementById('sf-add-cancel').onclick=function(){ show(form,false); };
+
+  document.getElementById('sf-add-go').onclick=function(){
+    var name=(nameEl.value||'').trim();
+    var prompt=(promptEl.value||'').trim();
+    show(errEl,false);
+    // Checked here as well as on the route: a refusal that costs a round trip
+    // reads as the server disagreeing with you, and this one is just a blank
+    // field.
+    if(!name) return fail('Give the template a name.');
+    if(!prompt) return fail('Describe the sections and when this kind should be used.');
+
+    fetch('/api/types',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:name,prompt:prompt,shell:shell()})
+    }).then(function(r){
+      return r.json().then(function(body){ return {ok:r.ok,body:body}; });
+    }).then(function(res){
+      // The form stays open with what was typed. Every refusal here is one the
+      // user can act on, and retyping a five-line prompt to act on it is not
+      // something to ask.
+      if(!res.ok) return fail(res.body&&res.body.error?res.body.error:'Could not create that template.');
+      show(form,false);
+      begin(res.body);
+    }).catch(function(){ fail('Could not reach SpecForge. Is the daemon still running?'); });
+  };
+
+  function begin(created){
+    // The destination is known the moment the kind exists, so the anchor carries
+    // it from the start: "Open it anyway" and the automatic navigation are the
+    // same link, and there is no second place for the URL to be wrong.
+    openEl.setAttribute('href',created.specUrl+'?created=template');
+    show(openEl,false);
+    show(keepEl,false);
+    show(slowEl,false);
+    show(waitErrEl,false);
+    show(runEl,true);
+    show(wait,true);
+    startedAt=Date.now();
+    elapsedEl.textContent='0:00';
+    ticker=setInterval(function(){ elapsedEl.textContent=mmss(Date.now()-startedAt); },1000);
+    poller=setInterval(function(){ poll(created.slug); },POLL_MS);
+  }
+
+  function poll(slug){
+    if(Date.now()-startedAt>=DEADLINE_MS) return slow();
+    fetch('/api/types/'+encodeURIComponent(slug))
+      .then(function(r){ return r.json(); })
+      .then(function(body){
+        var state=(body&&body.generate&&body.generate.state)||'working';
+        if(state==='done') return done();
+        if(state==='error') return failed(body.generate.error);
+      })
+      // A failed poll is the daemon restarting, not a failed generation. The
+      // state is on disk; keep waiting.
+      .catch(function(){});
+  }
+
+  function done(){
+    stop();
+    openEl.click();
+  }
+
+  function failed(message){
+    stop();
+    show(runEl,false);
+    waitErrEl.textContent=message||'The template could not be written.';
+    show(waitErrEl,true);
+    // Said explicitly, because the error alone reads as "nothing happened" and
+    // what actually happened is that the kind exists with an unwritten template.
+    show(document.getElementById('sf-wait-kept'),true);
+    show(openEl,true);
+  }
+
+  function slow(){
+    stop();
+    // The estimate goes with the ticker. Leaving "usually under a minute" beside
+    // an elapsed 3:22 is the dialog arguing with itself, and the amber line
+    // below is now the honest statement of where things stand.
+    show(document.getElementById('sf-wait-eta'),false);
+    show(slowEl,true);
+    show(openEl,true);
+    show(keepEl,true);
+  }
+
+  keepEl.onclick=function(){
+    // Resumes the poll. It does not re-create anything: the kind and the request
+    // both already exist, and asking twice would queue a second write over the
+    // same template.
+    show(slowEl,false);
+    show(keepEl,false);
+    show(document.getElementById('sf-wait-eta'),true);
+    startedAt=Date.now();
+    var slug=(openEl.getAttribute('href')||'').replace(/^\\/spec\\/template-/,'').replace(/\\?.*$/,'');
+    ticker=setInterval(function(){ elapsedEl.textContent=mmss(Date.now()-startedAt); },1000);
+    poller=setInterval(function(){ poll(slug); },POLL_MS);
+  };
+
+  document.getElementById('sf-wait-cancel').onclick=function(){
+    // Stops this page waiting. It cannot stop the agent, because nothing can,
+    // and the template is on the Templates tab either way.
+    stop();
+    show(wait,false);
+  };
 })();
 </script>
 </body>

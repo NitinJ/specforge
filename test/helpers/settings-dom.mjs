@@ -42,7 +42,12 @@ const EMPTY_STATE = {
  *   it loads and renders from the answer: a stub that echoed the request would
  *   make the page throw after the test ended, where node reports it as an
  *   unhandled rejection rather than a failure.
- * @returns {{window: Window, calls: Array, setScheme: (s:'light'|'dark') => void}}
+ * @param {boolean} [hostOpts.clock] replace the window's timers with a clock the
+ *   test drives. Anything the page schedules queues instead of firing, and
+ *   `advance(ms)` runs what is due and moves Date.now with it. Without this a
+ *   test for a three-minute deadline would take three minutes, and a test for a
+ *   two-second poll would be a race.
+ * @returns {{window: Window, calls: Array, setScheme: Function, advance: Function}}
  *   `setScheme` flips the OS preference and fires the change event, which is the
  *   only way to exercise the page's live-theme listener: jsdom never evaluates
  *   media queries, so a real scheme change cannot happen in it.
@@ -59,15 +64,58 @@ export function loadSettings(t, opts, hostOpts = {}) {
   let scheme = hostOpts.scheme || 'dark';
   const mqListeners = [];
 
+  // A clock the test drives, installed before the page's script runs so nothing
+  // it schedules escapes. `now` is what the page reads through Date.now, and it
+  // only moves when advance() moves it.
+  let now = 1_600_000_000_000;
+  let nextTimer = 1;
+  const timers = new Map(); // id -> {due, fn, every}
+
   const beforeParse = (window) => {
+    if (hostOpts.clock) {
+      window.Date.now = () => now;
+      window.setTimeout = (fn, ms) => {
+        timers.set(nextTimer, { due: now + (ms || 0), fn, every: 0 });
+        return nextTimer++;
+      };
+      window.setInterval = (fn, ms) => {
+        timers.set(nextTimer, { due: now + (ms || 0), fn, every: ms || 1 });
+        return nextTimer++;
+      };
+      window.clearTimeout = (id) => timers.delete(id);
+      window.clearInterval = (id) => timers.delete(id);
+    }
     window.fetch = (url, init) => {
       const method = (init && init.method) || 'GET';
       const body = init && init.body ? JSON.parse(init.body) : undefined;
       const call = { method, url, body };
       calls.push(call);
       const json = hostOpts.respond ? hostOpts.respond(call) : EMPTY_STATE;
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(json) });
+      // A `__status` on the answer means the route refused. The page branches on
+      // ok/status for its own routes, and a stub that only ever said 200 could
+      // not exercise a single refusal path.
+      const status = (json && json.__status) || 200;
+      return Promise.resolve({
+        ok: status >= 200 && status < 300,
+        status,
+        json: () => Promise.resolve(json),
+      });
     };
+    // Navigation, intercepted at the link.
+    //
+    // jsdom cannot navigate, and it closes every seam a test might use to watch
+    // it try: location.assign is non-configurable on Location, window.location
+    // is non-configurable on window, and setting href only raises a jsdomError
+    // that does not carry the URL (measured, not assumed —
+    // scripts/probe-jsdom-location.mjs). So the pages here navigate by clicking
+    // a real anchor, and this catches the click on the way out and records where
+    // it was going, the way a client-side router would.
+    window.addEventListener('click', (e) => {
+      const a = e.target && e.target.closest && e.target.closest('a[href]');
+      if (!a) return;
+      e.preventDefault();
+      window.__sfWent = a.getAttribute('href');
+    }, true);
     // jsdom never evaluates media queries, so the page's theme code would read
     // an undefined preference. A fake keeps the OS answer explicit per test.
     window.matchMedia = (media) => ({
@@ -94,9 +142,35 @@ export function loadSettings(t, opts, hostOpts = {}) {
   });
   const { window } = dom;
   t.after(() => window.close());
+  /**
+   * Move the clock and run everything that comes due, in order.
+   *
+   * Awaited between firings so a callback that resolves a promise has its `then`
+   * run before the next one fires; without that, a poll that schedules the next
+   * poll from inside a `.then` never gets scheduled.
+   */
+  async function advance(ms) {
+    const until = now + ms;
+    for (;;) {
+      const due = [...timers.entries()]
+        .filter(([, t]) => t.due <= until)
+        .sort((a, b) => a[1].due - b[1].due)[0];
+      if (!due) break;
+      const [id, timer] = due;
+      now = timer.due;
+      if (timer.every) timer.due = now + timer.every;
+      else timers.delete(id);
+      timer.fn();
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    now = until;
+  }
+
   return {
     window,
     calls,
+    advance,
     setScheme(next) {
       scheme = next;
       for (const fn of mqListeners) fn({ matches: next === 'light' });
@@ -104,5 +178,11 @@ export function loadSettings(t, opts, hostOpts = {}) {
   };
 }
 
-/** Let the page's promise callbacks run. */
-export const tick = (window) => new Promise((r) => window.setTimeout(r, 0));
+/**
+ * Let the page's promise callbacks run.
+ *
+ * Node's timer, not the window's. With `clock: true` the window's setTimeout is
+ * a queue that only fires when the test advances it, so scheduling the test's
+ * own continuation there would wait for a clock the test has not moved yet.
+ */
+export const tick = () => new Promise((r) => setTimeout(r, 0));
