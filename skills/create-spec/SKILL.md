@@ -40,6 +40,19 @@ injects the review layer at serve time.
     comparison, a brief. It scaffolds the chrome and one TL;DR section; you decide
     every section from the use case. Reach for it only when no other type fits,
     never to avoid choosing.
+- **Check for the user's own types before settling on one of the six.** They can
+  add a kind of spec from the configuration page, and a kind they made for
+  exactly this request beats any of the above:
+
+  ```
+  node "${CLAUDE_PLUGIN_ROOT}/lib/spec-types-cli.mjs"
+  ```
+
+  Each custom type prints with a **when to use** line, written by the person who
+  made it. Read it as the rule it is: if it describes this request, take that
+  type. `general` in particular is the fallback for a document that fits nothing
+  else, and a custom type existing usually means "nothing else fit" already
+  happened once and was answered.
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
 - Read the component rules: `${CLAUDE_PLUGIN_ROOT}/references/spec-components.md`.
   43 components, each with the rule for when it applies. Pick by what a block
