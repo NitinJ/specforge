@@ -20,6 +20,9 @@ import { mineFor } from './lib/session.mjs';
 import { markSeen } from '../lib/attach.mjs';
 import { pendingForSession, reviewReason, watcherBeating, armWatcherReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
+import {
+  generateRequestsForSession, markGenerateWorking, generateReason,
+} from '../lib/store-generate.mjs';
 
 export function run(input, env = process.env) {
   // Loop guard: if this stop already followed a stop-hook continuation, settle.
@@ -33,6 +36,16 @@ export function run(input, env = process.env) {
   // Pending review batches take priority — route to review-spec before settling.
   const batches = pendingForSession(me);
   if (batches.length) return { decision: 'block', reason: reviewReason(batches) };
+
+  // Human clicked "Add a template" — route to the generate skill once. Ahead of
+  // the export below because of who is waiting: an export lands in a Google Doc
+  // the user opens later, while a template creation has a person sitting in
+  // front of a dialog that named an ETA.
+  const toGenerate = generateRequestsForSession(me);
+  if (toGenerate.length) {
+    toGenerate.forEach((m) => markGenerateWorking(m.id));
+    return { decision: 'block', reason: generateReason(toGenerate) };
+  }
 
   // Human clicked "Export to Google Docs" — route to the export skill once.
   const toExport = exportRequestsForSession(me);
