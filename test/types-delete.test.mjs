@@ -139,6 +139,31 @@ test('a kind can be created again after being deleted', () => {
   assert.match(readMeta(again.body.templateId).generate.prompt, /second time/);
 });
 
+test('a template spec that cannot be removed leaves the kind whole', async () => {
+  // Raised in review of PR #228. The fallible step runs first, so a failure
+  // there leaves everything exactly as it was rather than reporting a 200 for a
+  // kind with no row and a template spec still on the index.
+  const { slug, templateId: tid } = seedKind();
+  const { chmodSync } = await import('node:fs');
+  const { dirname } = await import('node:path');
+  // Unwritable parent, which is what rmSync needs to unlink a child. Restored
+  // in the same breath rather than in a hook: the store's own afterEach removes
+  // the directory, and it cannot do that through a mode this test left behind.
+  const parent = dirname(specDir(tid));
+  chmodSync(parent, 0o500);
+  let out;
+  try {
+    out = handleTypeDelete(slug);
+  } finally {
+    chmodSync(parent, 0o700);
+  }
+
+  assert.equal(out.status, 500);
+  assert.match(out.body.error, /template spec/);
+  assert.equal(isSpecType(slug), true, 'the kind is still whole');
+  assert.ok(existsSync(specDir(tid)), 'and its template is still there');
+});
+
 test('deleting one kind leaves the others alone', () => {
   const a = seedKind('Postmortem');
   const b = seedKind('Runbook');

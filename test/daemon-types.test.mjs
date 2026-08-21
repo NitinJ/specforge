@@ -128,6 +128,30 @@ test('DELETE refuses a built-in, an unknown kind, and one in use', async () => {
   assert.equal((await inUse.json()).inUse, 1);
 });
 
+test('deleting a published template leaves no share record behind', async () => {
+  // A template spec is a spec and can be shared, so the delete route revokes
+  // first, through the same pubs.unshareThen the spec-delete route uses (raised
+  // in review of PR #228). Without it a token is left resolving to a spec that
+  // no longer exists.
+  //
+  // What this test can and cannot say. It catches a delete that stops removing
+  // the record — a later change to archive rather than remove, say. It cannot
+  // distinguish the revoke from the directory removal, because share.json lives
+  // inside the spec directory and either one takes it: the daemon under test is
+  // built with createDaemon, which does not restore publications, so there is no
+  // in-memory token to watch disappear. The guarantee unshareThen actually buys,
+  // that no share can commit anywhere inside a delete, is publications.test.mjs's
+  // subject and is covered there.
+  seedLiveSession();
+  await post('/api/types', CREATE);
+  const { writeShare, readShare } = await import('../lib/store-share.mjs');
+  writeShare('template-postmortem', { token: 'a'.repeat(32), createdAt: new Date().toISOString() });
+  assert.ok(readShare('template-postmortem'), 'published, which is the premise');
+
+  assert.equal((await fetch(`${base}/api/types/postmortem`, { method: 'DELETE' })).status, 200);
+  assert.equal(readShare('template-postmortem'), null, 'no record left pointing at it');
+});
+
 test('DELETE is a write, so a foreign origin is refused', async () => {
   seedLiveSession();
   await post('/api/types', CREATE);
