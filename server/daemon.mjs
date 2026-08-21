@@ -37,7 +37,7 @@ import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
 import { renderSettings } from './settings-page.mjs';
 import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
-import { handleTypeCreate, handleTypeGet } from '../lib/types-api.mjs';
+import { handleTypeCreate, handleTypeGet, handleTypeDelete } from '../lib/types-api.mjs';
 import {
   handleTemplateBlocksGet, handleTemplateBlocksPut, handleTemplateBlocksReset,
 } from '../lib/template-blocks-api.mjs';
@@ -350,9 +350,21 @@ export function createDaemon({ publications: pubs = publications } = {}) {
     }
     const oneType = path.match(/^\/api\/types\/([\w-]+)$/);
     if (oneType) {
-      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
-      const { status, body } = handleTypeGet(oneType[1]);
-      return sendJson(res, status, body);
+      if (method === 'GET') {
+        const { status, body } = handleTypeGet(oneType[1]);
+        return sendJson(res, status, body);
+      }
+      if (method === 'DELETE') {
+        // The barrier is handed to the handler rather than wrapped around it, so
+        // it closes only once the handler has run out of reasons to refuse. A
+        // template spec is a spec and can be shared, so the delete has to revoke
+        // first; wrapping the whole call meant a 403 or a 409 took the link down
+        // on the way to saying no (raised in review of PR #228).
+        return handleTypeDelete(oneType[1], { revoke: pubs.unshareThen })
+          .then(({ status, body }) => sendJson(res, status, body))
+          .catch((e) => sendJson(res, 500, { error: e.message }));
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
     }
 
     // Per-type prompts and rules, which live in the template specs rather than

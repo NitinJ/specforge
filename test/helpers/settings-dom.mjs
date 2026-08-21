@@ -90,7 +90,16 @@ export function loadSettings(t, opts, hostOpts = {}) {
       const body = init && init.body ? JSON.parse(init.body) : undefined;
       const call = { method, url, body };
       calls.push(call);
-      const json = hostOpts.respond ? hostOpts.respond(call) : EMPTY_STATE;
+      let json;
+      try {
+        json = hostOpts.respond ? hostOpts.respond(call) : EMPTY_STATE;
+      } catch (err) {
+        // A respond that throws is the connection failing, so it comes back as a
+        // REJECTED promise. Letting it throw synchronously out of fetch is
+        // something the real one never does, and a page whose only handling is
+        // .catch() would look untested while being untestable.
+        return Promise.reject(err);
+      }
       // A `__status` on the answer means the route refused. The page branches on
       // ok/status for its own routes, and a stub that only ever said 200 could
       // not exercise a single refusal path.
