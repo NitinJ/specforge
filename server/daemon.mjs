@@ -38,7 +38,6 @@ import { renderIndex } from './index-page.mjs';
 import { renderSettings } from './settings-page.mjs';
 import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
 import { handleTypeCreate, handleTypeGet, handleTypeDelete } from '../lib/types-api.mjs';
-import { templateIdFor } from '../lib/spec-types.mjs';
 import {
   handleTemplateBlocksGet, handleTemplateBlocksPut, handleTemplateBlocksReset,
 } from '../lib/template-blocks-api.mjs';
@@ -356,16 +355,14 @@ export function createDaemon({ publications: pubs = publications } = {}) {
         return sendJson(res, status, body);
       }
       if (method === 'DELETE') {
-        // Revoke any publication first, and keep new shares for the template
-        // spec refused for the whole delete. A template spec is a spec and can
-        // be shared, so without this a share committing inside the delete leaves
-        // a public URL serving a spec that no longer exists (raised in review of
-        // PR #228). The same guard the spec-delete route below uses, for the
-        // same reason.
-        return pubs.unshareThen(templateIdFor(oneType[1]), async () => {
-          const { status, body } = handleTypeDelete(oneType[1]);
-          return sendJson(res, status, body);
-        }).catch((e) => sendJson(res, 500, { error: e.message }));
+        // The barrier is handed to the handler rather than wrapped around it, so
+        // it closes only once the handler has run out of reasons to refuse. A
+        // template spec is a spec and can be shared, so the delete has to revoke
+        // first; wrapping the whole call meant a 403 or a 409 took the link down
+        // on the way to saying no (raised in review of PR #228).
+        return handleTypeDelete(oneType[1], { revoke: pubs.unshareThen })
+          .then(({ status, body }) => sendJson(res, status, body))
+          .catch((e) => sendJson(res, 500, { error: e.message }));
       }
       return sendJson(res, 405, { error: 'method not allowed' });
     }
