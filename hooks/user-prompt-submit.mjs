@@ -17,6 +17,9 @@ import { mineFor } from './lib/session.mjs';
 import { markSeen } from '../lib/attach.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
+import {
+  generateRequestsForSession, markGenerateWorking, generateReason,
+} from '../lib/store-generate.mjs';
 
 export function run(input, env = process.env) {
   const { me, mine } = mineFor(env, input.session_id);
@@ -25,6 +28,13 @@ export function run(input, env = process.env) {
   const batches = pendingForSession(me);
   if (batches.length) {
     return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: reviewReason(batches) } };
+  }
+  // Ahead of the export for the same reason as in the Stop hook: someone is
+  // watching a dialog for this one.
+  const toGenerate = generateRequestsForSession(me);
+  if (toGenerate.length) {
+    toGenerate.forEach((m) => markGenerateWorking(m.id));
+    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: generateReason(toGenerate) } };
   }
   const toExport = exportRequestsForSession(me);
   if (toExport.length) {
