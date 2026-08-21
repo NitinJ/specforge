@@ -275,17 +275,20 @@ test('sync --all skips every spec that has not opted in', () => {
 // deck stamped at create time carries the library AND the deck's own 18
 // duplicate definitions, and renders as a mixture of the two.
 test('every spec type is on the library, the deck included', async () => {
-  const { STAMPED_TYPES, STAMPED_TEMPLATES, stampsAtCreate } = await import('../lib/components-build.mjs');
-  const { SPEC_TYPES } = await import('../lib/meta.mjs');
+  const { STAMPED_TEMPLATES, stampsAtCreate } = await import('../lib/components-build.mjs');
+  const { specTypes } = await import('../lib/spec-types.mjs');
 
   assert.equal(stampsAtCreate('deck'), true, 'a deck is stamped like anything else');
   assert.ok(STAMPED_TEMPLATES.includes('spec-base-deck.html'), 'and so is its template');
-  for (const type of SPEC_TYPES) {
+  for (const type of specTypes()) {
     assert.equal(stampsAtCreate(type), true, `${type} is stamped`);
   }
-  // Every type is accounted for, so a type added later cannot silently miss the
-  // library by being forgotten here.
-  assert.deepEqual([...STAMPED_TYPES].sort(), [...SPEC_TYPES].sort());
+  // Including a kind that did not exist when this was written. Stamping follows
+  // the shell and every shell carries the library, so a kind added from the
+  // browser (spec 45395008a2) is stamped for the same reason the six are. The
+  // list this used to compare against could not know about it, which is how a
+  // custom kind would have created specs with no component CSS.
+  assert.equal(stampsAtCreate('postmortem'), true, 'a kind added later is stamped too');
 });
 
 // ---- the templates ----

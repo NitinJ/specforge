@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { SPEC_TYPES, readMeta } from '../lib/meta.mjs';
+import { readMeta } from '../lib/meta.mjs';
+import { specTypes } from '../lib/spec-types.mjs';
 import { lintSpec } from '../lib/lint-spec.mjs';
 import { readSpecHtml, writeSpecHtml } from '../lib/store.mjs';
 import {
@@ -32,7 +33,7 @@ afterEach(() => {
 
 test('ensureTemplates seeds one protected template spec per spec type', () => {
   ensureTemplates();
-  for (const type of SPEC_TYPES) {
+  for (const type of specTypes()) {
     const meta = readMeta(templateId(type));
     assert.ok(meta, `template spec for ${type} exists`);
     assert.equal(meta.template, true, 'flagged as a template (protected)');

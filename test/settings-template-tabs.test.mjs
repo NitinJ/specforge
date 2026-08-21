@@ -20,7 +20,7 @@ import {
 } from '../lib/template-blocks-api.mjs';
 import { handlePromptsGet } from '../lib/prompts-api.mjs';
 import { templateRules, templatePrompts, templateId, ensureTemplates } from '../lib/store-templates.mjs';
-import { SPEC_TYPES } from '../lib/meta.mjs';
+import { specTypes } from '../lib/spec-types.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-stt-');
 
@@ -337,7 +337,7 @@ test('the type picker switches which type is shown', async (t) => {
   const { window } = open(t, 'rules');
   await settle(window);
   const chips = [...window.document.querySelectorAll('.chip.type')];
-  assert.equal(chips.length, SPEC_TYPES.length, 'one chip per type');
+  assert.equal(chips.length, specTypes().length, 'one chip per type');
   const research = chips.find((c) => c.getAttribute('data-type') === 'research');
   research.click();
   await settle(window);
@@ -368,7 +368,7 @@ test('the templates tab shows one card per type, inside the tab panel', (t) => {
   ensureTemplates();
   const { window } = open(t, 'templates');
   const cards = [...window.document.querySelectorAll('#sf-tabpanel .tcard')];
-  assert.equal(cards.length, SPEC_TYPES.length);
+  assert.equal(cards.length, specTypes().length);
   const design = cards.find((c) => c.getAttribute('data-id') === templateId('design'));
   assert.ok(design, 'the design template has a card');
   assert.equal(design.getAttribute('href'), `/spec/${templateId('design')}`,
@@ -401,5 +401,5 @@ test('a fresh store still shows the cards, seeding on demand', (t) => {
   // No ensureTemplates here: the page seeds them, so a first-run store shows
   // cards rather than an empty box.
   const { window } = open(t, 'templates');
-  assert.equal(window.document.querySelectorAll('.tcard').length, SPEC_TYPES.length);
+  assert.equal(window.document.querySelectorAll('.tcard').length, specTypes().length);
 });

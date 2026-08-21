@@ -13,7 +13,7 @@ import { specHtmlPath } from '../lib/store-paths.mjs';
 import { hasTemplateBlocks, stripTemplateBlocks } from '../lib/rules/template-blocks.mjs';
 import { allRules } from '../lib/rules/all.mjs';
 import { cmdCreate, cmdImport } from '../lib/specforge-cli.mjs';
-import { SPEC_TYPES } from '../lib/meta.mjs';
+import { specTypes } from '../lib/spec-types.mjs';
 import { TEMPLATE_RULES } from '../lib/rules/template-defaults.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-template-rules-');
@@ -21,7 +21,7 @@ useTempStore({ beforeEach, afterEach }, 'sf-template-rules-');
 const deps = { ensureDaemon: async () => ({ url: 'http://localhost:4180' }), session: '' };
 
 test('every bundled shell arrives carrying its type its own rules', () => {
-  for (const type of SPEC_TYPES) {
+  for (const type of specTypes()) {
     const html = templateHtmlFor(type);
     assert.equal(hasTemplateBlocks(html), true, `${type} has no blocks`);
     const ids = templateRules(type).map((r) => r.id);
@@ -44,7 +44,7 @@ const PROMPTED_SECTIONS = {
 };
 
 test('a prompt lands in every section that exists to carry one, and nowhere else', () => {
-  for (const type of SPEC_TYPES) {
+  for (const type of specTypes()) {
     const sections = templatePrompts(type).map((p) => p.section).sort();
     assert.deepEqual(sections, PROMPTED_SECTIONS[type], type);
   }
@@ -82,7 +82,7 @@ test('allRules gives the impl types the corpus rules moved by D12', () => {
 });
 
 test('a created spec carries neither block, whatever its type', async () => {
-  for (const type of SPEC_TYPES) {
+  for (const type of specTypes()) {
     const { id, htmlPath, prompts } = await cmdCreate({ title: `A ${type} spec`, type }, deps);
     const html = readFileSync(htmlPath, 'utf8');
     assert.equal(hasTemplateBlocks(html), false, `${type}: a spec must never carry the scaffolding`);
@@ -153,7 +153,7 @@ test('importing a file that carries a rules block does not smuggle it into the s
 
 test('the seeded store template is what the bundled shell renders', () => {
   ensureTemplates();
-  for (const type of SPEC_TYPES) {
+  for (const type of specTypes()) {
     const stored = readFileSync(specHtmlPath(templateId(type)), 'utf8');
     assert.equal(hasTemplateBlocks(stored), true, `${type}: the seeded template lost its blocks`);
   }
