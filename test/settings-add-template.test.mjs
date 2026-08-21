@@ -220,6 +220,60 @@ test('cancel stops the polling and leaves the template alone', async (t) => {
   assert.equal(el(window, 'sf-wait').hidden, true, 'and the dialog is gone');
 });
 
+test('a second creation starts clean, whatever the first one ended as', async (t) => {
+  // Raised in review of PR #225. The dialog is reused, so a failure line or a
+  // hidden estimate left by one attempt shows up on the next, describing a
+  // template that is not the one being made.
+  const states = [{ state: 'error', error: 'the first one failed' }];
+  const { window, advance } = loadSettings(t, TEMPLATES, {
+    clock: true,
+    respond: ({ method, url }) => {
+      if (method === 'POST' && url.includes('/api/types')) {
+        return {
+          slug: 'postmortem', label: 'Postmortem', shell: 'doc',
+          templateId: 'template-postmortem', specUrl: '/spec/template-postmortem',
+          generate: { state: 'requested' },
+        };
+      }
+      return { slug: 'postmortem', generate: states[0] };
+    },
+  });
+
+  submit(window, { name: 'First' });
+  await tick(window);
+  await advance(4_000);
+  assert.equal(el(window, 'sf-wait-err').hidden, false, 'the first one failed');
+  el(window, 'sf-wait-cancel').click();
+
+  states[0] = { state: 'working' };
+  submit(window, { name: 'Second' });
+  await tick(window);
+  assert.equal(el(window, 'sf-wait-err').hidden, true, 'no leftover error');
+  assert.equal(el(window, 'sf-wait-kept').hidden, true, 'no leftover explanation');
+  assert.equal(el(window, 'sf-wait-open').hidden, true, 'no leftover way out');
+  assert.equal(el(window, 'sf-wait-eta').hidden, false, 'and the estimate is back');
+  assert.equal(el(window, 'sf-wait-run').hidden, false, 'showing the running state');
+});
+
+test('a creation after a timeout starts clean too', async (t) => {
+  const { window, advance } = loadSettings(t, TEMPLATES, {
+    clock: true, respond: scripted([{ state: 'working' }]),
+  });
+  submit(window, { name: 'First' });
+  await tick(window);
+  await advance(181_000);
+  assert.equal(el(window, 'sf-wait-slow').hidden, false, 'the first one went slow');
+  assert.equal(el(window, 'sf-wait-eta').hidden, true, 'and dropped its estimate');
+  el(window, 'sf-wait-cancel').click();
+
+  submit(window, { name: 'Second' });
+  await tick(window);
+  assert.equal(el(window, 'sf-wait-slow').hidden, true, 'no leftover warning');
+  assert.equal(el(window, 'sf-wait-keep').hidden, true, 'no leftover Keep waiting');
+  assert.equal(el(window, 'sf-wait-eta').hidden, false, 'and the estimate is back');
+  assert.match(el(window, 'sf-wait-elapsed').textContent, /^0:0/, 'counting from zero');
+});
+
 test('with nothing listening it says so, and never opens the wait', async (t) => {
   const { window } = loadSettings(t, TEMPLATES, {
     respond: scripted([], { createStatus: 503 }),

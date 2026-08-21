@@ -1176,16 +1176,27 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     }).catch(function(){ fail('Could not reach SpecForge. Is the daemon still running?'); });
   };
 
+  // Put every optional part of the dialog back where it starts.
+  //
+  // One place rather than a line per element in begin(), because the bug this
+  // fixes was two elements added later that begin() did not know to reset: a
+  // second creation on the same page inherited the first one's failure line and
+  // its hidden estimate (raised in review of PR #225). A reset that has to be
+  // extended by hand each time an element is added will miss the next one too.
+  function resetWait(){
+    ['sf-wait-open','sf-wait-keep','sf-wait-slow','sf-wait-err','sf-wait-kept']
+      .forEach(function(id){ show(document.getElementById(id),false); });
+    show(document.getElementById('sf-wait-eta'),true);
+    waitErrEl.textContent='';
+    show(runEl,true);
+  }
+
   function begin(created){
     // The destination is known the moment the kind exists, so the anchor carries
     // it from the start: "Open it anyway" and the automatic navigation are the
     // same link, and there is no second place for the URL to be wrong.
     openEl.setAttribute('href',created.specUrl+'?created=template');
-    show(openEl,false);
-    show(keepEl,false);
-    show(slowEl,false);
-    show(waitErrEl,false);
-    show(runEl,true);
+    resetWait();
     show(wait,true);
     startedAt=Date.now();
     elapsedEl.textContent='0:00';
