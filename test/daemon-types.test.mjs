@@ -105,6 +105,40 @@ test('the wrong method answers 405 on both routes', async () => {
   assert.equal((await post('/api/types/postmortem', {})).status, 405);
 });
 
+test('DELETE removes a kind over the socket', async () => {
+  seedLiveSession();
+  await post('/api/types', CREATE);
+  const r = await fetch(`${base}/api/types/postmortem`, { method: 'DELETE' });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).slug, 'postmortem');
+  assert.equal(specTypes().includes('postmortem'), false);
+  assert.equal((await fetch(`${base}/api/types/postmortem`)).status, 404, 'and it is gone');
+});
+
+test('DELETE refuses a built-in, an unknown kind, and one in use', async () => {
+  seedLiveSession();
+  assert.equal((await fetch(`${base}/api/types/design`, { method: 'DELETE' })).status, 403);
+  assert.equal((await fetch(`${base}/api/types/nope`, { method: 'DELETE' })).status, 404);
+
+  await post('/api/types', CREATE);
+  const { createSpec } = await import('../lib/store.mjs');
+  createSpec({ title: 'An outage', html: '<h1>x</h1>', type: 'postmortem' });
+  const inUse = await fetch(`${base}/api/types/postmortem`, { method: 'DELETE' });
+  assert.equal(inUse.status, 409);
+  assert.equal((await inUse.json()).inUse, 1);
+});
+
+test('DELETE is a write, so a foreign origin is refused', async () => {
+  seedLiveSession();
+  await post('/api/types', CREATE);
+  const r = await fetch(`${base}/api/types/postmortem`, {
+    method: 'DELETE',
+    headers: { Origin: 'https://attacker.example' },
+  });
+  assert.equal(r.status, 403);
+  assert.equal(specTypes().includes('postmortem'), true, 'and the kind is still there');
+});
+
 test('creating is a write, so a foreign origin is refused', async () => {
   // The same guard every other write on this daemon has. Creating a kind hands
   // work to the owner's own Claude session, which is not something a page on

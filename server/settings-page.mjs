@@ -13,6 +13,7 @@
 
 import { listSpecs } from '../lib/meta.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
+import { customTypes } from '../lib/spec-types.mjs';
 
 /**
  * The tabs, in order. The first four are prompt classes; Templates is the
@@ -33,12 +34,26 @@ function esc(s) {
     .replaceAll('"', '&quot;');
 }
 
-/** One template card. Opens the template spec, which is how it has always been edited. */
-function tplCard(m) {
-  return `<a class="tcard" href="/spec/${esc(m.id)}" data-id="${esc(m.id)}">
-      <span class="tname">${esc(m.type || m.id)}</span>
-      <span class="tsub">template</span>
-    </a>`;
+/**
+ * One template card. Opens the template spec, which is how it has always been
+ * edited.
+ *
+ * A custom kind's card carries a remove control; a built-in's does not, because
+ * a built-in cannot be removed and a control that only ever refuses is worse
+ * than no control. The card stays an anchor and the control is a button beside
+ * it rather than inside it, because a button inside a link is a click target
+ * that does two things.
+ */
+function tplCard(m, custom) {
+  const remove = custom ? `
+      <button class="tdel" type="button" data-slug="${esc(m.type || '')}"
+        title="Remove this kind" aria-label="Remove the ${esc(m.type || '')} kind">✕</button>` : '';
+  return `<div class="tcardwrap${custom ? ' custom' : ''}">
+      <a class="tcard" href="/spec/${esc(m.id)}" data-id="${esc(m.id)}">
+        <span class="tname">${esc(m.type || m.id)}</span>
+        <span class="tsub">${custom ? 'yours' : 'template'}</span>
+      </a>${remove}
+    </div>`;
 }
 
 /**
@@ -118,6 +133,36 @@ function waitDialog() {
 }
 
 /**
+ * The confirm for removing a kind.
+ *
+ * The only irreversible action on this page, so it names both things that go
+ * rather than asking "are you sure". The refusal when specs still use the kind
+ * lands in the same dialog, because it is the answer to the question just
+ * asked and a second surface for it would be a second place to look.
+ */
+function deleteDialog() {
+  return `<div class="waitmask" id="sf-del" role="dialog" aria-modal="true"
+      aria-labelledby="sf-del-title" hidden>
+      <div class="waitcard">
+        <h3 id="sf-del-title">Remove this kind?</h3>
+        <div id="sf-del-stakes">
+          <p class="delwhat" id="sf-del-what"></p>
+          <ul class="delgoes" id="sf-del-goes">
+            <li>the kind itself, so nothing can be created with it</li>
+            <li>its template, and everything you have written into it</li>
+          </ul>
+          <p class="delnote">This cannot be undone. Specs already written with it are untouched.</p>
+        </div>
+        <p class="waiterr" id="sf-del-err" hidden></p>
+        <div class="addacts">
+          <button class="btn danger" id="sf-del-go" type="button">Remove it</button>
+          <button class="btn quiet" id="sf-del-cancel" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+/**
  * Render the settings page.
  *
  * @param {object} [opts]
@@ -131,6 +176,10 @@ export function renderSettings(opts = {}) {
   ensureTemplates();
   const templates = listSpecs().filter((m) => m.template)
     .sort((a, b) => String(a.type || '').localeCompare(String(b.type || '')));
+  // Which cards are the user's. Read from the registry rather than inferred from
+  // the card, because "is this removable" is the registry's answer and a second
+  // way of working it out is a second way to get it wrong.
+  const mine = new Set(customTypes().map((t) => t.slug));
 
   const tabs = CLASSES.map((c) => `
       <a class="tab${c.id === active ? ' on' : ''}" href="/settings?tab=${c.id}"
@@ -141,14 +190,15 @@ export function renderSettings(opts = {}) {
   // no request should not start with "Loading…".
   const panel = active === 'templates'
     ? `<p class="lede">What every new spec of a type starts from. Click one to open and edit it as a spec.</p>
-    <div class="tstrip">${templates.map(tplCard).join('')}
+    <div class="tstrip">${templates.map((m) => tplCard(m, mine.has(m.type))).join('')}
       <button class="tcard addcard" id="sf-add-type" type="button">
         <span class="tname">+ Add a template</span>
         <span class="tsub">a new kind of spec</span>
       </button>
     </div>
     ${addForm()}
-    ${waitDialog()}`
+    ${waitDialog()}
+    ${deleteDialog()}`
     : '<p class="empty" id="sf-loading">Loading…</p>';
   // Nothing on the Templates tab lives in prompts.json or a template block, so
   // there is nothing for the reset control to reset.
@@ -305,6 +355,33 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
      rather than by looking identical to the six things it is not. */
   .addcard{border-style:dashed;cursor:pointer;text-align:left;font-family:inherit}
   .addcard .tname{color:var(--accent)}
+
+  /* A card and its remove control. The control sits beside the link rather than
+     inside it: a button inside an anchor is one click target doing two things.
+     Shown on hover and on focus, because a destructive control that is always
+     visible on six cards is six chances to hit the wrong one, and one that is
+     only on hover is unreachable by keyboard. */
+  .tcardwrap{position:relative;display:flex}
+  .tdel{position:absolute;top:5px;right:5px;width:20px;height:20px;padding:0;
+    display:flex;align-items:center;justify-content:center;
+    border:1px solid transparent;border-radius:6px;background:none;
+    color:var(--muted);font:12px/1 inherit;cursor:pointer;opacity:0;
+    transition:opacity .12s ease,color .12s ease,border-color .12s ease}
+  /* :focus for the reveal, not :focus-visible. A control that is invisible while
+     focused is broken however the focus arrived, and :focus-visible deliberately
+     does not match programmatic focus. review.css learned this on the code-block
+     copy button and says so there; the ring below stays on :focus-visible,
+     which is what that selector is for. */
+  .tcardwrap:hover .tdel,.tdel:focus{opacity:1}
+  .tdel:hover{color:var(--red);border-color:var(--red)}
+  .tdel:focus-visible{outline:none;border-color:var(--accent)}
+  @media (hover:none){.tdel{opacity:1}}
+
+  .btn.danger{border-color:var(--red);color:var(--red);font-weight:600}
+  .btn.danger:hover{background:color-mix(in srgb,var(--red) 10%,transparent)}
+  .delwhat{margin:0 0 8px;font-size:13.5px;color:var(--ink)}
+  .delgoes{margin:0 0 12px;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.7}
+  .delnote{margin:0 0 14px;font-size:12.5px;color:var(--muted)}
 
   .addform{margin:18px 0 0;padding:16px;border:1px solid var(--line);
     border-radius:10px;background:var(--panel);max-width:620px}
@@ -1263,6 +1340,62 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     // and the template is on the Templates tab either way.
     stop();
     show(wait,false);
+  };
+
+  // ---- removing a kind ----------------------------------------------------
+  //
+  // The only irreversible action on this page. It confirms, it names both things
+  // that go, and the server counts specs before agreeing, so the refusal a user
+  // is most likely to hit lands in the dialog they just opened.
+  var del=document.getElementById('sf-del');
+  var delWhat=document.getElementById('sf-del-what');
+  var delErr=document.getElementById('sf-del-err');
+  var delGo=document.getElementById('sf-del-go');
+  var pending=null;
+
+  document.querySelectorAll('.tdel').forEach(function(btn){
+    btn.onclick=function(){
+      pending=btn.getAttribute('data-slug');
+      delWhat.textContent='Removing "'+pending+'" takes away:';
+      show(delErr,false);
+      show(document.getElementById('sf-del-stakes'),true);
+      show(delGo,true);
+      show(del,true);
+      try{ delGo.focus(); }catch(e){}
+    };
+  });
+
+  document.getElementById('sf-del-cancel').onclick=function(){
+    pending=null;
+    show(del,false);
+  };
+
+  delGo.onclick=function(){
+    if(!pending) return;
+    fetch('/api/types/'+encodeURIComponent(pending),{method:'DELETE'})
+      .then(function(r){
+        return r.json().then(function(body){ return {ok:r.ok,body:body}; });
+      })
+      .then(function(res){
+        if(res.ok){
+          // Reloaded rather than patched out of the DOM: the strip is rendered by
+          // the server from the registry, and a page that removes the card
+          // itself is a second renderer that can disagree with the first.
+          return void location.reload();
+        }
+        // A refusal is the answer to the question just asked, so it lands here
+        // rather than somewhere else. Remove is withdrawn with it, and so is
+        // what-you-would-lose: nothing is going to be lost, and "this cannot be
+        // undone" above a refusal is the dialog contradicting itself.
+        delErr.textContent=res.body&&res.body.error?res.body.error:'Could not remove that kind.';
+        show(document.getElementById('sf-del-stakes'),false);
+        show(delErr,true);
+        show(delGo,false);
+      })
+      .catch(function(){
+        delErr.textContent='Could not reach SpecForge. Is the daemon still running?';
+        show(delErr,true);
+      });
   };
 })();
 </script>

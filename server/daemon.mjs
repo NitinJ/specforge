@@ -37,7 +37,7 @@ import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
 import { renderSettings } from './settings-page.mjs';
 import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
-import { handleTypeCreate, handleTypeGet } from '../lib/types-api.mjs';
+import { handleTypeCreate, handleTypeGet, handleTypeDelete } from '../lib/types-api.mjs';
 import {
   handleTemplateBlocksGet, handleTemplateBlocksPut, handleTemplateBlocksReset,
 } from '../lib/template-blocks-api.mjs';
@@ -350,9 +350,15 @@ export function createDaemon({ publications: pubs = publications } = {}) {
     }
     const oneType = path.match(/^\/api\/types\/([\w-]+)$/);
     if (oneType) {
-      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
-      const { status, body } = handleTypeGet(oneType[1]);
-      return sendJson(res, status, body);
+      if (method === 'GET') {
+        const { status, body } = handleTypeGet(oneType[1]);
+        return sendJson(res, status, body);
+      }
+      if (method === 'DELETE') {
+        const { status, body } = handleTypeDelete(oneType[1]);
+        return sendJson(res, status, body);
+      }
+      return sendJson(res, 405, { error: 'method not allowed' });
     }
 
     // Per-type prompts and rules, which live in the template specs rather than
