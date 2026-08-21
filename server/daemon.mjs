@@ -37,6 +37,7 @@ import { readPublicationState } from '../lib/publication-state.mjs';
 import { renderIndex } from './index-page.mjs';
 import { renderSettings } from './settings-page.mjs';
 import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
+import { handleTypeCreate, handleTypeGet } from '../lib/types-api.mjs';
 import {
   handleTemplateBlocksGet, handleTemplateBlocksPut, handleTemplateBlocksReset,
 } from '../lib/template-blocks-api.mjs';
@@ -331,6 +332,27 @@ export function createDaemon({ publications: pubs = publications } = {}) {
           }
         })
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+
+    // --- Kinds of spec (the Templates tab's Add form) ---
+    //
+    // Loopback only, like the prompt routes above: creating a kind hands work to
+    // the owner's own Claude session, which is not something a share token may
+    // reach.
+    if (path === '/api/types') {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((b) => {
+          const { status, body } = handleTypeCreate(b);
+          return sendJson(res, status, body);
+        })
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+    const oneType = path.match(/^\/api\/types\/([\w-]+)$/);
+    if (oneType) {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      const { status, body } = handleTypeGet(oneType[1]);
+      return sendJson(res, status, body);
     }
 
     // Per-type prompts and rules, which live in the template specs rather than
