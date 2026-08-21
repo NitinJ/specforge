@@ -7,10 +7,20 @@
 //
 // Spec: docs/2026-08-16-context-menu-actions-spec.md §6, §8.
 
-import { test } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { useTempStore } from './helpers/temp-store.mjs';
 import { ALL_ACTIONS, actionById, forScope } from '../lib/actions/all.mjs';
 import { duplicateActionIds, GROUPS } from '../lib/actions/index.mjs';
+
+// An empty store, because `forScope` and `actionById` answer with the EFFECTIVE
+// set: shipped plus whatever the reader has customized. Without this they read
+// the developer's own ~/.specforge/prompts.json, and every assertion below is
+// really "this machine has no custom actions" — which is a fact about a laptop,
+// not a property of the code. It failed exactly that way once a custom action
+// existed. What customization does to the set is actions-effective.test.mjs's
+// subject; here the store is empty so the shipped list is the whole answer.
+useTempStore({ beforeEach, afterEach }, 'sf-actions-all-');
 
 // id, kind, scope, group — what the menu and the agent key off. Declaration
 // order is menu order, and the menu groups by what the reader is trying to get:
