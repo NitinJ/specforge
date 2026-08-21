@@ -37,11 +37,27 @@ test('a session nobody seeded is dead, not an error', () => {
 test('the record is the shape attach.mjs writes', () => {
   // readSessionRecord defaults both fields, so a wrong shape degrades to empty
   // rather than throwing, which would hide a broken helper behind passing tests.
-  const { id } = seedLiveSession({ specs: ['abc123', 'def456'] });
+  const { id } = seedLiveSession();
   const raw = JSON.parse(readFileSync(sessionPath(id), 'utf8'));
   assert.deepEqual(Object.keys(raw).sort(), ['specs', 'watcherPid']);
-  assert.deepEqual(raw.specs, ['abc123', 'def456']);
+  assert.deepEqual(raw.specs, [], 'no owned specs: ownership is attach()\'s to write');
   assert.equal(raw.watcherPid, process.pid);
+});
+
+test('owning a spec goes through attach, and the helper does not fake it', async () => {
+  // The trap this closes (raised in review of PR #221): writing spec ids into
+  // the record's reverse index alone produces a session that looks like it owns
+  // them while specsForSession returns nothing, because meta.attachedSession is
+  // the source of truth and the index is only a cache of it.
+  const { createSpec } = await import('../lib/store.mjs');
+  const { attach, specsForSession } = await import('../lib/attach.mjs');
+  const { id } = seedLiveSession({ id: 'sess-owner' });
+  assert.deepEqual(specsForSession(id), [], 'a seeded session owns nothing');
+
+  const specId = createSpec({ title: 'Owned', html: '<h1>Owned</h1>' });
+  attach(specId, id);
+  assert.deepEqual(specsForSession(id), [specId], 'attach is what makes it real');
+  assert.equal(watcherAlive(id), true, 'and the watcher is still the live one');
 });
 
 test('two seeded sessions do not collide', () => {

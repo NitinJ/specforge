@@ -22,16 +22,23 @@ const DEAD_PID = 0x7ffffffe;
 /**
  * Write a session record into the current store.
  *
+ * Seeds the watcher only. It deliberately takes no list of owned specs: the
+ * record's `specs` array is a reverse index, and meta.attachedSession is the
+ * source of truth (attach.mjs L21-24). A helper writing only the index would
+ * hand back spec ids that `specsForSession` then filters out, which is a fixture
+ * that looks like ownership and is not one. To own a spec in a test, call
+ * `attach(specId, sessionId)` — the production function, which writes both.
+ * Raised in review of PR #221.
+ *
  * @param {object} [opts]
  * @param {string} [opts.id] the session id; defaults to a fixed readable one
- * @param {string[]} [opts.specs] spec ids the reverse index should list
  * @param {boolean} [opts.alive] whether its watcher pid is a running process
  * @returns {{id: string, watcherPid: number}}
  */
-export function seedSession({ id = 'sess-live-0001', specs = [], alive = true } = {}) {
+export function seedSession({ id = 'sess-live-0001', alive = true } = {}) {
   const watcherPid = alive ? process.pid : DEAD_PID;
   mkdirSync(sessionsDir(), { recursive: true });
-  writeFileSync(sessionPath(id), JSON.stringify({ specs, watcherPid }, null, 2));
+  writeFileSync(sessionPath(id), JSON.stringify({ specs: [], watcherPid }, null, 2));
   return { id, watcherPid };
 }
 
