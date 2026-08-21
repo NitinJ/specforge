@@ -14,7 +14,7 @@ import { useTempStore } from './helpers/temp-store.mjs';
 import { seedLiveSession, seedDeadSession } from './helpers/live-session.mjs';
 import { handleTypeCreate, handleTypeGet } from '../lib/types-api.mjs';
 import { customTypes, specTypes } from '../lib/spec-types.mjs';
-import { readMeta } from '../lib/meta.mjs';
+import { readMeta, writeMeta } from '../lib/meta.mjs';
 import { specDir, typesPath } from '../lib/store-paths.mjs';
 import { liveSessions } from '../lib/attach.mjs';
 
@@ -155,6 +155,36 @@ test('a failure is reported with its message, so the dialog can show it', async 
 
 test('an unknown kind is a 404', () => {
   assert.equal(handleTypeGet('never-existed').status, 404);
+});
+
+test('a kind whose template spec is gone reports an error, never done', async (t) => {
+  // Raised in review of PR #224. Reporting done would send the dialog to a spec
+  // that answers 404, and would bury a real generation error behind a success.
+  // It takes deleting the spec directory by hand to reach, which is why the
+  // message names the id rather than offering a fix.
+  seedLiveSession();
+  handleTypeCreate(CREATE);
+  const { rmSync } = await import('node:fs');
+  rmSync(specDir('template-postmortem'), { recursive: true, force: true });
+
+  const out = handleTypeGet('postmortem');
+  assert.equal(out.status, 200, 'the kind still exists, so this is not a 404');
+  assert.equal(out.body.generate.state, 'error');
+  assert.match(out.body.generate.error, /template-postmortem/);
+});
+
+test('a template spec with no generation on it reads as done', () => {
+  // The ordinary case for a kind whose request finished long ago and whose meta
+  // has since been rewritten by an edit: the spec is there, nothing is pending.
+  seedLiveSession();
+  handleTypeCreate(CREATE);
+  const meta = readMeta('template-postmortem');
+  delete meta.generate;
+  writeMeta('template-postmortem', meta);
+
+  const out = handleTypeGet('postmortem');
+  assert.equal(out.body.generate.state, 'done');
+  assert.equal(out.body.generate.error, undefined);
 });
 
 test('a built-in kind is a 404 here: this route is about creations', () => {
