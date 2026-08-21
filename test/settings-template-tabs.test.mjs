@@ -367,7 +367,9 @@ test('the reset names the tab it was pressed on, and spares the other', async (t
 test('the templates tab shows one card per type, inside the tab panel', (t) => {
   ensureTemplates();
   const { window } = open(t, 'templates');
-  const cards = [...window.document.querySelectorAll('#sf-tabpanel .tcard')];
+  // Template cards only. The strip also holds the Add card, which is a button
+  // rather than a link to a template and is counted where it belongs, below.
+  const cards = [...window.document.querySelectorAll('#sf-tabpanel a.tcard')];
   assert.equal(cards.length, specTypes().length);
   const design = cards.find((c) => c.getAttribute('data-id') === templateId('design'));
   assert.ok(design, 'the design template has a card');
@@ -401,5 +403,6 @@ test('a fresh store still shows the cards, seeding on demand', (t) => {
   // No ensureTemplates here: the page seeds them, so a first-run store shows
   // cards rather than an empty box.
   const { window } = open(t, 'templates');
-  assert.equal(window.document.querySelectorAll('.tcard').length, specTypes().length);
+  assert.equal(window.document.querySelectorAll('a.tcard').length, specTypes().length);
+  assert.ok(window.document.getElementById('sf-add-type'), 'plus the Add card');
 });
