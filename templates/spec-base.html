@@ -269,6 +269,14 @@ li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margi
   ul,ol{margin:10px 0;padding-left:22px}
   li{margin:5px 0}
   .sub{color:var(--muted);font-size:14px}
+
+  /* Tracker progress bars: one block per step, filled left to right. The served
+     page gets these from ui.css alongside the injected tables; this copy is for
+     the exported file, which is read without that sheet. */
+  .sf-progress{display:inline-flex;gap:3px;vertical-align:middle}
+  .sf-progress i{width:20px;height:9px;border-radius:2px;background:var(--panel2);border:1px solid var(--line)}
+  .sf-progress i.on{background:var(--green);border-color:var(--green)}
+  .sf-progress-key{color:var(--muted);font-size:12.5px;margin:6px 0 0}
 </style>
 </head>
 <body>

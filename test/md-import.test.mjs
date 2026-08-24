@@ -157,10 +157,12 @@ test('stages and tasks rebuild into the data-sf markup the tracker reads', () =>
   assert.equal(plan[0].stage, '0');
   assert.equal(plan[0].pr, '311');
   assert.equal(plan[1].pr, '', 'no PR number where the heading carried none');
+  // Markdown carries no progress-step count, so every imported task starts the
+  // bar empty rather than undefined.
   assert.deepEqual(plan[1].tasks, [
-    { id: '1.1', status: 'done' },
-    { id: '1.2', status: 'in_progress' },
-    { id: '1.3', status: 'blocked' },
+    { id: '1.1', status: 'done', steps: 0 },
+    { id: '1.2', status: 'in_progress', steps: 0 },
+    { id: '1.3', status: 'blocked', steps: 0 },
   ]);
 });
 
@@ -181,9 +183,9 @@ test('the tracker is regenerated from the plan, never read from the markdown', (
   assert.ok(getSectionIds(html).includes('task-tracker'));
   const tracker = sectionBody(html, 'task-tracker');
   assert.match(tracker, /<table/);
-  assert.match(tracker, /Stage/);
-  // Two stages in the plan, so two rows in its projection.
-  assert.equal((tracker.match(/<tr>/g) || []).length, 3, 'a header row and one per stage');
+  assert.match(tracker, /<th>Task<\/th>/);
+  // Four tasks across the two stages, so four rows in its projection.
+  assert.equal((tracker.match(/<tr>/g) || []).length, 5, 'a header row and one per task');
 });
 
 test('a plan section with no stage headings still imports', () => {
