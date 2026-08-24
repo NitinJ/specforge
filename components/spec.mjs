@@ -16,15 +16,21 @@ export const spec = [
     rule: 'The implementation plan. One stage is one PR; each task carries a verify note.',
     requires: ['data-sf-stage', 'data-sf-task', 'data-sf-status'],
     variants: ['sf-tasks', 'sh', 'verify'],
+    // Tasks are numbered and the verify note is a nested list item. Both list
+    // tags are styled: `ul.sf-tasks` is what every plan written before this
+    // carries, and the exporter still reads it.
     css: `ol.sf-stages{list-style:none;padding-left:0}
 li[data-sf-stage]{background:var(--panel);border:1px solid var(--line);border-radius:12px;
   padding:14px 16px;margin:12px 0;box-shadow:var(--shadow)}
 li[data-sf-stage]>.sh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 li[data-sf-stage]>.sh h3{margin:0;font-size:15.5px}
+ol.sf-tasks{list-style:decimal;padding-left:26px;margin:10px 0 2px}
 ul.sf-tasks{list-style:none;padding-left:4px;margin:10px 0 2px}
 li[data-sf-task]{margin:6px 0;font-size:14px}
-li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margin:2px 0 0 20px}`,
-    example: '<ol class="sf-stages"><li data-sf-stage="1"><div class="sh"><h3>Stage 1: Name</h3></div><ul class="sf-tasks"><li data-sf-task="1.1" data-sf-status="todo">Task<span class="verify">verify: how</span></li></ul></li></ol>',
+li[data-sf-task] ul{list-style:disc;padding-left:20px;margin:2px 0 0}
+li[data-sf-task] .verify{color:var(--muted);font-size:12.5px;margin:0}
+li[data-sf-task] span.verify{display:block;margin:2px 0 0 20px}`,
+    example: '<ol class="sf-stages"><li data-sf-stage="1"><div class="sh"><h3>Stage 1: Name</h3></div><ol class="sf-tasks"><li data-sf-task="1.1" data-sf-status="todo">Task<ul><li class="verify">verify: how</li></ul></li></ol></li></ol>',
   },
   {
     // No element is named `question`; the component is an attribute on a list

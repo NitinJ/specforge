@@ -173,9 +173,9 @@ test('a checkbox is the status, and a marker overrides it', () => {
   assert.equal(plan[1].tasks[1].status, 'in_progress', 'unchecked, marker wins');
 });
 
-test('a verify note becomes the verify span', () => {
+test('a verify note becomes a sub-item under its task', () => {
   const body = sectionBody(convert(PLAN_MD).html, 'impl-plan');
-  assert.match(body, /<span class="verify">verify: it is done<\/span>/);
+  assert.match(body, /<ul><li class="verify">verify: it is done<\/li><\/ul>/);
   assert.doesNotMatch(body, /<p[^>]*>verify:/, 'not left as a stray paragraph');
 });
 
