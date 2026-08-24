@@ -90,7 +90,7 @@ Stages and tasks. One stage is one PR.
 
 **Verifiable output:** a CSV in the bucket for a seeded search
 
-## 7 · Runtime
+## 8 · Runtime
 
 #### Design decisions (implementation time)
 

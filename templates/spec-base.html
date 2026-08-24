@@ -269,6 +269,14 @@ li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margi
   ul,ol{margin:10px 0;padding-left:22px}
   li{margin:5px 0}
   .sub{color:var(--muted);font-size:14px}
+
+  /* Tracker progress bars: one block per step, filled left to right. The served
+     page gets these from ui.css alongside the injected tables; this copy is for
+     the exported file, which is read without that sheet. */
+  .sf-progress{display:inline-flex;gap:3px;vertical-align:middle}
+  .sf-progress i{width:20px;height:9px;border-radius:2px;background:var(--panel2);border:1px solid var(--line)}
+  .sf-progress i.on{background:var(--green);border-color:var(--green)}
+  .sf-progress-key{color:var(--muted);font-size:12.5px;margin:6px 0 0}
 </style>
 </head>
 <body>
@@ -284,10 +292,11 @@ li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margi
   <a href="#decisions">4 · Decisions</a>
   <a href="#open-questions">5 · Open questions</a>
   <a href="#impl-plan">6 · Implementation plan</a>
-  <a href="#task-tracker">7 · Task tracker</a>
-  <a href="#impl-decisions">8 · Design decisions (impl)</a>
-  <a href="#deviations">9 · Deviations</a>
-  <a href="#tradeoffs">10 · Tradeoffs</a>
+  <a href="#stage-tracker">7 · Stage tracker</a>
+  <a href="#task-tracker">8 · Task tracker</a>
+  <a href="#impl-decisions">9 · Design decisions (impl)</a>
+  <a href="#deviations">10 · Deviations</a>
+  <a href="#tradeoffs">11 · Tradeoffs</a>
   <a href="#appendix">Appendix</a>
 </nav>
 
@@ -351,31 +360,50 @@ li[data-sf-task] .verify{display:block;color:var(--muted);font-size:12.5px;margi
     </ol>
   </section>
 
-  <section id="task-tracker" data-sf-section>
-    <h2>7 · Task tracker</h2>
-    <p class="sub">Projection of <code>data-sf-status</code> across the plan. Rendered live when served; the table below is the authoring-time snapshot.</p>
+  <section id="stage-tracker" data-sf-section>
+    <h2>7 · Stage tracker</h2>
+    <p class="sub">One row per stage, projected from the plan. Status is derived from the stage's tasks;
+    the progress blocks are the stage's own <code>data-sf-steps</code>. Rendered live when served; the
+    table below is the authoring-time snapshot.</p>
     <table>
-      <thead><tr><th>Stage</th><th>PR</th><th>Tasks</th><th>Status</th></tr></thead>
+      <thead><tr><th>Stage</th><th>PR</th><th>Status</th><th>% tasks complete</th><th>Progress</th></tr></thead>
       <tbody>
-        <tr><td>1 · {{ Stage name }}</td><td>—</td><td>1.1, 1.2</td><td><span class="tag todo">todo</span></td></tr>
+        <tr><td>1</td><td>—</td><td><span class="tag todo">todo</span></td><td>0%</td>
+          <td><span class="sf-progress" aria-label="0 of 6 steps done"><i title="implemented"></i><i title="tested"></i><i title="verified"></i><i title="PR open"></i><i title="PR fixed"></i><i title="PR merged"></i></span></td></tr>
       </tbody>
     </table>
+    <p class="sf-progress-key">Progress blocks, left to right: implemented · tested · verified · PR open · PR fixed · PR merged.</p>
+  </section>
+
+  <section id="task-tracker" data-sf-section>
+    <h2>8 · Task tracker</h2>
+    <p class="sub">One row per task, projected from <code>data-sf-status</code> and <code>data-sf-steps</code> across the plan. Rendered live when served; the table below is the authoring-time snapshot.</p>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Progress</th></tr></thead>
+      <tbody>
+        <tr><td>1.1</td><td><span class="tag todo">todo</span></td>
+          <td><span class="sf-progress" aria-label="0 of 4 steps done"><i title="red-green refactor done"></i><i title="code implementation done"></i><i title="tests pass"></i><i title="committed"></i></span></td></tr>
+        <tr><td>1.2</td><td><span class="tag todo">todo</span></td>
+          <td><span class="sf-progress" aria-label="0 of 4 steps done"><i title="red-green refactor done"></i><i title="code implementation done"></i><i title="tests pass"></i><i title="committed"></i></span></td></tr>
+      </tbody>
+    </table>
+    <p class="sf-progress-key">Progress blocks, left to right: red-green refactor done · code implementation done · tests pass · committed.</p>
   </section>
 
   <section id="impl-decisions" data-sf-section>
-    <h2>8 · Design decisions (implementation time)</h2>
+    <h2>9 · Design decisions (implementation time)</h2>
     <p class="sub">Filled during implementation: choices made where the spec was ambiguous.</p>
     <ul><li class="footnote">— none yet —</li></ul>
   </section>
 
   <section id="deviations" data-sf-section>
-    <h2>9 · Deviations</h2>
+    <h2>10 · Deviations</h2>
     <p class="sub">Filled during implementation: intentional departures from the spec, and why.</p>
     <ul><li class="footnote">— none yet —</li></ul>
   </section>
 
   <section id="tradeoffs" data-sf-section>
-    <h2>10 · Tradeoffs</h2>
+    <h2>11 · Tradeoffs</h2>
     <p class="sub">Filled during implementation: alternatives considered and why the chosen path won.</p>
     <ul><li class="footnote">— none yet —</li></ul>
   </section>

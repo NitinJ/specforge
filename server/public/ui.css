@@ -1,4 +1,4 @@
-/* SpecForge shared UI: the snackbar and the two dialogs.
+/* SpecForge shared UI: the snackbar, the two dialogs, and the tracker progress bars.
  *
  * Loaded by BOTH surfaces — the home page and the review layer injected onto
  * every served spec — so that "something happened" looks the same wherever you
@@ -49,6 +49,23 @@
 @supports (color: color-mix(in srgb, red, blue)) {
   :root { --sfui-inv-muted: color-mix(in srgb, var(--sfui-inv-ink) 62%, var(--sfui-inv-bg)); }
 }
+
+/* ── tracker progress bars ─────────────────────────────────────────────── */
+/* The stage and task trackers are rendered into the page at serve time by
+   lib/tracker.mjs, so their markup can appear on a spec whose own stylesheet
+   predates it. The rules live here, with the injection, rather than waiting on
+   a stamp every spec in the store would have to be swept for.
+   `templates/spec-base.html` carries a copy for the exported file, which is
+   read without this sheet. */
+.sf-progress { display: inline-flex; gap: 3px; vertical-align: middle }
+.sf-progress i {
+  width: 20px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--panel2, var(--sfui-panel));
+  border: 1px solid var(--sfui-line);
+}
+.sf-progress i.on { background: var(--green, #3fb950); border-color: var(--green, #3fb950) }
 
 /* ── snackbar ──────────────────────────────────────────────────────────── */
 /* Bottom centre, stacked, newest nearest the edge. Centre because the two

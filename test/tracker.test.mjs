@@ -37,7 +37,7 @@ test('computeTracker reads the plan and counts settled tasks', () => {
 
 test('renderTrackerTable + applyTrackerToHtml splice into #task-tracker', () => {
   const table = renderTrackerTable(computeTracker(TEMPLATE));
-  assert.match(table, /<th>Stage<\/th>/);
+  assert.match(table, /<th>Task<\/th>/);
   const applied = applyTrackerToHtml(TEMPLATE, table);
   // the new table lives inside the task-tracker section
   const section = applied.match(/<section\b[^>]*id="task-tracker"[^>]*>([\s\S]*?)<\/section>/)[1];
@@ -60,8 +60,10 @@ test('writeTrackerSnapshot is idempotent and reflects status changes', () => {
   assert.equal(first.changed, true);
   const after = readFileSync(file, 'utf8');
   const section = after.match(/<section\b[^>]*id="task-tracker"[^>]*>([\s\S]*?)<\/section>/)[1];
-  assert.match(section, /in_progress/);
-  assert.match(section, /\(1\/2\)/);
+  // One row per task, so the changed task's own status is what moved. The stage
+  // status and its settled count live in the stage tracker now.
+  assert.match(section, /<td>1\.1<\/td><td><span class="tag done">done<\/span>/);
+  assert.match(section, /<td>1\.2<\/td><td><span class="tag todo">todo<\/span>/);
 
   const second = writeTrackerSnapshot(file);
   assert.equal(second.changed, false, 'second write is a no-op');

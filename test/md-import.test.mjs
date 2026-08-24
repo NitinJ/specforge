@@ -42,9 +42,10 @@ test('every ## becomes a section, in document order', () => {
 
 test('an id marker under a heading names that section, not the next one', () => {
   const md = '# Doc\n\n## 1 · Overview\n\na\n\n## 11 · Implementation plan\n<!-- sf:section id="impl-plan" -->\n\nb\n';
-  // task-tracker is appended by the importer, not read from the markdown: a
-  // section named impl-plan is what asks for it.
-  assert.deepEqual(getSectionIds(convert(md).html), ['overview', 'impl-plan', 'task-tracker']);
+  // Both trackers are appended by the importer, not read from the markdown: a
+  // section named impl-plan is what asks for them.
+  assert.deepEqual(getSectionIds(convert(md).html),
+    ['overview', 'impl-plan', 'stage-tracker', 'task-tracker']);
 });
 
 test('the display ordinal is not part of the slug', () => {
@@ -157,10 +158,12 @@ test('stages and tasks rebuild into the data-sf markup the tracker reads', () =>
   assert.equal(plan[0].stage, '0');
   assert.equal(plan[0].pr, '311');
   assert.equal(plan[1].pr, '', 'no PR number where the heading carried none');
+  // Markdown carries no progress-step count, so every imported task starts the
+  // bar empty rather than undefined.
   assert.deepEqual(plan[1].tasks, [
-    { id: '1.1', status: 'done' },
-    { id: '1.2', status: 'in_progress' },
-    { id: '1.3', status: 'blocked' },
+    { id: '1.1', status: 'done', steps: 0 },
+    { id: '1.2', status: 'in_progress', steps: 0 },
+    { id: '1.3', status: 'blocked', steps: 0 },
   ]);
 });
 
@@ -181,9 +184,19 @@ test('the tracker is regenerated from the plan, never read from the markdown', (
   assert.ok(getSectionIds(html).includes('task-tracker'));
   const tracker = sectionBody(html, 'task-tracker');
   assert.match(tracker, /<table/);
-  assert.match(tracker, /Stage/);
-  // Two stages in the plan, so two rows in its projection.
-  assert.equal((tracker.match(/<tr>/g) || []).length, 3, 'a header row and one per stage');
+  assert.match(tracker, /<th>Task<\/th>/);
+  // Four tasks across the two stages, so four rows in its projection.
+  assert.equal((tracker.match(/<tr>/g) || []).length, 5, 'a header row and one per task');
+});
+
+test('an imported plan gets a stage tracker as well as a task tracker', () => {
+  // Raised in review of PR #229: the stage renderer fills a section, it does not
+  // create one, so import has to write it or the table never exists.
+  const { html } = convert(PLAN_MD);
+  assert.ok(getSectionIds(html).includes('stage-tracker'));
+  const stage = sectionBody(html, 'stage-tracker');
+  assert.match(stage, /<th>% tasks complete<\/th>/);
+  assert.equal((stage.match(/<tr>/g) || []).length, 3, 'a header row and one per stage');
 });
 
 test('a plan section with no stage headings still imports', () => {
