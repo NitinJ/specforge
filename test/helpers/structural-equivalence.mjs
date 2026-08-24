@@ -14,7 +14,7 @@ import { getSectionIds, sectionBody, parsePlan, getTitle, getStatus } from '../.
 import { CALLOUT_VARIANTS } from '../../lib/html-to-md.mjs';
 
 /** Sections the importer regenerates rather than reads back (see the loop below). */
-const DERIVED_SECTIONS = new Set(['task-tracker']);
+const DERIVED_SECTIONS = new Set(['stage-tracker', 'task-tracker']);
 
 /** Decode the entity subset the renderers emit. `&amp;` last, or `&amp;lt;` double-decodes. */
 function decodeEntities(s) {

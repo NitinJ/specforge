@@ -179,10 +179,20 @@ test('renderLiveTracker fills both sections, each with its own table', () => {
 
 test('a spec with no stage tracker section is left as it was', () => {
   // Every impl spec written before §4 existed. The task tracker still updates.
-  assert.doesNotMatch(TEMPLATE, /id="stage-tracker"/, 'the fixture is one of them');
-  const out = renderLiveTracker(TEMPLATE);
+  const older = PLAN.replace(/<section id="stage-tracker">[\s\S]*?<\/section>/, '');
+  const out = renderLiveTracker(older);
   assert.doesNotMatch(out, /id="stage-tracker"/);
   assert.match(out, /<th>Task<\/th>/);
+});
+
+test('the shell a new impl spec starts from carries both sections', () => {
+  // Raised in review of PR #229: the stage renderer only fills a section that is
+  // already there, so a shell without one makes the feature unreachable for
+  // every spec created from it.
+  assert.match(TEMPLATE, /id="stage-tracker"/);
+  const out = renderLiveTracker(TEMPLATE);
+  assert.match(out.match(/<section\b[^>]*id="stage-tracker"[\s\S]*?<\/section>/)[0],
+    /<th>% tasks complete<\/th>/, 'and it is filled from the plan, not left as typed');
 });
 
 test('applyTrackerToHtml addresses one section at a time', () => {

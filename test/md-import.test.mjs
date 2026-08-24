@@ -42,9 +42,10 @@ test('every ## becomes a section, in document order', () => {
 
 test('an id marker under a heading names that section, not the next one', () => {
   const md = '# Doc\n\n## 1 · Overview\n\na\n\n## 11 · Implementation plan\n<!-- sf:section id="impl-plan" -->\n\nb\n';
-  // task-tracker is appended by the importer, not read from the markdown: a
-  // section named impl-plan is what asks for it.
-  assert.deepEqual(getSectionIds(convert(md).html), ['overview', 'impl-plan', 'task-tracker']);
+  // Both trackers are appended by the importer, not read from the markdown: a
+  // section named impl-plan is what asks for them.
+  assert.deepEqual(getSectionIds(convert(md).html),
+    ['overview', 'impl-plan', 'stage-tracker', 'task-tracker']);
 });
 
 test('the display ordinal is not part of the slug', () => {
@@ -186,6 +187,16 @@ test('the tracker is regenerated from the plan, never read from the markdown', (
   assert.match(tracker, /<th>Task<\/th>/);
   // Four tasks across the two stages, so four rows in its projection.
   assert.equal((tracker.match(/<tr>/g) || []).length, 5, 'a header row and one per task');
+});
+
+test('an imported plan gets a stage tracker as well as a task tracker', () => {
+  // Raised in review of PR #229: the stage renderer fills a section, it does not
+  // create one, so import has to write it or the table never exists.
+  const { html } = convert(PLAN_MD);
+  assert.ok(getSectionIds(html).includes('stage-tracker'));
+  const stage = sectionBody(html, 'stage-tracker');
+  assert.match(stage, /<th>% tasks complete<\/th>/);
+  assert.equal((stage.match(/<tr>/g) || []).length, 3, 'a header row and one per stage');
 });
 
 test('a plan section with no stage headings still imports', () => {

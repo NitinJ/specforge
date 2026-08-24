@@ -30,8 +30,9 @@
   <a href="#design">3 · Design</a>
   <a href="#decisions">4 · Decisions</a>
   <a href="#impl-plan">5 · Implementation plan</a>
-  <a href="#task-tracker">6 · Task tracker</a>
-  <a href="#runtime">7 · Runtime</a>
+  <a href="#stage-tracker">6 · Stage tracker</a>
+  <a href="#task-tracker">7 · Task tracker</a>
+  <a href="#runtime">8 · Runtime</a>
 </nav>
 <main>
   <h1>Bulk export for saved searches</h1>
@@ -118,19 +119,30 @@
     </ol>
   </section>
 
-  <section id="task-tracker" data-sf-section>
-    <h2>6 · Task tracker</h2>
+  <section id="stage-tracker" data-sf-section>
+    <h2>6 · Stage tracker</h2>
     <table>
-      <thead><tr><th>Stage</th><th>PR</th><th>Task</th><th>Status</th></tr></thead>
+      <thead><tr><th>Stage</th><th>PR</th><th>Status</th><th>% tasks complete</th><th>Progress</th></tr></thead>
       <tbody>
-        <tr><td>0 · Job scaffolding</td><td>311</td><td>0.1 migration</td><td><span class="tag done">done</span></td></tr>
-        <tr><td>1 · Worker</td><td>n/a</td><td>1.2 stream CSV</td><td><span class="tag warn">in_progress</span></td></tr>
+        <tr><td>0</td><td>311</td><td><span class="tag done">done</span></td><td>100%</td><td><span class="sf-progress" aria-label="6 of 6 steps done"><i class="on" title="implemented"></i><i class="on" title="tested"></i><i class="on" title="verified"></i><i class="on" title="PR open"></i><i class="on" title="PR fixed"></i><i class="on" title="PR merged"></i></span></td></tr>
+        <tr><td>1</td><td>n/a</td><td><span class="tag warn">in-progress</span></td><td>0%</td><td><span class="sf-progress" aria-label="0 of 6 steps done"><i title="implemented"></i><i title="tested"></i><i title="verified"></i><i title="PR open"></i><i title="PR fixed"></i><i title="PR merged"></i></span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="task-tracker" data-sf-section>
+    <h2>7 · Task tracker</h2>
+    <table>
+      <thead><tr><th>Task</th><th>Status</th><th>Progress</th></tr></thead>
+      <tbody>
+        <tr><td>0.1</td><td><span class="tag done">done</span></td><td><span class="sf-progress" aria-label="4 of 4 steps done"><i class="on" title="red-green refactor done"></i><i class="on" title="code implementation done"></i><i class="on" title="tests pass"></i><i class="on" title="committed"></i></span></td></tr>
+        <tr><td>1.2</td><td><span class="tag warn">in-progress</span></td><td><span class="sf-progress" aria-label="0 of 4 steps done"><i title="red-green refactor done"></i><i title="code implementation done"></i><i title="tests pass"></i><i title="committed"></i></span></td></tr>
       </tbody>
     </table>
   </section>
 
   <section id="runtime" data-sf-section>
-    <h2>7 · Runtime</h2>
+    <h2>8 · Runtime</h2>
     <h4>Design decisions (implementation time)</h4>
     <ul><li class="footnote">none yet</li></ul>
     <h4>Deviations</h4>
