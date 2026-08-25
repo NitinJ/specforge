@@ -1,22 +1,26 @@
 ---
-name: specforge:list-specs
+name: list-specs
 user-invocable: false
 description: |
   List SpecForge specs — either every spec in the store (mode "all") or just the
   specs attached to this session (mode "mine"). Use when the user asks to "list
   specs", "show all specs", "what specs do I have open", or wants to open/detach a
   spec. Starts or reuses the daemon, prints a table, and offers to open/detach.
-allowed-tools: Read, Bash, AskUserQuestion
+allowed-tools: Read Bash AskUserQuestion
 ---
 
 # list-specs
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory.
+SpecForge is on PATH as `specforge` and `spec-nav`; `specforge root` prints where it is installed.
+
+> **This skill is for an agent choosing a spec to work on.** It is safe to run
+> at any time; it only reads. Some agent CLIs hide it from their users and some
+> do not, which is why that is written here rather than assumed.
 
 ## Run the CLI
 
-- **All specs** (mode "all"): `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" listall`
-- **This session's specs** (mode "mine"): `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list`
+- **All specs** (mode "all"): `specforge listall`
+- **This session's specs** (mode "mine"): `specforge list`
 
 Each returns `session` (this session's id) plus `rows`
 (`{ id, title, status, attached }`, where `attached` is a session id or `free`).
@@ -55,16 +59,16 @@ that "Other" accepts any id.
 
 Act on the choice:
 
-- **Open `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" open <id>`
+- **Open `<id>`** → `specforge open <id>`
   (attaches it to this session; fails if another live session holds it). Print the
   returned `url`. Then, if the review watcher isn't already running this session,
-  arm it in the **background** (`node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`)
+  arm it in the **background** (`specforge wait-batch`)
   so this spec's comments are picked up automatically (see create-spec for the loop).
-- **Detach `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" detach <id>`.
+- **Detach `<id>`** → `specforge detach <id>`.
   Confirm it's freed.
 - **Other `<id>`** → open it if free, detach it if it's attached here, else say it's
   held by another session.
 - **Just viewing** → stop, no action.
 
 Skip the picker when nothing is actionable. In "mine" mode with no rows, say no spec
-is attached to this session and point to `/specforge:listall` to open one.
+is attached to this session and point to the `list-specs` skill in "all" mode to open one.

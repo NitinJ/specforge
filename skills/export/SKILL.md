@@ -1,13 +1,13 @@
 ---
-name: specforge:export
+name: export
 user-invocable: false
 description: |
   Export a spec from the store to Google Docs. Auto-invoked when the owning
-  session's Stop/UserPromptSubmit hook surfaces a queued export (the human clicked
+  session's binding surfaces a queued export (the human clicked
   "Export to Google Docs" in the review UI); can also be run manually. Reads the
   spec HTML, creates a Google Doc via the connected Google Drive MCP, and reports
   the Doc link back so the dropdown shows it.
-allowed-tools: Read, Bash, mcp__claude_ai_Google_Drive__create_file, mcp__claude_ai_Google_Drive__get_file_metadata
+allowed-tools: Read Bash mcp__claude_ai_Google_Drive__create_file mcp__claude_ai_Google_Drive__get_file_metadata
 ---
 
 # export
@@ -16,15 +16,20 @@ Export one or more specs from the store to **Google Docs**. The browser can't ca
 the Drive MCP — only this session can — so the UI queues a request and the hook
 routes here. The hook message lists each queued spec **id** and title.
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Specs live at
-`~/.specforge/specs/<id>/spec.html`.
+SpecForge is on PATH as `specforge` and `spec-nav`; `specforge root` prints where it is installed. Specs live at `~/.specforge/specs/<id>/spec.html`.
+
+> **Before anything else, check there is work.** The spec's meta must carry an
+> `export` request. If it does not, say so and stop: this skill answers a button
+> somebody pressed, and running it unasked writes a document nobody expects.
+> Some agent CLIs hide this skill from their users and some do not, so the check
+> lives here rather than in frontmatter.
 
 ## 1. Locate the spec file
 
 For each queued spec id:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" comments <id>
+specforge comments <id>
 ```
 
 prints `{ specId, htmlPath, ... }`. `htmlPath` is the on-disk spec (clean content —
@@ -37,7 +42,7 @@ So the dropdown shows "Exporting…" (the hook already does this when it routes 
 do it explicitly for a manual run):
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-working <id>
+specforge export-working <id>
 ```
 
 ## 3. Create the Google Doc via the Drive MCP
@@ -65,13 +70,13 @@ The shareable link is the response's `viewUrl` (shape:
 ## 4. Report the link back
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-done <id> --url "<viewUrl>"
+specforge export-done <id> --url "<viewUrl>"
 ```
 
 On any failure (MCP not connected, auth, conversion both ways failed):
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-done <id> --error "<short reason>"
+specforge export-done <id> --error "<short reason>"
 ```
 
 The dropdown shows the **Open Google Doc** link (or the error) on its next poll.

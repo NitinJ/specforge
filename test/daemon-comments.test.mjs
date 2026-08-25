@@ -224,10 +224,12 @@ test('POST status rejects an invalid state (400)', async () => {
   assert.equal(r.status, 400);
 });
 
-test('GET meta exposes the short session id as the label', async () => {
+test('GET meta exposes the harness and a short session id as the label', async () => {
+  // The harness survives whole and the raw id is what gets shortened. Cutting
+  // the whole key at 8 characters gave `claude:s`, which names neither.
   attach(specId, 'sess-abcdefgh');
   const m = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
-  assert.equal(m.sessionLabel, 'session sess-abc');
+  assert.equal(m.sessionLabel, 'session claude:sess-abc');
 });
 
 test('GET meta reports connected: fresh→true, stale→false, free→false', async () => {
@@ -246,7 +248,7 @@ test('GET meta reports connected: fresh→true, stale→false, free→false', as
 test('POST detach frees the spec from its session', async () => {
   attach(specId, 'sess-x');
   const before = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();
-  assert.equal(before.attachedSession, 'sess-x');
+  assert.equal(before.attachedSession, 'claude:sess-x');
   const r = await post(`/api/spec/${specId}/detach`);
   assert.equal(r.status, 200);
   const after = await (await fetch(`${base}/api/spec/${specId}/meta`)).json();

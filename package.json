@@ -1,12 +1,27 @@
 {
   "name": "specforge",
   "version": "0.8.0",
-  "description": "Spec authoring, review & agent collaboration for Claude Code.",
+  "description": "Spec authoring, review & agent collaboration for coding agents.",
   "type": "module",
   "private": true,
   "license": "MIT",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./commands"
+    ]
+  },
   "bin": {
     "spec-nav": "lib/spec-nav-cli.mjs",
+    "spec-types": "lib/spec-types-cli.mjs",
     "specforge": "lib/specforge-cli.mjs"
   },
   "engines": {
@@ -14,7 +29,8 @@
   },
   "scripts": {
     "test": "node --test --test-force-exit",
-    "test:e2e": "node --test test-e2e/*.e2e.mjs"
+    "test:e2e": "node --test test-e2e/*.e2e.mjs",
+    "check:harness": "node scripts/check-harness-coupling.mjs"
   },
   "devDependencies": {
     "jsdom": "^29.1.1",

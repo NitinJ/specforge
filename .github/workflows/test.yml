@@ -28,3 +28,8 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Run tests
         run: npm test
+      # I7: nothing outside lib/harness/ and the two bindings may name one agent
+      # CLI's environment, skill address or hook protocol. Separate from the
+      # suite so a failure names the coupling rather than a test id.
+      - name: Check harness coupling
+        run: npm run check:harness

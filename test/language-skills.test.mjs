@@ -32,7 +32,7 @@ test('create-spec instructs the agent to apply the direction', () => {
 });
 
 test('review-spec names the language field in the payload it documents', () => {
-  assert.match(REVIEW, /\{ specId, htmlPath, language, threads, pending \}/);
+  assert.match(REVIEW, /\{ specId, htmlPath, language, threads, pending, writable \}/);
 });
 
 test('review-spec extends the direction to replies and asides', () => {

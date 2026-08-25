@@ -57,7 +57,7 @@ test('POST creates the kind and answers where to find it', async () => {
   assert.equal(body.specUrl, '/spec/template-postmortem');
   assert.equal(body.generate.state, 'requested');
   assert.ok(specTypes().includes('postmortem'));
-  assert.equal(readMeta('template-postmortem').attachedSession, 'sess-a');
+  assert.equal(readMeta('template-postmortem').attachedSession, 'claude:sess-a');
 });
 
 test('GET reports the state, and 404s for a kind nobody made', async () => {

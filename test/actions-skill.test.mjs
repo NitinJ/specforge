@@ -65,7 +65,10 @@ test('the skill says an import depends on what kind of draft it is', () => {
 });
 
 test('the skill tells the agent how to read the registry', () => {
-  assert.match(SKILL, /specforge-cli\.mjs" actions/, 'the command that prints the list');
+  // The bare command, not a path into the install: the skill has to read the
+  // same on every agent CLI, and only one of them expands a plugin-root
+  // variable.
+  assert.match(SKILL, /specforge actions/, 'the command that prints the list');
 });
 
 test('the skill states the rule that decides where output goes', () => {
@@ -87,7 +90,7 @@ test('the skill points at the command that writes an aside', () => {
   // first real Visualize run proved it by writing its diagram straight into the
   // section. The skill has to name the command, and it must not go back to
   // describing the markup as something to type.
-  assert.match(SKILL, /specforge-cli\.mjs" aside/, 'the command');
+  assert.match(SKILL, /specforge aside/, 'the command');
   assert.match(SKILL, /--section/);
   assert.match(SKILL, /--action/);
   assert.match(SKILL, /[Dd]o not hand-write/, 'and says not to write the markup by hand');

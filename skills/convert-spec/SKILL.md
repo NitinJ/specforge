@@ -1,5 +1,5 @@
 ---
-name: specforge:convert-spec
+name: convert-spec
 user-invocable: false
 description: |
   Convert an existing design/spec file into a SpecForge spec in the store. Use
@@ -8,13 +8,16 @@ description: |
   SpecForge-style .html is ingested as-is; a .md or freeform design doc is
   re-authored into a full house-style HTML spec. Attaches the result to this
   session and lints before finishing.
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep
+allowed-tools: Read Write Edit Bash Glob Grep
 ---
 
 # convert-spec
 
-Bring an existing file into the SpecForge store. `${CLAUDE_PLUGIN_ROOT}` is the
-installed plugin directory.
+Bring an existing file into the SpecForge store. SpecForge is on PATH as `specforge` and `spec-nav`; `specforge root` prints where it is installed.
+
+> **Before anything else, check the source exists.** This skill needs a file to
+> bring into the store. If none was named, ask for one and stop rather than
+> guessing. Some agent CLIs hide this skill from their users and some do not.
 
 ## 1. Inspect the source
 
@@ -37,7 +40,7 @@ installed plugin directory.
 ## 2A. Ingest an existing HTML spec
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import "<file>" --title "<title>" --type <type>
+specforge import "<file>" --title "<title>" --type <type>
 ```
 
 Prints `{ id, htmlPath, url, status, type, language }` — the file is copied into
@@ -57,7 +60,7 @@ maps its headings onto sections, rebuilds any plan into the `data-sf-*` markup,
 inlines the images that sit beside it, and produces a lint-passing spec:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import-md "<file>" [--title "<title>"] [--type <type>]
+specforge import-md "<file>" [--title "<title>"] [--type <type>]
 ```
 
 It prints `{ id, htmlPath, url, type, status, language, report }`. **Then edit
@@ -86,8 +89,8 @@ Pass `--type` only when the source really is a design / research / impl doc.
 
 Then improve the result:
 
-- Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`, and the
-  language contract it points to: `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`.
+- Read the house rules: `specforge doc house-rules`, and the
+  language contract it points to: `specforge doc spec-language`.
   This is where an original's essay voice leaks through: convert the content, not
   the register.
 - Map the source onto the type's sections exactly as the `create-spec` skill
@@ -118,7 +121,7 @@ malformed one attached, so a later edit or handoff could pick up either. The
 **Arriving from step 1** with a freeform HTML doc and no spec yet, scaffold one:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type "<type>"
+specforge create --title "<title>" --type "<type>"
 ```
 
 It prints `{ id, htmlPath, url, type, language }`. **Author into `htmlPath`**,
@@ -128,7 +131,7 @@ above, and applying `language` on the same terms.
 ## 3. Lint (must pass)
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>
+specforge lint <htmlPath>
 ```
 
 Fix and re-run until `PASS`. **Do not finish on a failing lint.**
@@ -140,7 +143,7 @@ Fix and re-run until `PASS`. **Do not finish on a failing lint.**
   left untouched (its path is recorded as the spec's `origin`).
 - **Arm the review watcher (once per session)** so comments are picked up while
   you're idle. If it isn't already running this session, start it in the
-  **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
+  **background**: `specforge wait-batch`.
   On its `{ ready, pending }` return, run review-spec for each `pending` spec then
   relaunch it. It does not expire on its own: it runs until a batch arrives or
   this session ends. One watcher covers every spec here.

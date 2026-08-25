@@ -1,12 +1,12 @@
 ---
-name: specforge:review-spec
+name: review-spec
 user-invocable: false
 description: |
   Process a submitted batch of human comments on a spec in the store: reply to
   each thread inline and amend the spec accordingly. Usually auto-invoked when the
-  owning session's Stop/UserPromptSubmit hook surfaces a pending batch; can also
+  owning session's binding surfaces a pending batch; can also
   be run manually. Replies are append-only; only the human resolves threads.
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep
+allowed-tools: Read Write Edit Bash Glob Grep
 ---
 
 # review-spec
@@ -15,16 +15,21 @@ Process one or more **pending review batches** for specs in the global store:
 reply inline to each comment thread and amend the spec per the comments. The
 browser updates live (the spec file change triggers an SSE reload).
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Specs live in the
-store at `~/.specforge/specs/<id>/spec.html`; you address them by spec **id**
-(the hook message lists each batch's `specId` + `batchId`).
+SpecForge is on PATH as `specforge` and `spec-nav`; `specforge root` prints where it is installed. Specs live in the store at `~/.specforge/specs/<id>/spec.html`; you address them by spec **id** (the wake-up message lists each batch's `specId` + `batchId`).
+
+> **Before anything else, check there is work.** Run `specforge comments <id>`
+> and confirm the spec has a `pending` batch. If it has none, say so and stop:
+> this skill answers a submitted batch, and running it on a spec with nothing
+> pending replies to threads nobody sent and marks a batch that does not exist.
+> Some agent CLIs hide this skill from their users and some do not, so the check
+> lives here rather than in frontmatter.
 
 ## 1. Load the threads + the spec path
 
 For a batch's spec id:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" comments <id>
+specforge comments <id>
 ```
 
 **A batch is not every thread on the spec.** Only threads where a human wrote
@@ -36,9 +41,17 @@ Threads can carry **several people**. Each comment has an `author` (a display
 name) and a `kind` of `human` or `agent`. Reply to the thread, not to one person,
 and never assume the person who opened it is the one who added the mention.
 
-It prints `{ specId, htmlPath, language, threads, pending }`. `htmlPath` is the
-spec file to edit; each thread has `anchor.block` (`{ index, tag, text }` —
-`text` is the commented block's normalized text) and the human comment(s).
+It prints `{ specId, htmlPath, language, threads, pending, writable }`.
+`htmlPath` is the spec file to edit; each thread has `anchor.block` (`{ index,
+tag, text }` — `text` is the commented block's normalized text) and the human
+comment(s).
+
+**`writable: false` means another harness is working this spec.** Two agents can
+be connected to one spec and the reader chooses which one works it, from the
+switcher in the spec header. When it is not you, `refusal` carries the reason:
+**reply, and do not edit `htmlPath` or anything else in the store.** Say in your
+reply which harness holds the spec, so the reader knows the switch is theirs to
+make. This is the same restraint as a `share` batch, arrived at differently.
 
 **`language` is the user's authoring direction, and it outranks the house
 register.** A non-empty string is how this user wants prose written. It applies
@@ -79,7 +92,7 @@ A batch with no `origin` field predates it and is the owner's.
 ## 2. Get the spec MAP (don't read the whole file)
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" map --spec "<htmlPath>"
+spec-nav map --spec "<htmlPath>"
 ```
 
 This gives the whole shape (sections, plan, line ranges, token sizes) in a few
@@ -92,7 +105,7 @@ Before amending, signal you're actively on it — the browser's action button fl
 from "Picked up comments" to "Working on comments":
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" batch-working <id> <batchId>
+specforge batch-working <id> <batchId>
 ```
 
 Then, for each thread **listed in the batch** (not every thread on the spec).
@@ -104,8 +117,8 @@ and amending are all edit work — and go straight to step 4, the reply:
    range):
 
    ```
-   node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" grep "<phrase>" --spec "<htmlPath>"
-   node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" section <id> --spec "<htmlPath>"
+   spec-nav grep "<phrase>" --spec "<htmlPath>"
+   spec-nav section <id> --spec "<htmlPath>"
    ```
 2. **Find coupled sections before editing** — `xrefs <id>` and `grep "<old
    term>"` to find every place a changed term/number appears; open and edit those
@@ -114,19 +127,20 @@ and amending are all edit work — and go straight to step 4, the reply:
    and its id**; keep the theme CSS and the floating TOC (the review layer owns
    theme + width). After changing a term/number, re-run `grep "<old term>"` and
    expect **zero hits**. Re-run the lint if you changed structure:
-   `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" "<htmlPath>" --project "${CLAUDE_PLUGIN_ROOT}"`.
+   `specforge lint "<htmlPath>"`.
 
    Prose you add is held to the same language contract as the original:
-   `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`. Answering a comment is
+   `specforge doc spec-language`. Answering a comment is
    where explanatory, persuading register creeps in — the spec is still a
    specification, not a reply. No aphorisms, no em dashes, no hedged decisions;
    every sentence carries a decision, measurement, source, assumption or
    specification. Watch the advisory `spec-language` line in the lint.
-4. **Reply inline** (append-only, attributed to claude) via the CLI — never edit
-   `comments.json` by hand, and never use the HTTP API (it is human-only):
+4. **Reply inline** (append-only, signed with whichever agent you are) via the
+   CLI — never edit `comments.json` by hand, and never use the HTTP API (it is
+   human-only):
 
    ```
-   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>"
+   specforge reply <id> <threadId> --body "<concise reply, name the section you changed>"
    ```
 
    **Answer first, then justify.** If the comment asked a question, the first
@@ -201,8 +215,8 @@ carries an `actions` array, and everything you need is in it:
 The whole list, outside a thread:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" actions            # all of them
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" actions <id>       # one
+specforge actions            # all of them
+specforge actions <id>       # one
 ```
 
 **Read it; do not remember it.** The instructions are edited, and a copy of one
@@ -240,7 +254,7 @@ rather than inferring from the label.
   to a file and run:
 
   ```
-  node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" aside <specId> \
+  specforge aside <specId> \
     --section <sourceSectionId> --action <actionId> \
     --block <anchor.block.bid> --thread <threadId> --file <path-to-your-html>
   ```
@@ -295,7 +309,7 @@ saying what you did.
 When every thread in a batch has a reply:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" batch-done <id> <batchId>
+specforge batch-done <id> <batchId>
 ```
 
 ## 5. Report + re-arm the watcher
@@ -306,4 +320,4 @@ without amending, so the owner knows a promotion is theirs to make). The human
 sees your replies + edits live and resolves the threads they're satisfied with.
 
 Then **re-arm the review watcher** so the next batch wakes the session: relaunch
-`node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch` as a background task.
+`specforge wait-batch` as a background task.

@@ -1,5 +1,5 @@
 ---
-name: specforge:export-md
+name: export-md
 user-invocable: true
 description: |
   Export a spec from the store as a GitHub-flavoured markdown file, plus a
@@ -8,13 +8,12 @@ description: |
   spec on a surface that speaks markdown (GitHub, an editor, another agent). The
   conversion is deterministic and needs no model: this skill picks the spec,
   runs the CLI, and reports where the file landed.
-allowed-tools: Read, Bash, Glob
+allowed-tools: Read Bash Glob
 ---
 
 # export-md
 
-Render a store spec as markdown. `${CLAUDE_PLUGIN_ROOT}` is the installed plugin
-directory.
+Render a store spec as markdown. SpecForge is on PATH as `specforge` and `spec-nav`; `specforge root` prints where it is installed.
 
 ## 1. Pick the spec
 
@@ -31,7 +30,7 @@ not an id, whatever it looks like. Treat it as a description and find the real i
 with
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list
+specforge list
 ```
 
 which is also what to run when `$ARGUMENTS` names no spec at all. List, then ask
@@ -40,7 +39,7 @@ which one, unless exactly one spec is attached to this session.
 ## 2. Export
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-md "<id>" [--out "<dir|file.md>"]
+specforge export-md "<id>" [--out "<dir|file.md>"]
 ```
 
 `--out` takes a directory (the file is named from the spec title) or a path
@@ -83,5 +82,5 @@ is long.
 - Nothing is written into the store. The markdown is a rendering of `spec.html`
   at the moment you asked, so re-exporting after an edit is how you refresh it;
   there is no stale copy to invalidate.
-- The reverse direction is `/specforge:convert <file.md>`, which imports markdown
+- The reverse direction is the `convert-spec` skill, which imports markdown
   as a **new** spec and never writes over an existing one.

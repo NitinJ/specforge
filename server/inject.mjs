@@ -10,6 +10,7 @@ import { menuActions, menuGroups } from '../lib/actions/all.mjs';
 import { readPrefs } from '../lib/store-prefs.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { readPublicationState } from '../lib/publication-state.mjs';
+import { RESERVED_NAMES } from '../lib/mentions.mjs';
 
 /** Absolute path to the CLI, for the Reconnect prompt an agent is meant to run. */
 const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
@@ -215,6 +216,11 @@ function reviewSnippet(specId, prefs, transport, api, servedAt) {
     // `blocks` is: a list the client keeps for itself drifts from the registry,
     // and the drift shows up as a component that silently does nothing.
     live: scriptSelectors(),
+    // Names a reviewer may not register under. Sent rather than hardcoded for
+    // the same reason `blocks` is: the set grows by one per harness, and a copy
+    // in the client would let a person register as `pi` and be refused only by
+    // the server, after they had typed it.
+    reserved: [...RESERVED_NAMES],
     // The context menu, without the instructions: the client shows a label and
     // writes an id, and the agent resolves that id against the registry. A page
     // carrying no `actions` opens no menu and leaves the browser's own alone,

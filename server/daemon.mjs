@@ -48,7 +48,7 @@ import { SERVICE, daemonAt, daemonUrl, defaultPort } from '../lib/daemon-state.m
 import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
   handleCommentReply, handleCommentResolve, handleCommentEdit, handleAnchorPatch, handleSubmit,
-  handleMeta, handleStatus, handleResolveAll, handleDetach,
+  handleMeta, handleStatus, handleResolveAll, handleDetach, handleSetActive,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
   handleBlocksGet, handleBlocksPut,
   handleRename, handleOrganize, handleExport, handleDelete, handleAsideDelete, handleBlockDelete,
@@ -61,6 +61,7 @@ import { contributeSpec, withdrawSpec } from '../lib/contribute.mjs';
 import { readShareToken } from '../lib/store-share.mjs';
 import { readMeta } from '../lib/meta.mjs';
 import { zip } from '../lib/zip.mjs';
+import { isMain } from '../lib/is-main.mjs';
 
 // Publications live for the daemon's lifetime, which is what lets a share
 // outlive the terminal that made it. One registry per process.
@@ -522,6 +523,15 @@ export function createDaemon({ publications: pubs = publications } = {}) {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleDetach(det[1], res);
     }
+    // Which connected harness works this spec. The only writer of that field,
+    // and it is a person clicking in the header (I7b).
+    const act = path.match(/^\/api\/spec\/([\w-]+)\/active$/);
+    if (act) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((body) => handleSetActive(act[1], body, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
     // List this spec in someone else's shared project, or take it back out.
     // The publish step is in-process here (the CLI asks over HTTP instead);
     // everything after it is the shared path in lib/contribute.mjs, so the two
@@ -820,8 +830,8 @@ export async function ensureServer({ port = defaultPort() } = {}) {
 
 // Runnable like start.mjs: `node server/daemon.mjs` starts the daemon and keeps
 // it alive until SIGINT/SIGTERM.
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) {
+const runningDirectly = isMain(import.meta.url);
+if (runningDirectly) {
   ensureServer().then(({ url, server }) => {
     if (!server) {
       console.log(`SpecForge daemon already running: ${url}`);
