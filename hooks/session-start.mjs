@@ -1,44 +1,18 @@
 #!/usr/bin/env node
-// SpecForge — SessionStart hook (v2, session-aware).
+// SpecForge — SessionStart hook.
 //
-// Gate: read $CLAUDE_CODE_SESSION_ID → the specs attached to it. A fresh session
-// owns nothing (attachment happens later, via create/convert/open) → sub-ms no-op.
+// Claude Code's name for "a conversation began or resumed". Translation only:
+// the decision is lib/harness/policy.mjs.
 //
-// When a RESUMED session already owns specs, the in-session review watcher
-// (`wait-batch`) it had launched died with the previous run — and nothing else
-// re-arms it. So nudge the agent to relaunch it, otherwise browser comments are
-// only picked up on the next manual turn (the Stop/UserPromptSubmit hooks), never
-// while idle.
-//
-// Fail-safe: any error exits 0.
+// A fresh session owns nothing, so this is a no-op for almost every session. A
+// RESUMED one already owning specs is the case that matters: the in-session
+// review watcher died with the previous run and nothing re-arms it, so browser
+// comments would be picked up only on the next manual turn, never while idle.
 
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { readStdin, parseInput } from './lib/io.mjs';
-import { mineFor } from './lib/session.mjs';
+import { run as runHook, main } from './lib/emit.mjs';
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
-
-export function run(input, env = process.env) {
-  const { mine } = mineFor(env, input.session_id);
-  if (!mine.length) return null; // ← idle no-op (the common fresh-session case)
-  const context = [
-    `SpecForge: this session owns ${mine.length} spec(s) under browser review. The`,
-    'in-session review watcher does not survive a restart — if it is not already',
-    'running this session, relaunch it in the background so submitted comments are',
-    'picked up while you are idle:',
-    `  node "${CLI}" wait-batch`,
-    'On completion it returns { ready, pending } — on ready, run specforge:review-spec',
-    'for each pending spec then relaunch it. It does not expire on its own — it',
-    'runs until a batch arrives or this session ends.',
-  ].join('\n');
-  return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
-}
-
-async function main() {
-  const decision = run(parseInput(await readStdin()));
-  if (decision) process.stdout.write(JSON.stringify(decision));
-}
+export const run = (input = {}, env = process.env) =>
+  runHook('session_start', 'SessionStart', input, env);
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) main().then(() => process.exit(0)).catch(() => process.exit(0));
+if (isMain) main('session_start', 'SessionStart');
