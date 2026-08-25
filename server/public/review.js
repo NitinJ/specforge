@@ -1239,7 +1239,9 @@ function sfRevealDisclosures(el) {
     var attached = !!meta.attachedSession;
     var connected = !!meta.connected;
     els.conn.className = 'sf-tb-conn' + (connected ? '' : ' sf-tb-conn-off');
-    var who = meta.sessionLabel || ('session ' + String(meta.attachedSession).slice(0, 8));
+    // The server sends sessionLabel, which keeps the harness whole. The fallback
+    // shortens the raw id only, for the same reason: `claude:s` names nothing.
+    var who = meta.sessionLabel || ('session ' + shortSessionKey(meta.attachedSession));
     els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
     els.conn.appendChild(create('span', { class: 'sf-conn-label' },
       connected ? 'Connected' : attached ? 'Disconnected' : 'No agent'));
@@ -4038,6 +4040,15 @@ function sfRevealDisclosures(el) {
     if (text != null) el.textContent = text;
     return el;
   }
+  // A session key is `<harness>:<raw id>`. Shorten the raw half and keep the
+  // harness, which is the part that matters once two CLIs are in play.
+  function shortSessionKey(key) {
+    var s = String(key == null ? '' : key);
+    var at = s.indexOf(':');
+    if (at === -1) return 'claude:' + s.slice(0, 8);
+    return s.slice(0, at + 1) + s.slice(at + 1, at + 9);
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];

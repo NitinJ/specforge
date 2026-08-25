@@ -47,7 +47,7 @@ test('create scaffolds a store spec, attaches it, returns its url', async () => 
   assert.ok(existsSync(r.htmlPath));
   const meta = readMeta(r.id);
   assert.equal(meta.title, 'My Spec');
-  assert.equal(meta.attachedSession, 'sess-1');
+  assert.equal(meta.attachedSession, 'claude:sess-1');
 });
 
 test('create without a session scaffolds unattached (graceful degrade)', async () => {
@@ -128,7 +128,7 @@ test('import ingests an existing .html spec and records its origin', async () =>
   const meta = readMeta(r.id);
   assert.equal(meta.title, 'Imported');
   assert.equal(meta.origin, src);
-  assert.equal(meta.attachedSession, 'sess-1');
+  assert.equal(meta.attachedSession, 'claude:sess-1');
 });
 
 test('open attaches a spec to this session and returns its url', async () => {
@@ -136,7 +136,7 @@ test('open attaches a spec to this session and returns its url', async () => {
   await cmdDetach({ id: created.id }, deps());
   const r = await cmdOpen({ id: created.id }, deps('sess-2'));
   assert.match(r.url, new RegExp(`/spec/${created.id}$`));
-  assert.equal(readMeta(created.id).attachedSession, 'sess-2');
+  assert.equal(readMeta(created.id).attachedSession, 'claude:sess-2');
 });
 
 test('open fails when another live session holds the spec', async () => {
@@ -258,7 +258,8 @@ test('listall shows every spec with its attached state', async () => {
   const free = rows.find((r) => r.id === a.id);
   assert.equal(free.attached, 'free');
   assert.equal(free.type, 'general', 'rows carry the spec type');
-  assert.ok(rows.some((r) => r.attached === 'sess-2'));
+  // The qualified key: attaching records which harness holds the spec.
+  assert.ok(rows.some((r) => r.attached === 'claude:sess-2'), JSON.stringify(rows.map((r) => r.attached)));
 });
 
 test('detach rejects an unknown spec', async () => {
