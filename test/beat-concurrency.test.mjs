@@ -19,8 +19,11 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, writeFileSync, utimesSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, writeFileSync, utimesSync, readdirSync, readFileSync } from 'node:fs';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 import { useTempStore } from './helpers/temp-store.mjs';
 import { withFileLock } from '../lib/file-lock.mjs';
@@ -79,6 +82,38 @@ test('meta and comments take separate locks', () => {
   // A beat waiting on a comment reply would be a queue nobody asked for.
   const id = createSpec({ title: 'A', html: '<h1>a</h1>' });
   assert.notEqual(metaLockPath(id), commentsLockPath(id));
+});
+
+test('every read-modify-write of meta.json goes through the lock', () => {
+  // A lock only one writer takes is not a lock. Greptile made exactly this point
+  // on #235: the beat took `meta.lock` while the browser and CLI paths still did
+  // an unlocked readMeta-then-writeMeta, so the lost update it was meant to
+  // prevent stayed reachable from the other side.
+  //
+  // Pinned as a scan rather than left to review: the failure is silent, and the
+  // next person to add a field will reach for readMeta + writeMeta because that
+  // is what the rest of the file looks like.
+  const root = resolve(HERE, '..', 'lib');
+  const offenders = [];
+
+  for (const file of readdirSync(root).filter((f) => f.endsWith('.mjs'))) {
+    // meta.mjs defines both, and mutateMeta is built out of them.
+    if (file === 'meta.mjs') continue;
+    const src = readFileSync(join(root, file), 'utf8');
+    const lines = src.split('\n');
+    lines.forEach((line, i) => {
+      if (!/\bwriteMeta\(/.test(line)) return;
+      // Writing a freshly built object is not a read-modify-write: there is no
+      // earlier read to lose. Creating a spec and seeding a template both build
+      // from `defaultMeta`, and the seed spreads it over a couple of lines.
+      if (/defaultMeta\(/.test(line) || /defaultMeta\(/.test(lines[i + 1] || '')) return;
+      offenders.push(`${file}:${i + 1}  ${line.trim().slice(0, 90)}`);
+    });
+  }
+
+  assert.deepEqual(offenders, [],
+    'these read meta and write it back without the lock; use mutateMeta:\n  '
+    + offenders.join('\n  '));
 });
 
 test('an error inside fn still releases the lock', () => {
