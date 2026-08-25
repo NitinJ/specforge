@@ -30,7 +30,7 @@ test('attach binds a spec to a session and records it in the reverse index', () 
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-1');
   const meta = readMeta(id);
-  assert.equal(meta.attachedSession, 'claude:sess-1');
+  assert.equal(meta.attachedSession, 'sess-1');
   assert.ok(meta.heartbeat > 0);
   assert.deepEqual(specsForSession('sess-1'), [id]);
   assert.ok(existsSync(sessionPath('sess-1')));
@@ -40,7 +40,7 @@ test('attach is idempotent for the owning session', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-1');
   attach(id, 'sess-1'); // no throw, still owned by sess-1
-  assert.equal(readMeta(id).attachedSession, 'claude:sess-1');
+  assert.equal(readMeta(id).attachedSession, 'sess-1');
   assert.deepEqual(specsForSession('sess-1'), [id]);
 });
 
@@ -48,7 +48,7 @@ test('attach is exclusive — a second live session cannot steal it', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-1');
   assert.throws(() => attach(id, 'sess-2'), /attached to another session/);
-  assert.equal(readMeta(id).attachedSession, 'claude:sess-1');
+  assert.equal(readMeta(id).attachedSession, 'sess-1');
 });
 
 test('the exclusivity error is actionable — owner, lock age, and the detach remedy', () => {
@@ -62,10 +62,6 @@ test('the exclusivity error is actionable — owner, lock age, and the detach re
     assert.fail('attach should throw');
   } catch (err) {
     assert.match(err.message, /sess-1-a/, 'names the owning session (short id)');
-    // The harness survives whole. Shortening the whole key to 8 characters gave
-    // `claude:s`, which names nothing, and with two CLIs in play the harness is
-    // the part a reader needs most.
-    assert.match(err.message, /claude:sess-1-a/, 'and which harness holds it');
     assert.match(err.message, /stale in ~?\d+m/, 'says when the lock frees itself');
     assert.match(err.message, new RegExp(`detach ${id}`), 'gives the exact detach remedy');
   }
@@ -79,7 +75,7 @@ test('a stale lock can be reclaimed by another session', () => {
   meta.heartbeat = Date.now() - STALE_MS - 1000;
   writeMeta(id, meta);
   attach(id, 'sess-2'); // reclaim succeeds
-  assert.equal(readMeta(id).attachedSession, 'claude:sess-2');
+  assert.equal(readMeta(id).attachedSession, 'sess-2');
   assert.deepEqual(specsForSession('sess-2'), [id]);
 });
 
@@ -138,8 +134,8 @@ test('two sessions own disjoint specs without collision', () => {
   attach(b, 'sess-2');
   assert.deepEqual(specsForSession('sess-1'), [a]);
   assert.deepEqual(specsForSession('sess-2'), [b]);
-  assert.equal(readMeta(a).attachedSession, 'claude:sess-1');
-  assert.equal(readMeta(b).attachedSession, 'claude:sess-2');
+  assert.equal(readMeta(a).attachedSession, 'sess-1');
+  assert.equal(readMeta(b).attachedSession, 'sess-2');
 });
 
 test('specsForSession is empty for an unknown session', () => {

@@ -34,7 +34,7 @@ function assertNoTrace(slug) {
 test('liveSessions lists the sessions with a running watcher', () => {
   seedLiveSession({ id: 'sess-alive' });
   seedDeadSession({ id: 'sess-gone' });
-  assert.deepEqual(liveSessions(), ['claude:sess-alive']);
+  assert.deepEqual(liveSessions(), ['sess-alive']);
 });
 
 test('a store with no sessions at all lists none, rather than throwing', () => {
@@ -56,7 +56,7 @@ test('creating a kind writes the row, the template spec, and the request', () =>
   assert.ok(specTypes().includes('postmortem'), 'the kind exists');
   const meta = readMeta('template-postmortem');
   assert.equal(meta.template, true, 'the template spec is protected');
-  assert.equal(meta.attachedSession, 'claude:sess-a', 'and attached to the live session');
+  assert.equal(meta.attachedSession, 'sess-a', 'and attached to the live session');
   assert.match(meta.generate.prompt, /what happened/);
 });
 

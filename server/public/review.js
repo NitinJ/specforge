@@ -73,40 +73,14 @@ function sfRevealDisclosures(el) {
   function isAgentComment(c) {
     if (!c) return false;
     if (c.kind === 'agent' || c.kind === 'human') return c.kind === 'agent';
-    // Deliberately still only `claude`, and never widened to the other harness
-    // names: this branch reads comments written before `kind` existed, and all
-    // of those were Claude's. A person legitimately called `pi` must not have
-    // their comments read as an agent's.
     return c.author === 'claude';
   }
 
-  /**
-   * A name a reviewer may not take.
-   *
-   * The server sends the set. A page served before it did falls back to the
-   * three that were hardcoded here, which is what that page already enforced.
-   */
-  function isReservedName(v) {
-    var list = (window.SPECFORGE || {}).reserved || ['agent', 'claude', 'human'];
-    var name = String(v || '').trim().toLowerCase();
-    for (var i = 0; i < list.length; i++) {
-      if (String(list[i]).toLowerCase() === name) return true;
-    }
-    return false;
-  }
-
-  /**
-   * The letter on a bubble: the author's own initial, agent or not.
-   *
-   * It used to be a hardcoded C for every agent comment, which was right while
-   * `claude` was the only name an agent wrote under. With one name per harness,
-   * a Pi reply reads P and a Claude reply still reads C. The colour, not the
-   * letter, is what says a comment is an agent's.
-   */
+  /** The letter on a bubble: the agent's C, else the author's own initial. */
   function initialOf(c) {
+    if (isAgentComment(c)) return 'C';
     var m = /[a-z0-9]/i.exec((c && c.author) || '');
-    if (m) return m[0].toUpperCase();
-    return isAgentComment(c) ? 'A' : 'H';
+    return m ? m[0].toUpperCase() : 'H';
   }
 
   // Addressing, mirroring lib/mentions.mjs. A comment is agent work when it
@@ -517,13 +491,11 @@ function sfRevealDisclosures(el) {
     function submit() {
       var v = (input.value || '').trim();
       if (!v) return fail('Please enter a name so your comments are attributed.');
-      // `agent` would make an @agent mention ambiguous, `human` is what a write
-      // with no name at all is recorded as, and every harness's agent name is
-      // spoken for so a reply signed `pi` cannot be impersonated. The list comes
-      // from the server (mentions.mjs RESERVED_NAMES) rather than being repeated
-      // here, because it grows by one per harness. The server refuses them all,
+      // `agent` would make an @agent mention ambiguous, `claude` is the agent's
+      // old author string, and `human` is what a write with no name at all is
+      // recorded as. The server refuses all three (mentions.mjs RESERVED_NAMES),
       // and finding that out after writing a comment would be worse.
-      if (isReservedName(v)) return fail('That name is reserved. Please use your own.');
+      if (/^(agent|claude|human)$/i.test(v)) return fail('That name is reserved. Please use your own.');
       setMeAuthor(v);
       wrap.remove();
     }
@@ -1265,30 +1237,10 @@ function sfRevealDisclosures(el) {
     els.conn.removeAttribute('hidden');
     els.conn.innerHTML = '';
     var attached = !!meta.attachedSession;
-    var harnesses = meta.harnesses || [];
-    // Whichever agent is selected is the one the dot is about. `meta.connected`
-    // is computed by the server for the active session and is not re-sent when a
-    // switch answers, so trusting it left the dot green after switching to an
-    // agent that is not listening.
-    var chosen = null;
-    for (var i = 0; i < harnesses.length; i++) if (harnesses[i].active) chosen = harnesses[i];
-    var connected = chosen ? !!chosen.alive : !!meta.connected;
+    var connected = !!meta.connected;
     els.conn.className = 'sf-tb-conn' + (connected ? '' : ' sf-tb-conn-off');
-    // The server sends sessionLabel, which keeps the harness whole. The fallback
-    // shortens the raw id only, for the same reason: `claude:s` names nothing.
-    var who = meta.sessionLabel || ('session ' + shortSessionKey(meta.attachedSession));
+    var who = meta.sessionLabel || ('session ' + String(meta.attachedSession).slice(0, 8));
     els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
-
-    // More than one harness connected: the chip becomes a switcher, and choosing
-    // one decides who receives every comment and who may write the spec. One
-    // connection reads exactly as the chip always did.
-    if (harnesses.length > 1) {
-      els.conn.appendChild(renderHarnessSwitcher(harnesses));
-      els.conn.title = 'Two agents are connected. The highlighted one receives every '
-        + 'comment and is the only one allowed to write this spec.';
-      return;
-    }
-
     els.conn.appendChild(create('span', { class: 'sf-conn-label' },
       connected ? 'Connected' : attached ? 'Disconnected' : 'No agent'));
     els.conn.title = connected
@@ -1300,81 +1252,6 @@ function sfRevealDisclosures(el) {
     var btn = create('button', { class: 'sf-conn-act', type: 'button' }, attached ? 'Reconnect' : 'Connect');
     btn.onclick = function (e) { e.stopPropagation(); copyReconnectPrompt(); };
     els.conn.appendChild(btn);
-  }
-
-  /**
-   * Which connected harness is working this spec.
-   *
-   * A person's choice, and the only writer of it: nothing an agent does can take
-   * work from another or strand a spec by crashing while it holds it. A harness
-   * that is not beating is still selectable, marked as needing a reconnect,
-   * because refusing would leave a spec with no possible recipient the moment
-   * its one live harness went quiet.
-   */
-  function renderHarnessSwitcher(harnesses) {
-    // A select rather than a row of pills. Two or three agents is a list, and a
-    // list is what a dropdown is for; the segmented control it replaced read as
-    // a filter, which is the one thing it is not.
-    var sel = create('select', {
-      class: 'sf-harness',
-      'aria-label': 'Which agent is working this spec',
-    });
-    for (var i = 0; i < harnesses.length; i++) {
-      sel.appendChild(harnessOption(harnesses[i]));
-    }
-    sel.onchange = function (e) {
-      e.stopPropagation();
-      // The old value is not read back on failure: setActiveHarness re-renders
-      // from the server's answer either way, so a refused switch redraws the
-      // select as the store actually holds it.
-      setActiveHarness(sel.value);
-    };
-    // A click inside the select must not reach the chip, which scrolls to top.
-    sel.onclick = function (e) { e.stopPropagation(); };
-    return sel;
-  }
-
-  function harnessOption(h) {
-    // "needs reconnect" in the label rather than only in a title: an option's
-    // title never shows in a closed select, so a dead agent would look ordinary
-    // until you opened the list.
-    var o = create('option', {
-      value: h.harness,
-      'data-harness': h.harness,
-    }, h.harness + (h.alive ? '' : ' (needs reconnect)'));
-    if (h.active) o.selected = true;
-    return o;
-  }
-
-  /** Hand the spec to another connected harness. */
-  function setActiveHarness(harness) {
-    postJSON(SPEC_API + '/active', { harness: harness })
-      .then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (out) {
-          // A 409 carries the reason (the harness disconnected between the render
-          // and the click), so the body is read before the status is judged.
-          if (!r.ok || !out.ok) throw new Error(out.error || 'could not switch');
-          return out;
-        });
-      })
-      .then(function (out) {
-        // Patched rather than reloaded: the answer already carries the new state,
-        // and a full load would throw the reader back up the document.
-        state.meta = Object.assign({}, state.meta, {
-          harnesses: out.harnesses || state.meta.harnesses,
-          activeHarness: out.activeHarness,
-          sessionLabel: out.sessionLabel,
-        });
-        renderConn();
-        flash(harness + ' is working this spec now.');
-      })
-      .catch(function (err) {
-        // Redraw from state.meta, which the refused switch never changed. The
-        // browser has already moved the selection by the time `change` fires, so
-        // leaving it alone would show a choice the server rejected.
-        renderConn();
-        flashErr(err.message || 'Could not switch the active harness.');
-      });
   }
 
   /**
@@ -1401,17 +1278,14 @@ function sfRevealDisclosures(el) {
       '  3. Arm the review watcher in the background so submitted comments reach you',
       '     while you are idle:                      node "' + cli + '" wait-batch',
       '',
-      // The skill by its bare name, not one CLI's address for it: the reader
-      // pastes this into whichever agent they want to own the spec, and the page
-      // cannot know which that is.
-      'On the watcher completing, run the review-spec skill for each pending',
+      'On the watcher completing, run the specforge:review-spec skill for each pending',
       'spec and relaunch it; on timeout just relaunch it.',
     ].join('\n');
   }
   function copyReconnectPrompt() {
     var text = reconnectPrompt();
     var done = function () {
-      flash('Prompt copied. Paste it into the agent session you want to own this spec.');
+      flash('Prompt copied. Paste it into the Claude session you want to own this spec.');
     };
     try {
       navigator.clipboard.writeText(text).then(done, function () { flash(text); });
@@ -3149,7 +3023,7 @@ function sfRevealDisclosures(el) {
   function commentHTML(c) {
     var editable = !isAgentComment(c) && !c.batchId && c.id;
     return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
-      (isAgentComment(c) ? 'agent' : '') + '">' + esc(c.author) + '</span>' +
+      (isAgentComment(c) ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
       '<div class="body">' + fmtBody(c.body) + '</div>' +
       (editable ? '<button class="sf-edit-c" type="button" aria-label="Edit comment">Edit</button>' : '') +
       '</div>';
@@ -3578,8 +3452,8 @@ function sfRevealDisclosures(el) {
     var b = create('button', { class: 'sf-bub' + (orphan ? ' sf-bub-orphan' : ''), type: 'button', 'data-tid': t.id });
     b._anchor = el; // the measured element, re-read every pass
     var first = t.comments[0] || {};
-    var byAgent = isAgentComment(first);
-    b.innerHTML = '<span class="sf-bub-who' + (byAgent ? ' agent' : '') + '" title="' + esc(first.author || '') + '">' + initialOf(first) + '</span>' +
+    var claude = isAgentComment(first);
+    b.innerHTML = '<span class="sf-bub-who' + (claude ? ' claude' : '') + '" title="' + esc(first.author || '') + '">' + initialOf(first) + '</span>' +
       '<span class="sf-bub-snip">' + esc(norm(first.body || '')) + '</span>' +
       (t.comments.length > 1 ? '<span class="sf-bub-n">' + (t.comments.length - 1) + '</span>' : '');
     b.onclick = function (e) { e.stopPropagation(); expandThread(t.id, el); };
@@ -3595,7 +3469,7 @@ function sfRevealDisclosures(el) {
     var b = create('div', { class: 'sf-bub sf-bub-open' + (orphan ? ' sf-bub-orphan' : ''), 'data-tid': t.id, 'data-focus': '1' });
     b._anchor = el;
     b.innerHTML = '<div class="sf-bub-head"><span class="sf-bub-who' +
-      (isAgentComment(t.comments[0]) ? ' agent' : '') + '" title="' +
+      (isAgentComment(t.comments[0]) ? ' claude' : '') + '" title="' +
       esc((t.comments[0] && t.comments[0].author) || '') + '">' +
       initialOf(t.comments[0]) + '</span>' +
       '<span class="sf-badge ' + esc(t.state) + '">' + esc(t.state) + '</span>' +
@@ -4164,15 +4038,6 @@ function sfRevealDisclosures(el) {
     if (text != null) el.textContent = text;
     return el;
   }
-  // A session key is `<harness>:<raw id>`. Shorten the raw half and keep the
-  // harness, which is the part that matters once two CLIs are in play.
-  function shortSessionKey(key) {
-    var s = String(key == null ? '' : key);
-    var at = s.indexOf(':');
-    if (at === -1) return 'claude:' + s.slice(0, 8);
-    return s.slice(0, at + 1) + s.slice(at + 1, at + 9);
-  }
-
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];

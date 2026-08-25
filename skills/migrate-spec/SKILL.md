@@ -1,5 +1,5 @@
 ---
-name: migrate-spec
+name: specforge:migrate-spec
 user-invocable: true
 description: |
   Move one existing spec onto the SpecForge component library. Use when the user
@@ -7,7 +7,7 @@ description: |
   components", or "adopt the design system in <spec>". Runs the deterministic
   renames in code, reads the callouts that carry no type and assigns one to each,
   and leaves a migration report in the spec's store directory.
-allowed-tools: Read Write Bash Grep
+allowed-tools: Read, Write, Bash, Grep
 ---
 
 # migrate-spec
@@ -15,14 +15,15 @@ allowed-tools: Read Write Bash Grep
 Migration is never automatic (design D5). It runs on one spec, because a person
 asked for that spec.
 
-SpecForge is on PATH as `specforge` and `spec-nav`; `specforge root` prints where it is installed. Specs live at `~/.specforge/specs/<id>/spec.html`; you address them by **id**.
+`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Specs live at
+`~/.specforge/specs/<id>/spec.html`; you address them by **id**.
 
 **Never paste what the user typed into a command.** A store id is 10 hex
 characters. If what you were given is anything else, look the spec up first and
 use the id that reports:
 
 ```
-specforge listall
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" listall
 ```
 
 The CLI refuses an id outside `[A-Za-z0-9_-]`, but that check runs after the
@@ -35,7 +36,7 @@ that is your pass.
 ## 1. See what the codemod would do
 
 ```
-specforge components migrate <id> --dry
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" components migrate <id> --dry
 ```
 
 Writes nothing. `codemod` lists the deterministic renames with counts;
@@ -50,7 +51,7 @@ That is theirs to decide, not yours.
 ## 2. Read the blocks that need a type
 
 ```
-specforge components migrate <id> --plan
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" components migrate <id> --plan
 ```
 
 Returns `{ id, blocks: [{ index, key, source, text }] }` — every callout the
@@ -89,7 +90,7 @@ Write your decisions as `{ "assignments": { "<key>": "<type>", ... } }`, keyed b
 the `key` from the plan, and apply them:
 
 ```
-specforge components migrate <id> --assign /tmp/<id>-assign.json
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" components migrate <id> --assign /tmp/<id>-assign.json
 ```
 
 Anything you leave out takes the classifier's default, so the spec is never left
@@ -101,7 +102,7 @@ recording every rename and every assignment with `by: "agent"` or
 ## 4. Check it
 
 ```
-specforge lint ~/.specforge/specs/<id>/spec.html
+node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" ~/.specforge/specs/<id>/spec.html
 ```
 
 Expect no untyped notices and no tone class used as a type. **Classes outside the

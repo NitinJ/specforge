@@ -84,9 +84,7 @@ test('GET / shows attached label for an attached spec', async (t) => {
   writeMeta(id, { ...m, attachedSession: 'abcdef1234567890' });
   await withDaemon(t, async (base) => {
     const body = await (await fetch(`${base}/`)).text();
-    // The harness whole, the raw id shortened. A pre-harness value like this one
-    // reads as Claude Code, which is what it is.
-    assert.match(body, /session claude:abcdef12/);
+    assert.match(body, /session abcdef12/); // short id
   });
 });
 

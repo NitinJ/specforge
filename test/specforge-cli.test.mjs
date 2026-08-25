@@ -7,7 +7,6 @@ import { tmpdir } from 'node:os';
 import { readMeta } from '../lib/meta.mjs';
 import { attach } from '../lib/attach.mjs';
 import { mutateComments, createThread } from '../lib/store-comments.mjs';
-import { seedSession } from './helpers/live-session.mjs';
 import { submitBatch } from '../lib/store-inbox.mjs';
 import {
   cmdCreate, cmdImport, cmdOpen, cmdStart, cmdWaitBatch, cmdList, cmdListall, cmdDetach,
@@ -48,7 +47,7 @@ test('create scaffolds a store spec, attaches it, returns its url', async () => 
   assert.ok(existsSync(r.htmlPath));
   const meta = readMeta(r.id);
   assert.equal(meta.title, 'My Spec');
-  assert.equal(meta.attachedSession, 'claude:sess-1');
+  assert.equal(meta.attachedSession, 'sess-1');
 });
 
 test('create without a session scaffolds unattached (graceful degrade)', async () => {
@@ -129,7 +128,7 @@ test('import ingests an existing .html spec and records its origin', async () =>
   const meta = readMeta(r.id);
   assert.equal(meta.title, 'Imported');
   assert.equal(meta.origin, src);
-  assert.equal(meta.attachedSession, 'claude:sess-1');
+  assert.equal(meta.attachedSession, 'sess-1');
 });
 
 test('open attaches a spec to this session and returns its url', async () => {
@@ -137,78 +136,16 @@ test('open attaches a spec to this session and returns its url', async () => {
   await cmdDetach({ id: created.id }, deps());
   const r = await cmdOpen({ id: created.id }, deps('sess-2'));
   assert.match(r.url, new RegExp(`/spec/${created.id}$`));
-  assert.equal(readMeta(created.id).attachedSession, 'claude:sess-2');
+  assert.equal(readMeta(created.id).attachedSession, 'sess-2');
 });
 
-test('open connects to a spec another session is working, rather than taking it', async () => {
-  // It used to refuse. Connecting is what lets a second session read and reply
-  // while the first writes; taking the work is a human choice in the header
-  // (§8 Q7, E8), so `open` never makes it.
+test('open fails when another live session holds the spec', async () => {
   const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
-  const r = await cmdOpen({ id: created.id }, deps('sess-2'));
-  assert.equal(r.id, created.id);
-  assert.match(r.note, /is working this spec/);
-  assert.equal(readMeta(created.id).attachedSession, 'claude:sess-1', 'the holder is unchanged');
-});
-
-test('open takes a free spec, because that takes nothing from anyone', async () => {
-  const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
-  await cmdDetach({ id: created.id }, deps());
-  const r = await cmdOpen({ id: created.id }, deps('sess-2'));
-  assert.equal(r.active, 'claude');
-  assert.equal(r.note, undefined);
-  assert.equal(readMeta(created.id).attachedSession, 'claude:sess-2');
+  await assert.rejects(() => cmdOpen({ id: created.id }, deps('sess-2')), /another session/);
 });
 
 test('open rejects an unknown spec', async () => {
   await assert.rejects(() => cmdOpen({ id: 'deadbeef00' }, deps()), /unknown spec/);
-});
-
-test('open tells a session with no watcher to arm one', async () => {
-  // Connecting to a spec and being able to hear from it are two different
-  // things. Creating a spec already said so; opening one did not, so a spec
-  // opened by hand sat connected and deaf until the human noticed.
-  const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
-  await cmdDetach({ id: created.id }, deps());
-  const r = await cmdOpen({ id: created.id }, deps('sess-2'));
-  assert.match(r.next, /wait-batch/);
-  assert.match(r.next, /background/);
-});
-
-test('a session already watching is not told again', () => {
-  // Repeating it would have the agent arm a second watcher on every open, and
-  // two watchers on one session race for the same batch.
-  seedSession({ id: 'sess-2', alive: true });
-  return cmdCreate({ title: 'B' }, deps('sess-1'))
-    .then((created) => cmdDetach({ id: created.id }, deps()).then(() => created))
-    .then((created) => cmdOpen({ id: created.id }, deps('sess-2')))
-    .then((r) => assert.equal(r.next, undefined));
-});
-
-test('a spec another harness is working still says to arm one', async () => {
-  // The connected-but-inactive session is exactly the one that needs it: it
-  // cannot write the spec, but it can still be asked a question.
-  const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
-  const r = await cmdOpen({ id: created.id }, deps('sess-2'));
-  assert.match(r.note, /is working this spec/);
-  assert.match(r.next, /wait-batch/);
-});
-
-test('every command that attaches a spec says to arm a watcher', async () => {
-  // create, import and open all attach. Saying it on one of the three is how
-  // this went unnoticed: the create skill covered create, and nothing covered
-  // the other two.
-  const src = join(home, 'to-import.html');
-  writeFileSync(src, '<!doctype html><title>t</title><h1>Imported</h1><p>body</p>');
-
-  const created = await cmdCreate({ title: 'A' }, deps('sess-9'));
-  const imported = await cmdImport({ file: src }, deps('sess-9'));
-  await cmdDetach({ id: created.id }, deps());
-  const opened = await cmdOpen({ id: created.id }, deps('sess-9'));
-
-  for (const [verb, out] of [['create', created], ['import', imported], ['open', opened]]) {
-    assert.match(out.next || '', /wait-batch/, `${verb} says nothing about a watcher`);
-  }
 });
 
 test('list shows only this session’s specs', async () => {
@@ -321,8 +258,7 @@ test('listall shows every spec with its attached state', async () => {
   const free = rows.find((r) => r.id === a.id);
   assert.equal(free.attached, 'free');
   assert.equal(free.type, 'general', 'rows carry the spec type');
-  // The qualified key: attaching records which harness holds the spec.
-  assert.ok(rows.some((r) => r.attached === 'claude:sess-2'), JSON.stringify(rows.map((r) => r.attached)));
+  assert.ok(rows.some((r) => r.attached === 'sess-2'));
 });
 
 test('detach rejects an unknown spec', async () => {

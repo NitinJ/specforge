@@ -1,5 +1,5 @@
 ---
-name: tune-templates
+name: specforge:tune-templates
 user-invocable: true
 description: |
   Optimize the SpecForge spec templates from the review-comment history. Use when
@@ -9,7 +9,7 @@ description: |
   themes + redundant sections, proposes template changes as a spec, and — only on
   the user's go-ahead — edits the template specs in place, one per spec type.
   Never touches or rewrites existing specs; templates only.
-allowed-tools: Read Write Edit Bash Glob Grep
+allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
 # tune-templates
@@ -22,7 +22,7 @@ spec of that type scaffolds from.
 **Read the list at run time, never from memory:**
 
 ```
-spec-types
+node "${CLAUDE_PLUGIN_ROOT}/lib/spec-types-cli.mjs"
 ```
 
 Six kinds ship with the plugin and the user can add more from the configuration
@@ -32,7 +32,9 @@ is how a type gets silently skipped.
 `template-general` is deliberately section-free: tune its chrome and its authoring
 comment, never add sections to it.
 
-SpecForge is on PATH as `specforge` and `spec-nav`; `specforge root` prints where it is installed. Templates live in the store at `~/.specforge/specs/template-<type>/spec.html`; the bundled seeds are at `templates/spec-base-<type>.html` under `specforge root` (fallback + fresh-install).
+`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Templates live in the
+store at `~/.specforge/specs/template-<type>/spec.html`; the bundled seeds are at
+`${CLAUDE_PLUGIN_ROOT}/templates/spec-base-<type>.html` (fallback + fresh-install).
 
 **Scope rule (non-negotiable):** this skill edits templates only. It never touches,
 rewrites, or lints existing specs. The recurring themes become template scaffolding,
@@ -41,7 +43,7 @@ not retroactive edits.
 ## 1. Learn — mine the comment corpus
 
 ```
-specforge mine-comments --json
+node "${CLAUDE_PLUGIN_ROOT}/lib/mine-comments.mjs" --json
 ```
 
 Every human-authored comment across the store, keyed to its spec (title/type) and
@@ -83,18 +85,18 @@ Only on the user's go-ahead, and only for the changes they approved:
    crisp headings with no flair, present the number then explain.
    Template prose sets the register for every spec written from it, so it is held
    to the language contract twice over:
-   `specforge doc spec-language`. A placeholder that models
+   `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`. A placeholder that models
    an aphorism, an em dash or a hedge teaches every future spec to copy it.
 2. Lint each edited template — must pass:
    ```
-   specforge lint "~/.specforge/specs/template-<type>/spec.html"
+   node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" "~/.specforge/specs/template-<type>/spec.html"
    ```
 3. Sync the bundled seed so fresh installs match: mirror the finalized template into
-   `templates/spec-base-<type>.html` under `specforge root` (a per-type seed wins over
+   `${CLAUDE_PLUGIN_ROOT}/templates/spec-base-<type>.html` (a per-type seed wins over
    the shared doc/impl shell — see `lib/store-templates.mjs` `bundledShell`).
 4. Restart the daemon so the running server serves the edited templates:
    ```
-   specforge start
+   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" start
    ```
 
 `ensureTemplates` never overwrites an existing store template, so edits survive a

@@ -13,7 +13,6 @@ import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
 import { attach, STALE_MS } from '../lib/attach.mjs';
 import { writeGlobalPrefs } from '../lib/global-prefs.mjs';
-import { currentHarness } from '../lib/harness/index.mjs';
 import { loadIndex, tick } from './helpers/index-dom.mjs';
 
 const setCollection = (id, c) => { const m = readMeta(id); m.collection = c; writeMeta(id, m); };
@@ -59,14 +58,6 @@ test('empty store renders the empty state, no groups', () => {
   const html = renderIndex();
   assert.match(html, /No specs yet/);
   assert.doesNotMatch(html, /class="grp"/);
-});
-
-test('the empty state names the skill the way THIS CLI addresses it', () => {
-  // It is an instruction the reader is meant to follow, so a hard-coded
-  // `/specforge:create` would be a command that does not exist on the CLI
-  // serving the page.
-  const html = renderIndex();
-  assert.match(html, new RegExp(currentHarness().workRef('create-spec')));
 });
 
 test('specs render grouped under collection headers (+ Uncollected)', () => {
