@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { readMeta } from '../lib/meta.mjs';
 import { attach } from '../lib/attach.mjs';
 import { mutateComments, createThread } from '../lib/store-comments.mjs';
+import { seedSession } from './helpers/live-session.mjs';
 import { submitBatch } from '../lib/store-inbox.mjs';
 import {
   cmdCreate, cmdImport, cmdOpen, cmdStart, cmdWaitBatch, cmdList, cmdListall, cmdDetach,
@@ -161,6 +162,53 @@ test('open takes a free spec, because that takes nothing from anyone', async () 
 
 test('open rejects an unknown spec', async () => {
   await assert.rejects(() => cmdOpen({ id: 'deadbeef00' }, deps()), /unknown spec/);
+});
+
+test('open tells a session with no watcher to arm one', async () => {
+  // Connecting to a spec and being able to hear from it are two different
+  // things. Creating a spec already said so; opening one did not, so a spec
+  // opened by hand sat connected and deaf until the human noticed.
+  const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
+  await cmdDetach({ id: created.id }, deps());
+  const r = await cmdOpen({ id: created.id }, deps('sess-2'));
+  assert.match(r.next, /wait-batch/);
+  assert.match(r.next, /background/);
+});
+
+test('a session already watching is not told again', () => {
+  // Repeating it would have the agent arm a second watcher on every open, and
+  // two watchers on one session race for the same batch.
+  seedSession({ id: 'sess-2', alive: true });
+  return cmdCreate({ title: 'B' }, deps('sess-1'))
+    .then((created) => cmdDetach({ id: created.id }, deps()).then(() => created))
+    .then((created) => cmdOpen({ id: created.id }, deps('sess-2')))
+    .then((r) => assert.equal(r.next, undefined));
+});
+
+test('a spec another harness is working still says to arm one', async () => {
+  // The connected-but-inactive session is exactly the one that needs it: it
+  // cannot write the spec, but it can still be asked a question.
+  const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
+  const r = await cmdOpen({ id: created.id }, deps('sess-2'));
+  assert.match(r.note, /is working this spec/);
+  assert.match(r.next, /wait-batch/);
+});
+
+test('every command that attaches a spec says to arm a watcher', async () => {
+  // create, import and open all attach. Saying it on one of the three is how
+  // this went unnoticed: the create skill covered create, and nothing covered
+  // the other two.
+  const src = join(home, 'to-import.html');
+  writeFileSync(src, '<!doctype html><title>t</title><h1>Imported</h1><p>body</p>');
+
+  const created = await cmdCreate({ title: 'A' }, deps('sess-9'));
+  const imported = await cmdImport({ file: src }, deps('sess-9'));
+  await cmdDetach({ id: created.id }, deps());
+  const opened = await cmdOpen({ id: created.id }, deps('sess-9'));
+
+  for (const [verb, out] of [['create', created], ['import', imported], ['open', opened]]) {
+    assert.match(out.next || '', /wait-batch/, `${verb} says nothing about a watcher`);
+  }
 });
 
 test('list shows only this session’s specs', async () => {

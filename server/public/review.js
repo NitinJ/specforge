@@ -1265,15 +1265,21 @@ function sfRevealDisclosures(el) {
     els.conn.removeAttribute('hidden');
     els.conn.innerHTML = '';
     var attached = !!meta.attachedSession;
-    var connected = !!meta.connected;
     var harnesses = meta.harnesses || [];
+    // Whichever agent is selected is the one the dot is about. `meta.connected`
+    // is computed by the server for the active session and is not re-sent when a
+    // switch answers, so trusting it left the dot green after switching to an
+    // agent that is not listening.
+    var chosen = null;
+    for (var i = 0; i < harnesses.length; i++) if (harnesses[i].active) chosen = harnesses[i];
+    var connected = chosen ? !!chosen.alive : !!meta.connected;
     els.conn.className = 'sf-tb-conn' + (connected ? '' : ' sf-tb-conn-off');
     // The server sends sessionLabel, which keeps the harness whole. The fallback
     // shortens the raw id only, for the same reason: `claude:s` names nothing.
     var who = meta.sessionLabel || ('session ' + shortSessionKey(meta.attachedSession));
     els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
 
-    // More than one harness connected: the chip becomes a switcher, and picking
+    // More than one harness connected: the chip becomes a switcher, and choosing
     // one decides who receives every comment and who may write the spec. One
     // connection reads exactly as the chip always did.
     if (harnesses.length > 1) {
@@ -1306,31 +1312,38 @@ function sfRevealDisclosures(el) {
    * its one live harness went quiet.
    */
   function renderHarnessSwitcher(harnesses) {
-    var wrap = create('span', { class: 'sf-harness' });
+    // A select rather than a row of pills. Two or three agents is a list, and a
+    // list is what a dropdown is for; the segmented control it replaced read as
+    // a filter, which is the one thing it is not.
+    var sel = create('select', {
+      class: 'sf-harness',
+      'aria-label': 'Which agent is working this spec',
+    });
     for (var i = 0; i < harnesses.length; i++) {
-      wrap.appendChild(harnessButton(harnesses[i]));
+      sel.appendChild(harnessOption(harnesses[i]));
     }
-    return wrap;
+    sel.onchange = function (e) {
+      e.stopPropagation();
+      // The old value is not read back on failure: setActiveHarness re-renders
+      // from the server's answer either way, so a refused switch redraws the
+      // select as the store actually holds it.
+      setActiveHarness(sel.value);
+    };
+    // A click inside the select must not reach the chip, which scrolls to top.
+    sel.onclick = function (e) { e.stopPropagation(); };
+    return sel;
   }
 
-  function harnessButton(h) {
-    var cls = 'sf-harness-b'
-      + (h.active ? ' sf-harness-on' : '')
-      + (h.alive ? '' : ' sf-harness-dead');
-    var b = create('button', {
-      class: cls,
-      type: 'button',
+  function harnessOption(h) {
+    // "needs reconnect" in the label rather than only in a title: an option's
+    // title never shows in a closed select, so a dead agent would look ordinary
+    // until you opened the list.
+    var o = create('option', {
+      value: h.harness,
       'data-harness': h.harness,
-      'aria-pressed': h.active ? 'true' : 'false',
-      title: (h.active ? 'Working this spec' : 'Hand this spec to ' + h.harness)
-        + (h.alive ? '' : ' — not listening right now, it will need a reconnect'),
-    }, h.harness);
-    if (h.active) return b;
-    b.onclick = function (e) {
-      e.stopPropagation();
-      setActiveHarness(h.harness);
-    };
-    return b;
+    }, h.harness + (h.alive ? '' : ' (needs reconnect)'));
+    if (h.active) o.selected = true;
+    return o;
   }
 
   /** Hand the spec to another connected harness. */
@@ -1355,7 +1368,13 @@ function sfRevealDisclosures(el) {
         renderConn();
         flash(harness + ' is working this spec now.');
       })
-      .catch(function (err) { flashErr(err.message || 'Could not switch the active harness.'); });
+      .catch(function (err) {
+        // Redraw from state.meta, which the refused switch never changed. The
+        // browser has already moved the selection by the time `change` fires, so
+        // leaving it alone would show a choice the server rejected.
+        renderConn();
+        flashErr(err.message || 'Could not switch the active harness.');
+      });
   }
 
   /**
