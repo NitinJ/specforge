@@ -15,6 +15,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 import { sessionsDir, sessionPath } from '../../lib/store-paths.mjs';
+import { sessionKey, encodeKey, LEGACY_HARNESS } from '../../lib/session-key.mjs';
 
 /** A pid that is certainly not running. Chosen high, above the usual pid_max. */
 const DEAD_PID = 0x7ffffffe;
@@ -30,16 +31,46 @@ const DEAD_PID = 0x7ffffffe;
  * `attach(specId, sessionId)` — the production function, which writes both.
  * Raised in review of PR #221.
  *
+ * `harness` names which CLI the session belongs to. Two harnesses can issue the
+ * same raw id, so a fixture that could only seed the raw one could not express
+ * I1 at all. Defaulting to `claude` keeps every test written before harnesses
+ * existed seeding exactly what it always seeded, down to the filename.
+ *
+ * `id` is the RAW id, not the key. Callers pass it straight to `watcherAlive`
+ * and `attach`, which read a raw id today and a key from Stage 1 onward, and a
+ * helper that returned the key early would break every one of them at once. The
+ * qualified form is `key`, for the tests that mean the key.
+ *
  * @param {object} [opts]
- * @param {string} [opts.id] the session id; defaults to a fixed readable one
+ * @param {string} [opts.id] the raw session id; defaults to a fixed readable one
+ * @param {string} [opts.harness] the harness that owns it
  * @param {boolean} [opts.alive] whether its watcher pid is a running process
- * @returns {{id: string, watcherPid: number}}
+ * @returns {{id: string, key: string, harness: string, watcherPid: number}}
  */
-export function seedSession({ id = 'sess-live-0001', alive = true } = {}) {
+export function seedSession({ id = 'sess-live-0001', harness = 'claude', alive = true } = {}) {
+  const watcherPid = alive ? process.pid : DEAD_PID;
+  const key = sessionKey(harness, id);
+  const record = { specs: [], watcherPid };
+  // Only a non-default harness records the field, so a Claude Code fixture stays
+  // byte-identical to the records already in the store.
+  if (harness !== LEGACY_HARNESS) record.harness = harness;
+  mkdirSync(sessionsDir(), { recursive: true });
+  writeFileSync(sessionPath(encodeKey(key)), JSON.stringify(record, null, 2));
+  return { id, key, harness, watcherPid };
+}
+
+/**
+ * A session record in the shape the store held before harness keys existed: the
+ * raw id as its own filename, and no harness field.
+ *
+ * The fixture I2 is asserted against. Every one of the 111 records on this
+ * machine is this shape, so a reader that cannot handle it detaches all of them.
+ */
+export function seedLegacySession({ id = 'sess-legacy-0001', alive = true } = {}) {
   const watcherPid = alive ? process.pid : DEAD_PID;
   mkdirSync(sessionsDir(), { recursive: true });
   writeFileSync(sessionPath(id), JSON.stringify({ specs: [], watcherPid }, null, 2));
-  return { id, watcherPid };
+  return { id, key: sessionKey(LEGACY_HARNESS, id), watcherPid };
 }
 
 /** A session an agent is listening on. */
