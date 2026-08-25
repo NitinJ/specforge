@@ -141,25 +141,51 @@ test('switching hands the write over', () => {
   assert.equal(canWrite(readMeta(specId), p.key), true);
 });
 
-test('`comments` says whether this session may amend the spec', async () => {
+test('`comments` says whether this session may amend the spec', async (t) => {
   // The gate an agent actually meets. It amends spec.html with its own editor,
   // which nothing here can intercept, so the refusal has to arrive with the
   // threads rather than at the write.
+  //
+  // The session is put into the environment rather than read from it: CI runs
+  // inside no agent at all, so `currentSessionKey()` there is '' and the whole
+  // test asserts the no-session branch by accident.
   const { cmdComments } = await import('../lib/specforge-cli.mjs');
-  const { currentSessionKey } = await import('../lib/harness/index.mjs');
+  const prev = process.env.CLAUDE_CODE_SESSION_ID;
+  process.env.CLAUDE_CODE_SESSION_ID = 'sess-writable';
+  t.after(() => {
+    if (prev === undefined) delete process.env.CLAUDE_CODE_SESSION_ID;
+    else process.env.CLAUDE_CODE_SESSION_ID = prev;
+  });
+  const me = 'claude:sess-writable';
+
   const ours = newSpec('Ours');
-  attach(ours, currentSessionKey());
+  attach(ours, me);
   const mine = await cmdComments({ id: ours });
   assert.equal(mine.writable, true);
   assert.equal(mine.refusal, undefined, 'and says nothing when there is nothing to say');
 
   const specId = newSpec('Theirs');
   attach(specId, 'pi:someone-else');
-  connect(specId, currentSessionKey());
+  connect(specId, me);
   const theirs = await cmdComments({ id: specId });
   assert.equal(theirs.writable, false);
   assert.match(theirs.refusal, /pi/);
   assert.equal(theirs.threads.length, 0, 'and the threads are still handed over to answer');
+});
+
+test('a script with no session is not a competing agent, and may write', async (t) => {
+  // What CI is, and what a cron job is. Refusing here would make every
+  // non-agent caller unable to touch a spec an agent happens to hold.
+  const { cmdComments } = await import('../lib/specforge-cli.mjs');
+  const prev = process.env.CLAUDE_CODE_SESSION_ID;
+  delete process.env.CLAUDE_CODE_SESSION_ID;
+  t.after(() => { if (prev !== undefined) process.env.CLAUDE_CODE_SESSION_ID = prev; });
+
+  const specId = newSpec('Held by someone');
+  attach(specId, 'pi:someone-else');
+  const out = await cmdComments({ id: specId });
+  assert.equal(out.writable, true);
+  assert.equal(out.refusal, undefined);
 });
 
 // --- I9: exactly one recipient ------------------------------------------------
