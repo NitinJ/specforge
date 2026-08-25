@@ -14,6 +14,7 @@ import { useTempStore } from './helpers/temp-store.mjs';
 import { seedSession } from './helpers/live-session.mjs';
 import { cmdDoctor } from '../lib/specforge-cli.mjs';
 import { attach } from '../lib/attach.mjs';
+import { connect } from '../lib/connections.mjs';
 import { createSpec } from '../lib/store.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-doctor-');
@@ -46,13 +47,33 @@ test('a session it cannot name says so rather than reporting a blank', () => {
   assert.deepEqual(specs, [], 'and owns nothing');
 });
 
-test('it lists the specs the session owns, with what each records', () => {
+test('it lists the specs this session is connected to, and who is working each', () => {
   const { key } = seedSession({ id: 'sess-doc' });
   const specId = createSpec({ title: 'Owned thing', html: '<h1>x</h1>' });
   attach(specId, key);
 
   const { specs } = cmdDoctor({ env: env() });
-  assert.deepEqual(specs, [{ id: specId, title: 'Owned thing', attached: 'claude:sess-doc' }]);
+  assert.deepEqual(specs, [{
+    id: specId,
+    title: 'Owned thing',
+    active: 'claude',
+    mine: true,
+    connected: ['claude'],
+  }]);
+});
+
+test('a spec another harness is working still appears, marked as not mine', () => {
+  // Connected rather than active is the case a person is diagnosing when they
+  // ask why their comments are not reaching them.
+  const { key } = seedSession({ id: 'sess-doc' });
+  const specId = createSpec({ title: 'Theirs', html: '<h1>x</h1>' });
+  attach(specId, 'pi:their-session');
+  connect(specId, key);
+
+  const [row] = cmdDoctor({ env: env() }).specs;
+  assert.equal(row.active, 'pi');
+  assert.equal(row.mine, false);
+  assert.deepEqual(row.connected.sort(), ['claude', 'pi']);
 });
 
 test('it reports the watcher and the command that arms one', () => {

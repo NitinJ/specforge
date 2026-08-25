@@ -139,9 +139,24 @@ test('open attaches a spec to this session and returns its url', async () => {
   assert.equal(readMeta(created.id).attachedSession, 'claude:sess-2');
 });
 
-test('open fails when another live session holds the spec', async () => {
+test('open connects to a spec another session is working, rather than taking it', async () => {
+  // It used to refuse. Connecting is what lets a second session read and reply
+  // while the first writes; taking the work is a human choice in the header
+  // (§8 Q7, E8), so `open` never makes it.
   const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
-  await assert.rejects(() => cmdOpen({ id: created.id }, deps('sess-2')), /another session/);
+  const r = await cmdOpen({ id: created.id }, deps('sess-2'));
+  assert.equal(r.id, created.id);
+  assert.match(r.note, /is working this spec/);
+  assert.equal(readMeta(created.id).attachedSession, 'claude:sess-1', 'the holder is unchanged');
+});
+
+test('open takes a free spec, because that takes nothing from anyone', async () => {
+  const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
+  await cmdDetach({ id: created.id }, deps());
+  const r = await cmdOpen({ id: created.id }, deps('sess-2'));
+  assert.equal(r.active, 'claude');
+  assert.equal(r.note, undefined);
+  assert.equal(readMeta(created.id).attachedSession, 'claude:sess-2');
 });
 
 test('open rejects an unknown spec', async () => {

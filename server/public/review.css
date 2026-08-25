@@ -890,6 +890,40 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
 }
 .sf-conn-act:hover { background: color-mix(in srgb, currentColor 20%, transparent); }
 
+/* The harness switcher: which connected agent is working this spec.
+   Only rendered when more than one is connected, so a single-agent spec reads
+   exactly as the chip always did. A segmented control rather than a dropdown:
+   there are two or three of these, and a menu to pick between two is a click
+   spent on nothing. */
+.sf-harness { display: inline-flex; align-items: center; gap: 2px; }
+.sf-harness-b {
+  font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+  padding: 1px 8px; border-radius: 999px; color: inherit;
+  border: 1px solid transparent; background: none;
+  text-transform: lowercase;
+}
+.sf-harness-b:hover:not(.sf-harness-on) {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.sf-harness-b:focus-visible { outline: 2px solid var(--sf-accent, #2563eb); outline-offset: 1px }
+/* The one working the spec. Filled rather than merely outlined, because at this
+   size an outline reads as a hover state. */
+.sf-harness-on {
+  cursor: default;
+  color: var(--sf-panel, #fff);
+  background: var(--sf-green, #15803d);
+  border-color: var(--sf-green, #15803d);
+}
+/* Connected but not listening. Still selectable: refusing would leave a spec
+   with no possible recipient the moment its one live agent went quiet. */
+.sf-harness-dead:not(.sf-harness-on) { opacity: .55; text-decoration: line-through }
+.sf-harness-on.sf-harness-dead {
+  background: var(--sf-amber, #b45309);
+  border-color: var(--sf-amber, #b45309);
+  text-decoration: none;
+  opacity: 1;
+}
+
 /* Addressing, made visible. @agent is what decides whether a thread becomes
    work, so it reads differently from a mention of a person. */
 .sf-at { font-weight: 600; color: var(--sf-accent, #2563eb); }

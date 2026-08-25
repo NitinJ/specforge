@@ -1266,11 +1266,23 @@ function sfRevealDisclosures(el) {
     els.conn.innerHTML = '';
     var attached = !!meta.attachedSession;
     var connected = !!meta.connected;
+    var harnesses = meta.harnesses || [];
     els.conn.className = 'sf-tb-conn' + (connected ? '' : ' sf-tb-conn-off');
     // The server sends sessionLabel, which keeps the harness whole. The fallback
     // shortens the raw id only, for the same reason: `claude:s` names nothing.
     var who = meta.sessionLabel || ('session ' + shortSessionKey(meta.attachedSession));
     els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
+
+    // More than one harness connected: the chip becomes a switcher, and picking
+    // one decides who receives every comment and who may write the spec. One
+    // connection reads exactly as the chip always did.
+    if (harnesses.length > 1) {
+      els.conn.appendChild(renderHarnessSwitcher(harnesses));
+      els.conn.title = 'Two agents are connected. The highlighted one receives every '
+        + 'comment and is the only one allowed to write this spec.';
+      return;
+    }
+
     els.conn.appendChild(create('span', { class: 'sf-conn-label' },
       connected ? 'Connected' : attached ? 'Disconnected' : 'No agent'));
     els.conn.title = connected
@@ -1282,6 +1294,68 @@ function sfRevealDisclosures(el) {
     var btn = create('button', { class: 'sf-conn-act', type: 'button' }, attached ? 'Reconnect' : 'Connect');
     btn.onclick = function (e) { e.stopPropagation(); copyReconnectPrompt(); };
     els.conn.appendChild(btn);
+  }
+
+  /**
+   * Which connected harness is working this spec.
+   *
+   * A person's choice, and the only writer of it: nothing an agent does can take
+   * work from another or strand a spec by crashing while it holds it. A harness
+   * that is not beating is still selectable, marked as needing a reconnect,
+   * because refusing would leave a spec with no possible recipient the moment
+   * its one live harness went quiet.
+   */
+  function renderHarnessSwitcher(harnesses) {
+    var wrap = create('span', { class: 'sf-harness' });
+    for (var i = 0; i < harnesses.length; i++) {
+      wrap.appendChild(harnessButton(harnesses[i]));
+    }
+    return wrap;
+  }
+
+  function harnessButton(h) {
+    var cls = 'sf-harness-b'
+      + (h.active ? ' sf-harness-on' : '')
+      + (h.alive ? '' : ' sf-harness-dead');
+    var b = create('button', {
+      class: cls,
+      type: 'button',
+      'data-harness': h.harness,
+      'aria-pressed': h.active ? 'true' : 'false',
+      title: (h.active ? 'Working this spec' : 'Hand this spec to ' + h.harness)
+        + (h.alive ? '' : ' — not listening right now, it will need a reconnect'),
+    }, h.harness);
+    if (h.active) return b;
+    b.onclick = function (e) {
+      e.stopPropagation();
+      setActiveHarness(h.harness);
+    };
+    return b;
+  }
+
+  /** Hand the spec to another connected harness. */
+  function setActiveHarness(harness) {
+    postJSON(SPEC_API + '/active', { harness: harness })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (out) {
+          // A 409 carries the reason (the harness disconnected between the render
+          // and the click), so the body is read before the status is judged.
+          if (!r.ok || !out.ok) throw new Error(out.error || 'could not switch');
+          return out;
+        });
+      })
+      .then(function (out) {
+        // Patched rather than reloaded: the answer already carries the new state,
+        // and a full load would throw the reader back up the document.
+        state.meta = Object.assign({}, state.meta, {
+          harnesses: out.harnesses || state.meta.harnesses,
+          activeHarness: out.activeHarness,
+          sessionLabel: out.sessionLabel,
+        });
+        renderConn();
+        flash(harness + ' is working this spec now.');
+      })
+      .catch(function (err) { flashErr(err.message || 'Could not switch the active harness.'); });
   }
 
   /**

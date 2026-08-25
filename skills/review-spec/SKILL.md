@@ -41,9 +41,17 @@ Threads can carry **several people**. Each comment has an `author` (a display
 name) and a `kind` of `human` or `agent`. Reply to the thread, not to one person,
 and never assume the person who opened it is the one who added the mention.
 
-It prints `{ specId, htmlPath, language, threads, pending }`. `htmlPath` is the
-spec file to edit; each thread has `anchor.block` (`{ index, tag, text }` —
-`text` is the commented block's normalized text) and the human comment(s).
+It prints `{ specId, htmlPath, language, threads, pending, writable }`.
+`htmlPath` is the spec file to edit; each thread has `anchor.block` (`{ index,
+tag, text }` — `text` is the commented block's normalized text) and the human
+comment(s).
+
+**`writable: false` means another harness is working this spec.** Two agents can
+be connected to one spec and the reader chooses which one works it, from the
+switcher in the spec header. When it is not you, `refusal` carries the reason:
+**reply, and do not edit `htmlPath` or anything else in the store.** Say in your
+reply which harness holds the spec, so the reader knows the switch is theirs to
+make. This is the same restraint as a `share` batch, arrived at differently.
 
 **`language` is the user's authoring direction, and it outranks the house
 register.** A non-empty string is how this user wants prose written. It applies

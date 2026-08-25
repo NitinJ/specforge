@@ -48,7 +48,7 @@ import { SERVICE, daemonAt, daemonUrl, defaultPort } from '../lib/daemon-state.m
 import {
   sendJson, readJsonBody, handleCommentsGet, handleCommentCreate,
   handleCommentReply, handleCommentResolve, handleCommentEdit, handleAnchorPatch, handleSubmit,
-  handleMeta, handleStatus, handleResolveAll, handleDetach,
+  handleMeta, handleStatus, handleResolveAll, handleDetach, handleSetActive,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
   handleBlocksGet, handleBlocksPut,
   handleRename, handleOrganize, handleExport, handleDelete, handleAsideDelete, handleBlockDelete,
@@ -522,6 +522,15 @@ export function createDaemon({ publications: pubs = publications } = {}) {
     if (det) {
       if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
       return handleDetach(det[1], res);
+    }
+    // Which connected harness works this spec. The only writer of that field,
+    // and it is a person clicking in the header (I7b).
+    const act = path.match(/^\/api\/spec\/([\w-]+)\/active$/);
+    if (act) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return readJsonBody(req)
+        .then((body) => handleSetActive(act[1], body, res))
+        .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
     // List this spec in someone else's shared project, or take it back out.
     // The publish step is in-process here (the CLI asks over HTTP instead);
