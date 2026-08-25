@@ -73,14 +73,40 @@ function sfRevealDisclosures(el) {
   function isAgentComment(c) {
     if (!c) return false;
     if (c.kind === 'agent' || c.kind === 'human') return c.kind === 'agent';
+    // Deliberately still only `claude`, and never widened to the other harness
+    // names: this branch reads comments written before `kind` existed, and all
+    // of those were Claude's. A person legitimately called `pi` must not have
+    // their comments read as an agent's.
     return c.author === 'claude';
   }
 
-  /** The letter on a bubble: the agent's C, else the author's own initial. */
+  /**
+   * A name a reviewer may not take.
+   *
+   * The server sends the set. A page served before it did falls back to the
+   * three that were hardcoded here, which is what that page already enforced.
+   */
+  function isReservedName(v) {
+    var list = (window.SPECFORGE || {}).reserved || ['agent', 'claude', 'human'];
+    var name = String(v || '').trim().toLowerCase();
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i]).toLowerCase() === name) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The letter on a bubble: the author's own initial, agent or not.
+   *
+   * It used to be a hardcoded C for every agent comment, which was right while
+   * `claude` was the only name an agent wrote under. With one name per harness,
+   * a Pi reply reads P and a Claude reply still reads C. The colour, not the
+   * letter, is what says a comment is an agent's.
+   */
   function initialOf(c) {
-    if (isAgentComment(c)) return 'C';
     var m = /[a-z0-9]/i.exec((c && c.author) || '');
-    return m ? m[0].toUpperCase() : 'H';
+    if (m) return m[0].toUpperCase();
+    return isAgentComment(c) ? 'A' : 'H';
   }
 
   // Addressing, mirroring lib/mentions.mjs. A comment is agent work when it
@@ -491,11 +517,13 @@ function sfRevealDisclosures(el) {
     function submit() {
       var v = (input.value || '').trim();
       if (!v) return fail('Please enter a name so your comments are attributed.');
-      // `agent` would make an @agent mention ambiguous, `claude` is the agent's
-      // old author string, and `human` is what a write with no name at all is
-      // recorded as. The server refuses all three (mentions.mjs RESERVED_NAMES),
+      // `agent` would make an @agent mention ambiguous, `human` is what a write
+      // with no name at all is recorded as, and every harness's agent name is
+      // spoken for so a reply signed `pi` cannot be impersonated. The list comes
+      // from the server (mentions.mjs RESERVED_NAMES) rather than being repeated
+      // here, because it grows by one per harness. The server refuses them all,
       // and finding that out after writing a comment would be worse.
-      if (/^(agent|claude|human)$/i.test(v)) return fail('That name is reserved. Please use your own.');
+      if (isReservedName(v)) return fail('That name is reserved. Please use your own.');
       setMeAuthor(v);
       wrap.remove();
     }
@@ -3025,7 +3053,7 @@ function sfRevealDisclosures(el) {
   function commentHTML(c) {
     var editable = !isAgentComment(c) && !c.batchId && c.id;
     return '<div class="sf-comment" data-cid="' + esc(c.id || '') + '"><span class="who ' +
-      (isAgentComment(c) ? 'claude' : '') + '">' + esc(c.author) + '</span>' +
+      (isAgentComment(c) ? 'agent' : '') + '">' + esc(c.author) + '</span>' +
       '<div class="body">' + fmtBody(c.body) + '</div>' +
       (editable ? '<button class="sf-edit-c" type="button" aria-label="Edit comment">Edit</button>' : '') +
       '</div>';
@@ -3454,8 +3482,8 @@ function sfRevealDisclosures(el) {
     var b = create('button', { class: 'sf-bub' + (orphan ? ' sf-bub-orphan' : ''), type: 'button', 'data-tid': t.id });
     b._anchor = el; // the measured element, re-read every pass
     var first = t.comments[0] || {};
-    var claude = isAgentComment(first);
-    b.innerHTML = '<span class="sf-bub-who' + (claude ? ' claude' : '') + '" title="' + esc(first.author || '') + '">' + initialOf(first) + '</span>' +
+    var byAgent = isAgentComment(first);
+    b.innerHTML = '<span class="sf-bub-who' + (byAgent ? ' agent' : '') + '" title="' + esc(first.author || '') + '">' + initialOf(first) + '</span>' +
       '<span class="sf-bub-snip">' + esc(norm(first.body || '')) + '</span>' +
       (t.comments.length > 1 ? '<span class="sf-bub-n">' + (t.comments.length - 1) + '</span>' : '');
     b.onclick = function (e) { e.stopPropagation(); expandThread(t.id, el); };
@@ -3471,7 +3499,7 @@ function sfRevealDisclosures(el) {
     var b = create('div', { class: 'sf-bub sf-bub-open' + (orphan ? ' sf-bub-orphan' : ''), 'data-tid': t.id, 'data-focus': '1' });
     b._anchor = el;
     b.innerHTML = '<div class="sf-bub-head"><span class="sf-bub-who' +
-      (isAgentComment(t.comments[0]) ? ' claude' : '') + '" title="' +
+      (isAgentComment(t.comments[0]) ? ' agent' : '') + '" title="' +
       esc((t.comments[0] && t.comments[0].author) || '') + '">' +
       initialOf(t.comments[0]) + '</span>' +
       '<span class="sf-badge ' + esc(t.state) + '">' + esc(t.state) + '</span>' +

@@ -587,7 +587,7 @@
 .sf-comment { border-top: 1px dashed var(--sf-line); padding: 6px 0; }
 .sf-comment:first-of-type { border-top: none; }
 .sf-comment .who { font-weight: 700; font-size: 11px; }
-.sf-comment .who.claude { color: var(--sf-accent); }
+.sf-comment .who.agent { color: var(--sf-accent); }
 /* Comment body renders a safe markdown subset (fmtBody in review.js): tight
    paragraphs + lists, quiet inline code, no runaway spacing in the narrow rail. */
 .sf-comment .body { font-size: 12.5px; line-height: 1.5; word-break: break-word; }
@@ -1035,7 +1035,7 @@ html[data-sf-header] #sf-tocbtn { top: calc(50% + var(--sf-header-h) / 2); }
   font-size: 11px; font-weight: 700;
   background: var(--sf-panel2); border: 1px solid var(--sf-line);
 }
-.sf-bub-who.claude { color: var(--sf-accent); border-color: color-mix(in srgb, var(--sf-accent) 45%, var(--sf-line)); }
+.sf-bub-who.agent { color: var(--sf-accent); border-color: color-mix(in srgb, var(--sf-accent) 45%, var(--sf-line)); }
 /* min-width:0 lets the flex child shrink so the snippet ellipsises */
 .sf-bub-snip { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; color: var(--sf-muted); }
