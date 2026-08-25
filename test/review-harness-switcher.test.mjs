@@ -34,29 +34,39 @@ const PI_ASLEEP = [
   { harness: 'pi', session: 'pi:p1', active: false, alive: false },
 ];
 
-const buttons = (window) =>
-  [...window.document.querySelectorAll('.sf-harness-b')].map((b) => ({
-    harness: b.getAttribute('data-harness'),
-    on: b.classList.contains('sf-harness-on'),
-    dead: b.classList.contains('sf-harness-dead'),
-    pressed: b.getAttribute('aria-pressed'),
+const options = (window) =>
+  [...window.document.querySelectorAll('.sf-harness option')].map((o) => ({
+    harness: o.getAttribute('data-harness'),
+    label: o.textContent,
+    selected: o.selected,
   }));
+
+const picker = (window) => window.document.querySelector('select.sf-harness');
+
+/** Choose an option the way a person does: set it, then fire change. */
+function choose(window, harness) {
+  const sel = picker(window);
+  sel.value = harness;
+  sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+}
 
 const settle = (window) => new Promise((r) => window.setTimeout(r, 0));
 
 test('one connected agent renders the chip, unchanged', async (t) => {
   // Every spec in the store is this case. It must read exactly as it always did.
   const { window } = await bootReviewLayer(t, withHarnesses(ONE));
-  assert.equal(window.document.querySelectorAll('.sf-harness-b').length, 0);
+  assert.equal(picker(window), null);
   assert.equal(window.document.querySelector('.sf-conn-label').textContent, 'Connected');
 });
 
-test('two connected agents render a button each, the active one marked', async (t) => {
+test('two connected agents render one dropdown, the active one selected', async (t) => {
   const { window } = await bootReviewLayer(t, withHarnesses(BOTH));
-  assert.deepEqual(buttons(window), [
-    { harness: 'claude', on: true, dead: false, pressed: 'true' },
-    { harness: 'pi', on: false, dead: false, pressed: 'false' },
+  assert.equal(picker(window).tagName, 'SELECT');
+  assert.deepEqual(options(window), [
+    { harness: 'claude', label: 'claude', selected: true },
+    { harness: 'pi', label: 'pi', selected: false },
   ]);
+  assert.equal(picker(window).value, 'claude');
 });
 
 test('the chip label gives way to the switcher', async (t) => {
@@ -65,19 +75,18 @@ test('the chip label gives way to the switcher', async (t) => {
   assert.match(window.document.querySelector('.sf-tb-conn').title, /highlighted one receives/);
 });
 
-test('a connection that is not listening is marked, and still selectable', async (t) => {
-  // Refusing would leave a spec with no possible recipient the moment its one
-  // live agent went quiet.
+test('an agent that is not listening says so in its label, not only its title', async (t) => {
+  // An option's title never shows while the select is closed, so a dead agent
+  // would look ordinary until the list was opened.
   const { window } = await bootReviewLayer(t, withHarnesses(PI_ASLEEP));
-  const pi = buttons(window).find((b) => b.harness === 'pi');
-  assert.equal(pi.dead, true);
-  assert.equal(window.document.querySelector('[data-harness="pi"]').disabled, false);
-  assert.match(window.document.querySelector('[data-harness="pi"]').title, /reconnect/);
+  const pi = options(window).find((o) => o.harness === 'pi');
+  assert.match(pi.label, /needs reconnect/);
+  assert.equal(picker(window).disabled, false, 'and it is still choosable');
 });
 
-test('picking one posts the choice to the server', async (t) => {
+test('choosing one posts the choice to the server', async (t) => {
   const { window, posts } = await bootReviewLayer(t, withHarnesses(BOTH));
-  window.document.querySelector('[data-harness="pi"]').click();
+  choose(window, 'pi');
   await settle(window);
 
   const sent = posts.find((p) => String(p.url).indexOf('/active') !== -1);
@@ -85,23 +94,37 @@ test('picking one posts the choice to the server', async (t) => {
   assert.deepEqual(sent.body, { harness: 'pi' });
 });
 
-test('the active one is not a button that posts anything', async (t) => {
-  // Clicking the agent already working the spec would be a request that changes
-  // nothing, and a flash saying so.
+test('a select that does not change posts nothing', async (t) => {
+  // Opening the list and picking the agent already working the spec fires no
+  // change event, so there is nothing to guard against here beyond not posting
+  // on render.
   const { window, posts } = await bootReviewLayer(t, withHarnesses(BOTH));
-  window.document.querySelector('[data-harness="claude"]').click();
   await settle(window);
   assert.equal(posts.filter((p) => String(p.url).indexOf('/active') !== -1).length, 0);
 });
 
-test('a refused switch leaves the switcher as it was', async (t) => {
-  // The harness can disconnect between the render and the click. The answer is
-  // a 409, and the page must not draw a state the store does not hold.
+test('a refused switch redraws the switcher as the store holds it', async (t) => {
+  // The agent can disconnect between the render and the choice. The answer is a
+  // 409, and the page must not be left showing a selection nothing accepted.
   const { window } = await bootReviewLayer(t, withHarnesses(BOTH, { failPost: /\/active/ }));
-  window.document.querySelector('[data-harness="pi"]').click();
+  choose(window, 'pi');
   await settle(window);
   await settle(window);
-  assert.deepEqual(buttons(window).map((b) => b.on), [true, false], 'claude still holds it');
+  assert.equal(picker(window).value, 'claude', 'claude still holds it');
+});
+
+test('the dot follows the chosen agent, not the server’s connected flag', async (t) => {
+  // The flag is computed for the active session and is not re-sent when a switch
+  // answers, so trusting it left the dot green after switching to an agent that
+  // is not listening.
+  const { window } = await bootReviewLayer(t, withHarnesses([
+    { harness: 'claude', session: 'claude:c1', active: false, alive: true },
+    { harness: 'pi', session: 'pi:p1', active: true, alive: false },
+  ]));
+  assert.ok(
+    window.document.querySelector('.sf-tb-conn').classList.contains('sf-tb-conn-off'),
+    'pi holds the spec and is not listening, so the dot must not read live',
+  );
 });
 
 test('a published copy shows no switcher at all', async (t) => {
@@ -110,6 +133,6 @@ test('a published copy shows no switcher at all', async (t) => {
     transport: 'poll',
     url: 'http://localhost/s/abc123',
   }));
-  assert.equal(window.document.querySelectorAll('.sf-harness-b').length, 0);
+  assert.equal(picker(window), null);
   assert.equal(window.document.querySelector('.sf-tb-conn').hasAttribute('hidden'), true);
 });
