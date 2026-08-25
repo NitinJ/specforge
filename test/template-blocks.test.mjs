@@ -268,6 +268,44 @@ test('rendering then stripping returns the original shell', () => {
   assert.equal(stripTemplateBlocks(rendered), shell);
 });
 
+// ── Where a prompt lands inside its section ─────────────────────────────────
+//
+// A prompt rendered above its section's heading sits between two sections, and
+// a reader meets it as a trailing paragraph of the one before. Every prompt in
+// both shipped templates rendered that way, and it was reported as prompts
+// being attached to the wrong section.
+
+test('a prompt renders under its section heading, not above it', () => {
+  const shell = '<body>\n<section id="decisions">\n  <h2>7 · Decisions</h2>\n  <p>Body.</p>\n</section>\n</body>';
+  const html = renderTemplateBlocks(shell, { prompts: { decisions: 'Give the choice and what it costs.' } });
+  assert.ok(html.indexOf('data-sf-prompt') > html.indexOf('<h2>'),
+    'the prompt renders above the heading it belongs to');
+});
+
+test('a section whose heading is nested keeps its prompt at the top', () => {
+  // The heading inside a panel belongs to the panel, so a prompt placed after it
+  // would render inside the panel. The top of the section is the only
+  // unambiguous place left.
+  const shell = '<body>\n<section id="tldr">\n  <div class="panel"><h4>TL;DR</h4></div>\n</section>\n</body>';
+  const html = renderTemplateBlocks(shell, { prompts: { tldr: 'Write 3-5 sentences.' } });
+  assert.ok(html.indexOf('data-sf-prompt') < html.indexOf('class="panel"'));
+});
+
+test('a prompt under a heading still strips back to the original shell', () => {
+  const shell = '<body>\n<section id="decisions">\n  <h2>7 · Decisions</h2>\n  <p>Body.</p>\n</section>\n</body>';
+  const rendered = renderTemplateBlocks(shell, { prompts: { decisions: 'Guidance.' } });
+  assert.notEqual(rendered, shell);
+  assert.equal(stripTemplateBlocks(rendered), shell);
+});
+
+test('a prompt holding replacement syntax renders it literally', () => {
+  // The insert was a String.replace, so `$&` in a prompt pasted the matched
+  // section tag into the guidance.
+  const html = renderTemplateBlocks('<body><section id="decisions"><h2>D</h2></section></body>',
+    { prompts: { decisions: 'Name the cost, e.g. $& or $1, in full.' } });
+  assert.equal(parseTemplatePrompts(html)[0].text, 'Name the cost, e.g. $& or $1, in full.');
+});
+
 test('a rule sentence with markup characters survives the round trip', () => {
   const shell = '<body></body>';
   const rules = [{ id: 'angle', ask: 'The spec has an <h1> & a <title>, not "one" of them.' }];
