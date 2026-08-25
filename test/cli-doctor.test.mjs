@@ -9,6 +9,9 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedSession } from './helpers/live-session.mjs';
@@ -90,6 +93,20 @@ test('it says whether the specforge binary is on PATH', () => {
   // A skill that says `specforge <verb>` fails obscurely when the bin is not
   // linked, so the answer belongs here rather than in a stack trace (task 4.4).
   assert.equal(cmdDoctor({ env: env({ PATH: '/nowhere-at-all' }) }).onPath, null);
+});
+
+test('a file on PATH that cannot be run does not count as installed', () => {
+  // "Present" is not the question a skill asks. A `specforge` the shell refuses
+  // to exec fails with "permission denied" while doctor calls it installed,
+  // which is the one answer worse than "not found". Raised by review of #232.
+  const dir = mkdtempSync(join(tmpdir(), 'sf-path-'));
+  const bin = join(dir, 'specforge');
+  writeFileSync(bin, '#!/bin/sh\necho hi\n', { mode: 0o644 });
+  assert.equal(cmdDoctor({ env: env({ PATH: dir }) }).onPath, null, 'not executable');
+
+  chmodSync(bin, 0o755);
+  assert.equal(cmdDoctor({ env: env({ PATH: dir }) }).onPath, bin, 'and now it is');
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test('it takes an explicit session, so a person can ask about another one', () => {
