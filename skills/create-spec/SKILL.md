@@ -1,5 +1,5 @@
 ---
-name: specforge:create-spec
+name: create-spec
 user-invocable: false
 description: |
   Author a new house-style spec into the SpecForge store. Use when the user asks to
@@ -10,7 +10,7 @@ description: |
   Stages/Tasks plan, a live task tracker, and impl-time stubs; general is the
   fallback when no type fits and the sections come from the use case. Lints the
   universal basics before done.
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep
+allowed-tools: Read Write Edit Bash Glob Grep
 ---
 
 # create-spec
@@ -19,7 +19,13 @@ Generate a new SpecForge spec in the global store (`~/.specforge/specs/<id>/`),
 honoring house rules, and lint it before declaring done. The daemon serves it and
 injects the review layer at serve time.
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory (the SpecForge repo root).
+SpecForge is on PATH as `specforge` and `spec-nav`; `specforge root` prints where it is installed.
+
+> **Before anything else, check there is something to write.** This skill needs a
+> topic. If none was given, ask what the spec is about and stop rather than
+> scaffolding an empty one, which leaves a spec in the store nobody asked for and
+> attaches it to this session. Some agent CLIs hide this skill from their users
+> and some do not, so the check lives here rather than in frontmatter.
 
 ## 1. Understand the request + pick the type
 
@@ -45,7 +51,7 @@ injects the review layer at serve time.
   exactly this request beats any of the above:
 
   ```
-  node "${CLAUDE_PLUGIN_ROOT}/lib/spec-types-cli.mjs"
+  spec-types
   ```
 
   Each custom type prints with a **when to use** line, written by the person who
@@ -53,8 +59,8 @@ injects the review layer at serve time.
   type. `general` in particular is the fallback for a document that fits nothing
   else, and a custom type existing usually means "nothing else fit" already
   happened once and was answered.
-- Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
-- Read the component rules: `${CLAUDE_PLUGIN_ROOT}/references/spec-components.md`.
+- Read the house rules: `specforge doc house-rules`.
+- Read the component rules: `specforge doc spec-components`.
   43 components, each with the rule for when it applies. Pick by what a block
   **asserts**, never by how it should look. Its **Drawing** section is the choice
   between the three ways to draw; read it before writing any diagram, because the
@@ -78,7 +84,7 @@ injects the review layer at serve time.
 ## 2. Scaffold into the store
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type> [--project <name>]
+specforge create --title "<title>" --type <type> [--project <name>]
 ```
 
 Prints `{ id, htmlPath, url, status, type, project, language, prompts }`. It has
@@ -174,7 +180,7 @@ keep the Runtime stubs. Trim `goals` / `decisions` if they add nothing.
 ## 3.5 Language (read before writing prose)
 
 Specs follow a language contract — **read it**, it is short:
-`${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`.
+`specforge doc spec-language`.
 
 The rules that catch most drafts:
 
@@ -192,7 +198,7 @@ The rules that catch most drafts:
 ## 4. The gate — loop until it passes
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" verify <id> --json
+specforge verify <id> --json
 ```
 
 **The spec is not finished until this exits 0.** It is a gate, not a report: run
@@ -206,7 +212,7 @@ On FAIL it returns `failing`, and every entry says what is wrong and what to do:
   does not, fix the spec.
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" verify <id> --judged tldr-matches-body,decisions-have-reasons
+specforge verify <id> --judged tldr-matches-body,decisions-have-reasons
 ```
 
 `--judged` is your word, and it lasts one run — nothing is stored, so the next
@@ -232,7 +238,7 @@ theatre, hedged decisions. Clear it anyway. It cannot see aphorism or an
 unlabelled sentence, so a clean report is a floor, not a pass.
 
 The lint still exists and the gate is a superset of it; run
-`node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>` only when you want
+`specforge lint <htmlPath>` only when you want
 the mechanical checks alone.
 
 ## 5. Hand off + arm the review watcher
@@ -242,7 +248,7 @@ the mechanical checks alone.
   come back here automatically.
 - **Arm the review watcher (once per session)** so comments are picked up even
   while you're idle. If it isn't already running this session, start it in the
-  **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
+  **background**: `specforge wait-batch`.
   Its completion wakes the session with `{ ready, pending }` — on `ready`, run the
   review-spec flow for each `pending` spec, then relaunch it. It does not expire
   on its own: it runs until a batch arrives or this session ends. One watcher

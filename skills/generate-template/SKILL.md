@@ -1,5 +1,5 @@
 ---
-name: specforge:generate-template
+name: generate-template
 user-invocable: false
 description: |
   Write a spec template from a prompt. Auto-invoked when the owning session's
@@ -7,7 +7,7 @@ description: |
   clicked "Add a template" on the configuration page). Turns their description of
   the sections and when the kind should be used into the template spec's HTML,
   lints it, and reports back. The human is watching a dialog until this finishes.
-allowed-tools: Read, Write, Edit, Bash
+allowed-tools: Read Write Edit Bash
 ---
 
 # generate-template
@@ -17,7 +17,7 @@ spec already exists at `~/.specforge/specs/template-<slug>/spec.html`, holding
 the bundled shell for its family. **Your job is to replace that shell's sections
 with the ones the prompt describes**, keeping everything the shell owns.
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory.
+SpecForge is on PATH as `specforge` and `spec-nav`; `specforge root` prints where it is installed.
 
 **Someone is waiting on a dialog with a stated ETA.** Do this now, in one pass,
 and report back. A template that is roughly right and arrives is worth more than
@@ -25,13 +25,20 @@ one that is exactly right and does not: the human's next move is to comment on
 the sections and refine them, which is the whole point of landing them on a spec
 page.
 
+> **Before anything else, check there is work.** The spec's meta must carry a
+> `generate` request in state `requested` or `working`. If it does not, say so
+> and stop: this skill writes a template somebody asked for from the
+> configuration page, and there is nobody waiting otherwise. Some agent CLIs
+> hide this skill from their users and some do not, so the check lives here
+> rather than in frontmatter.
+
 ## 1. Read the request
 
 The hook message lists each template spec **id** and the **prompt**. To read it
 again, or for a manual run:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" map --spec ~/.specforge/specs/<id>/spec.html
+spec-nav map --spec ~/.specforge/specs/<id>/spec.html
 ```
 
 The prompt is on the spec's meta at `~/.specforge/specs/<id>/meta.json` under
@@ -45,7 +52,7 @@ The prompt is on the spec's meta at `~/.specforge/specs/<id>/meta.json` under
 ## 2. Read the shell you are editing
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/spec-nav-cli.mjs" map --spec ~/.specforge/specs/<id>/spec.html
+spec-nav map --spec ~/.specforge/specs/<id>/spec.html
 ```
 
 The shell is one of two families and the choice is already made:
@@ -80,7 +87,7 @@ Rules for the sections themselves:
 - **Give each a one-line `<p class="sub">`** saying what belongs in it. This is
   what an authoring agent reads.
 - Prose you write follows the language contract at
-  `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`: no em dashes, no
+  `specforge doc spec-language`: no em dashes, no
   aphorisms, no hedged decisions, every sentence carrying something.
 
 If the prompt is vague about a section, write the section anyway with a
@@ -90,7 +97,7 @@ gets commented on and fixed.
 ## 4. Lint before reporting
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" ~/.specforge/specs/<id>/spec.html --project "${CLAUDE_PLUGIN_ROOT}"
+specforge lint ~/.specforge/specs/<id>/spec.html
 ```
 
 Fix and re-run until `PASS`. **Do not report a template that fails the lint**:
@@ -100,7 +107,7 @@ advisory and never fails the lint; clear what it names anyway.
 ## 5. Report back
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" template-done <id>
+specforge template-done <id>
 ```
 
 The dialog the human is watching navigates them to the template the moment this
@@ -110,7 +117,7 @@ If it genuinely cannot be written (the prompt describes no sections at all, the
 shell is unreadable, the lint cannot be cleared):
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" template-done <id> --error "<short reason>"
+specforge template-done <id> --error "<short reason>"
 ```
 
 The dialog shows the reason and offers to open the template anyway, which is

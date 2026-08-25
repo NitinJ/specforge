@@ -7,6 +7,7 @@
   "license": "MIT",
   "bin": {
     "spec-nav": "lib/spec-nav-cli.mjs",
+    "spec-types": "lib/spec-types-cli.mjs",
     "specforge": "lib/specforge-cli.mjs"
   },
   "engines": {

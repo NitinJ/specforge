@@ -93,6 +93,23 @@ fi
 
 # --- the plugin --------------------------------------------------------------
 
+step "Putting the CLI on PATH"
+# Every skill says `specforge <verb>` rather than naming a path inside the
+# install, because only one agent CLI expands a plugin-root variable and the
+# skills have to read the same on all of them. That makes the bin a
+# prerequisite rather than a convenience.
+if command -v specforge >/dev/null 2>&1; then
+  ok "specforge -> $(command -v specforge)"
+else
+  if run npm link --prefix "$HERE" >/dev/null 2>&1 || run npm link >/dev/null 2>&1; then
+    ok "linked specforge, spec-nav and spec-types"
+  else
+    info "could not link automatically. Run this yourself, from $HERE:"
+    info "  npm link"
+    info "until then, skills that call \`specforge\` will fail; \`specforge doctor\` reports it"
+  fi
+fi
+
 step "Installing the plugin"
 # `grep -q` exits at the first match and closes the pipe, which under `pipefail`
 # can surface as a SIGPIPE failure from the command feeding it and send an

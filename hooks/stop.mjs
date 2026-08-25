@@ -10,8 +10,9 @@
 // Each of those refuses the settle, because settling in that state is the bug.
 
 import { run as runHook, main } from './lib/emit.mjs';
+import { isMain } from '../lib/is-main.mjs';
 
 export const run = (input = {}, env = process.env) => runHook('turn_settled', 'Stop', input, env);
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) main('turn_settled', 'Stop');
+const runningDirectly = isMain(import.meta.url);
+if (runningDirectly) main('turn_settled', 'Stop');

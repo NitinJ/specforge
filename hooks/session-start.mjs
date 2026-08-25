@@ -10,9 +10,10 @@
 // comments would be picked up only on the next manual turn, never while idle.
 
 import { run as runHook, main } from './lib/emit.mjs';
+import { isMain } from '../lib/is-main.mjs';
 
 export const run = (input = {}, env = process.env) =>
   runHook('session_start', 'SessionStart', input, env);
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) main('session_start', 'SessionStart');
+const runningDirectly = isMain(import.meta.url);
+if (runningDirectly) main('session_start', 'SessionStart');

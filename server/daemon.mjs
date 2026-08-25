@@ -61,6 +61,7 @@ import { contributeSpec, withdrawSpec } from '../lib/contribute.mjs';
 import { readShareToken } from '../lib/store-share.mjs';
 import { readMeta } from '../lib/meta.mjs';
 import { zip } from '../lib/zip.mjs';
+import { isMain } from '../lib/is-main.mjs';
 
 // Publications live for the daemon's lifetime, which is what lets a share
 // outlive the terminal that made it. One registry per process.
@@ -820,8 +821,8 @@ export async function ensureServer({ port = defaultPort() } = {}) {
 
 // Runnable like start.mjs: `node server/daemon.mjs` starts the daemon and keeps
 // it alive until SIGINT/SIGTERM.
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) {
+const runningDirectly = isMain(import.meta.url);
+if (runningDirectly) {
   ensureServer().then(({ url, server }) => {
     if (!server) {
       console.log(`SpecForge daemon already running: ${url}`);
