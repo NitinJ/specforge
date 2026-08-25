@@ -2,7 +2,7 @@
 
 # SpecForge
 
-**Write specs with your coding agent. Review them in your browser. Comment, and the agent that owns the spec replies inline and edits the document.**
+**Write specs with Claude. Review them in your browser. Comment, and the agent that owns the spec replies inline and edits the document.**
 
 [![tests](https://github.com/NitinJ/specforge/actions/workflows/test.yml/badge.svg)](https://github.com/NitinJ/specforge/actions/workflows/test.yml)
 ![node](https://img.shields.io/badge/node-%E2%89%A518-informational)
@@ -15,7 +15,7 @@
 
 ## Who it is for
 
-- **You work with a coding agent and write design docs.** Specs end up in chat scrollback or a markdown file nobody opens twice. This gives them a home and a review loop. Claude Code and [Pi](https://pi.dev) are both supported, and one store serves both.
+- **You work with Claude Code and write design docs.** Specs end up in chat scrollback or a markdown file nobody opens twice. This gives them a home and a review loop.
 - **You want a colleague to review, without giving them your repo.** Send a link. They comment in a browser, with no account and no install.
 - **You want review comments to become edits.** Not a summary of what should change: the actual document, changed.
 
@@ -28,49 +28,29 @@ git clone https://github.com/NitinJ/specforge && cd specforge
 ./install.sh
 ```
 
-That checks prerequisites, installs into every agent CLI it finds, and sets up a
-permanent web address for your specs. It asks you nothing: a browser opens once
-so you can pick a domain, and your address becomes `<your-username>.<that
-domain>`. It prints one line per CLI saying what it did, including the ones it
-did not find.
+That checks prerequisites, installs the plugin, and sets up a permanent web
+address for your specs. It asks you nothing: a browser opens once so you can
+pick a domain, and your address becomes `<your-username>.<that domain>`.
 
 ```sh
 ./install.sh --plugin-only   # skip the sharing setup
 ./install.sh -n              # show what it would do, change nothing
 ```
 
-You need Node 18+, at least one supported agent CLI, and, only for sharing,
-[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+You need [Claude Code](https://claude.com/claude-code), Node 18+, and, only for
+sharing, [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
 The installer reports anything missing and installs none of it, because a script
 that takes root on a new machine is a poor first impression.
 
-| Agent CLI | Installed as | Reload with |
-|---|---|---|
-| [Claude Code](https://claude.com/claude-code) | a plugin, from a local marketplace | `/reload-plugins`, or restart it |
-| [Pi](https://pi.dev) | a package, from this directory | restart it |
-
-Neither is required and neither is preferred. A machine with only one gets a
-working install of that one. Both read the same store, so a spec written in one
-is reviewable and editable from the other.
-
-To install by hand into one CLI:
-
-```sh
-claude plugin marketplace add . && claude plugin install specforge@specforge
-pi install .
-```
+Then restart Claude Code, or run `/reload-plugins`.
 
 ## What you can do
 
 ### Write a spec
 
 ```
-/specforge:create research on on-device vs server inference    # Claude Code
-/skill:create-spec research on on-device vs server inference   # Pi
+/specforge:create research on on-device vs server inference
 ```
-
-Every skill is addressed the same way each CLI addresses its own, so there is
-one set of instructions and no per-harness copy of them.
 
 SpecForge picks the right kind of document from your wording, confirms it,
 scaffolds it, and prints a URL. Specs are single self-contained HTML files with
@@ -86,7 +66,7 @@ light and dark themes, a floating table of contents, and stable anchors.
 
 **Add your own kind.** If you keep writing the same shape of document, describe
 it once on the configuration page under **Templates → Add a template**: a name,
-and a few lines saying what sections it has and when it should be used. The agent
+and a few lines saying what sections it has and when it should be used. Claude
 writes the template, and from then on it is a kind like the six above, with its
 own `--type`, its own template to comment on, and its own row in the type filter.
 
@@ -114,36 +94,15 @@ A comment is a conversation between people unless it says `@agent`:
 - `why is this bounded at 40 bits?` never reaches an agent
 - `@agent widen this to 64` joins the next batch you submit
 
-Submit, and the agent session that owns the spec wakes up even while idle. It
+Submit, and the Claude session that owns the spec wakes up even while idle. It
 replies to every thread and amends the document. Your open page reloads itself,
 once, when the round is finished rather than on every save.
-
-You write `@agent` whatever CLI is listening. Which agent it reaches is a
-property of the spec, not of what you typed, so a store you use from two CLIs
-needs no second habit.
 
 The header says whether anyone is actually listening. **Connected** means a
 session is watching this spec right now, so comments you submit reach it on their
 own; **Disconnected** means they would sit unread. Reconnect copies a short
-prompt: paste it into whichever agent window you want to own the spec, and it
+prompt — paste it into whichever Claude window you want to own the spec, and it
 takes over from the session that went away.
-
-### Two agents, one spec
-
-Connect a second CLI to a spec and the header's Connected chip becomes a
-switcher naming both. The highlighted one receives every comment and is the only
-one allowed to write the document; the other still reads the threads and still
-replies, so asking the wrong one still gets you an answer.
-
-Only you move the switch. Nothing an agent does takes work from another, and a
-session that crashes while holding a spec strands nothing: it stays selected,
-marked as needing a reconnect, and you hand the spec to the other one with a
-click.
-
-```sh
-specforge open <id>     # connect this session to a spec another agent is working
-specforge doctor        # which harness am I, what am I connected to, who holds each
-```
 
 Adding `@agent` to a thread later hands over the **whole thread**, so the agent
 reads the discussion that led to the request. The footer counts both
@@ -289,20 +248,20 @@ spec, which is how you change the scaffold new specs start from.
 
 ### Keep the spec and the work in step
 
-Implementation specs render their Stages and Tasks as a live tracker, and the
-session binding nudges when the code drifts from the plan. It is fail-safe on
-every CLI: any error is swallowed, and it does nothing unless a spec is in play.
+Implementation specs render their Stages and Tasks as a live tracker, and hooks
+nudge when the code drifts from the plan. Hooks are fail-safe: any error exits
+0, and they do nothing unless a spec is in play.
 
 ## Everyday commands
 
-| Claude Code | Pi | Does |
-|---|---|---|
-| `/specforge:create` | `/skill:create-spec` | Author a new spec and open it for review |
-| `/specforge:convert <file>` | `/skill:convert-spec <file>` | Bring an existing doc into the store |
-| `/specforge:export-md` | `/skill:export-md` | Write a spec out as markdown, diagrams included |
-| `/specforge:list` | `/skill:list-specs` | Specs attached to this session |
-| `/specforge:listall` | `/skill:list-specs` | Every spec, with the index URL |
-| `/specforge:start` | `specforge start` | Start or reuse the review server, print the index URL |
+| Command | Does |
+|---|---|
+| `/specforge:create` | Author a new spec and open it for review |
+| `/specforge:convert <file>` | Bring an existing doc into the store |
+| `/specforge:export-md` | Write a spec out as markdown, diagrams included |
+| `/specforge:list` | Specs attached to this session |
+| `/specforge:listall` | Every spec, with the index URL |
+| `/specforge:start` | Start or reuse the review server, print the index URL |
 
 Reviewing needs no command. Submitted comments reach the session that owns the
 spec on their own.
@@ -310,7 +269,7 @@ spec on their own.
 ### Markdown, both ways
 
 A spec goes **out** as GitHub-flavoured markdown, from the action menu in the
-review UI or with the export skill. It renders correctly on GitHub with no
+review UI or with `/specforge:export-md`. It renders correctly on GitHub with no
 plugins: headings, tables, fenced code, and the implementation plan as task
 lists you can tick. Hand-drawn SVG diagrams travel beside it as files, because
 every markdown renderer strips inline SVG, so a spec carrying them downloads as
@@ -318,7 +277,7 @@ a zip. A **mermaid** diagram needs none of that: it goes out as a plain
 ` ```mermaid ` fence, comes back as the same text, and renders natively on
 GitHub.
 
-Any `.md` comes **in** with the convert skill. The conversion is
+Any `.md` comes **in** with `/specforge:convert <file>`. The conversion is
 mechanical first, so the same file always produces the same spec, and the agent
 then improves the result rather than authoring one from a blank scaffold. It
 always creates a **new** spec: a file you edited last week can never overwrite a
@@ -339,15 +298,10 @@ review-layer and browser test tiers.
 | Path | Holds |
 |---|---|
 | `lib/` | store, CLI, publications, lint, lifecycle |
-| `lib/harness/` | what each agent CLI is: the registry, one adapter per CLI, and the policy that names none of them |
 | `server/` | the review server and the injected review layer |
-| `skills/` · `commands/` | authoring and review skills, and the slash commands that call them |
-| `hooks/` · `extensions/` | the two bindings: Claude Code's session hooks, and Pi's extension |
+| `skills/` · `commands/` · `hooks/` | authoring and review skills, slash commands, session hooks |
 | `templates/` | spec shells and house rules |
 | `tools/` | end-to-end probes and screenshot helpers |
-
-**Adding a third agent CLI** costs two files and one line: see
-[docs/adding-a-harness.md](docs/adding-a-harness.md).
 
 **How work lands:** feature branch → PR → review → squash merge. Every PR runs
 the full suite on Node 20 and 22. Tests come with the change that needs them,

@@ -58,11 +58,7 @@ test('every skill has a SKILL.md with name + description frontmatter', () => {
   for (const s of skills) {
     const md = readText(join('skills', s.name, 'SKILL.md'));
     assert.match(md, /^---/, `${s.name}/SKILL.md has frontmatter`);
-    // A bare name, matching the directory. Claude Code takes the `specforge:`
-    // prefix from the plugin directory and substitutes this into the last
-    // segment only, so carrying the prefix here was wrong for Claude Code too;
-    // Pi rejects the colon outright.
-    assert.match(md, new RegExp(`\\nname:\\s*${s.name}\\s*\\n`), `${s.name}/SKILL.md declares a name`);
+    assert.match(md, /\nname:\s*specforge:/, `${s.name}/SKILL.md declares a name`);
     assert.match(md, /\ndescription:/, `${s.name}/SKILL.md declares a description`);
   }
 });

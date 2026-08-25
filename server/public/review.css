@@ -587,7 +587,7 @@
 .sf-comment { border-top: 1px dashed var(--sf-line); padding: 6px 0; }
 .sf-comment:first-of-type { border-top: none; }
 .sf-comment .who { font-weight: 700; font-size: 11px; }
-.sf-comment .who.agent { color: var(--sf-accent); }
+.sf-comment .who.claude { color: var(--sf-accent); }
 /* Comment body renders a safe markdown subset (fmtBody in review.js): tight
    paragraphs + lists, quiet inline code, no runaway spacing in the narrow rail. */
 .sf-comment .body { font-size: 12.5px; line-height: 1.5; word-break: break-word; }
@@ -890,38 +890,6 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
 }
 .sf-conn-act:hover { background: color-mix(in srgb, currentColor 20%, transparent); }
 
-/* The harness switcher: which connected agent is working this spec.
-   Only rendered when more than one is connected, so a single-agent spec reads
-   exactly as the chip always did.
-
-   A select, not a segmented control. The pills it replaced read as a filter,
-   which is the one thing this is not, and they grew wider with every agent
-   added. Styled down to the chip's own type so it sits inside the pill rather
-   than beside it: no border, no field background, just the name and a caret. */
-.sf-harness {
-  font: inherit; font-size: 11px; font-weight: 600;
-  color: inherit; cursor: pointer;
-  border: 0; background: none; padding: 0 16px 0 2px; margin: 0;
-  text-transform: lowercase;
-  -webkit-appearance: none; -moz-appearance: none; appearance: none;
-  /* The caret, drawn rather than linked: a strict CSP blocks an external
-     image, and a data URI here is smaller than one anyway. */
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
-                    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: right 6px center, right 2px center;
-  background-size: 4px 4px, 4px 4px;
-  background-repeat: no-repeat;
-}
-.sf-harness:hover { text-decoration: underline; text-underline-offset: 2px }
-.sf-harness:focus-visible { outline: 2px solid var(--sf-accent, #2563eb); outline-offset: 2px }
-/* The list itself is drawn by the platform, which does not inherit the chip's
-   colours: set both so the options are legible in a dark theme. */
-.sf-harness option {
-  color: var(--sf-ink, #1a1a18);
-  background: var(--sf-panel, #fff);
-  text-transform: none;
-}
-
 /* Addressing, made visible. @agent is what decides whether a thread becomes
    work, so it reads differently from a mention of a person. */
 .sf-at { font-weight: 600; color: var(--sf-accent, #2563eb); }
@@ -1067,7 +1035,7 @@ html[data-sf-header] #sf-tocbtn { top: calc(50% + var(--sf-header-h) / 2); }
   font-size: 11px; font-weight: 700;
   background: var(--sf-panel2); border: 1px solid var(--sf-line);
 }
-.sf-bub-who.agent { color: var(--sf-accent); border-color: color-mix(in srgb, var(--sf-accent) 45%, var(--sf-line)); }
+.sf-bub-who.claude { color: var(--sf-accent); border-color: color-mix(in srgb, var(--sf-accent) 45%, var(--sf-line)); }
 /* min-width:0 lets the flex child shrink so the snippet ellipsises */
 .sf-bub-snip { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; color: var(--sf-muted); }
