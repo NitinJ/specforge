@@ -298,6 +298,38 @@ test('a prompt under a heading still strips back to the original shell', () => {
   assert.equal(stripTemplateBlocks(rendered), shell);
 });
 
+test('the prompt stylesheet is scaffolding too, and the strip takes it', () => {
+  // A CSS selector contains the string `data-sf-prompt`, and a spec must not
+  // carry that string at all. Delimited, so the shell can style guidance without
+  // the rule riding into every spec scaffolded from it.
+  const shell = [
+    '<body>',
+    '<style>',
+    '  .a{color:red}',
+    '',
+    '  /* specforge:prompt-style start */',
+    '  [data-sf-prompt]{border:1px dashed}',
+    '  /* specforge:prompt-style end */',
+    '</style>',
+    '</body>',
+  ].join('\n');
+  const out = stripTemplateBlocks(shell);
+  assert.equal(hasTemplateBlocks(out), false);
+  assert.equal(out, '<body>\n<style>\n  .a{color:red}\n</style>\n</body>');
+});
+
+test('the prompt stylesheet rides in with the prompts and strips back out', () => {
+  const shell = '<body>\n<style>\n  .a{color:red}\n</style>\n<section id="decisions">\n  <h2>D</h2>\n</section>\n</body>';
+  const rendered = renderTemplateBlocks(shell, { prompts: { decisions: 'Guidance.' } });
+  assert.match(rendered, /\[data-sf-prompt\]\{/, 'the template styles its own guidance');
+  assert.equal(stripTemplateBlocks(rendered), shell);
+});
+
+test('a shell that took no prompt gets no prompt stylesheet', () => {
+  const shell = '<body>\n<style>\n  .a{color:red}\n</style>\n<section id="other"><h2>O</h2></section>\n</body>';
+  assert.equal(renderTemplateBlocks(shell, { prompts: { decisions: 'Guidance.' } }), shell);
+});
+
 test('a prompt holding replacement syntax renders it literally', () => {
   // The insert was a String.replace, so `$&` in a prompt pasted the matched
   // section tag into the guidance.

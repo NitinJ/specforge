@@ -1715,37 +1715,6 @@ html:not([data-sf-deck]) main > section:not([data-sf-space]) > h2 + h4,
 html:not([data-sf-deck]) main > section:not([data-sf-space]) > h3:first-child,
 html:not([data-sf-deck]) main > section:not([data-sf-space]) > h4:first-child { margin-top: 14px; }
 
-/* Template guidance. `<div data-sf-prompt>` holds what to write in the section
-   it sits in, and it exists only in a template spec: the scaffolder strips it on
-   the way to a real one. Nothing styled it, so it rendered as ordinary prose and
-   a reader had no way to tell guidance from the document's own claims. Dashed
-   and labelled, because it is scaffolding rather than something the spec says.
-   Styled here rather than in the shells: a prompt is only ever read through the
-   review layer, and the five shells are where six copies of a rule come from. */
-[data-sf-prompt] {
-  border: 1px dashed var(--sf-line);
-  border-left: 3px solid var(--sf-amber);
-  border-radius: 0 var(--sf-r-md) var(--sf-r-md) 0;
-  background: var(--sf-panel2);
-  color: var(--sf-muted);
-  padding: 10px 14px;
-  margin: 12px 0 20px;
-  font-size: 13.5px;
-  line-height: 1.6;
-}
-[data-sf-prompt]::before {
-  content: "Prompt · what to write in this section";
-  display: block;
-  color: var(--sf-amber);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .6px;
-  margin-bottom: 6px;
-}
-[data-sf-prompt] > :first-child { margin-top: 0; }
-[data-sf-prompt] > :last-child { margin-bottom: 0; }
-
 /* print / "Export PDF": drop all injected review chrome so the PDF is just the
    spec, and keep atomic blocks from splitting across pages. The spec's own CSS
    (and the print dialog's "Background graphics" toggle) drive the look. */
