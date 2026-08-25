@@ -66,11 +66,49 @@ test('an empty key matches nothing, including another empty key', () => {
 
 test('no encoded filename contains a character a filesystem reserves', () => {
   // The colon is legal on Linux and macOS and reserved on Windows, where NTFS
-  // reads it as an alternate data stream separator.
+  // reads it as an alternate data stream separator. The slash is worse: it would
+  // put the record in a subdirectory, or outside the store.
+  //
+  // An earlier version of this test stripped slashes before asserting, which
+  // made it agree with the bug it was meant to catch. Raised in review of #231.
   const reserved = /[:<>"|?*\\/]/;
-  for (const key of ['claude:abc-123', 'pi:01J8Z', 'codex:x/y', 'gemini:a']) {
+  for (const key of ['claude:abc-123', 'pi:01J8Z', 'codex:x/y', 'gemini:a', 'pi:a b', 'claude:x:y']) {
     const name = encodeKey(key);
-    assert.doesNotMatch(name.replace(/[/]/g, ''), reserved, `${key} encodes to ${name}`);
+    assert.doesNotMatch(name, reserved, `${key} encodes to ${name}`);
+  }
+});
+
+test('a session id cannot escape the sessions directory', () => {
+  // `--session` takes whatever it is given, and the store path is derived from
+  // it. Traversal here would write a JSON file anywhere the process can reach.
+  for (const key of ['claude:../../etc/passwd', 'pi:../../../x', 'claude:/abs/path']) {
+    const name = encodeKey(key);
+    assert.doesNotMatch(name, /[/\\]/, `${key} encodes to ${name}`);
+    assert.equal(name.startsWith('..') && !name.includes('%'), false, name);
+  }
+});
+
+test('a name that would address the directory itself is refused', () => {
+  assert.equal(encodeKey('claude:.'), '');
+  assert.equal(encodeKey('claude:..'), '');
+});
+
+test('an id carrying the delimiter round-trips, and does not forge a harness', () => {
+  // `claude:a__b` used to encode to `a__b` and decode to harness `a`, raw `b`.
+  // Escaping the underscore leaves `__` able to mean only the delimiter.
+  assert.equal(decodeKey(encodeKey('claude:a__b')), 'claude:a__b');
+  assert.equal(decodeKey(encodeKey('pi:a__b')), 'pi:a__b');
+  assert.doesNotMatch(encodeKey('claude:a__b'), /__/);
+});
+
+test('ids carrying odd characters round-trip exactly', () => {
+  for (const raw of ['a b', 'x/y', 'p%20q', 'a:b', 'ünïcode', '..', '_', '%']) {
+    for (const harness of ['claude', 'pi']) {
+      const key = `${harness}:${raw}`;
+      const name = encodeKey(key);
+      if (!name) continue; // refused as unsafe, asserted above
+      assert.equal(decodeKey(name), key, `${key} via ${name}`);
+    }
   }
 });
 
