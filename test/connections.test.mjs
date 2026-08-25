@@ -230,6 +230,30 @@ test('a watcher beat records liveness on its own connection', () => {
   assert.equal(conns.pi.watcherPid, null, 'and it did not touch the other harness');
 });
 
+test('a connected but inactive session beats its own connection too', () => {
+  // The defect this prevents, seen on a live spec: the beat loop walked
+  // `specsForSession`, which is active-only, so a session connected to a spec
+  // another harness was working never beat it. Its connection went stale within
+  // thirty seconds and read "needs reconnect" for as long as the session lived,
+  // which is exactly the agent the reader is trying to hand the spec to.
+  const { specId, pi: p } = shared(); // claude active, pi connected
+  heartbeat(p.key);
+
+  const conns = connectionsOf(readMeta(specId));
+  assert.equal(conns.pi.watcherPid, process.pid, 'the inactive harness recorded its pid');
+  assert.equal(connectionAlive(conns.pi), true, 'and therefore reads live');
+});
+
+test('an inactive session\'s beat does not move the spec\'s own heartbeat', () => {
+  // `meta.heartbeat` answers "is the session working this spec listening", which
+  // is about the active one. An inactive session bumping it would report the
+  // wrong agent as live.
+  const { specId, pi: p } = shared();
+  const before = readMeta(specId).heartbeat || 0;
+  heartbeat(p.key);
+  assert.equal(readMeta(specId).heartbeat || 0, before);
+});
+
 test('the header list says which connections need a reconnect', () => {
   const { specId } = shared();
   const meta = readMeta(specId);
