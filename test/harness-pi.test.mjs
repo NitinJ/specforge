@@ -17,7 +17,7 @@ import { fakePi, fakePiContext } from './helpers/fake-pi.mjs';
 import { seedSession } from './helpers/live-session.mjs';
 import { pi, detect as detectPi } from '../lib/harness/pi.mjs';
 import { currentHarness, harnessById, agentNames } from '../lib/harness/index.mjs';
-import { register } from '../extensions/specforge.mjs';
+import { register } from '../extensions/specforge.js';
 import { attach } from '../lib/attach.mjs';
 import { createSpec } from '../lib/store.mjs';
 import { mutateComments } from '../lib/store-comments.mjs';
@@ -236,7 +236,10 @@ test('the adapter imports nothing from Pi', () => {
 });
 
 test('the binding holds no policy: it imports the decision rather than making one', () => {
-  const src = readFileSync(join(ROOT, 'extensions', 'specforge.mjs'), 'utf8');
+  // `.js`, not `.mjs`: Pi's package loader discovers `.ts` and `.js` in an
+  // extensions directory (docs/packages.md L162), and this repo is type: module,
+  // so a `.js` file here is an ES module either way.
+  const src = readFileSync(join(ROOT, 'extensions', 'specforge.js'), 'utf8');
   assert.match(src, /import \{ onEvent \}/);
   for (const word of ['pendingForSession', 'watcherBeating', 'specsForSession']) {
     assert.doesNotMatch(src, new RegExp(word), `the binding reimplements ${word}`);

@@ -3,7 +3,7 @@ name: generate-template
 user-invocable: false
 description: |
   Write a spec template from a prompt. Auto-invoked when the owning session's
-  Stop/UserPromptSubmit hook surfaces a queued template generation (the human
+  the session binding surfaces a queued template generation (the human
   clicked "Add a template" on the configuration page). Turns their description of
   the sections and when the kind should be used into the template spec's HTML,
   lints it, and reports back. The human is watching a dialog until this finishes.

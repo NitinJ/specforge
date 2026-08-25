@@ -71,4 +71,4 @@ Act on the choice:
 - **Just viewing** → stop, no action.
 
 Skip the picker when nothing is actionable. In "mine" mode with no rows, say no spec
-is attached to this session and point to `/specforge:listall` to open one.
+is attached to this session and point to the `list-specs` skill in "all" mode to open one.

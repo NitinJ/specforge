@@ -3,7 +3,7 @@ name: export
 user-invocable: false
 description: |
   Export a spec from the store to Google Docs. Auto-invoked when the owning
-  session's Stop/UserPromptSubmit hook surfaces a queued export (the human clicked
+  session's binding surfaces a queued export (the human clicked
   "Export to Google Docs" in the review UI); can also be run manually. Reads the
   spec HTML, creates a Google Doc via the connected Google Drive MCP, and reports
   the Doc link back so the dropdown shows it.

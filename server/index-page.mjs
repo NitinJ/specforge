@@ -22,6 +22,10 @@ import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
 import { STATUSES } from '../lib/lifecycle.mjs';
 import { readSubscriptions } from '../lib/store-subscriptions.mjs';
 import { groupByCollection } from '../lib/collections.mjs';
+// The empty state tells the reader how to make a spec, and that instruction is
+// one CLI's slash command. Rendered through the harness so it is the command
+// the CLI serving this page actually answers to.
+import { currentHarness } from '../lib/harness/index.mjs';
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -706,7 +710,7 @@ ${n ? `<div class="toolbar">${chipsBar}
 </div></div>
 <div class="wrap">
 ${n ? `<div id="groups">${groups}</div>\n<div id="nohits">No specs match. <button type="button" id="clearf">Clear filters</button></div>`
-    : '<p class="empty">No specs yet. Create one with <code>/specforge:create</code>.</p>'}
+    : `<p class="empty">No specs yet. Ask your agent for one, or run <code>${esc(currentHarness().workRef('create-spec'))}</code> in it.</p>`}
 ${strip}
 </div>
 </main>

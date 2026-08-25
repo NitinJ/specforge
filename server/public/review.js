@@ -1382,14 +1382,17 @@ function sfRevealDisclosures(el) {
       '  3. Arm the review watcher in the background so submitted comments reach you',
       '     while you are idle:                      node "' + cli + '" wait-batch',
       '',
-      'On the watcher completing, run the specforge:review-spec skill for each pending',
+      // The skill by its bare name, not one CLI's address for it: the reader
+      // pastes this into whichever agent they want to own the spec, and the page
+      // cannot know which that is.
+      'On the watcher completing, run the review-spec skill for each pending',
       'spec and relaunch it; on timeout just relaunch it.',
     ].join('\n');
   }
   function copyReconnectPrompt() {
     var text = reconnectPrompt();
     var done = function () {
-      flash('Prompt copied. Paste it into the Claude session you want to own this spec.');
+      flash('Prompt copied. Paste it into the agent session you want to own this spec.');
     };
     try {
       navigator.clipboard.writeText(text).then(done, function () { flash(text); });

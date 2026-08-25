@@ -4,7 +4,7 @@ user-invocable: false
 description: |
   Process a submitted batch of human comments on a spec in the store: reply to
   each thread inline and amend the spec accordingly. Usually auto-invoked when the
-  owning session's Stop/UserPromptSubmit hook surfaces a pending batch; can also
+  owning session's binding surfaces a pending batch; can also
   be run manually. Replies are append-only; only the human resolves threads.
 allowed-tools: Read Write Edit Bash Glob Grep
 ---
@@ -135,8 +135,9 @@ and amending are all edit work — and go straight to step 4, the reply:
    specification, not a reply. No aphorisms, no em dashes, no hedged decisions;
    every sentence carries a decision, measurement, source, assumption or
    specification. Watch the advisory `spec-language` line in the lint.
-4. **Reply inline** (append-only, attributed to claude) via the CLI — never edit
-   `comments.json` by hand, and never use the HTTP API (it is human-only):
+4. **Reply inline** (append-only, signed with whichever agent you are) via the
+   CLI — never edit `comments.json` by hand, and never use the HTTP API (it is
+   human-only):
 
    ```
    specforge reply <id> <threadId> --body "<concise reply, name the section you changed>"
