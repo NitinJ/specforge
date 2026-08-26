@@ -2908,12 +2908,26 @@ function sfRevealDisclosures(el) {
     // Hovering a block lights up every bubble anchored to it — the other half of
     // the reciprocal bond wired in wireBubbleHover().
     if (el) { el.classList.add('sf-hover'); hoverEl = el; markBubbleFocus(el, true); }
+    tellZoom(el);
   }
   function clearHover() {
+    tellZoom(null);
     if (!hoverEl) return;
     hoverEl.classList.remove('sf-hover');
     markBubbleFocus(hoverEl, false);
     hoverEl = null;
+  }
+  /**
+   * Tell the zoom module which block the pointer is over, if it loaded.
+   *
+   * Guarded on both counts. zoom.js is a separate asset and an absent or broken
+   * one must not be able to break hovering, which is the entry point to
+   * commenting on anything (spec 2cc9bae1bc, I5).
+   */
+  function tellZoom(el) {
+    try {
+      if (window.SFZoom && window.SFZoom.hover) window.SFZoom.hover(el);
+    } catch (e) { /* a zoom failure is never worth a broken review layer */ }
   }
 
   function onClick(e) {
@@ -4014,10 +4028,15 @@ function sfRevealDisclosures(el) {
   function norm(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
   function inUI(t) {
     while (t) {
+      // sf-zoom and sf-zoom-btn are the full-screen preview. Both are chrome
+      // drawn OVER the document rather than in it, so a hover or click on
+      // either must not be read as touching the block underneath: the trigger
+      // sits on top of a diagram, and treating it as document content would
+      // open a composer behind the overlay (spec 2cc9bae1bc).
       if (t.id === 'sf-sidebar' || t.id === 'sf-compose' || t.id === 'sf-launcher' ||
           t.id === 'sf-menu' || t.id === 'sf-live' || t.id === 'sf-toc' || t.id === 'sf-top' ||
           t.id === 'sf-titlebar' || t.id === 'sf-rail' || t.id === 'sf-tocbtn' ||
-          t.id === 'sf-ctx') return true;
+          t.id === 'sf-ctx' || t.id === 'sf-zoom' || t.id === 'sf-zoom-btn') return true;
       // An aside's header strip is chrome sitting inside a section of the
       // document. The section is commentable; the strip that folds it away and
       // the buttons that answer it are not. Deliberately NOT #sf-asides itself:

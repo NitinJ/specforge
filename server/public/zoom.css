@@ -1,0 +1,124 @@
+/* Full-screen preview for diagrams and images.
+   Spec 2cc9bae1bc. The module is server/public/zoom.js.
+
+   Everything here is review-layer chrome drawn over the document. Nothing
+   styles the document itself, and nothing here applies until a reader hovers a
+   diagram. */
+
+/* The trigger, drawn over the hovered block's top-right corner.
+   A child of <body> with fixed positioning rather than a child of the block:
+   a rendered mermaid block's comment anchors are recorded against its rendered
+   text, so anything inside it moves every comment on that diagram. */
+#sf-zoom-btn {
+  position: fixed;
+  z-index: 2147483000;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: zoom-in;
+  border-radius: 7px;
+  border: 1px solid var(--sf-line, #e4e2dc);
+  background: var(--sf-panel, #fff);
+  color: var(--sf-muted, #6b6b66);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .14);
+  /* Not fully opaque: it sits ON the artwork, and a solid chip over a diagram
+     hides the very thing the reader is deciding whether to enlarge. */
+  opacity: .82;
+  transition: opacity .12s ease, color .12s ease;
+}
+#sf-zoom-btn:hover { opacity: 1; color: var(--sf-accent, #3b5bdb); }
+#sf-zoom-btn:focus-visible { opacity: 1; outline: 2px solid var(--sf-accent, #3b5bdb); outline-offset: 2px }
+#sf-zoom-btn[hidden] { display: none }
+
+/* On a touch screen there is no hover, so the trigger would never appear. Shown
+   permanently and quietly instead: a tap on it opens the preview, and a tap on
+   the diagram still comments. */
+@media (pointer: coarse) {
+  #sf-zoom-btn { opacity: .6 }
+}
+
+/* The preview itself. */
+#sf-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sf-zoom-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .85);
+  cursor: zoom-out;
+}
+
+/* The stage does not scroll and does not take pointer events of its own: panning
+   is handled on the artwork, and a scrollbar here would fight it. */
+.sf-zoom-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* The one element the view transform is written to. `transform-origin: 0 0` is
+   load-bearing: the maths in zoom-view.js solves for an offset in viewport
+   pixels, which is only true if the scale grows from the same corner. */
+.sf-zoom-art {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  /* The artwork gets the ground it was drawn on. A mermaid SVG has a
+     transparent background and black edges: over the dark backdrop its lines
+     and labels disappear, and the reader sees a few coloured boxes floating in
+     nothing.
+
+     A box-shadow spread rather than padding, deliberately. Padding would change
+     the holder's box, and the view maths solves for an offset against the
+     artwork's exact size: a 24px inset would put every zoom 24px out. A shadow
+     paints outside the box without being part of it. */
+  background: var(--sf-panel, #fff);
+  box-shadow: 0 0 0 24px var(--sf-panel, #fff), 0 8px 40px rgba(0, 0, 0, .5);
+  border-radius: 2px;
+}
+.sf-zoom-art.sf-zoom-dragging { cursor: grabbing }
+
+/* The clone fills the holder, which is sized to the artwork's natural
+   dimensions in JS. The transform does all the scaling.
+
+   `max-width: none` matters: the review layer caps diagrams at 100% of the
+   reading column (`[data-sf-mermaid] svg { max-width: 100% }`), and a cap
+   written for a 820px column must not follow the picture into a full screen. */
+.sf-zoom-art svg,
+.sf-zoom-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+.sf-zoom-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 34px;
+  height: 34px;
+  font: 400 24px/1 system-ui, sans-serif;
+  color: #fff;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  background: rgba(255, 255, 255, .1);
+}
+.sf-zoom-close:hover { background: rgba(255, 255, 255, .2) }
+.sf-zoom-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px }
