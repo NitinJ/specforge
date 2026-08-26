@@ -39,6 +39,8 @@
 
   var btn = null;      // the one trigger, moved between blocks
   var target = null;   // the block it currently offers
+  var onTrigger = false;   // the pointer is on the trigger itself
+  var clearPending = false; // a hover-of-nothing held until the pointer leaves it
   var open = null;     // the overlay, or null
 
   // ---------- what can be previewed ----------
@@ -94,11 +96,22 @@
       e.stopPropagation();
       if (target) openPreview(target);
     };
+    // The pointer leaving the block for the trigger is review.js reporting that
+    // it is over review chrome, which is a hover of nothing. Acted on
+    // immediately the trigger deletes itself the instant the reader reaches for
+    // it, and it can never be clicked with a real mouse. The clear is held until
+    // the pointer leaves the trigger for something that is not the block.
+    btn.addEventListener('mouseenter', function () { onTrigger = true; });
+    btn.addEventListener('mouseleave', function () {
+      onTrigger = false;
+      if (clearPending) hideButton();
+    });
     doc.body.appendChild(btn);
     return btn;
   }
 
   function hideButton() {
+    clearPending = false;
     target = null;
     if (btn) btn.hidden = true;
   }
@@ -111,7 +124,11 @@
    */
   function hover(el) {
     var z = zoomableOf(el);
-    if (!z || !artOf(z)) return hideButton();
+    if (!z || !artOf(z)) {
+      if (onTrigger && target) { clearPending = true; return; }
+      return hideButton();
+    }
+    clearPending = false;
     target = z;
     place();
   }
@@ -189,6 +206,13 @@
     if (!art) return false;
     if (open) closePreview();
 
+    // The trigger goes away for as long as the preview is up, whether or not the
+    // pointer is still resting on it: it was opened by a click on it, so it is.
+    // `target` is left alone; closePreview puts it back and re-places the button.
+    onTrigger = false;
+    clearPending = false;
+    if (btn) btn.hidden = true;
+
     var wrap = doc.createElement('div');
     wrap.id = 'sf-zoom';
     wrap.setAttribute('role', 'dialog');
@@ -243,7 +267,11 @@
       // it on close. `target` is cleared the moment the pointer leaves, which is
       // immediately: the overlay covers the page.
       block: zoomable,
-      opener: btn && !btn.hidden ? btn : null,
+      // The trigger, whatever its current visibility: opening the preview hid it
+      // a few lines above, and closing re-places it over `block` before focusing
+      // it. Null only when no trigger has ever been built, which is the
+      // programmatic open the tests use.
+      opener: btn,
     };
     pendingLevel = null;
     reset();
