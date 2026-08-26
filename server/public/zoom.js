@@ -201,6 +201,69 @@
     return { width: vp.width, height: vp.height };
   }
 
+  var cloneSeq = 0;
+
+  /**
+   * Carry the artwork's own stylesheet across to the clone.
+   *
+   * Mermaid does not put its styles in the SVG it renders. It writes them into a
+   * `<style>` in the document head and scopes every rule by the SVG's id, so a
+   * clone that has had its id removed keeps none of them: node fills fall back
+   * to black, and an edge path that has lost `fill: none` renders as a solid
+   * blob the width of the diagram. Keeping the id is not an option either, since
+   * two elements cannot share one.
+   *
+   * So the clone gets an id of its own, and every sheet written for the original
+   * is copied into the overlay with the selectors rewritten to match it. The
+   * copies live inside the overlay and go when it does.
+   */
+  function adoptStyles(art, clone, wrap) {
+    var id = art.id;
+    if (!id) { clone.removeAttribute('id'); return; }
+    var mine = 'sf-zoom-art-' + (cloneSeq++);
+    clone.id = mine;
+    // The trailing guard stops `#sf-mmd-1` from matching inside `#sf-mmd-10`,
+    // which would copy another diagram's sheet and rewrite it into selectors
+    // that match nothing.
+    var re = new RegExp('#' + id.replace(/[^\w-]/g, '\\$&') + '(?![\\w-])', 'g');
+    var sheets = doc.querySelectorAll('style');
+    var seen = {};
+    for (var i = 0; i < sheets.length; i++) {
+      var text = sheets[i].textContent;
+      // Mermaid emits the same sheet once per render pass, and a duplicate copy
+      // is dead weight in every preview.
+      if (!text || seen[text]) continue;
+      re.lastIndex = 0;
+      if (!re.test(text)) continue;
+      seen[text] = 1;
+      var copy = doc.createElement('style');
+      copy.textContent = text.replace(re, '#' + mine);
+      wrap.appendChild(copy);
+    }
+  }
+
+  /**
+   * Put the clone back inside the context its styling was written against.
+   *
+   * The review layer themes a diagram through descendant selectors rooted on
+   * the block's own attribute (`[data-sf-mermaid="rendered"] g.node rect`, and
+   * about forty more in review.css). A clone lifted out of its block matches
+   * none of them and falls back to mermaid's untouched defaults, which is the
+   * wrong palette in either theme and ignores the reader's own.
+   *
+   * A wrapper rather than the attribute on the holder: `[data-sf-mermaid]` also
+   * carries `background: none !important`, which would take the card the
+   * artwork is drawn on with it.
+   */
+  function shellFor(zoomable, clone) {
+    var shell = doc.createElement('div');
+    shell.className = 'sf-zoom-shell';
+    var mmd = zoomable.getAttribute && zoomable.getAttribute('data-sf-mermaid');
+    if (mmd) shell.setAttribute('data-sf-mermaid', mmd);
+    shell.appendChild(clone);
+    return shell;
+  }
+
   function openPreview(zoomable) {
     var art = artOf(zoomable);
     if (!art) return false;
@@ -228,7 +291,7 @@
 
     // cloneNode(true), never the node itself. See the header.
     var clone = art.cloneNode(true);
-    clone.removeAttribute('id');
+    adoptStyles(art, clone, wrap);
     var size = artSize(art);
     var holder = doc.createElement('div');
     holder.className = 'sf-zoom-art';
@@ -241,7 +304,7 @@
     holder.style.height = size.height + 'px';
     clone.setAttribute('width', '100%');
     clone.setAttribute('height', '100%');
-    holder.appendChild(clone);
+    holder.appendChild(shellFor(zoomable, clone));
     stage.appendChild(holder);
 
     var close = doc.createElement('button');

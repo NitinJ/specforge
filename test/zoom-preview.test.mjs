@@ -176,6 +176,89 @@ test('moving back onto the block cancels the held clear', async (t) => {
   assert.equal(btn.hidden, false, 'leaving the trigger for its own block hid it');
 });
 
+// --- the artwork's own styling ------------------------------------------------
+
+test('the clone keeps the styling written for the original', async (t) => {
+  // Mermaid does not put its styles in the SVG. They go in a document-level
+  // sheet scoped by the SVG's id, so a clone with the id stripped kept none of
+  // them: every node box drew solid black, and the edge paths, having lost
+  // `fill: none`, drew as blobs the width of the diagram.
+  const { window } = await boot(t);
+  sized(window);
+  window.SFZoom.open(window.document.querySelector('.z-mermaid'));
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  const clone = overlay(window).querySelector('.sf-zoom-art svg');
+  assert.ok(clone.id, 'the clone has no id, so no rule can select it');
+  assert.notEqual(clone.id, 'fx-mmd-0', 'the clone shares the original id');
+
+  const sheets = [...overlay(window).querySelectorAll('style')].map((s) => s.textContent);
+  assert.equal(sheets.length, 1, `expected one adopted sheet, got ${sheets.length}`);
+  assert.match(sheets[0], new RegExp(`#${clone.id} \\.node rect`), 'not rewritten to the clone');
+  assert.ok(!sheets[0].includes('#fx-mmd-0'), 'the original id survived the rewrite');
+  assert.ok(sheets[0].includes('fill:none'), 'the edge rule was not carried across');
+});
+
+test('the clone keeps the block context its theming is written against', async (t) => {
+  // review.css themes a diagram with about forty descendant selectors rooted on
+  // the block's own attribute. A clone lifted out of its block matches none of
+  // them and falls back to mermaid's untouched palette, ignoring the reader's
+  // theme entirely.
+  const { window } = await boot(t);
+  sized(window);
+  window.SFZoom.open(window.document.querySelector('.z-mermaid'));
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  const shell = overlay(window).querySelector('.sf-zoom-art > .sf-zoom-shell');
+  assert.ok(shell, 'the clone was dropped straight into the holder');
+  assert.equal(shell.getAttribute('data-sf-mermaid'), 'rendered');
+  assert.equal(shell.firstElementChild.tagName.toLowerCase(), 'svg');
+});
+
+test('an image gets a shell with no diagram attribute on it', async (t) => {
+  const { window } = await boot(t);
+  sized(window);
+  window.SFZoom.open(window.document.querySelector('.z-img'));
+  await new Promise((r) => window.setTimeout(r, 0));
+  const shell = overlay(window).querySelector('.sf-zoom-art > .sf-zoom-shell');
+  assert.ok(shell);
+  assert.equal(shell.hasAttribute('data-sf-mermaid'), false);
+});
+
+test('a sheet written for a different diagram is left behind', async (t) => {
+  // `#fx-mmd-0` is a prefix of `#fx-mmd-01`. Matching on the prefix would copy
+  // the other diagram's sheet and rewrite it into selectors matching nothing.
+  const { window } = await boot(t);
+  sized(window);
+  window.SFZoom.open(window.document.querySelector('.z-mermaid'));
+  await new Promise((r) => window.setTimeout(r, 0));
+  const sheets = [...overlay(window).querySelectorAll('style')].map((s) => s.textContent);
+  assert.ok(!sheets.some((s) => s.includes('#eee')), 'it took a neighbour\'s sheet');
+});
+
+test('the adopted sheets go when the preview does', async (t) => {
+  const { window } = await boot(t);
+  sized(window);
+  window.SFZoom.open(window.document.querySelector('.z-mermaid'));
+  await new Promise((r) => window.setTimeout(r, 0));
+  const before = window.document.querySelectorAll('style').length;
+
+  window.SFZoom.close();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(window.document.querySelectorAll('style').length, before - 1,
+    'a closed preview left its stylesheet behind');
+});
+
+test('an image with no id is cloned without one', async (t) => {
+  // The path that has nothing to adopt still has to leave the document valid.
+  const { window } = await boot(t);
+  sized(window);
+  window.SFZoom.open(window.document.querySelector('.z-img'));
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(overlay(window).querySelector('.sf-zoom-art img').id, '');
+  assert.equal(overlay(window).querySelectorAll('style').length, 0);
+});
+
 test('there is one trigger on the page, moved rather than one per block', async (t) => {
   const { window } = await boot(t);
   hover(window, '.z-mermaid');
