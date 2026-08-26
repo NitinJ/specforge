@@ -85,6 +85,58 @@ test('hovering anything else offers none', async (t) => {
   }
 });
 
+test('the trigger survives the pointer arriving on it', async (t) => {
+  // The defect that made the whole feature unreachable with a real mouse, and
+  // that a programmatic .click() in every other test walked straight past.
+  //
+  // review.js reports the block under the pointer. The moment the pointer
+  // crosses onto the trigger the target is review chrome, so review.js reports
+  // a hover of nothing — and acting on that immediately deleted the trigger the
+  // instant the reader reached for it.
+  const { window } = await boot(t);
+  sized(window);
+  hover(window, '.z-mermaid');
+  const btn = trigger(window);
+  assert.equal(btn.hidden, false);
+
+  btn.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }));
+  window.SFZoom.hover(null); // what review.js says once the pointer is on chrome
+  assert.equal(btn.hidden, false, 'the trigger vanished as the pointer reached it');
+
+  btn.click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.ok(overlay(window), 'the click never reached a live button');
+});
+
+test('the held clear is honoured once the pointer leaves the trigger', async (t) => {
+  // The other half: a reader who hovers the trigger and moves away without
+  // clicking must not be left with a button floating over nothing.
+  const { window } = await boot(t);
+  sized(window);
+  hover(window, '.z-mermaid');
+  const btn = trigger(window);
+
+  btn.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }));
+  window.SFZoom.hover(null);
+  btn.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: false }));
+  assert.equal(btn.hidden, true, 'the trigger outlived its block');
+});
+
+test('moving back onto the block cancels the held clear', async (t) => {
+  const { window } = await boot(t);
+  sized(window);
+  hover(window, '.z-mermaid');
+  const btn = trigger(window);
+
+  btn.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }));
+  window.SFZoom.hover(null);
+  // The pointer went back to the diagram. review.js cleared its own hoverEl on
+  // the way onto the chrome, so this is a fresh block for it and it reports it.
+  window.SFZoom.hover(window.document.querySelector('.z-mermaid'));
+  btn.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: false }));
+  assert.equal(btn.hidden, false, 'leaving the trigger for its own block hid it');
+});
+
 test('there is one trigger on the page, moved rather than one per block', async (t) => {
   const { window } = await boot(t);
   hover(window, '.z-mermaid');
