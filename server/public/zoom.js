@@ -226,15 +226,21 @@
 
     wrap.appendChild(backdrop);
     wrap.appendChild(stage);
+    wrap.appendChild(controls());
     wrap.appendChild(close);
     doc.body.appendChild(wrap);
 
     open = {
       wrap: wrap, holder: holder, art: size,
       view: { scale: 1, x: 0, y: 0 },
+      fit: 1,
+      drag: null,
+      level: pendingLevel,
       opener: btn && !btn.hidden ? btn : null,
     };
+    pendingLevel = null;
     reset();
+    wireView(holder);
 
     // On the overlay rather than the document, and it stops propagation: the
     // document handler collapses threads and cancels composers, and a keypress
@@ -267,6 +273,7 @@
 
   function closePreview() {
     if (!open) return;
+    onDragEnd();
     doc.removeEventListener('keydown', onKey, true);
     var opener = open.opener;
     if (open.wrap.parentNode) open.wrap.parentNode.removeChild(open.wrap);
@@ -285,6 +292,7 @@
     if (!open) return;
     var v = open.view;
     open.holder.style.transform = 'translate(' + v.x + 'px, ' + v.y + 'px) scale(' + v.scale + ')';
+    if (open.level) open.level.textContent = Math.round(v.scale * 100) + '%';
   }
 
   /** Back to fit, centred. */
@@ -293,9 +301,125 @@
     var vp = viewport();
     var scale = View.fit(open.art, vp);
     var c = View.centre(open.art, vp, scale);
+    open.fit = scale;
     open.view = { scale: scale, x: c.x, y: c.y };
     apply();
   }
+
+  /**
+   * How far the scale may travel.
+   *
+   * The floor is half of FIT rather than a constant: fit is already the scale at
+   * which the whole picture is visible, so a fixed 0.1 would let a reader shrink
+   * a small diagram to a speck for no reason.
+   */
+  function bounds() {
+    return { min: (open.fit || 1) / 2, max: 8 };
+  }
+
+  /** Scale by `factor` about a viewport point, then pull it back in range. */
+  function scaleBy(factor, anchor) {
+    if (!open || !View) return;
+    var next = View.zoomAt(open.view, factor, anchor, bounds());
+    open.view = View.clamp(next, open.art, viewport());
+    apply();
+  }
+
+  function centreOfViewport() {
+    var vp = viewport();
+    return { x: vp.width / 2, y: vp.height / 2 };
+  }
+
+  /** Wheel, drag and double-click, on the artwork itself. */
+  function wireView(holder) {
+    holder.addEventListener('wheel', function (e) {
+      // Consumed, or the document scrolls under the overlay and closing it
+      // leaves the reader somewhere they did not choose.
+      e.preventDefault();
+      // exp() rather than a fixed step: a trackpad sends many small deltas and a
+      // mouse sends few large ones, and this makes both feel like one gesture.
+      scaleBy(Math.exp(-e.deltaY / 400), { x: e.clientX, y: e.clientY });
+    }, { passive: false });
+
+    holder.addEventListener('dblclick', function (e) {
+      e.preventDefault();
+      var atFit = Math.abs(open.view.scale - open.fit) < 0.001;
+      var wanted = atFit ? 2 : open.fit;
+      scaleBy(wanted / open.view.scale, { x: e.clientX, y: e.clientY });
+    });
+
+    holder.addEventListener('pointerdown', function (e) {
+      if (e.button) return; // primary only: a right-click is a context menu
+      open.drag = { x: e.clientX, y: e.clientY };
+      holder.classList.add('sf-zoom-dragging');
+      // Listeners on the document, not the holder: a pointer that leaves the
+      // artwork mid-drag must keep dragging it rather than dropping it there.
+      doc.addEventListener('pointermove', onDragMove);
+      doc.addEventListener('pointerup', onDragEnd);
+      doc.addEventListener('pointercancel', onDragEnd);
+    });
+  }
+
+  function onDragMove(e) {
+    if (!open || !open.drag || !View) return;
+    var moved = { x: e.clientX - open.drag.x, y: e.clientY - open.drag.y };
+    open.drag = { x: e.clientX, y: e.clientY };
+    open.view = View.clamp({
+      scale: open.view.scale, x: open.view.x + moved.x, y: open.view.y + moved.y,
+    }, open.art, viewport());
+    apply();
+  }
+
+  function onDragEnd() {
+    doc.removeEventListener('pointermove', onDragMove);
+    doc.removeEventListener('pointerup', onDragEnd);
+    doc.removeEventListener('pointercancel', onDragEnd);
+    if (!open) return;
+    open.drag = null;
+    open.holder.classList.remove('sf-zoom-dragging');
+  }
+
+  /** The control strip: out, reset, in, and what the scale currently is. */
+  function controls() {
+    var bar = doc.createElement('div');
+    bar.className = 'sf-zoom-bar';
+
+    var mk = function (cls, label, onClick) {
+      var b = doc.createElement('button');
+      b.type = 'button';
+      b.className = 'sf-zoom-' + cls;
+      b.setAttribute('aria-label', label);
+      b.title = label;
+      b.onclick = function (e) { e.stopPropagation(); onClick(); };
+      return b;
+    };
+
+    var out = mk('out', 'Zoom out', function () { scaleBy(1 / 1.4, centreOfViewport()); });
+    out.textContent = '−';
+    var reset = mk('reset', 'Fit to screen', function () { resetView(); });
+    reset.textContent = 'Fit';
+    var into = mk('in', 'Zoom in', function () { scaleBy(1.4, centreOfViewport()); });
+    into.textContent = '+';
+
+    var level = doc.createElement('span');
+    level.className = 'sf-zoom-level';
+    level.setAttribute('aria-live', 'polite');
+    level.textContent = '100%';
+
+    bar.appendChild(out);
+    bar.appendChild(reset);
+    bar.appendChild(into);
+    bar.appendChild(level);
+    // Held so `apply` can keep the readout honest without a query per frame.
+    pendingLevel = level;
+    return bar;
+  }
+
+  /** Set aside between building the strip and the state it belongs to. */
+  var pendingLevel = null;
+
+  /** `reset` under its own name, since the control strip shadows it locally. */
+  function resetView() { reset(); }
 
   // ---------- exports ----------
 

@@ -107,6 +107,50 @@
   max-height: none;
 }
 
+/* The control strip. Bottom-centre, over the backdrop: a reader looking at a
+   picture is looking at the middle of the screen, and a corner control is one
+   they have to go and find. */
+.sf-zoom-bar {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(22, 22, 22, .82);
+  backdrop-filter: blur(6px);
+}
+
+.sf-zoom-bar button {
+  min-width: 34px;
+  height: 30px;
+  padding: 0 9px;
+  font: 600 14px/1 system-ui, sans-serif;
+  color: #fff;
+  cursor: pointer;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+}
+.sf-zoom-bar button:hover { background: rgba(255, 255, 255, .16) }
+.sf-zoom-bar button:focus-visible { outline: 2px solid #fff; outline-offset: -2px }
+.sf-zoom-reset { font-size: 12px !important; letter-spacing: .02em }
+
+/* Tabular figures, so the readout does not jitter as the number changes width
+   while a wheel gesture is still running. */
+.sf-zoom-level {
+  min-width: 52px;
+  padding-right: 6px;
+  text-align: right;
+  font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, .72);
+}
+
 .sf-zoom-close {
   position: absolute;
   top: 14px;
