@@ -121,6 +121,21 @@ test('a tap places the trigger, with no hover anywhere', async (t) => {
   assert.ok(btn && !btn.hidden, 'a tap offered no trigger');
 });
 
+test('a touch that becomes a scroll takes the trigger back', async (t) => {
+  // The tap and the scroll start with the same pointerdown. The browser says
+  // which one it was by taking the gesture over with pointercancel, and a
+  // reader scrolling past a diagram must not be left with a button on it.
+  const { window } = await boot(t);
+  sized(window);
+  const block = window.document.querySelector('.z-mermaid');
+  block.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+  assert.equal(trigger(window).hidden, false, 'the tap offered no trigger to take back');
+
+  block.dispatchEvent(new window.MouseEvent('pointercancel', { bubbles: true }));
+  assert.equal(trigger(window).hidden, true, 'the trigger outlived the gesture');
+  assert.equal(block.classList.contains('sf-hover'), false, 'the highlight outlived it too');
+});
+
 test('the trigger is not cleared by a hover report naming the trigger', async (t) => {
   // The review layer's own guard, alongside zoom.js's held clear: the button is
   // chrome drawn over one block and belonging to it.

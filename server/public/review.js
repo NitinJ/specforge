@@ -1118,6 +1118,11 @@ function sfRevealDisclosures(el) {
     // click, and on a mouse it resolves the block already hovered, so onHover
     // returns without doing anything (spec 2cc9bae1bc).
     document.addEventListener('pointerdown', onHover);
+    // A touch that turns into a scroll started with the same pointerdown as a
+    // tap, and the browser takes the gesture over with pointercancel. Without
+    // this the reader is left scrolling with a highlighted block and a zoom
+    // trigger they never asked for.
+    document.addEventListener('pointercancel', clearHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
     document.addEventListener('keydown', function (e) {
       // A modal dialog answers Escape itself, and the keypress still bubbles to
