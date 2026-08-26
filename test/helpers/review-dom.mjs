@@ -99,8 +99,15 @@ export const ZOOM_BODY = `
   <main>
     <h1>Zoom Spec</h1>
     <p class="z-text">A paragraph, which is not zoomable.</p>
+    <!-- Mermaid renders an SVG with an id and writes the styling for it into a
+         document-level sheet scoped by that id, twice: once per render pass.
+         Both halves are reproduced here, because a preview that drops either
+         one draws the diagram in solid black. -->
+    <style>#fx-mmd-0 .node rect{fill:#fff}#fx-mmd-0 .edge path{fill:none;stroke:#333}</style>
+    <style>#fx-mmd-0 .node rect{fill:#fff}#fx-mmd-0 .edge path{fill:none;stroke:#333}</style>
+    <style>#fx-mmd-01 .node rect{fill:#eee}</style>
     <pre class="z-mermaid" data-sf-mermaid="rendered" data-sf-src="flowchart LR
-  a --> b"><svg viewBox="0 0 400 200" width="400" height="200"><g class="node"><rect width="80" height="30"></rect><text>a</text></g></svg></pre>
+  a --> b"><svg id="fx-mmd-0" viewBox="0 0 400 200" width="400" height="200"><g class="node"><rect width="80" height="30"></rect><text>a</text></g><g class="edge"><path d="M0 0 L10 10"></path></g></svg></pre>
     <figure class="z-figure"><svg viewBox="0 0 300 120" width="300" height="120"><rect width="300" height="120"></rect></svg><figcaption>A hand-drawn picture.</figcaption></figure>
     <figure class="z-figimg"><img class="z-inner-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="A captioned image" width="240" height="160"><figcaption>A captioned image.</figcaption></figure>
     <p><img class="z-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="A bare image" width="200" height="100"></p>

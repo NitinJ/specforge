@@ -107,6 +107,19 @@
   max-height: none;
 }
 
+/* The wrapper that carries the block's own attributes so review.css's diagram
+   theming still reaches the clone. It exists to be selected, never to lay
+   anything out, so every box property the copied attributes bring with them
+   (`[data-sf-mermaid]` sets a margin, a padding and an overflow) is undone. */
+.sf-zoom-shell {
+  width: 100%;
+  height: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  background: none;
+}
+
 /* The control strip. Bottom-centre, over the backdrop: a reader looking at a
    picture is looking at the middle of the screen, and a corner control is one
    they have to go and find. */
