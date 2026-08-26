@@ -148,6 +148,11 @@ details.disclosure > :last-child{padding-bottom:14px}
     // this component plus one rule the library was missing. An inline diagram
     // that overflows its figure is the common failure, and it belongs here rather
     // than in one of five shells.
+    //
+    // The `max-width:100%` cap is why the review layer offers a full-screen
+    // preview on a figure holding artwork: at the reading width a detailed
+    // picture is capped down to illegibility, and the preview is where it is
+    // read (spec 2cc9bae1bc). The cap deliberately does not follow it there.
     css: `figure{margin:18px 0}
 figure svg{max-width:100%;height:auto;display:block}
 figcaption{color:var(--muted);font-size:12.5px;margin-top:6px}`,

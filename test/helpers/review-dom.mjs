@@ -6,6 +6,12 @@
 // behaviour this helper reproduces; the other review test files keep their own
 // narrower helpers, which stub a different global each (Prism, mermaid, the
 // contribute API) and are not the same function wearing options.
+//
+// It injects the zoom modules too, and can stub element sizes. jsdom runs no
+// layout, so the sizes are not a convenience: a fit scale or a pan bound is a
+// ratio of artwork to viewport, and every ratio against jsdom's 0x0 is the same
+// ratio. `noZoom` boots without the modules, which is how the invariants about
+// review.js surviving a broken zoom module are expressed (spec 2cc9bae1bc).
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +30,13 @@ const RECONCILE_JS = readFileSync(join(ROOT, 'server', 'public', 'reconcile.js')
 // ui.js is injected ahead of both and defines window.SFUI — the snackbar and the
 // confirm dialog, shared with the home page.
 const UI_JS = readFileSync(join(ROOT, 'server', 'public', 'ui.js'), 'utf8');
+// zoom-view.js and zoom.js are the full-screen preview, injected after review.js
+// the way the server injects them. Read lazily: the first stage of that work
+// lands zoom-view.js alone, and a helper that required both would fail every
+// existing test until the second one existed.
+const readIfPresent = (name) => {
+  try { return readFileSync(join(ROOT, 'server', 'public', name), 'utf8'); } catch { return ''; }
+};
 
 /** The default fixture: no <section> wrappers, so block commenting is exercised
  * on a spec with no structure to fall back on. */
@@ -70,6 +83,65 @@ export const HARNESS_BODY = `
   </main>
   <div id="sf-live">● live</div>
 `;
+
+/**
+ * A fixture holding every form the full-screen preview can open, and two it must
+ * refuse.
+ *
+ * Named by class rather than counted, because "the second pre on the page" stops
+ * meaning anything the moment a case is added. The two refusals are the point of
+ * the fixture as much as the three it accepts: a mermaid block that failed to
+ * render holds source text rather than artwork, and a paragraph is not a picture.
+ *
+ * Spec 2cc9bae1bc, task 0.1.
+ */
+export const ZOOM_BODY = `
+  <main>
+    <h1>Zoom Spec</h1>
+    <p class="z-text">A paragraph, which is not zoomable.</p>
+    <pre class="z-mermaid" data-sf-mermaid="rendered" data-sf-src="flowchart LR
+  a --> b"><svg viewBox="0 0 400 200" width="400" height="200"><g class="node"><rect width="80" height="30"></rect><text>a</text></g></svg></pre>
+    <figure class="z-figure"><svg viewBox="0 0 300 120" width="300" height="120"><rect width="300" height="120"></rect></svg><figcaption>A hand-drawn picture.</figcaption></figure>
+    <figure class="z-figimg"><img class="z-inner-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="A captioned image" width="240" height="160"><figcaption>A captioned image.</figcaption></figure>
+    <p><img class="z-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="A bare image" width="200" height="100"></p>
+    <div class="card z-card"><h4>A card</h4><div class="imgwrap"><img class="z-card-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="A card's picture" width="180" height="120"></div></div>
+    <div class="card z-card-many"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="one" width="80" height="80"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="two" width="80" height="80"></div>
+    <pre class="z-mermaid-err" data-sf-mermaid="error">flowchart LR
+  a --> </pre>
+    <figure class="z-figcaption-only"><figcaption>A caption with no artwork.</figcaption></figure>
+  </main>
+  <div id="sf-live">● live</div>
+`;
+
+/**
+ * Give named elements a size, and the window a viewport.
+ *
+ * jsdom runs no layout, so every `getBoundingClientRect` is 0x0 and
+ * `innerWidth` is a fixed 1024. Neither the fit scale nor the pan clamp can be
+ * observed without this: both are ratios of artwork to viewport, and every ratio
+ * against zero is the same ratio.
+ *
+ * @param {Window} window
+ * @param {Record<string, {width:number,height:number,x?:number,y?:number}>} sizes
+ *        keyed by CSS selector
+ * @param {{width?:number,height?:number}} [viewport]
+ *
+ * Spec 2cc9bae1bc, task 0.2.
+ */
+export function sizeElements(window, sizes, viewport = {}) {
+  if (viewport.width) Object.defineProperty(window, 'innerWidth', { value: viewport.width, configurable: true });
+  if (viewport.height) Object.defineProperty(window, 'innerHeight', { value: viewport.height, configurable: true });
+
+  Object.keys(sizes).forEach((selector) => {
+    const { width, height, x = 0, y = 0 } = sizes[selector];
+    window.document.querySelectorAll(selector).forEach((el) => {
+      el.getBoundingClientRect = () => ({
+        width, height, x, y, left: x, top: y, right: x + width, bottom: y + height,
+        toJSON() { return this; },
+      });
+    });
+  });
+}
 
 /**
  * Boot the review client the way a deferred <script> does: it runs after the
@@ -172,6 +244,18 @@ export async function bootReviewLayer(t, opts = {}) {
   if (!opts.noUi) window.eval(UI_JS); // injected ahead of review.js in production
   if (!opts.noReconcile) window.eval(RECONCILE_JS); // injected ahead of review.js in production
   window.eval(REVIEW_JS); // deferred-script execution → boot() via the readyState check
+  // The zoom modules, in the order the server injects them: the view maths first,
+  // since the module that drives the overlay reads it off `window`.
+  //
+  // `opts.noZoom` is not a convenience. Three invariants in spec 2cc9bae1bc are
+  // about review.js surviving a zoom module that is absent or broken, and a
+  // helper that always loaded it could not express any of them.
+  if (!opts.noZoom) {
+    const view = readIfPresent('zoom-view.js');
+    const zoom = readIfPresent('zoom.js');
+    if (view) window.eval(view);
+    if (zoom) window.eval(zoom);
+  }
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
   await new Promise((r) => window.setTimeout(r, 0)); // flush load()/render microtasks
   return { window, posts, puts, patches, dels };
