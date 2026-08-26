@@ -50,6 +50,30 @@ test('hovering each drawable form offers a trigger', async (t) => {
   }
 });
 
+test('a block holding one picture offers a trigger for that picture', async (t) => {
+  // Found in a browser: review.js hands over the commentable block, and in a
+  // real spec that is usually a card or a table cell wrapping the image rather
+  // than the image itself. Resolving only paragraphs left every gallery in the
+  // store with no preview at all.
+  const { window } = await boot(t);
+  hover(window, '.z-card');
+  assert.ok(trigger(window) && !trigger(window).hidden, 'a card holding one image offered none');
+
+  window.SFZoom.open(window.document.querySelector('.z-card'));
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(overlay(window).getAttribute('aria-label'), "A card's picture",
+    'it opened something other than the card\'s picture');
+});
+
+test('a block holding several pictures offers none', async (t) => {
+  // Which one did the reader mean? They have not said, and guessing is worse
+  // than the quiet trigger not appearing.
+  const { window } = await boot(t);
+  hover(window, '.z-card-many');
+  const btn = trigger(window);
+  assert.ok(!btn || btn.hidden, 'it picked one of two pictures');
+});
+
 test('hovering anything else offers none', async (t) => {
   // The refusals carry as much of the contract as the acceptances: a mermaid
   // block that failed to render holds source text, not artwork.

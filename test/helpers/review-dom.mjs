@@ -6,6 +6,12 @@
 // behaviour this helper reproduces; the other review test files keep their own
 // narrower helpers, which stub a different global each (Prism, mermaid, the
 // contribute API) and are not the same function wearing options.
+//
+// It injects the zoom modules too, and can stub element sizes. jsdom runs no
+// layout, so the sizes are not a convenience: a fit scale or a pan bound is a
+// ratio of artwork to viewport, and every ratio against jsdom's 0x0 is the same
+// ratio. `noZoom` boots without the modules, which is how the invariants about
+// review.js surviving a broken zoom module are expressed (spec 2cc9bae1bc).
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -98,6 +104,8 @@ export const ZOOM_BODY = `
     <figure class="z-figure"><svg viewBox="0 0 300 120" width="300" height="120"><rect width="300" height="120"></rect></svg><figcaption>A hand-drawn picture.</figcaption></figure>
     <figure class="z-figimg"><img class="z-inner-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="A captioned image" width="240" height="160"><figcaption>A captioned image.</figcaption></figure>
     <p><img class="z-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="A bare image" width="200" height="100"></p>
+    <div class="card z-card"><h4>A card</h4><div class="imgwrap"><img class="z-card-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="A card's picture" width="180" height="120"></div></div>
+    <div class="card z-card-many"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="one" width="80" height="80"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="two" width="80" height="80"></div>
     <pre class="z-mermaid-err" data-sf-mermaid="error">flowchart LR
   a --> </pre>
     <figure class="z-figcaption-only"><figcaption>A caption with no artwork.</figcaption></figure>

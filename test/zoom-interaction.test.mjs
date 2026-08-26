@@ -102,6 +102,20 @@ test('the wheel is consumed, so the document behind does not scroll', async (t) 
   assert.equal(e.defaultPrevented, true);
 });
 
+test('a wheel over the backdrop is consumed too', async (t) => {
+  // The artwork covers a fraction of the screen. Bound to the artwork alone,
+  // the wheel left the whole backdrop scrolling the document behind the
+  // preview, and closing it dropped the reader somewhere else in the page.
+  const window = await opened(t);
+  const start = view(window).scale;
+  const e = new window.WheelEvent('wheel', {
+    deltaY: -240, clientX: 40, clientY: 40, bubbles: true, cancelable: true,
+  });
+  window.document.querySelector('.sf-zoom-backdrop').dispatchEvent(e);
+  assert.equal(e.defaultPrevented, true, 'the document behind would have scrolled');
+  assert.ok(view(window).scale > start, 'it was eaten rather than acted on');
+});
+
 test('zooming stops at 8x however long the reader scrolls', async (t) => {
   const window = await opened(t);
   for (let i = 0; i < 60; i++) wheel(window, -240);

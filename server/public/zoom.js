@@ -57,8 +57,11 @@
     var fig = el.closest('figure');
     if (fig && fig.querySelector('svg, img')) return fig;
     if (el.tagName === 'IMG') return el;
-    var img = el.querySelector && el.querySelector('img');
-    return img && el.tagName === 'P' ? img : null;
+    // The hovered block is often not the picture but the thing holding it: a
+    // paragraph, a card, a table cell. Exactly one image in it is unambiguous.
+    // Several, and the reader has not said which one they meant.
+    var imgs = el.querySelectorAll ? el.querySelectorAll('img') : [];
+    return imgs.length === 1 ? imgs[0] : null;
   }
 
   /** The artwork inside a zoomable: what actually gets cloned. */
@@ -236,11 +239,15 @@
       fit: 1,
       drag: null,
       level: pendingLevel,
+      // The block this was opened on, kept so the trigger can be put back over
+      // it on close. `target` is cleared the moment the pointer leaves, which is
+      // immediately: the overlay covers the page.
+      block: zoomable,
       opener: btn && !btn.hidden ? btn : null,
     };
     pendingLevel = null;
     reset();
-    wireView(holder);
+    wireView(wrap, holder);
 
     // On the overlay rather than the document, and it stops propagation: the
     // document handler collapses threads and cancels composers, and a keypress
@@ -262,12 +269,67 @@
     return zoomable.matches && zoomable.matches(MERMAID) ? 'Diagram, full screen' : 'Image, full screen';
   }
 
+  /** How far an arrow key moves the picture, in CSS pixels. */
+  var NUDGE = 64;
+
+  /** Keys a browser scrolls a document with, beyond the arrows. */
+  var SCROLLS = { PageUp: 1, PageDown: 1, Home: 1, End: 1, ' ': 1, Spacebar: 1 };
+
   function onKey(e) {
     if (!open) return;
-    if (e.key === 'Escape') {
+    var k = e.key;
+
+    if (k === 'Escape') {
       e.stopPropagation();
       e.preventDefault();
-      closePreview();
+      return closePreview();
+    }
+
+    if (k === 'Tab') return trapTab(e);
+
+    // Every branch below consumes the key. An arrow scrolls a page, and a reader
+    // panning a diagram must not also be scrolling the document behind it.
+    var centre = centreOfViewport();
+    if (k === '+' || k === '=') { e.preventDefault(); return scaleBy(1.4, centre); }
+    if (k === '-' || k === '_') { e.preventDefault(); return scaleBy(1 / 1.4, centre); }
+    if (k === '0') { e.preventDefault(); return reset(); }
+
+    var by = { ArrowLeft: [NUDGE, 0], ArrowRight: [-NUDGE, 0], ArrowUp: [0, NUDGE], ArrowDown: [0, -NUDGE] }[k];
+    if (by) { e.preventDefault(); return pan(by[0], by[1]); }
+
+    // The rest of the keys a browser scrolls a document with. They do nothing
+    // here and they must not do that either.
+    if (SCROLLS[k]) e.preventDefault();
+  }
+
+  /** Move the picture, clamped, as a drag does. */
+  function pan(dx, dy) {
+    if (!open || !View) return;
+    open.view = View.clamp({
+      scale: open.view.scale, x: open.view.x + dx, y: open.view.y + dy,
+    }, open.art, viewport());
+    apply();
+  }
+
+  /**
+   * Keep Tab inside the preview.
+   *
+   * A modal that lets Tab reach the document behind it is a modal in appearance
+   * only: a keyboard reader tabs out, cannot see where they are, and has no way
+   * back except Escape.
+   */
+  function trapTab(e) {
+    var stops = open.wrap.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!stops.length) return;
+    var first = stops[0];
+    var last = stops[stops.length - 1];
+    var here = doc.activeElement;
+    if (e.shiftKey && (here === first || here === open.wrap)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && here === last) {
+      e.preventDefault();
+      first.focus();
     }
   }
 
@@ -276,11 +338,19 @@
     onDragEnd();
     doc.removeEventListener('keydown', onKey, true);
     var opener = open.opener;
+    var block = open.block;
     if (open.wrap.parentNode) open.wrap.parentNode.removeChild(open.wrap);
     open = null;
     // Focus goes back where it came from, or a keyboard reader is dropped at the
     // top of the document every time they close a picture (I7).
+    //
+    // Re-placed first. Opening the preview puts the pointer over the overlay, so
+    // review.js clears its hover and the trigger hides: focusing a hidden button
+    // does nothing at all, and the reader lands back at the top of the document.
+    // Caught in a browser; jsdom fires no such hover and reported this working.
     if (opener && opener.isConnected !== false) {
+      target = block;
+      place();
       try { opener.focus(); } catch (e) { /* not fatal */ }
     }
   }
@@ -330,11 +400,16 @@
     return { x: vp.width / 2, y: vp.height / 2 };
   }
 
-  /** Wheel, drag and double-click, on the artwork itself. */
-  function wireView(holder) {
-    holder.addEventListener('wheel', function (e) {
-      // Consumed, or the document scrolls under the overlay and closing it
-      // leaves the reader somewhere they did not choose.
+  /**
+   * Wheel on the whole overlay; drag and double-click on the artwork.
+   *
+   * The wheel is bound to the overlay rather than the artwork because the
+   * artwork covers a fraction of the screen: a wheel over the backdrop was
+   * scrolling the document behind the preview, and closing it left the reader
+   * somewhere they did not choose.
+   */
+  function wireView(wrap, holder) {
+    wrap.addEventListener('wheel', function (e) {
       e.preventDefault();
       // exp() rather than a fixed step: a trackpad sends many small deltas and a
       // mouse sends few large ones, and this makes both feel like one gesture.
