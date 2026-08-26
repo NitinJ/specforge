@@ -108,6 +108,30 @@ test('the trigger survives the pointer arriving on it', async (t) => {
   assert.ok(overlay(window), 'the click never reached a live button');
 });
 
+test('a tap places the trigger, with no hover anywhere', async (t) => {
+  // A touch screen reports no hover. Most browsers synthesize a mousemove ahead
+  // of a tap's click, and a browser that does not would leave the preview
+  // unreachable, so the block is resolved from pointerdown as well.
+  const { window } = await boot(t);
+  sized(window);
+  window.document.querySelector('.z-mermaid').dispatchEvent(
+    new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }),
+  );
+  const btn = trigger(window);
+  assert.ok(btn && !btn.hidden, 'a tap offered no trigger');
+});
+
+test('the trigger is not cleared by a hover report naming the trigger', async (t) => {
+  // The review layer's own guard, alongside zoom.js's held clear: the button is
+  // chrome drawn over one block and belonging to it.
+  const { window } = await boot(t);
+  sized(window);
+  hover(window, '.z-mermaid');
+  const btn = trigger(window);
+  btn.dispatchEvent(new window.MouseEvent('mousemove', { bubbles: true }));
+  assert.equal(trigger(window).hidden, false, 'the review layer cleared it');
+});
+
 test('the held clear is honoured once the pointer leaves the trigger', async (t) => {
   // The other half: a reader who hovers the trigger and moves away without
   // clicking must not be left with a button floating over nothing.

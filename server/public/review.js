@@ -1111,6 +1111,13 @@ function sfRevealDisclosures(el) {
     watchSlides();
 
     document.addEventListener('mousemove', onHover);
+    // A tap has no hover to report. Most browsers synthesize a mousemove ahead
+    // of a tap's click, but the zoom trigger is built from the hover and a
+    // browser that does not synthesize one leaves the preview unreachable on a
+    // touch screen. pointerdown arrives on every device and lands before the
+    // click, and on a mouse it resolves the block already hovered, so onHover
+    // returns without doing anything (spec 2cc9bae1bc).
+    document.addEventListener('pointerdown', onHover);
     document.addEventListener('click', onClick, true); // capture so we can claim a block click
     document.addEventListener('keydown', function (e) {
       // A modal dialog answers Escape itself, and the keypress still bubbles to
@@ -2901,6 +2908,11 @@ function sfRevealDisclosures(el) {
     // handlers own the reciprocal highlight there. Clearing it on every
     // mousemove inside a hovered bubble would make its block flicker.
     if (e.target.closest && e.target.closest('#sf-rail')) return;
+    // The zoom trigger is chrome, but it is chrome drawn over one block and
+    // belonging to it. Reporting a hover of nothing because the pointer reached
+    // the button deletes the button before the click can land, and the preview
+    // becomes unopenable (spec 2cc9bae1bc).
+    if (e.target.closest && e.target.closest('#sf-zoom-btn')) return;
     if (state.composeEl || inUI(e.target)) { clearHover(); return; }
     var el = blockAt(e.target);
     if (el === hoverEl) return;
