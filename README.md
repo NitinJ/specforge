@@ -78,6 +78,12 @@ the store, either as-is or re-authored into house style.
 Hover any block, click, and type. Threads stick to the block they were left on
 and survive edits to the document.
 
+Hovering a diagram or an image offers a preview button instead of taking the
+click, so commenting on a diagram still works exactly as it does anywhere else.
+The preview fills the screen over a dark backdrop and zooms from fit to 8x: use
+the wheel, drag to pan, double-click to toggle, or `+` `-` `0` and the arrows.
+Escape closes it.
+
 The floating **SF** button opens contents, theme, width and **Export → PDF**.
 The pill beside it is the single action worth taking next, which changes as the
 spec moves: `Submit comments` → `Awaiting response` → `Review replies` →

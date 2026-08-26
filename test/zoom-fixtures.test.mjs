@@ -64,7 +64,8 @@ test('it sizes every element a selector matches, not only the first', async (t) 
   const { window } = await bootReviewLayer(t, { body: ZOOM_BODY });
   sizeElements(window, { img: { width: 50, height: 40 } });
   const widths = [...window.document.querySelectorAll('img')].map((i) => i.getBoundingClientRect().width);
-  assert.deepEqual(widths, [50, 50]);
+  assert.ok(widths.length > 1, 'the fixture has only one image to size');
+  assert.deepEqual(widths, widths.map(() => 50));
 });
 
 test('the harness can boot without the zoom modules', async (t) => {
