@@ -8,8 +8,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { bootReviewLayer, sizeElements, ZOOM_BODY } from './helpers/review-dom.mjs';
+
+const ZOOM_CSS = readFileSync(new URL('../server/public/zoom.css', import.meta.url), 'utf8');
 
 const settle = (window) => new Promise((r) => window.setTimeout(r, 0));
 
@@ -127,6 +130,40 @@ test('zooming out stops at half of fit', async (t) => {
   const fit = view(window).scale;
   for (let i = 0; i < 60; i++) wheel(window, 240);
   assert.ok(view(window).scale >= fit / 2 - 0.0001, `shrank past the bound to ${view(window).scale}`);
+});
+
+// --- what the artwork is drawn from ------------------------------------------------
+
+test('the artwork is not promoted to its own layer at rest', async (t) => {
+  // `will-change: transform` promotes the holder to a compositing layer, and a
+  // composited layer is rasterized once at the scale it had when it was made:
+  // every later scale stretches that bitmap rather than redrawing the vector. A
+  // diagram at 800% was a blur, which is the resolution the reader opened the
+  // preview to escape.
+  //
+  // Asserted against the stylesheet, because the defect is a stylesheet
+  // property and jsdom paints nothing. Costs nothing at 60fps either: wheel
+  // zooming to 800% held a 16.7ms median frame with it gone.
+  const resting = /\.sf-zoom-art\s*\{([^}]*)\}/.exec(ZOOM_CSS);
+  assert.ok(resting, 'no .sf-zoom-art rule to check');
+  assert.ok(!/will-change/.test(resting[1]),
+    'will-change is back on the resting artwork, and every zoom is a stretched bitmap again');
+});
+
+test('it is promoted while a drag is in flight', async (t) => {
+  // Where the layer is free: a drag changes the offset and not the scale, so
+  // translating a raster is exact.
+  const dragging = /\.sf-zoom-art\.sf-zoom-dragging\s*\{([^}]*)\}/.exec(ZOOM_CSS);
+  assert.ok(dragging, 'no .sf-zoom-dragging rule to check');
+  assert.match(dragging[1], /will-change:\s*transform/);
+});
+
+test('the drag class is taken off again, so the promotion ends with it', async (t) => {
+  const window = await opened(t);
+  const holder = holderOf(window);
+  drag(window, { x: 800, y: 450 }, { x: 700, y: 400 });
+  assert.equal(holder.classList.contains('sf-zoom-dragging'), false,
+    'the artwork stayed promoted after the drag ended');
 });
 
 // --- dragging -------------------------------------------------------------------
