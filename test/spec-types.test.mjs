@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 import { useTempStore } from './helpers/temp-store.mjs';
 import {
-  BUILTIN_SHELL, specTypes, specType, isSpecType, addCustomType, customTypes, slugify,
+  BUILTIN, BUILTIN_SHELL, specTypes, specType, isSpecType, addCustomType, customTypes, slugify,
 } from '../lib/spec-types.mjs';
 import { storeRoot, typesPath } from '../lib/store-paths.mjs';
 
@@ -27,8 +27,14 @@ function seedTypes(custom) {
 
 // --- the built-ins are untouched (I2) --------------------------------------
 
-test('an empty store lists exactly the six built-in kinds, in their own order', () => {
-  assert.deepEqual(specTypes(), ['general', 'design', 'research', 'deck', 'design-impl', 'impl']);
+/** The kinds that predate the shipped document kinds, still first and in order. */
+const ORIGINAL = ['general', 'design', 'research', 'deck', 'design-impl', 'impl'];
+
+test('an empty store lists every built-in kind, the original six first', () => {
+  // Order is load-bearing: it is the order the create skill reads them in, and
+  // reshuffling it changes which kind an agent meets first.
+  assert.deepEqual(specTypes().slice(0, ORIGINAL.length), ORIGINAL);
+  assert.deepEqual(specTypes(), Object.keys(BUILTIN));
 });
 
 test('the built-in table still says which shell each scaffolds from', () => {
@@ -37,12 +43,35 @@ test('the built-in table still says which shell each scaffolds from', () => {
   assert.deepEqual(Object.keys(BUILTIN_SHELL), specTypes());
 });
 
-test('a built-in reads back as built-in, with a label and no when-to-use text', () => {
+test('a built-in reads back as built-in, with a label', () => {
   const t = specType('research');
   assert.equal(t.slug, 'research');
   assert.equal(t.shell, 'doc');
   assert.equal(t.builtin, true);
   assert.equal(typeof t.label, 'string');
+});
+
+test('every built-in says when to use it', () => {
+  // The registry is what an agent picks a kind from, and it cannot pick between
+  // eighteen slugs. A kind that describes itself is selectable; one that does
+  // not is a name the agent has to guess at, which is how a request for a launch
+  // plan became a general spec.
+  for (const slug of specTypes()) {
+    const t = specType(slug);
+    assert.ok(t.whenToUse, `${slug} has no when-to-use line`);
+    assert.ok(t.whenToUse.length > 40, `${slug}'s when-to-use is too short to choose on: ${t.whenToUse}`);
+  }
+});
+
+test('the when-to-use lines say what each kind is NOT for', () => {
+  // Two kinds that both sound right is the failure mode. Each line has to carry
+  // the boundary against its nearest neighbour, or the agent picks the first
+  // plausible match rather than the best one.
+  for (const slug of specTypes()) {
+    const { whenToUse } = specType(slug);
+    assert.match(whenToUse, /\b(not|rather than|instead|over|before|after|pick)\b/i,
+      `${slug}'s when-to-use draws no boundary against a neighbour: ${whenToUse}`);
+  }
 });
 
 test('an unknown kind is null, not a throw', () => {
@@ -56,9 +85,7 @@ test('an unknown kind is null, not a throw', () => {
 
 test('a custom kind joins the list, after the built-ins', () => {
   seedTypes([{ slug: 'postmortem', label: 'Postmortem', shell: 'doc', whenToUse: 'after an incident', created: 1 }]);
-  assert.deepEqual(specTypes(), [
-    'general', 'design', 'research', 'deck', 'design-impl', 'impl', 'postmortem',
-  ]);
+  assert.deepEqual(specTypes(), [...Object.keys(BUILTIN), 'postmortem']);
   assert.equal(isSpecType('postmortem'), true);
 });
 
@@ -67,7 +94,7 @@ test('custom kinds keep creation order, so the list does not reshuffle', () => {
     { slug: 'zeta', label: 'Zeta', shell: 'doc', whenToUse: '', created: 1 },
     { slug: 'alpha', label: 'Alpha', shell: 'doc', whenToUse: '', created: 2 },
   ]);
-  assert.deepEqual(specTypes().slice(6), ['zeta', 'alpha']);
+  assert.deepEqual(specTypes().slice(Object.keys(BUILTIN).length), ['zeta', 'alpha']);
 });
 
 test('a custom kind carries its when-to-use text, which is what makes it choosable', () => {
@@ -87,7 +114,7 @@ test('customTypes lists only the custom ones', () => {
 // --- the store file degrades rather than throwing ---------------------------
 
 test('no types.json reads as no custom kinds', () => {
-  assert.deepEqual(specTypes().length, 6);
+  assert.deepEqual(specTypes().length, Object.keys(BUILTIN).length);
   assert.deepEqual(customTypes(), []);
 });
 
@@ -96,7 +123,7 @@ test('an unparseable types.json reads as no custom kinds', () => {
   // must not take the daemon down.
   mkdirSync(storeRoot(), { recursive: true });
   writeFileSync(typesPath(), '{ not json');
-  assert.deepEqual(specTypes().length, 6);
+  assert.deepEqual(specTypes().length, Object.keys(BUILTIN).length);
 });
 
 test('a row missing required fields is dropped, not half-loaded', () => {

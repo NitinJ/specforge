@@ -15,6 +15,7 @@ import { allRules } from '../lib/rules/all.mjs';
 import { cmdCreate, cmdImport } from '../lib/specforge-cli.mjs';
 import { specTypes } from '../lib/spec-types.mjs';
 import { TEMPLATE_RULES } from '../lib/rules/template-defaults.mjs';
+import { DOCUMENT_TYPES } from '../lib/document-types.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-template-rules-');
 
@@ -25,7 +26,9 @@ test('every bundled shell arrives carrying its type its own rules', () => {
     const html = templateHtmlFor(type);
     assert.equal(hasTemplateBlocks(html), true, `${type} has no blocks`);
     const ids = templateRules(type).map((r) => r.id);
-    assert.deepEqual(ids, TEMPLATE_RULES[type].map((r) => r.id), type);
+    // A kind with no entry has no rules of its own and is judged by the global
+    // list alone, which is the state every kind was in before per-type rules.
+    assert.deepEqual(ids, (TEMPLATE_RULES[type] || []).map((r) => r.id), type);
   }
 });
 
@@ -39,14 +42,27 @@ const PROMPTED_SECTIONS = {
   'design-impl': ['decisions', 'open-questions'],
   impl: ['decisions', 'open-questions'],
   research: ['open-questions'],
-  general: [],
+  general: ['tldr'],
   deck: [],
 };
+
+/**
+ * The sections a type's guidance should land on.
+ *
+ * A shipped document kind writes its own guidance per section, so what it
+ * carries is read from its definition rather than listed again here: a list
+ * repeated in a test is the copy that goes stale when a section is renamed.
+ */
+function promptedSections(type) {
+  const document = DOCUMENT_TYPES.find((d) => d.slug === type && !d.promptOnly);
+  if (!document) return PROMPTED_SECTIONS[type];
+  return document.sections.filter((s) => s.prompt).map((s) => s.id).sort();
+}
 
 test('a prompt lands in every section that exists to carry one, and nowhere else', () => {
   for (const type of specTypes()) {
     const sections = templatePrompts(type).map((p) => p.section).sort();
-    assert.deepEqual(sections, PROMPTED_SECTIONS[type], type);
+    assert.deepEqual(sections, promptedSections(type), type);
   }
 });
 
@@ -86,7 +102,7 @@ test('a created spec carries neither block, whatever its type', async () => {
     const { id, htmlPath, prompts } = await cmdCreate({ title: `A ${type} spec`, type }, deps);
     const html = readFileSync(htmlPath, 'utf8');
     assert.equal(hasTemplateBlocks(html), false, `${type}: a spec must never carry the scaffolding`);
-    assert.deepEqual(prompts.map((p) => p.section).sort(), PROMPTED_SECTIONS[type], type);
+    assert.deepEqual(prompts.map((p) => p.section).sort(), promptedSections(type), type);
     assert.ok(id);
   }
 });
