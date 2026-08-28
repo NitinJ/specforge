@@ -50,6 +50,23 @@ test('each one says when to use it, and what it is not for', () => {
   }
 });
 
+test('every kind names its own artifact in its line', () => {
+  // "Write a PRD" has to match the prd kind, and it only does if the line
+  // contains the word a person would use. Twelve of the eighteen did not: the
+  // prd line never said "PRD", the launch-plan line never said "launch", so
+  // naming the kind outright was the least reliable way to select it.
+  //
+  // `spec` is excluded because it is in half the slugs and in the word "spec"
+  // on every page, so requiring it would assert nothing.
+  for (const slug of specTypes()) {
+    const { whenToUse } = specType(slug);
+    for (const word of slug.split('-').filter((w) => w !== 'spec')) {
+      assert.match(whenToUse, new RegExp(`\\b${word}`, 'i'),
+        `${slug}'s line never says "${word}", so a request naming it will not match`);
+    }
+  }
+});
+
 // --- the shells are built from the definitions ------------------------------
 
 test('a seeded template holds exactly the sections its definition names', async () => {

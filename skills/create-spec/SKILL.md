@@ -3,13 +3,14 @@ name: specforge:create-spec
 user-invocable: false
 description: |
   Author a new house-style spec into the SpecForge store. Use when the user asks to
-  "write a spec", "create a design doc", "draft a spec for <x>", "research <x>", or
-  "plan to implement <x>". Picks the spec type (design | research | design-impl |
-  impl | general), scaffolds the right shell, and authors the type's sections —
-  light/dark HTML, stable section ids, a floating TOC; impl types also get a
-  Stages/Tasks plan, a live task tracker, and impl-time stubs; general is the
-  fallback when no type fits and the sections come from the use case. Lints the
-  universal basics before done.
+  "write a spec", "create a design doc", "draft a spec for <x>", "research <x>",
+  "write a PRD / UX spec / test plan / launch plan / security review", or "plan to
+  implement <x>". Reads the installed spec types and picks the one whose "when to
+  use" line fits, then scaffolds that type's shell and authors its sections against
+  the guidance it carries — light/dark HTML, stable section ids, a floating TOC;
+  impl types also get a Stages/Tasks plan, a live task tracker, and impl-time
+  stubs; general is the fallback when nothing fits and the sections come from the
+  use case. Lints the universal basics before done.
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
@@ -25,34 +26,42 @@ injects the review layer at serve time.
 
 - Identify the topic. If scope is unclear or has multiple interpretations, **ask
   before writing** — don't guess.
-- **Infer the spec type** from the request, then confirm in one line ("Creating a
-  *research* spec — sound right?"):
-  - **research** — "research / investigate / explore / compare / evaluate / survey
-    <X>". A findings report, not a build.
-  - **design** — "design / architect / how should we <X>": a decision doc, no plan.
-  - **design-impl** — "design and build / spec + plan for <X>": a design plus an
-    implementation plan. Pick this whenever the request is a design that will be
-    built, which is most of them.
-  - **impl** — "plan to implement <existing design> / just the build plan": light
-    design prose, heavy on stages/tasks.
-  - **general** (the fallback, and the CLI default) — the request is a document
-    that is none of the above: a proposal, a policy, a postmortem, a runbook, a
-    comparison, a brief. It scaffolds the chrome and one TL;DR section; you decide
-    every section from the use case. Reach for it only when no other type fits,
-    never to avoid choosing.
-- **Check for the user's own types before settling on one of the six.** They can
-  add a kind of spec from the configuration page, and a kind they made for
-  exactly this request beats any of the above:
+- **Read the type list before picking. It is the list, and it is not short:**
 
   ```
   node "${CLAUDE_PLUGIN_ROOT}/lib/spec-types-cli.mjs"
   ```
 
-  Each custom type prints with a **when to use** line, written by the person who
-  made it. Read it as the rule it is: if it describes this request, take that
-  type. `general` in particular is the fallback for a document that fits nothing
-  else, and a custom type existing usually means "nothing else fit" already
-  happened once and was answered.
+  Every type prints with a **when to use** line saying what it is for and what it
+  is not for. That line is the rule. This skill deliberately does not repeat the
+  types here: a copy in this file goes stale the moment a type is added or its
+  description is sharpened, and a stale copy is worse than no copy because it
+  reads as authoritative.
+
+- **Pick by reading all of them, not by stopping at the first plausible match.**
+  That is the failure this list exists to prevent, and it has a shape: a request
+  to plan a release matches `general` on a quick read and `launch-plan` on a full
+  one, and the first produces a document with none of the sections that make a
+  launch survivable. Four rules settle nearly every case:
+
+  - **The request names a type, take it.** "Write a PRD", "do a security review",
+    "test plan for this" name a type. Do not reinterpret them.
+  - **Two fit, take the more specific one.** A specific type carries sections and
+    guidance the general one cannot. `design-impl` beats `general` for a design
+    that will be built; `code-exploration-spec` beats `research` when the subject
+    is code in this repo.
+  - **The type is decided by what the document has to do, not by the verb.**
+    "Explore" appears in `research`, `exploration-spec`, `code-exploration-spec`
+    and `design-exploration-spec`, and the four differ by whether there is a
+    question with a right answer, a space to map, a codebase to read, or options
+    to compare.
+  - **`general` is the fallback, never the way to avoid choosing.** Reach for it
+    only when you have read the list and nothing fits, and say in one line what
+    it did not fit, since that is how a missing type gets noticed.
+
+- **Confirm in one line before writing** ("Creating a *launch-plan* spec — sound
+  right?"). One line, not a menu: the user corrects a wrong pick faster than they
+  answer a question about it.
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
 - Read the component rules: `${CLAUDE_PLUGIN_ROOT}/references/spec-components.md`.
   43 components, each with the rule for when it applies. Pick by what a block
@@ -82,10 +91,14 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --ty
 ```
 
 Prints `{ id, htmlPath, url, status, type, project, language, prompts }`. It has
-started/reused the daemon, copied the right shell to `htmlPath` (impl types → the
-full Stages/tracker/Runtime shell; design/research → a chrome-only doc shell;
-general → the scaffold and a TL;DR, nothing else), and attached the spec to this
-session. **Author into `htmlPath`** — that file IS the spec.
+started/reused the daemon, copied the type's shell to `htmlPath`, and attached the
+spec to this session. **Author into `htmlPath`** — that file IS the spec.
+
+**Most types arrive with their sections already in place.** The shell you get is
+that type's own: its headings, its table of contents, its `{{ … }}` placeholders.
+When that is what you find, the section set is decided and your job is to fill it,
+not to redesign it. Only `general` arrives with nothing but a TL;DR, because
+choosing the sections is what that type is for.
 
 **`language` is the user's authoring direction, and it outranks the house
 register.** A non-empty string is how this user wants specs written: their tone,
@@ -118,9 +131,17 @@ change what future specs start from, edit the template spec like any other spec
 ## 3. Author from the shell — sections by type
 
 Replace every `{{ … }}` placeholder (`{{TITLE}}`, `{{DATE}}` = today YYYY-MM-DD,
-`{{STATUS}}` = `draft`, `{{OWNER}}`). The skeletons below are a **starting point —
-adapt them to the actual problem** (add, drop, reorder, rename sections as the
-topic calls for). Whatever sections you keep:
+`{{STATUS}}` = `draft`, `{{OWNER}}`).
+
+**If the shell already carries this type's sections, they are the skeleton.** The
+`prompts` from `create` say what belongs in each one, and the skeletons below are
+for the types that do not ship with their own: read them as an example of the
+shape, not as a list to impose on a scaffold that already has one. Adding, cutting
+or reordering a shipped type's sections is a decision worth making, not a default:
+they are what makes that type worth having, and the type's rules are written
+against them.
+
+Whatever sections you end up with:
 
 - **Keep every `<section>` with a stable, unique `id`** (anchors + comments depend
   on them). Keep the theme CSS (light/dark vars, `[data-theme]`,
