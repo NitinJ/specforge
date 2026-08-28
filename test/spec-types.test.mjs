@@ -37,12 +37,35 @@ test('the built-in table still says which shell each scaffolds from', () => {
   assert.deepEqual(Object.keys(BUILTIN_SHELL), specTypes());
 });
 
-test('a built-in reads back as built-in, with a label and no when-to-use text', () => {
+test('a built-in reads back as built-in, with a label', () => {
   const t = specType('research');
   assert.equal(t.slug, 'research');
   assert.equal(t.shell, 'doc');
   assert.equal(t.builtin, true);
   assert.equal(typeof t.label, 'string');
+});
+
+test('every built-in says when to use it', () => {
+  // The registry is what an agent picks a kind from, and it cannot pick between
+  // eighteen slugs. A kind that describes itself is selectable; one that does
+  // not is a name the agent has to guess at, which is how a request for a launch
+  // plan became a general spec.
+  for (const slug of specTypes()) {
+    const t = specType(slug);
+    assert.ok(t.whenToUse, `${slug} has no when-to-use line`);
+    assert.ok(t.whenToUse.length > 40, `${slug}'s when-to-use is too short to choose on: ${t.whenToUse}`);
+  }
+});
+
+test('the when-to-use lines say what each kind is NOT for', () => {
+  // Two kinds that both sound right is the failure mode. Each line has to carry
+  // the boundary against its nearest neighbour, or the agent picks the first
+  // plausible match rather than the best one.
+  for (const slug of specTypes()) {
+    const { whenToUse } = specType(slug);
+    assert.match(whenToUse, /\b(not|rather than|instead|over|before|after)\b/i,
+      `${slug}'s when-to-use draws no boundary against a neighbour: ${whenToUse}`);
+  }
 });
 
 test('an unknown kind is null, not a throw', () => {
