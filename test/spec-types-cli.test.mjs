@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { useTempStore } from './helpers/temp-store.mjs';
-import { addCustomType } from '../lib/spec-types.mjs';
+import { addCustomType, BUILTIN } from '../lib/spec-types.mjs';
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'spec-types-cli.mjs');
 const store = useTempStore({ beforeEach, afterEach }, 'sf-typescli-');
@@ -60,7 +60,7 @@ test('the shell family is said in words, not as a flag', () => {
 test('--json carries the records a caller would branch on', () => {
   addCustomType({ name: 'Postmortem', whenToUse: 'after an incident', shell: 'doc' });
   const { types } = JSON.parse(run('--json'));
-  assert.equal(types.length, 7);
+  assert.equal(types.length, Object.keys(BUILTIN).length + 1);
   const custom = types.find((t) => t.slug === 'postmortem');
   assert.equal(custom.builtin, false);
   assert.equal(custom.whenToUse, 'after an incident');

@@ -1,0 +1,117 @@
+// The document kinds that ship with the plugin.
+//
+// Twelve kinds whose shells and section prompts are built from one table rather
+// than from committed HTML. What is asserted here is the property that makes
+// that safe: what the seeder produces matches what the definition says, so a
+// section renamed in one place cannot leave the other pointing at nothing.
+
+import { test, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { useTempStore } from './helpers/temp-store.mjs';
+import { DOCUMENT_TYPES } from '../lib/document-types.mjs';
+import { specTypes, specType, BUILTIN } from '../lib/spec-types.mjs';
+import { ensureTemplates, templateHtmlFor, templatePrompts } from '../lib/store-templates.mjs';
+import { stripTemplateBlocks, hasTemplateBlocks } from '../lib/rules/template-blocks.mjs';
+
+useTempStore({ beforeEach, afterEach }, 'sf-doctypes-');
+
+/** The kinds that carry their own sections, which is all of them but `general`. */
+const AUTHORED = DOCUMENT_TYPES.filter((d) => !d.promptOnly);
+
+const sectionIds = (html) => [...html.matchAll(/<section\b[^>]*\bid="([^"]+)"/g)].map((m) => m[1]);
+const tocIds = (html) => {
+  const nav = /<nav class="toc">([\s\S]*?)<\/nav>/.exec(html);
+  return nav ? [...nav[1].matchAll(/href="#([^"]+)"/g)].map((m) => m[1]) : [];
+};
+
+// --- they are kinds ---------------------------------------------------------
+
+test('every document kind is a built-in kind', () => {
+  for (const def of DOCUMENT_TYPES) {
+    assert.ok(BUILTIN[def.slug], `${def.slug} is defined but not registered`);
+  }
+});
+
+test('an empty store already lists them, with no types.json', () => {
+  // The point of shipping them: a fresh store has them without anyone adding
+  // anything. A kind that only exists once the user creates it is not shipped.
+  const listed = specTypes();
+  for (const def of DOCUMENT_TYPES) {
+    assert.ok(listed.includes(def.slug), `${def.slug} missing from a fresh store`);
+  }
+});
+
+test('each one says when to use it, and what it is not for', () => {
+  for (const def of AUTHORED) {
+    const { whenToUse } = specType(def.slug);
+    assert.ok(whenToUse.length > 40, `${def.slug}: ${whenToUse}`);
+    assert.match(whenToUse, /\b(not|rather than|instead|over|before|after|pick)\b/i, def.slug);
+  }
+});
+
+// --- the shells are built from the definitions ------------------------------
+
+test('a seeded template holds exactly the sections its definition names', async () => {
+  ensureTemplates();
+  for (const def of AUTHORED) {
+    const html = templateHtmlFor(def.slug);
+    assert.deepEqual(
+      sectionIds(html),
+      def.sections.map((s) => s.id),
+      `${def.slug}'s sections do not match its definition`,
+    );
+  }
+});
+
+test('every section is reachable from the table of contents', async () => {
+  ensureTemplates();
+  for (const def of AUTHORED) {
+    const html = templateHtmlFor(def.slug);
+    assert.deepEqual(tocIds(html), def.sections.map((s) => s.id), def.slug);
+  }
+});
+
+test('every prompt is keyed to a section that exists', async () => {
+  // The failure this catches: a prompt keyed to a renamed section is never
+  // rendered and never reaches the agent, and nothing else notices.
+  ensureTemplates();
+  for (const def of DOCUMENT_TYPES) {
+    const html = templateHtmlFor(def.slug);
+    const ids = sectionIds(html);
+    for (const p of templatePrompts(def.slug)) {
+      assert.ok(ids.includes(p.section), `${def.slug}: prompt on missing section "${p.section}"`);
+    }
+  }
+});
+
+test('every section carries guidance', async () => {
+  // A section with no prompt is a section the agent fills in from the heading
+  // alone, which is the state these kinds exist to improve on.
+  ensureTemplates();
+  for (const def of AUTHORED) {
+    const got = new Set(templatePrompts(def.slug).map((p) => p.section));
+    for (const s of def.sections) {
+      assert.ok(got.has(s.id), `${def.slug}: section "${s.id}" has no prompt`);
+    }
+  }
+});
+
+test('the scaffolding does not reach a scaffolded spec', async () => {
+  ensureTemplates();
+  for (const def of DOCUMENT_TYPES) {
+    const spec = stripTemplateBlocks(templateHtmlFor(def.slug));
+    assert.equal(hasTemplateBlocks(spec), false, `${def.slug} leaks its own scaffolding`);
+    assert.ok(!spec.includes('data-sf-prompt'), def.slug);
+  }
+});
+
+test('general keeps the shell it ships with, and gains only a prompt', async () => {
+  // promptOnly: the built-in already has a shell worth keeping, and rewriting it
+  // from a definition would replace something the plugin maintains.
+  ensureTemplates();
+  const html = templateHtmlFor('general');
+  assert.equal(sectionIds(html).length, 1);
+  assert.deepEqual(sectionIds(html), ['tldr']);
+  assert.equal(templatePrompts('general').length, 1);
+});

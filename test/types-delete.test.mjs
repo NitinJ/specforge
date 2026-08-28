@@ -16,7 +16,7 @@ import { useTempStore } from './helpers/temp-store.mjs';
 import { seedLiveSession } from './helpers/live-session.mjs';
 import { handleTypeCreate, handleTypeDelete } from '../lib/types-api.mjs';
 import {
-  addCustomType, removeCustomType, customTypes, specTypes, isSpecType,
+  addCustomType, removeCustomType, customTypes, specTypes, isSpecType, BUILTIN,
 } from '../lib/spec-types.mjs';
 import { specsOfType, readMeta } from '../lib/meta.mjs';
 import { createSpec } from '../lib/store.mjs';
@@ -53,7 +53,7 @@ test('a built-in kind cannot be removed (I7)', () => {
   for (const builtin of ['general', 'design', 'research', 'deck', 'design-impl', 'impl']) {
     assert.throws(() => removeCustomType(builtin), /built-in/i, `${builtin} is protected`);
   }
-  assert.equal(specTypes().length, 6, 'and all six are still here');
+  assert.equal(specTypes().length, Object.keys(BUILTIN).length, 'and every one is still here');
 });
 
 test('specsOfType counts specs of a kind, and ignores the kind\'s own template', () => {
