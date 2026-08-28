@@ -8,9 +8,11 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { useTempStore } from './helpers/temp-store.mjs';
+import { storeRoot, typesPath, specHtmlPath } from '../lib/store-paths.mjs';
 import { DOCUMENT_TYPES } from '../lib/document-types.mjs';
-import { specTypes, specType, BUILTIN } from '../lib/spec-types.mjs';
+import { specTypes, specType, BUILTIN, shadowedTypes, templateIdFor } from '../lib/spec-types.mjs';
 import { ensureTemplates, templateHtmlFor, templatePrompts } from '../lib/store-templates.mjs';
 import { stripTemplateBlocks, hasTemplateBlocks } from '../lib/rules/template-blocks.mjs';
 
@@ -65,6 +67,50 @@ test('every kind names its own artifact in its line', () => {
         `${slug}'s line never says "${word}", so a request naming it will not match`);
     }
   }
+});
+
+// --- upgrading a store that already used one of these slugs -----------------
+
+test('a stored row for a now-shipped kind is reported, not silently dropped', () => {
+  // The upgrade case: a store written before these kinds shipped can hold a
+  // custom row for one of their slugs. The built-in has to win, or an upgrade
+  // could never add a kind. But the row carried a description its author wrote,
+  // and replacing it without saying so leaves someone comparing this list
+  // against types.json with entries that do not appear and no reason why.
+  mkdirSync(storeRoot(), { recursive: true });
+  writeFileSync(typesPath(), JSON.stringify({
+    custom: [
+      { slug: 'test-plan', label: 'Test plan', shell: 'doc', whenToUse: 'mine, not yours', created: 1 },
+      { slug: 'postmortem', label: 'Postmortem', shell: 'doc', whenToUse: 'after an incident', created: 2 },
+    ],
+  }));
+
+  assert.deepEqual(shadowedTypes().map((t) => t.slug), ['test-plan']);
+  assert.equal(shadowedTypes()[0].whenToUse, 'mine, not yours', 'what they wrote is still readable');
+  assert.equal(specType('test-plan').builtin, true, 'the shipped definition wins');
+  assert.equal(specType('postmortem').builtin, false, 'a row that shadows nothing is untouched');
+});
+
+test('a store with no collisions reports none', () => {
+  assert.deepEqual(shadowedTypes(), []);
+  mkdirSync(storeRoot(), { recursive: true });
+  writeFileSync(typesPath(), JSON.stringify({
+    custom: [{ slug: 'postmortem', label: 'P', shell: 'doc', whenToUse: 'x', created: 1 }],
+  }));
+  assert.deepEqual(shadowedTypes(), []);
+});
+
+test('a shadowed kind keeps the template spec its author edited', async () => {
+  // Nothing is lost that cannot be read: the store copy still wins over the
+  // bundled shell, so their sections survive under the shipped kind's name.
+  ensureTemplates();
+  const id = templateIdFor('test-plan');
+  writeFileSync(specHtmlPath(id), '<html><body><section id="theirs">kept</section></body></html>');
+  mkdirSync(storeRoot(), { recursive: true });
+  writeFileSync(typesPath(), JSON.stringify({
+    custom: [{ slug: 'test-plan', label: 'T', shell: 'doc', whenToUse: 'mine', created: 1 }],
+  }));
+  assert.match(templateHtmlFor('test-plan'), /id="theirs"/);
 });
 
 // --- the shells are built from the definitions ------------------------------
