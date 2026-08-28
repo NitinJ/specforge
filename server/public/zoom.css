@@ -73,7 +73,6 @@
   top: 0;
   left: 0;
   transform-origin: 0 0;
-  will-change: transform;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
@@ -90,7 +89,20 @@
   box-shadow: 0 0 0 24px var(--sf-panel, #fff), 0 8px 40px rgba(0, 0, 0, .5);
   border-radius: 2px;
 }
-.sf-zoom-art.sf-zoom-dragging { cursor: grabbing }
+/* `will-change: transform` only while dragging, never at rest.
+
+   It promotes the artwork to its own compositing layer, and a composited layer
+   is rasterized once at the scale it had when it was made: every later scale
+   stretches that bitmap instead of redrawing the vector. At 800% a diagram was
+   a blur, which is the resolution the reader opened the preview to escape.
+
+   During a drag the scale does not change, so translating a raster is exact and
+   the layer is worth having. The class comes off at pointerup and the browser
+   redraws at the true scale. */
+.sf-zoom-art.sf-zoom-dragging {
+  cursor: grabbing;
+  will-change: transform;
+}
 
 /* The clone fills the holder, which is sized to the artwork's natural
    dimensions in JS. The transform does all the scaling.
