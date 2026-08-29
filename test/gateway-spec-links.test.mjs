@@ -68,6 +68,10 @@ let base;
 before(async () => {
   seed('linker', { project: 'atelier', body: LINKS });
   seed('quoted', { project: 'atelier', body: QUOTING });
+  seed('decoy', {
+    project: 'atelier',
+    body: '<a title="see href=/spec/mate for the shape" href="/spec/stranger">decoy first</a>',
+  });
   seed('gtattr', {
     project: 'atelier',
     body: '<a title="draft > review > done" href="/spec/mate">after a raw gt</a>\n'
@@ -191,6 +195,21 @@ test('an attribute holding a raw > does not hide the href behind it', async () =
 
   assert.match(html, new RegExp(`href="/p/${token}/spec/mate"`), 'the href was hidden behind the >');
   assert.match(html, /data-sf-unshared="stranger"/);
+});
+
+test('href-like text inside another attribute is not mistaken for the href', async () => {
+  // The one failure in this area that corrupts rather than degrades: scanning
+  // the attribute blob with a regex finds the FIRST thing shaped like an href,
+  // and an attribute value is allowed to contain that shape. The real href then
+  // goes unrewritten while some prose in a title is edited instead.
+  const token = newToken();
+  projectTokens.set(token, 'atelier');
+  const html = await (await fetch(`${base}/p/${token}/spec/decoy`)).text();
+
+  assert.match(html, /title="see href=\/spec\/mate for the shape"/,
+    'the title was rewritten, which is not an href at all');
+  assert.match(html, /data-sf-unshared="stranger"/,
+    'the real href was missed, so an out-of-project link kept working');
 });
 
 // --- what must not be touched ------------------------------------------------
