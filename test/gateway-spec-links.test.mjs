@@ -68,6 +68,14 @@ let base;
 before(async () => {
   seed('linker', { project: 'atelier', body: LINKS });
   seed('quoted', { project: 'atelier', body: QUOTING });
+  seed('query', {
+    project: 'atelier',
+    body: '<a href="/spec/mate?from=1&amp;to=2">carries a query</a>',
+  });
+  seed('custom', {
+    project: 'atelier',
+    body: '<a-card href="/spec/mate">a custom element, not an anchor</a-card>',
+  });
   seed('decoy', {
     project: 'atelier',
     body: '<a title="see href=/spec/mate for the shape" href="/spec/stranger">decoy first</a>',
@@ -210,6 +218,32 @@ test('href-like text inside another attribute is not mistaken for the href', asy
     'the title was rewritten, which is not an href at all');
   assert.match(html, /data-sf-unshared="stranger"/,
     'the real href was missed, so an out-of-project link kept working');
+});
+
+test('a query string survives the rewrite exactly as written', async () => {
+  // The href is read out of raw HTML, so its value is already entity-encoded.
+  // Escaping it again turns `&amp;` into `&amp;amp;`, and the reader follows a
+  // link with a literal "amp;" in the query.
+  const token = newToken();
+  projectTokens.set(token, 'atelier');
+  const html = await (await fetch(`${base}/p/${token}/spec/query`)).text();
+
+  assert.match(html, new RegExp(`href="/p/${token}/spec/mate\\?from=1&amp;to=2"`),
+    `double-escaped: ${(html.match(/href="[^"]*mate[^"]*"/) || [])[0]}`);
+  assert.ok(!html.includes('amp;amp;'), 'the ampersand was escaped twice');
+});
+
+test('a custom element whose name starts with a- is not an anchor', async () => {
+  // `\b` between "a" and "-" made <a-card> match the anchor scanner, so a custom
+  // element got its href rewritten and a data-sf-unshared attribute it never
+  // asked for. None exist in this store; the scanner should still only claim
+  // anchors.
+  const token = newToken();
+  projectTokens.set(token, 'atelier');
+  const html = await (await fetch(`${base}/p/${token}/spec/custom`)).text();
+
+  assert.match(html, /<a-card href="\/spec\/mate">/, 'the custom element was rewritten');
+  assert.ok(!/<a-card[^>]*data-sf-unshared/.test(html), 'it was disarmed like an anchor');
 });
 
 // --- what must not be touched ------------------------------------------------
