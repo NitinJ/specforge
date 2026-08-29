@@ -47,6 +47,18 @@ const LINKS = [
   '<a href="#local">an anchor on this page</a>',
 ].join('\n');
 
+// The same links written the other two ways HTML allows. `specforge import`
+// takes an HTML file as it finds it, so a spec in the store can carry any of
+// them, and a rewrite that only reads double quotes leaves those broken exactly
+// as before while reporting itself done.
+const QUOTING = [
+  "<a href='/spec/mate'>single quoted</a>",
+  '<a href=/spec/mate>unquoted</a>',
+  "<a href='/spec/stranger'>single quoted, out of project</a>",
+  '<a href=/spec/stranger>unquoted, out of project</a>',
+  "<a href='https://example.com/spec/mate'>single quoted, someone else's</a>",
+].join('\n');
+
 const specTokens = new Map();
 const projectTokens = new Map();
 
@@ -55,6 +67,7 @@ let base;
 
 before(async () => {
   seed('linker', { project: 'atelier', body: LINKS });
+  seed('quoted', { project: 'atelier', body: QUOTING });
   seed('mate', { project: 'atelier', body: '<p>the neighbour</p>' });
   seed('stranger', { project: 'other', body: '<p>elsewhere</p>' });
 
@@ -135,6 +148,30 @@ test('a single-spec share does not turn its links into other shares', async () =
   const ours = hrefs(html).filter((h) => /^(\/|https?:\/\/127\.0\.0\.1)/.test(h) && h.includes('/spec/'));
   assert.deepEqual(ours, [], `a single-spec share offered a way out: ${ours.join(' ')}`);
   assert.match(html, /data-sf-unshared="mate"/);
+});
+
+// --- however the href was written -------------------------------------------
+
+test('a single-quoted or unquoted href is rewritten too', async () => {
+  // Raised in review of #251. `specforge import` takes an HTML file as it finds
+  // it, so a spec can carry any of the three forms HTML allows, and a rewrite
+  // that reads only double quotes leaves the others broken exactly as before
+  // while reporting itself done.
+  const token = newToken();
+  projectTokens.set(token, 'atelier');
+  const html = await (await fetch(`${base}/p/${token}/spec/quoted`)).text();
+
+  const all = [...html.matchAll(/<a\b[^>]*?href\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/g)]
+    .map((m) => m[1].replace(/^['"]|['"]$/g, ''));
+  const ours = all.filter((h) => /^(\/|https?:\/\/127\.0\.0\.1)/.test(h));
+
+  assert.ok(ours.length, 'no links of ours survived at all');
+  for (const h of ours) {
+    assert.ok(h.startsWith(`/p/${token}/spec/mate`), `left pointing at the daemon: ${h}`);
+  }
+  assert.equal((html.match(/data-sf-unshared="stranger"/g) || []).length, 2,
+    'both out-of-project links, in both quotings, were disarmed');
+  assert.match(html, /example\.com\/spec\/mate/);
 });
 
 // --- what must not be touched ------------------------------------------------
