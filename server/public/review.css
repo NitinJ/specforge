@@ -1715,6 +1715,18 @@ html:not([data-sf-deck]) main > section:not([data-sf-space]) > h2 + h4,
 html:not([data-sf-deck]) main > section:not([data-sf-space]) > h3:first-child,
 html:not([data-sf-deck]) main > section:not([data-sf-space]) > h4:first-child { margin-top: 14px; }
 
+/* A link to a spec that is not in this share. The href is removed at serve time,
+   so it cannot be followed; without a style it still reads as a link and the
+   reader clicks a word that does nothing, which is the same confusion as the
+   404 this replaced. Dotted underline rather than none: the text is a reference
+   the author made, and hiding that it points somewhere loses what they wrote. */
+[data-sf-unshared] {
+  color: var(--sf-muted, #6b7280);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: not-allowed;
+}
+
 /* print / "Export PDF": drop all injected review chrome so the PDF is just the
    spec, and keep atomic blocks from splitting across pages. The spec's own CSS
    (and the print dialog's "Background graphics" toggle) drive the look. */
