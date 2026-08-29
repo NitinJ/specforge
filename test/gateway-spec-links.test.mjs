@@ -68,6 +68,11 @@ let base;
 before(async () => {
   seed('linker', { project: 'atelier', body: LINKS });
   seed('quoted', { project: 'atelier', body: QUOTING });
+  seed('gtattr', {
+    project: 'atelier',
+    body: '<a title="draft > review > done" href="/spec/mate">after a raw gt</a>\n'
+      + '<a title="a > b" href="/spec/stranger">out of project, same shape</a>',
+  });
   seed('mate', { project: 'atelier', body: '<p>the neighbour</p>' });
   seed('stranger', { project: 'other', body: '<p>elsewhere</p>' });
 
@@ -172,6 +177,20 @@ test('a single-quoted or unquoted href is rewritten too', async () => {
   assert.equal((html.match(/data-sf-unshared="stranger"/g) || []).length, 2,
     'both out-of-project links, in both quotings, were disarmed');
   assert.match(html, /example\.com\/spec\/mate/);
+});
+
+test('an attribute holding a raw > does not hide the href behind it', async () => {
+  // Also from review of #251. A `>` inside a quoted attribute value is legal,
+  // and a scanner that stops at the first `>` never reaches the href after it.
+  // Zero anchors in this store are written that way, and the failure is graceful
+  // (the tag is returned untouched, which is where every link started), so this
+  // is a small hole rather than a live defect. It is one line of regex to close.
+  const token = newToken();
+  projectTokens.set(token, 'atelier');
+  const html = await (await fetch(`${base}/p/${token}/spec/gtattr`)).text();
+
+  assert.match(html, new RegExp(`href="/p/${token}/spec/mate"`), 'the href was hidden behind the >');
+  assert.match(html, /data-sf-unshared="stranger"/);
 });
 
 // --- what must not be touched ------------------------------------------------
