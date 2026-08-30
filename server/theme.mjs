@@ -99,4 +99,13 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
   .s-draft .sdot{background:var(--s-draft)}
   .s-approved .sdot{background:var(--s-approved)} .s-approved{color:var(--s-approved)}
   .upd{font:11px ui-monospace,Menlo,monospace;color:var(--faint);white-space:nowrap;width:58px;
-    text-align:right}`;
+    text-align:right}
+  /* The signals never wrap, so on a narrow viewport the title is the only item
+     left to give and it collapses toward an ellipsis. They go in order of least
+     use: the type first, then the stamp. Title and status survive to the
+     narrowest width, because those are what a row is scanned for.
+     Part of the shared block rather than each page's own, which is how the
+     shared page ended up with a rule for a class its rows no longer had: at
+     420px every column stayed and the title was squeezed to 73px. */
+  @media(max-width:1180px){.badge.t{display:none}}
+  @media(max-width:900px){.upd{display:none}}`;

@@ -105,6 +105,41 @@ test('the shared page emits the row anatomy the shared list styles', () => {
   assert.ok(!/class="status /.test(shared), 'a row still carries the old status span');
 });
 
+test('the shared page styles no class its rows stopped emitting', () => {
+  // How the responsive ladder was lost: the rows were renamed from `.type` to
+  // `.badge.t`, and the only narrow-width rule still said `.type{display:none}`.
+  // It matched nothing, so at 420px every column stayed and the title was
+  // squeezed to 73px. A rule for a class that is never emitted is dead either
+  // way, and this is the shape it takes when it matters.
+  const { shared } = pages();
+  const css = shared.slice(shared.indexOf('<style>'), shared.indexOf('</style>'));
+  const body = shared.slice(shared.indexOf('</style>'));
+  const emitted = new Set(
+    [...body.matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)),
+  );
+  // Only the classes this page renamed away from. A general sweep flags states
+  // that are real but absent from one render (an approved row, a collapsed
+  // group), and would fail for the wrong reason.
+  for (const gone of ['type', 'status']) {
+    const styled = new RegExp(`\\.${gone}[\\s,{:]`).test(css);
+    assert.ok(!styled || emitted.has(gone),
+      `.${gone} is styled but no row emits it, so the rule does nothing`);
+  }
+});
+
+test('the row sheds its columns at the same widths on both pages', () => {
+  // The ladder is in the shared block, so the two pages cannot disagree about
+  // when a column goes. Asserted on the source because a media query needs a
+  // viewport, and the widths themselves were checked in a browser.
+  assert.match(LIST_CSS, /@media\(max-width:1180px\)\{\.badge\.t\{display:none\}\}/);
+  assert.match(LIST_CSS, /@media\(max-width:900px\)\{\.upd\{display:none\}\}/);
+  const { index, shared } = pages();
+  for (const [name, html] of [['home', index], ['shared', shared]]) {
+    assert.ok(html.includes('@media(max-width:1180px){.badge.t{display:none}}'),
+      `${name} page has no type-column rule`);
+  }
+});
+
 test('a reader who has chosen nothing still gets their system theme', () => {
   // The home page is served with data-theme stamped on, because the daemon knows
   // what the owner chose. A reviewer has chosen nothing, so the shared page has

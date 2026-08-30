@@ -192,13 +192,8 @@ ${LIST_CSS}
     border:1px solid var(--line);border-radius:999px;padding:3px 11px;
     max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  /* Type, status and the stamp never wrap, so on a narrow viewport the title is
-     the only item left to give and it collapses toward an ellipsis. Drop the
-     least informative field first. Title, status and recency are what a row is
-     scanned for and they survive to the narrowest width. */
-  @media (max-width:560px){
-    .type{display:none}
-  }
+  /* The row's own responsive ladder is in the shared list block, so this page
+     and the home page shed the same columns at the same widths. */
 </style>
 </head>
 <body>

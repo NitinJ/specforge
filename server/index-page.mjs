@@ -625,7 +625,6 @@ ${LIST_CSS}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .search:focus-visible,.addtag-in:focus-visible,.pfilter:focus-visible,.din:focus-visible{outline:none}
 
-  @media(max-width:1180px){.badge.t{display:none}}
   @media(max-width:900px){
     .app{display:block}
     .side{position:static;width:auto;height:auto;border-right:none;border-bottom:1px solid var(--line);padding-bottom:12px;display:block}
@@ -634,7 +633,7 @@ ${LIST_CSS}
     .views,.colls{display:flex;flex-wrap:wrap;gap:4px}
     .nav,.cnav{width:auto}
     .crow{width:auto}
-    .tags,.id,.upd{display:none}
+    .tags,.id{display:none}
   }
 </style></head><body${selected === null ? '' : ' class="inproj"'}>
 <div class="app">
