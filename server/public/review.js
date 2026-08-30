@@ -248,13 +248,22 @@ function sfRevealDisclosures(el) {
   }
 
   // Inject the Google Fonts stylesheet for a font once, the first time it's picked.
+  // Each injection is also recorded as a settle promise, because a consumer that
+  // must measure text (mermaid) has to know when the stylesheet itself has
+  // landed: until it does, the faces it declares do not exist and
+  // document.fonts.ready is vacuously resolved.
   var _loadedFonts = {};
+  var _fontLinkWaits = [];
   function loadGoogleFont(f) {
     if (!f || !f.google || _loadedFonts[f.id]) return;
     _loadedFonts[f.id] = true;
     var link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = 'https://fonts.googleapis.com/css2?family=' + f.google + '&display=swap';
+    _fontLinkWaits.push(new Promise(function (res) {
+      link.onload = res;
+      link.onerror = res; // an unreachable CDN settles too: fallback is the answer
+    }));
     document.head.appendChild(link);
   }
 
@@ -556,6 +565,10 @@ function sfRevealDisclosures(el) {
     root.setAttribute('data-theme', id);
     if (id === 'light' || id === 'dark') root.removeAttribute('data-sf-variant');
     else root.setAttribute('data-sf-variant', id);
+    // A diagram's author-chosen colours are inline, so no stylesheet repaints
+    // them when the theme flips. The single place the theme is written is the
+    // single place they are recomputed.
+    tintAllDiagrams();
   }
   function applyTheme(next) {
     if (!specSupportsTheme()) return; // single-theme spec — nothing to switch
@@ -868,6 +881,182 @@ function sfRevealDisclosures(el) {
     }
   }
 
+  /**
+   * Shrink any label that rendered larger than the box mermaid measured for it.
+   *
+   * The measure and the paint can disagree — a font that arrived between them,
+   * a stylesheet the measuring sandbox did not have — and when they do the text
+   * runs past the node's edge. The box cannot grow (every neighbour and arrow
+   * is already placed against it), so the label gives: it is laid out at its
+   * natural size and scaled down to fit, centred. A label that fits is left
+   * exactly as mermaid drew it.
+   */
+  function fitLabels(pre) {
+    var fos = pre.querySelectorAll('foreignObject');
+    for (var i = 0; i < fos.length; i++) {
+      var fo = fos[i];
+      var div = fo.firstElementChild;
+      if (!div || !div.textContent) continue;
+      var w = parseFloat(fo.getAttribute('width')) || 0;
+      var h = parseFloat(fo.getAttribute('height')) || 0;
+      if (!w || !h) continue;
+      var sw = div.scrollWidth, sh = div.scrollHeight;
+      if (sw <= w + 2 && sh <= h + 4) continue;
+      var k = Math.min(w / sw, h / sh, 1);
+      if (k >= 1) continue;
+      div.style.width = sw + 'px';
+      div.style.maxWidth = 'none';
+      var tx = Math.max(0, (w - sw * k) / 2);
+      div.style.transformOrigin = 'top left';
+      div.style.transform = 'translateX(' + tx + 'px) scale(' + k + ')';
+    }
+  }
+
+  /** Put every element this has touched back to the style its author wrote. */
+  function restoreAuthored(root) {
+    var marked = root.querySelectorAll('[data-sf-authored]');
+    for (var i = 0; i < marked.length; i++) {
+      var was = marked[i].getAttribute('data-sf-authored');
+      if (was) marked[i].setAttribute('style', was); else marked[i].removeAttribute('style');
+    }
+  }
+
+  function remember(el) {
+    if (el.getAttribute('data-sf-authored') === null) {
+      el.setAttribute('data-sf-authored', el.getAttribute('style') || '');
+    }
+  }
+
+  /** The colours the author named in a `style` or `classDef`, moved to dark. */
+  function adaptAuthoredColours(root, T) {
+    var styled = root.querySelectorAll('[style]');
+    for (var i = 0; i < styled.length; i++) {
+      var el = styled[i];
+      var authored = el.getAttribute('style') || '';
+      // Only elements that actually name a colour are marked, so the attribute
+      // does not land on every positioned node in the diagram.
+      if (!/(^|;)\s*(fill|stroke|color|background-color|stop-color)\s*:/i.test(authored)) continue;
+      remember(el);
+      try {
+        el.setAttribute('style', T.adaptStyle(authored, true));
+      } catch (e) { /* one element's colour is never worth the page */ }
+    }
+  }
+
+  /**
+   * What an element is drawn on, as an opaque colour.
+   *
+   * Walks outward compositing each translucent layer onto the next, because a
+   * chip drawn as a 60% white pill is not white: what its text has to read
+   * against is that wash over the node's own fill. An SVG shape carries its
+   * backdrop in a sibling rect rather than a background, so a node's shape is
+   * consulted on the way past.
+   */
+  function backdropOf(el, T) {
+    var seen = [];
+    for (var node = el; node && node !== document.body; node = node.parentNode) {
+      if (node.nodeType !== 1) continue;
+      var cs = window.getComputedStyle(node);
+      var bg = cs.backgroundColor;
+      var a = T.alphaOf(bg);
+      var rgb = T.toRgb(bg);
+      if (rgb && a > 0) { seen.push([rgb, a]); if (a >= 1) break; }
+      // The label of a node sits over that node's shape, which is painted as a
+      // fill on a sibling rather than as a background on an ancestor.
+      if (node.classList && node.classList.contains('node')) {
+        var shape = node.querySelector('rect, polygon, circle, path');
+        var sf = shape && window.getComputedStyle(shape).fill;
+        var srgb = sf && T.toRgb(sf);
+        if (srgb) { seen.push([srgb, T.alphaOf(sf)]); break; }
+      }
+    }
+    var under = T.toRgb(bodyBgCss()) || [15, 17, 21];
+    for (var i = seen.length - 1; i >= 0; i--) under = T.composite(seen[i][0], seen[i][1], under);
+    return under;
+  }
+
+  function bodyBgCss() {
+    return (window.getComputedStyle(document.body) || {}).backgroundColor || '';
+  }
+
+  /** Does this element paint text of its own, rather than only holding some? */
+  function ownsText(el) {
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var n = el.childNodes[i];
+      if (n.nodeType === 3 && n.nodeValue && n.nodeValue.trim()) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Text inside a diagram that does not read, lifted until it does.
+   *
+   * Measured rather than read: a classDef's `color` lands in mermaid's own
+   * stylesheet and a spec's HTML labels are coloured by the page's stylesheet,
+   * so neither can be found by looking at style attributes. Text that already
+   * clears the ratio is left alone, which is what keeps an author's light pill
+   * with dark writing on it intact.
+   */
+  function repairLabelContrast(root, T) {
+    var els = root.querySelectorAll('span, div, p, text, tspan, li, td, th, b, strong, em, a');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (!ownsText(el)) continue;
+      var cs = window.getComputedStyle(el);
+      // An SVG label carries its colour as a fill; an HTML one as a color.
+      var svgText = el.tagName === 'text' || el.tagName === 'tspan';
+      var current = svgText ? cs.fill : cs.color;
+      var rgb = T.toRgb(current);
+      if (!rgb) continue;
+      var next = T.textOn(rgb, backdropOf(el, T));
+      if (!next) continue;
+      remember(el);
+      try {
+        el.style.setProperty(svgText ? 'fill' : 'color', next, 'important');
+      } catch (e) { /* one label's colour is never worth the page */ }
+    }
+  }
+
+  /**
+   * Re-tint a diagram for the theme the reader is in.
+   *
+   * Two sources, both out of review.css's reach. `style X fill:#dbeafe` and
+   * `classDef layer fill:#E9D5FF` land as an inline style carrying `!important`,
+   * so no stylesheet outranks them. A classDef's `color`, and the page CSS that
+   * styles a spec's HTML node labels, are stylesheets themselves and name no
+   * element, so they cannot be found by reading attributes at all; those are
+   * caught by measuring what is rendered.
+   *
+   * The author's own string is kept on every element touched, and each pass
+   * starts by putting it back. So the toggle is reversible, a second call
+   * changes nothing, and light gives back exactly what was written.
+   *
+   * Guarded on the module: it is a separate asset, and a diagram that keeps the
+   * author's colours is a worse page, not a broken one.
+   */
+  function tintDiagram(root) {
+    var T = window.SFMermaidTheme;
+    if (!T || !root || !root.querySelectorAll) return;
+    // Every pass starts from what the author wrote, so a reader who flips the
+    // theme twice gets the same diagram back rather than one tinted twice. The
+    // contrast pass in particular measures what is rendered, so it has to be
+    // measuring the original and not this function's own last output.
+    restoreAuthored(root);
+    // Measured from the painted background rather than read from the attribute.
+    // A spec can carry its own named palette, and one of those can be dark
+    // without being called dark; what the colours have to work against is the
+    // page as painted.
+    if (renderedTheme() !== 'dark') return;
+    adaptAuthoredColours(root, T);
+    repairLabelContrast(root, T);
+  }
+
+  /** Every rendered diagram on the page, re-tinted. Called when the theme flips. */
+  function tintAllDiagrams() {
+    var all = document.querySelectorAll('[data-sf-mermaid="rendered"]');
+    for (var i = 0; i < all.length; i++) tintDiagram(all[i]);
+  }
+
   function showMermaidError(pre, err) {
     var msg = String((err && err.message) || err || 'could not render');
     pre.textContent = '';
@@ -959,7 +1148,11 @@ function sfRevealDisclosures(el) {
             pre.setAttribute('data-sf-src', src);
             pre.innerHTML = r.svg;
             hoistDiagramStyle(pre, id);
+            // Before the block is marked rendered, so nothing can observe it in
+            // the author's raw colours.
+            tintDiagram(pre);
             pre.setAttribute('data-sf-mermaid', 'rendered');
+            fitLabels(pre);
             finish();
           }, fail);
         } catch (e) {
@@ -983,12 +1176,41 @@ function sfRevealDisclosures(el) {
      * not a reason to withhold the diagram.
      */
     function renderWhenFontsReady() {
-      var fonts = document.fonts;
-      if (fonts && fonts.ready && typeof fonts.ready.then === 'function') {
-        fonts.ready.then(render, render);
-        return;
-      }
-      render();
+      var done = false;
+      var go = function () { if (done) return; done = true; render(); };
+      // A hung font CDN must not hold the diagrams: measure in the fallback
+      // after 3s and accept the mismatch as the lesser harm.
+      setTimeout(go, 3000);
+
+      // document.fonts.ready alone has a hole: applyFont() injects the Google
+      // Fonts STYLESHEET just before this runs, and until that <link> lands the
+      // faces it declares do not exist, so fonts.ready is already resolved and
+      // the measure runs in the fallback. The swap then repaints every label
+      // wider than its measured box. So: wait for the stylesheets, then force
+      // the picked faces to actually fetch (regular and bold, the two weights
+      // labels use), then consult fonts.ready.
+      var loadFaces = function () {
+        var ps = [];
+        try {
+          if (document.fonts && typeof document.fonts.load === 'function') {
+            var ids = [state.font, state.mono];
+            for (var i = 0; i < ids.length; i++) {
+              var f = fontById(ids[i]);
+              if (f && f.google) {
+                ps.push(document.fonts.load('1em ' + f.stack));
+                ps.push(document.fonts.load('bold 1em ' + f.stack));
+              }
+            }
+          }
+        } catch (e) { /* treated as ready */ }
+        var fonts = document.fonts;
+        if (fonts && fonts.ready && typeof fonts.ready.then === 'function') ps.push(fonts.ready);
+        if (!ps.length) return go();
+        Promise.all(ps).then(go, go);
+      };
+      var links = _fontLinkWaits.slice();
+      if (links.length) Promise.all(links).then(loadFaces, loadFaces);
+      else loadFaces();
     }
 
     // Armed before either path, not just the fetch. It is the guarantee that the

@@ -269,6 +269,9 @@ ${watcher}
 </script>
 <script src="/public/ui.js" defer></script>
 <script src="/public/reconcile.js" defer></script>
+<!-- Before review.js, which reads it off window while rendering a diagram: an
+     author's own fill and stroke are inline and no stylesheet can retint them. -->
+<script src="/public/mermaid-theme.js" defer></script>
 <script src="/public/review.js" defer></script>
 <!-- The full-screen preview, after review.js because it is review.js that tells
      it which block is hovered. zoom-view.js first: zoom.js reads it off window. -->
