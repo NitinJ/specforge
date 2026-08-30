@@ -22,6 +22,7 @@ import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
 import { STATUSES } from '../lib/lifecycle.mjs';
 import { readSubscriptions } from '../lib/store-subscriptions.mjs';
 import { groupByCollection } from '../lib/collections.mjs';
+import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -353,23 +354,9 @@ ${inner}
 <link rel="stylesheet" href="/public/ui.css">
 <script src="/public/ui.js" defer></script>
 <style>
-  :root[data-theme="light"]{
-    --bg:#faf9f6;--surface:#ffffff;--surface2:#f3f1ec;--ink:#1c2024;--muted:#6b7280;--faint:#9aa1ab;
-    --line:#e7e4dd;--line2:#d5d1c8;--accent:#4f46e5;--accent-soft:#eef0fd;--live:#16a34a;
-    --s-draft:#6b7280;--s-approved:#16a34a;--s-discussion:#0d9488;
-    --shadow:0 1px 2px rgba(28,32,36,.05),0 4px 12px rgba(28,32,36,.04);
-    /* review-layer compat: pages sometimes read these generic names */
-    --panel:var(--surface);--green:var(--live);--amber:#b45309;--red:#cf222e
-  }
-  :root[data-theme="dark"]{
-    --bg:#101114;--surface:#17181c;--surface2:#1f2126;--ink:#e8eaed;--muted:#9aa1ab;--faint:#6b7280;
-    --line:#26282e;--line2:#34373f;--accent:#818cf8;--accent-soft:#232441;--live:#4ade80;
-    --s-draft:#9aa1ab;--s-approved:#4ade80;--s-discussion:#2dd4bf;
-    --shadow:none;
-    --panel:var(--surface);--green:var(--live);--amber:#e5a54b;--red:#f85149
-  }
+${THEME_CSS}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif}
+  body{margin:0;background:var(--bg);color:var(--ink);font:${BODY_FONT}}
   a{color:inherit;text-decoration:none}
   button{font:inherit;color:inherit}
 
@@ -510,39 +497,29 @@ ${inner}
   .ph .gcount{background:none;color:var(--faint);font-weight:400;font-size:13px;padding:0 0 0 2px}
   body.inproj .ph{display:none}
   body.inproj .pgrp{margin-top:0}
-  .grp{margin:24px 0 0}
+${LIST_CSS}
+  /* Everything below is the owner's alone: a heading that sticks under this
+     page's toolbar, and the controls a reviewer has no use for. */
   /* The 18px is the space under the project heading. With the heading hidden it
      would be a gap under nothing, so inside a project it goes back to the 8px
      the page had before. Keyed on .lead rather than :first-of-type, so a filter
      that hides the first collection moves the spacing with it. */
   .pgrp .grp.lead{margin-top:18px}
   body.inproj .pgrp .grp.lead{margin-top:8px}
-  .grp h2,.tpls h2{display:flex;align-items:center;gap:5px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:650;margin:0 0 7px 2px}
+  .tpls h2{display:flex;align-items:center;gap:5px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:650;margin:0 0 7px 2px}
   /* the collection you are inside stays named while you scroll it */
   .grp h2{position:sticky;top:94px;z-index:5;background:var(--bg);padding:5px 2px;margin:0 0 3px;cursor:pointer;user-select:none}
   .grp h2:hover{color:var(--ink)}
-  .gcount{display:inline-block;background:var(--surface2);border-radius:999px;padding:0 7px;color:var(--faint);font-weight:500;font-variant-numeric:tabular-nums}
   .chev{margin-left:2px;color:var(--faint);transition:transform .14s}
   .grp.collapsed .chev{transform:rotate(-90deg)}
   .grp.collapsed .card{display:none}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);overflow:hidden}
-  .rows{list-style:none;margin:0;padding:0}
 
-  /* ── one-line row ─────────────────────────────────────────────────── */
-  .row{position:relative;display:flex;align-items:center;gap:10px;padding:0 14px;min-height:38px;
-       border-bottom:1px solid var(--line);border-left:2px solid transparent;transition:background .12s}
-  .row:last-child{border-bottom:none}
-  .row:hover{background:color-mix(in srgb,var(--ink) 3%,transparent)}
+  /* ── one-line row: the owner's additions to the shared row ────────── */
   .row.edge-live{border-left-color:var(--live)}
   .row.edge-off{border-left-color:var(--line2)}
   .row.picked{background:var(--accent-soft)}
   .sel{flex:none;width:14px;height:14px;margin:0;accent-color:var(--accent);cursor:pointer;opacity:0;transition:opacity .12s}
   .row:hover .sel,.sel:checked,.sel:focus-visible,body.picking .sel{opacity:1}
-  .main{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
-  /* Takes whatever the row has left. A fixed cap truncated titles at a third of
-     the row while the space beside them sat empty. */
-  .title{font-weight:540;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;min-width:0}
-  .title:hover{color:var(--accent)}
   .tags{display:inline-flex;gap:4px;align-items:center;min-width:0;overflow:hidden}
   .chip{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;background:var(--surface2);color:var(--muted);border-radius:999px;padding:0 7px;white-space:nowrap}
   .chip .x{background:none;border:none;color:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0}
@@ -567,18 +544,11 @@ ${inner}
   .rv-awaiting{color:var(--faint)} .rv-discussion{color:var(--s-discussion)}
   .pub{display:inline-flex;color:var(--live)}
   .pub:hover{filter:brightness(1.15)}
-  .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}
-  .badge.t{font-size:10.5px;font-weight:550;text-transform:uppercase;letter-spacing:.05em;background:var(--surface2);padding:1px 6px;border-radius:5px;color:var(--faint);width:84px;justify-content:center}
-  .badge.s{font-size:11.5px;width:92px}
-  .badge.s .sdot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
-  .s-draft .sdot{background:var(--s-draft)}
-  .s-approved .sdot{background:var(--s-approved)} .s-approved{color:var(--s-approved)}
   .live{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:550;color:var(--live)}
   .live .dot{width:7px;height:7px;border-radius:50%;background:var(--live);animation:pulse 2.4s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
   @media(prefers-reduced-motion:reduce){.live .dot{animation:none}}
   .off{font-size:11px;color:var(--faint);white-space:nowrap}
-  .upd{font:11px ui-monospace,Menlo,monospace;color:var(--faint);white-space:nowrap;width:58px;text-align:right}
   .acts{display:inline-flex;align-items:center;width:26px;justify-content:flex-end}
 
   /* ── the actions button, on a row and in the rail ─────────────────── */
@@ -655,7 +625,6 @@ ${inner}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .search:focus-visible,.addtag-in:focus-visible,.pfilter:focus-visible,.din:focus-visible{outline:none}
 
-  @media(max-width:1180px){.badge.t{display:none}}
   @media(max-width:900px){
     .app{display:block}
     .side{position:static;width:auto;height:auto;border-right:none;border-bottom:1px solid var(--line);padding-bottom:12px;display:block}
@@ -664,7 +633,7 @@ ${inner}
     .views,.colls{display:flex;flex-wrap:wrap;gap:4px}
     .nav,.cnav{width:auto}
     .crow{width:auto}
-    .tags,.id,.upd{display:none}
+    .tags,.id{display:none}
   }
 </style></head><body${selected === null ? '' : ' class="inproj"'}>
 <div class="app">
