@@ -13,6 +13,7 @@ import { listContributions } from '../lib/store-project-shares.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { groupByCollection, UNCOLLECTED } from '../lib/collections.mjs';
 import { projectCollaborators } from '../lib/collaborators.mjs';
+import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
 
 function esc(s) {
   return String(s ?? '')
@@ -46,11 +47,15 @@ export function projectSpecs(name) {
  * @param {string} token rides into each spec link, which is scoped to it
  */
 export function renderProjectPage(name, token) {
+  // The same row anatomy the owner sees: title on the left taking what is left,
+  // then the signals in fixed-width slots so they line up as columns down the
+  // list. The controls that ride on the owner's row (select, tags, actions) are
+  // not here, because a reviewer has none of them.
   const localRow = (m) => `
     <li class="row">
-      <a class="title" href="/p/${token}/spec/${m.id}">${esc(m.title || 'Untitled')}</a>
-      <span class="type">${esc(m.type || '')}</span>
-      <span class="status s-${esc(m.status || 'draft')}">${esc(m.status || 'draft')}</span>
+      <span class="main"><a class="title" href="/p/${token}/spec/${m.id}">${esc(m.title || 'Untitled')}</a></span>
+      <span class="badge t">${esc(m.type || '')}</span>
+      <span class="badge s s-${esc(m.status || 'draft')}"><span class="sdot"></span>${esc(m.status || 'draft')}</span>
       <span class="upd">${esc(relativeTime(m.updated))}</span>
     </li>`;
 
@@ -69,9 +74,9 @@ export function renderProjectPage(name, token) {
     ? order.map(({ key, specs: list }) => `
   <section class="grp">
     <h2>${key === '' ? UNCOLLECTED : esc(key)} <span class="gcount">${list.length}</span></h2>
-    <ul>${list.map(localRow).join('')}</ul>
+    <div class="card"><ul class="rows">${list.map(localRow).join('')}</ul></div>
   </section>`).join('')
-    : (specs.length ? `<ul>${specs.map(localRow).join('')}</ul>` : '');
+    : (specs.length ? `<div class="card"><ul class="rows">${specs.map(localRow).join('')}</ul></div>` : '');
 
   // Contributed rows link OFF this origin, to the machine that owns the spec.
   // Nothing about them is served from here: the title and owner are the
@@ -82,13 +87,13 @@ export function renderProjectPage(name, token) {
   const contributed = contribs.length ? `
   <section class="grp">
     <h2>From other machines <span class="gcount">${contribs.length}</span></h2>
-    <ul>${contribs.map((e) => `
+    <div class="card"><ul class="rows">${contribs.map((e) => `
     <li class="row">
-      <a class="title" href="${esc(`${e.origin}/s/${e.token}`)}" target="_blank" rel="noopener">${esc(e.title)}</a>
+      <span class="main"><a class="title" href="${esc(`${e.origin}/s/${e.token}`)}" target="_blank" rel="noopener">${esc(e.title)}</a></span>
       <span class="by">${esc(e.owner)}</span>
       <span class="elsewhere" title="Served from ${esc(e.origin)}">elsewhere</span>
       <span class="upd">${esc(relativeTime(Date.parse(e.addedAt) || 0))}</span>
-    </li>`).join('')}</ul>
+    </li>`).join('')}</ul></div>
   </section>` : '';
 
   const rows = `${local}${contributed}`;
@@ -128,21 +133,11 @@ export function renderProjectPage(name, token) {
 if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
 </script>
 <style>
-  /* Three states, in the order the cascade needs them: dark is the base, the OS
-     preference supplies light unless the reader explicitly chose dark, and an
-     explicit choice wins over both. */
-  :root{--bg:#0f1115;--panel:#171a21;--ink:#e6e8ee;--muted:#9aa3b2;--line:#2a2f3a;--accent:#6ea8fe;
-    --green:#3fb950;--amber:#d29922}
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){--bg:#fbfaf7;--panel:#ffffff;--ink:#222629;--muted:#5f6873;
-      --line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309}
-  }
-  :root[data-theme="light"]{--bg:#fbfaf7;--panel:#ffffff;--ink:#222629;--muted:#5f6873;
-    --line:#e4e0d7;--accent:#2563eb;--green:#15803d;--amber:#b45309}
+${THEME_CSS}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-  main{max-width:860px;margin:0 auto;padding:40px 24px 80px}
+  body{margin:0;background:var(--bg);color:var(--ink);font:${BODY_FONT}}
+  main{max-width:${CONTENT_WIDTH};margin:0 auto;padding:32px 28px 80px}
+  @media(max-width:960px){main{padding:24px 18px 60px}}
   h1{font-size:22px;margin:0 0 4px}
   .sub{color:var(--muted);font-size:13px;margin:0 0 24px}
   /* The title and the toggle share a line: the toggle is chrome, so it sits at
@@ -155,23 +150,8 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   .theme:hover{border-color:var(--accent);color:var(--accent)}
   .theme svg{display:block}
   ul{list-style:none;margin:0;padding:0}
-  .row{display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--line);
-    border-radius:10px;background:var(--panel);margin:8px 0}
-  .title{color:var(--ink);text-decoration:none;font-weight:550;flex:1 1 auto;min-width:0;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .title:hover{color:var(--accent)}
-  .type{color:var(--muted);font-size:12px;white-space:nowrap}
-  /* A group heading, sized well under h1: it separates the list, it is not a
-     second title for the page. The count is what tells a reader how much sits
-     under it before they scroll. */
-  .grp{margin:0 0 18px}
-  .grp h2{display:flex;align-items:baseline;gap:8px;font-size:13px;font-weight:650;
-    letter-spacing:.02em;color:var(--muted);margin:0 0 6px;padding:0 2px}
-  .gcount{font-size:11.5px;font-weight:600;color:var(--muted);border:1px solid var(--line);
-    border-radius:999px;padding:0 7px;line-height:1.6}
-  .status{font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:999px;
-    border:1px solid var(--line);white-space:nowrap}
-  .s-approved{color:var(--green)} .s-review{color:var(--amber)} .s-draft{color:var(--muted)}
+  a{color:inherit;text-decoration:none}
+${LIST_CSS}
   .by{color:var(--muted);font-size:12px;white-space:nowrap}
   .elsewhere{font-size:11.5px;color:var(--muted);border:1px dashed var(--line);
     border-radius:999px;padding:1px 8px;white-space:nowrap}
