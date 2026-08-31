@@ -118,11 +118,11 @@ and amending are all edit work — and go straight to step 4, the reply:
    `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" "<htmlPath>" --project "${CLAUDE_PLUGIN_ROOT}"`.
 
    Prose you add is held to the same language contract as the original, which is
-   the `language` from step 1 and not the file on disk. Answering a comment is
-   where explanatory, persuading register creeps in — the spec is still a
-   specification, not a reply. No aphorisms, no em dashes, no hedged decisions;
-   every sentence carries a decision, measurement, source, assumption or
-   specification. Watch the advisory `spec-language` line in the lint.
+   the `language` from step 1 and not the file on disk. Read it there; no summary
+   of it appears here, because a summary would go on stating a rule this store's
+   owner had deleted. Answering a comment is where explanatory, persuading
+   register creeps in: the spec is still a specification, not a reply. Watch the
+   advisory `spec-language` line in the lint.
 4. **Reply inline** (append-only, attributed to claude) via the CLI — never edit
    `comments.json` by hand, and never use the HTTP API (it is human-only):
 

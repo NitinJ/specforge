@@ -111,16 +111,20 @@ test('the house rules do not send the agent to the file either', () => {
   assert.equal(mentions, 0, 'and the file is not named as somewhere to read the rules from');
 });
 
-test('the house rules do not restate the contract’s own rules', () => {
+test('nothing an authoring agent must read restates the contract’s own rules', () => {
   // A precedence line does not save a restatement. Deleting "no em dashes" from
   // the contract leaves the contract silent on em dashes, so a copy of the rule
-  // sitting in a required document has nothing to lose an argument to and goes
-  // on being followed. Found in the second review pass of PR #255.
-  const one = flat(HOUSE);
-  for (const rule of [/no em dashes/i, /aphorism/i, /precision theatre/i,
-    /attention-curating/i, /hedged decision/i]) {
-    assert.equal(rule.test(one), false,
-      `the house rules still carry a copy of ${rule} from the language contract`);
+  // sitting in a document the agent is required to read has nothing to lose an
+  // argument to and goes on being followed. Found across three review passes of
+  // PR #255: the skills, then house-rules.md, then the skills again.
+  const RULES = [/no em dashes/i, /aphorism/i, /precision theatre/i,
+    /attention-curating/i, /hedged decision/i, /spend words on resolution/i];
+  for (const [name, text] of [...SKILLS, ['house-rules', HOUSE]]) {
+    const one = flat(text);
+    for (const rule of RULES) {
+      assert.equal(rule.test(one), false,
+        `${name} still carries a copy of ${rule} from the language contract`);
+    }
   }
 });
 

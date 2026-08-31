@@ -197,22 +197,11 @@ keep the Runtime stubs. Trim `goals` / `decisions` if they add nothing.
 ## 3.5 Language (read before writing prose)
 
 Specs follow a language contract, and **`language` from step 2 is that contract**.
-Read it there rather than from a file: this store's owner can edit it, and the
-copy on disk is only what SpecForge ships.
+Read it there, in full, before you write a sentence of the spec. It is short.
 
-The rules below are the ones that catch most drafts. They are the shipped
-contract's, so where `language` differs it is `language` that governs:
-
-- **Every sentence carries a decision, measurement, source, assumption, or
-  specification.** One that carries none gets cut.
-- **No aphorisms.** If a line works as a standalone tweet, cut it. "A limit
-  discovered through an upload failure is a support ticket" is not a spec; "Limits
-  (25 MB, 8000 px, 3 files) render as chips on the dropzone" is.
-- **No em dashes**, no attention-curating ("worth noting", "importantly"), no
-  hedged decisions ("probably"), no precision theatre ("typically 1 to 3").
-- **Write unknowns down.** An omitted threshold reads as "no threshold".
-- Assume the reader has agreed to the direction: spend words on resolution, not
-  persuasion.
+There is no summary of it here on purpose. This store's owner edits these rules,
+and a summary would go on stating a rule after they had deleted it: a rule that
+is gone from the contract has nothing left to contradict a copy of itself.
 
 ## 4. The gate — loop until it passes
 
@@ -251,10 +240,12 @@ is usually failing to understand the rule rather than the spec. If you run out,
 hand over and say in one line which rules still fail — do not judge a rule you do
 not believe just to reach 0.
 
-`advisories` are reported and never block. `spec-language` is one of them, and it
-is the contract talking: em dashes, attention-curating phrases, precision
-theatre, hedged decisions. Clear it anyway. It cannot see aphorism or an
-unlabelled sentence, so a clean report is a floor, not a pass.
+`advisories` are reported and never block. `spec-language` is one of them: the
+mechanically detectable slice of the contract, as code. Being code, it reports
+the rules SpecForge ships whatever this store's contract now says, so read a hit
+against `language` before acting on it, and clear the ones that contract still
+asks for. It cannot see register at all, so a clean report is a floor, not a
+pass.
 
 The lint still exists and the gate is a superset of it; run
 `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>` only when you want
