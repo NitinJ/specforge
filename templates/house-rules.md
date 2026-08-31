@@ -34,7 +34,31 @@ this page still applies to it: stable unique ids, the theme contract, the palett
 tokens, `data-sf-section` on every section, and the TOC kept in sync.
 
 `impl-decisions`, `deviations`, and `tradeoffs` start as empty stubs — they are
-filled **during implementation**, not at authoring time.
+filled **during implementation**, not at authoring time. (Some templates carry
+them as three `<h4>` groups inside one `runtime` section instead; the entries are
+written the same way either way.)
+
+Every entry in those three is the same card, and no other shape — not a table,
+not a bullet list, not a paragraph of prose:
+
+```html
+<div class="card">
+  <p><strong>What is true now, as a finished sentence.</strong></p>
+  <p><strong>Label:</strong> the part, continuing the label, so it starts lowercase.</p>
+</div>
+```
+
+The labels are fixed, in this order. Design decisions: **The call:** then
+**Why:**, grouped by the stage that made them under an `<h3>` reading
+"Stage N · the stage's name". Deviations: **Plan:** then **Instead:** then
+**Why:**. Tradeoffs: **Chosen:** then **Instead of:** then **Why:**. Both of
+those are one flat list in stage order.
+
+The bold sentence states what is true, never a topic label: "The kept fixture
+reports what one run wrote. It does not compare two." rather than "Fixture
+design". **The call** and **Chosen** name the concrete thing in `<code>`. **Why**
+gives the reason and only the reason, and earns its place by naming what the
+alternative would have cost.
 
 > The authoritative list is `requiredSections` in `lib/config.mjs` / project
 > config, so it can change without editing this file.

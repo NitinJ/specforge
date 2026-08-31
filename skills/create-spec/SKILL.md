@@ -184,8 +184,11 @@ section headings + ids accordingly and update the TOC to match.
 `decisions` · `open-questions`, then build `impl-plan` as Stages → Tasks using the
 `data-sf-stage` / `data-sf-task` / `data-sf-status` markup (one stage = one PR,
 each task a `verify:` note) and mirror it into the `task-tracker` snapshot table.
-Leave `impl-decisions` / `deviations` / `tradeoffs` as the empty stubs (filled
-during implementation).
+Leave `impl-decisions` / `deviations` / `tradeoffs` as the empty stubs — or the
+`runtime` section holding them, depending on the template. They are filled during
+implementation, and each entry has one fixed card shape and a fixed set of bold
+labels: the section's own prompt carries it, and so does
+`specforge doc house-rules`.
 
 **impl** (impl shell) — keep the design prose light: `tldr` · `overview` (scope +
 link to the design if it lives elsewhere) · a brief `design` (prerequisites /

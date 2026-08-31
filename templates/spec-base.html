@@ -280,6 +280,7 @@ li[data-sf-task] span.verify{display:block;margin:2px 0 0 20px}
   .sf-progress i{width:20px;height:9px;border-radius:2px;background:var(--panel2);border:1px solid var(--line)}
   .sf-progress i.on{background:var(--green);border-color:var(--green)}
   .sf-progress-key{color:var(--muted);font-size:12.5px;margin:6px 0 0}
+
 </style>
 </head>
 <body>
@@ -399,19 +400,19 @@ li[data-sf-task] span.verify{display:block;margin:2px 0 0 20px}
 
   <section id="impl-decisions" data-sf-section>
     <h2>9 · Design decisions (implementation time)</h2>
-    <p class="sub">Filled during implementation: choices made where the spec was ambiguous.</p>
+    <p class="sub">A record of the calls made while building, where the plan did not already decide. Ordered by the stage that made them. Each says what was chosen and why, in that order.</p>
     <ul><li class="footnote">— none yet —</li></ul>
   </section>
 
   <section id="deviations" data-sf-section>
     <h2>10 · Deviations</h2>
-    <p class="sub">Filled during implementation: intentional departures from the spec, and why.</p>
+    <p class="sub">Where the build did not do what the plan said, and why. Each says what the plan asked for, what happened instead, and what makes that acceptable.</p>
     <ul><li class="footnote">— none yet —</li></ul>
   </section>
 
   <section id="tradeoffs" data-sf-section>
     <h2>11 · Tradeoffs</h2>
-    <p class="sub">Filled during implementation: alternatives considered and why the chosen path won.</p>
+    <p class="sub">What was given up to ship, and what it bought. Each says what was chosen, what it was chosen over, and what the alternative would have cost.</p>
     <ul><li class="footnote">— none yet —</li></ul>
   </section>
 
