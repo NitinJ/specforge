@@ -23,7 +23,7 @@ const find = (state, id) => state.actions.shipped.concat(state.actions.custom)
 
 test('an untouched store reports everything as default', () => {
   const s = handlePromptsGet();
-  assert.equal(s.language.value, '');
+  assert.equal(s.language.value, s.language.contract, 'the box opens on the shipped rules');
   assert.equal(s.language.customized, false);
   assert.equal(s.actions.shipped.length, SHIPPED_ACTIONS.length);
   assert.equal(s.actions.custom.length, 0);
@@ -39,17 +39,40 @@ test('a shipped action carries both its effective and its shipped text', () => {
 });
 
 test('the shipped contract travels, so the page need not hold a copy of it', () => {
-  // The direction extends the contract rather than replacing it, so the page has
-  // to be able to show what is being extended. A copy in the page would drift
-  // the first time the contract was edited.
+  // It is both what the box opens on and what a reset restores, so the page has
+  // to be able to show it either way. A copy in the page would drift the first
+  // time the contract was edited.
   const s = handlePromptsGet();
   assert.match(s.language.contract, /Spec language contract/);
-  assert.equal(s.language.value, '', 'and it is not the box’s value');
   assert.equal(s.language.customized, false);
 });
 
-test('the cap travels too, because the store truncates at it silently', () => {
-  assert.equal(handlePromptsGet().language.max, 4000);
+test('an edit is what is in force, and the shipped text still travels beside it', () => {
+  seedPrompts({ language: 'Write terse. Nothing else.' });
+  const s = handlePromptsGet();
+  assert.equal(s.language.value, 'Write terse. Nothing else.', 'what the agent is told');
+  assert.match(s.language.contract, /Spec language contract/, 'and what a reset would restore');
+  assert.equal(s.language.customized, true);
+});
+
+test('saving the shipped rules back unchanged is not a customization', () => {
+  // Otherwise opening the tab and pressing Save freezes a copy that stops
+  // tracking the shipped text, and the page calls it customized while it is
+  // character for character the default.
+  const shipped = handlePromptsGet().language.contract;
+  const s = handlePromptsPut({ language: shipped });
+  assert.equal(s.language.customized, false);
+  assert.equal(s.language.value, shipped);
+});
+
+test('the cap holds the whole contract with room to edit inside it', () => {
+  // 4,000 was set when the box held a short direction added on top. It now
+  // holds the contract itself, and a cap the contract barely fits under is a
+  // cap that makes editing impossible.
+  const s = handlePromptsGet();
+  assert.equal(s.language.max, 12000);
+  assert.ok(s.language.max > s.language.contract.length * 2,
+    `the cap leaves no room: ${s.language.contract.length} of ${s.language.max}`);
 });
 
 test('the groups travel, so the create form need not hardcode them', () => {
@@ -120,7 +143,8 @@ test('deleteCustom removes it from the list and keeps its id resolving', async (
 test('a class reset answers with the state and clears only that class', () => {
   handlePromptsPut({ language: 'Terse.', actions: { hidden: ['visualize'] } });
   const after = handlePromptsReset('language');
-  assert.equal(after.language.value, '');
+  assert.equal(after.language.customized, false);
+  assert.equal(after.language.value, after.language.contract, 'back to the shipped rules');
   assert.equal(find(after, 'visualize').hidden, true, 'actions untouched');
 });
 
