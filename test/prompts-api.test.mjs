@@ -48,11 +48,34 @@ test('the shipped contract travels, so the page need not hold a copy of it', () 
 });
 
 test('an edit is what is in force, and the shipped text still travels beside it', () => {
-  seedPrompts({ language: 'Write terse. Nothing else.' });
+  seedPrompts({ language: 'Write terse. Nothing else.', languageMode: 'contract' });
   const s = handlePromptsGet();
   assert.equal(s.language.value, 'Write terse. Nothing else.', 'what the agent is told');
   assert.match(s.language.contract, /Spec language contract/, 'and what a reset would restore');
   assert.equal(s.language.customized, true);
+});
+
+test('a direction written before the box held the contract keeps the rules around it', () => {
+  // The upgrade case. Such a store holds two sentences that were ADDED to the
+  // shipped rules. Showing them alone would present them as the complete
+  // writing rules, and the next save would make that true.
+  seedPrompts({ language: 'Write terse.' });
+  const s = handlePromptsGet();
+  assert.match(s.language.value, /Spec language contract/, 'the shipped rules are still there');
+  assert.match(s.language.value, /Write terse\./, 'and so is the direction');
+  assert.ok(s.language.value.indexOf('Write terse.') > s.language.value.indexOf('Register'),
+    'the direction comes last, where the more specific instruction wins');
+  assert.equal(s.language.customized, true);
+});
+
+test('saving over a legacy direction stamps it as the whole contract', () => {
+  seedPrompts({ language: 'Write terse.' });
+  const composed = handlePromptsGet().language.value;
+  handlePromptsPut({ language: `${composed}\n\nAnd never hedge.` });
+  const after = handlePromptsGet().language.value;
+  // Composed once, not again: a second open must not re-prepend the rules.
+  assert.equal(after.match(/Spec language contract/g).length, 1);
+  assert.match(after, /And never hedge\./);
 });
 
 test('saving the shipped rules back unchanged is not a customization', () => {

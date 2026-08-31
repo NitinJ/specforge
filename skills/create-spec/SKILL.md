@@ -100,13 +100,12 @@ When that is what you find, the section set is decided and your job is to fill i
 not to redesign it. Only `general` arrives with nothing but a TL;DR, because
 choosing the sections is what that type is for.
 
-**`language` is the user's authoring direction, and it outranks the house
-register.** A non-empty string is how this user wants specs written: their tone,
-their sentence length, their language. Apply it to everything you write into the
-spec. Where it contradicts the language contract in
-`references/spec-language.md`, the user's direction wins — the contract is the
-default, this is the setting. Empty means no direction, which is every store
-that has not customized one. Set in the Configuration pane, not here.
+**`language` is the writing contract in force, and it is the whole of it.** Not a
+note added to a contract you read somewhere else: it already contains SpecForge's
+own rules, unless this store's owner edited or removed them. Follow what it says and nothing it does not.
+Do not go looking for `references/spec-language.md` to supplement it: a rule the owner deleted is deleted,
+and reading the shipped file behind their back reinstates it. They edit this in the Configuration pane,
+under Language.
 
 **Read `prompts` before you write.** Each entry is `{ section, text }`: authoring
 guidance the spec type attaches to one section, written by the user into the
@@ -197,10 +196,12 @@ keep the Runtime stubs. Trim `goals` / `decisions` if they add nothing.
 
 ## 3.5 Language (read before writing prose)
 
-Specs follow a language contract — **read it**, it is short:
-`${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`.
+Specs follow a language contract, and **`language` from step 2 is that contract**.
+Read it there rather than from a file: this store's owner can edit it, and the
+copy on disk is only what SpecForge ships.
 
-The rules that catch most drafts:
+The rules below are the ones that catch most drafts. They are the shipped
+contract's, so where `language` differs it is `language` that governs:
 
 - **Every sentence carries a decision, measurement, source, assumption, or
   specification.** One that carries none gets cut.
