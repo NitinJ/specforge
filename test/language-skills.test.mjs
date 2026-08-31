@@ -20,6 +20,9 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const CREATE = read('skills/create-spec/SKILL.md');
 const REVIEW = read('skills/review-spec/SKILL.md');
 const CONVERT = read('skills/convert-spec/SKILL.md');
+// Not a skill, but the skills tell the agent to read it, so a pointer to the
+// shipped file in here reaches the agent exactly as one in a skill would.
+const HOUSE = read('templates/house-rules.md');
 
 // These files are prose wrapped at 80 columns, so a sentence long enough to be
 // worth pinning is a sentence that spans a line break. Matched against a
@@ -95,6 +98,19 @@ test('no authoring skill still sends the agent to the shipped contract file', ()
       + 'outside the sentence forbidding it');
     assert.equal(forbidden, 1, `${name} says it once`);
   }
+});
+
+test('the house rules do not send the agent to the file either', () => {
+  // Both create-spec and convert-spec require house-rules.md, so a pointer here
+  // reinstates every deleted rule just as surely as one in a skill. Found in
+  // review of PR #255 after the skills themselves had been fixed.
+  const one = flat(HOUSE);
+  assert.match(one, /The full contract is the `language` field/,
+    'the house rules name the payload as the contract');
+  assert.equal(/Read it before writing prose\. The short form/.test(one), false,
+    'the old instruction to read the file is gone');
+  const mentions = (one.match(/references\/spec-language\.md/g) || []).length;
+  assert.equal(mentions, 0, 'and the file is not named as somewhere to read the rules from');
 });
 
 test('every authoring skill points at the pane rather than at itself', () => {

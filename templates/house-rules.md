@@ -157,8 +157,14 @@ Rules that hold in both directions:
 
 ## Language (contract)
 
-Full contract: `references/spec-language.md`. Read it before writing prose. The
-short form:
+The full contract is the `language` field that `create`, `comments`, `import` and
+`import-md` hand you, and it is the whole of it. Read it there before writing
+prose, never from a file: this store's owner edits these rules in the
+Configuration pane, so the copy SpecForge ships is only the starting position,
+and a rule they deleted is deleted.
+
+The short form below is that starting position. Where the delivered contract
+differs, the delivered contract governs:
 
 - Every sentence carries a **decision** (with its criterion), a **measurement**
   (value, unit, method, date), a **source** (retrieval date, confidence), an
