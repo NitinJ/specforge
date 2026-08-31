@@ -39,8 +39,11 @@ test('every bundled shell arrives carrying its type its own rules', () => {
 // table.
 const PROMPTED_SECTIONS = {
   design: ['decisions', 'open-questions'],
-  'design-impl': ['decisions', 'open-questions'],
-  impl: ['decisions', 'open-questions'],
+  // The impl shell also carries the three runtime sections, which are the only
+  // sections written months after the spec was and by an agent holding the code
+  // rather than the document. Their guidance is the card shape they fill.
+  'design-impl': ['decisions', 'deviations', 'impl-decisions', 'open-questions', 'tradeoffs'],
+  impl: ['decisions', 'deviations', 'impl-decisions', 'open-questions', 'tradeoffs'],
   research: ['open-questions'],
   general: ['tldr'],
   deck: [],
