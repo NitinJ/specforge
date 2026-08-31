@@ -105,12 +105,23 @@ test('the house rules do not send the agent to the file either', () => {
   // reinstates every deleted rule just as surely as one in a skill. Found in
   // review of PR #255 after the skills themselves had been fixed.
   const one = flat(HOUSE);
-  assert.match(one, /The full contract is the `language` field/,
+  assert.match(one, /The contract is the `language` field/,
     'the house rules name the payload as the contract');
-  assert.equal(/Read it before writing prose\. The short form/.test(one), false,
-    'the old instruction to read the file is gone');
   const mentions = (one.match(/references\/spec-language\.md/g) || []).length;
   assert.equal(mentions, 0, 'and the file is not named as somewhere to read the rules from');
+});
+
+test('the house rules do not restate the contract’s own rules', () => {
+  // A precedence line does not save a restatement. Deleting "no em dashes" from
+  // the contract leaves the contract silent on em dashes, so a copy of the rule
+  // sitting in a required document has nothing to lose an argument to and goes
+  // on being followed. Found in the second review pass of PR #255.
+  const one = flat(HOUSE);
+  for (const rule of [/no em dashes/i, /aphorism/i, /precision theatre/i,
+    /attention-curating/i, /hedged decision/i]) {
+    assert.equal(rule.test(one), false,
+      `the house rules still carry a copy of ${rule} from the language contract`);
+  }
 });
 
 test('every authoring skill points at the pane rather than at itself', () => {

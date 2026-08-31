@@ -157,31 +157,20 @@ Rules that hold in both directions:
 
 ## Language (contract)
 
-The full contract is the `language` field that `create`, `comments`, `import` and
+**The contract is the `language` field** that `create`, `comments`, `import` and
 `import-md` hand you, and it is the whole of it. Read it there before writing
-prose, never from a file: this store's owner edits these rules in the
-Configuration pane, so the copy SpecForge ships is only the starting position,
-and a rule they deleted is deleted.
+prose.
 
-The short form below is that starting position. Where the delivered contract
-differs, the delivered contract governs:
+No short form of it here, and no summary of its rules. This store's owner edits
+them in the Configuration pane, and a page that restated one of them would go on
+telling you it after they had deleted it: a rule that is gone from the contract
+has nothing left to contradict a copy of itself. One source, and it is the
+payload.
 
-- Every sentence carries a **decision** (with its criterion), a **measurement**
-  (value, unit, method, date), a **source** (retrieval date, confidence), an
-  **assumption** (with what falsifies it), or a **specification** (type,
-  threshold, constraint, behaviour). A sentence carrying none gets cut.
-- **No aphorisms.** If a line works as a standalone tweet, cut it.
-- **No em dashes**, attention-curating phrases ("worth noting", "importantly"),
-  hedged decisions ("probably"), precision theatre ("typically 1 to 3"), metaphor
-  about the system, or meta-narration about the document.
-- **Write unknowns down.** An omitted threshold reads as "no threshold"; a
-  described enum reads as "the list is open".
-- Assume the reader has agreed to the direction. Spend words on resolution, not
-  persuasion.
-
-`lint-spec.mjs` reports the mechanical subset as the advisory `spec-language`
-check. A clean report is a floor: it cannot see aphorism or an unlabelled
-sentence.
+`lint-spec.mjs` reports the mechanically detectable subset as the advisory
+`spec-language` check. That subset is code rather than prose, so it reports the
+shipped rules whatever the contract now says: a clean report is a floor, and a
+report of something the owner has removed is not a failure.
 
 ## Presentation
 
