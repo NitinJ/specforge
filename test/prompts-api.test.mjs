@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedPrompts, SAMPLE } from './helpers/prompts-store.mjs';
 import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
+import { readPrompts } from '../lib/store-prompts.mjs';
 import { SHIPPED_ACTIONS } from '../lib/actions/all.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-papi-');
@@ -66,6 +67,20 @@ test('a direction written before the box held the contract keeps the rules aroun
   assert.ok(s.language.value.indexOf('Write terse.') > s.language.value.indexOf('Register'),
     'the direction comes last, where the more specific instruction wins');
   assert.equal(s.language.customized, true);
+});
+
+test('an unchanged save on a legacy store does not freeze it into a fork', () => {
+  // The box opens on the shipped rules with that store's direction appended, so
+  // an unedited Save sends back text that is not the shipped contract. Judged
+  // against the shipped text alone it looks like an edit, and the store would
+  // stop tracking shipped updates without anyone changing a character.
+  seedPrompts({ language: 'Write terse.' });
+  const shown = handlePromptsGet().language.value;
+  handlePromptsPut({ language: shown });
+  const raw = readPrompts();
+  assert.equal(raw.language, 'Write terse.', 'the direction is untouched');
+  assert.equal(raw.languageMode, undefined, 'and it is still read as an addition');
+  assert.equal(handlePromptsGet().language.value, shown, 'and nothing on screen moved');
 });
 
 test('saving over a legacy direction stamps it as the whole contract', () => {
