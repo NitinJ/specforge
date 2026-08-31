@@ -100,13 +100,12 @@ When that is what you find, the section set is decided and your job is to fill i
 not to redesign it. Only `general` arrives with nothing but a TL;DR, because
 choosing the sections is what that type is for.
 
-**`language` is the user's authoring direction, and it outranks the house
-register.** A non-empty string is how this user wants specs written: their tone,
-their sentence length, their language. Apply it to everything you write into the
-spec. Where it contradicts the language contract in
-`references/spec-language.md`, the user's direction wins — the contract is the
-default, this is the setting. Empty means no direction, which is every store
-that has not customized one. Set in the Configuration pane, not here.
+**`language` is the writing contract in force, and it is the whole of it.** Not a
+note added to a contract you read somewhere else: it already contains SpecForge's
+own rules, unless this store's owner edited or removed them. Follow what it says and nothing it does not.
+Do not go looking for `references/spec-language.md` to supplement it: a rule the owner deleted is deleted,
+and reading the shipped file behind their back reinstates it. They edit this in the Configuration pane,
+under Language.
 
 **Read `prompts` before you write.** Each entry is `{ section, text }`: authoring
 guidance the spec type attaches to one section, written by the user into the
@@ -197,21 +196,12 @@ keep the Runtime stubs. Trim `goals` / `decisions` if they add nothing.
 
 ## 3.5 Language (read before writing prose)
 
-Specs follow a language contract — **read it**, it is short:
-`${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`.
+Specs follow a language contract, and **`language` from step 2 is that contract**.
+Read it there, in full, before you write a sentence of the spec. It is short.
 
-The rules that catch most drafts:
-
-- **Every sentence carries a decision, measurement, source, assumption, or
-  specification.** One that carries none gets cut.
-- **No aphorisms.** If a line works as a standalone tweet, cut it. "A limit
-  discovered through an upload failure is a support ticket" is not a spec; "Limits
-  (25 MB, 8000 px, 3 files) render as chips on the dropzone" is.
-- **No em dashes**, no attention-curating ("worth noting", "importantly"), no
-  hedged decisions ("probably"), no precision theatre ("typically 1 to 3").
-- **Write unknowns down.** An omitted threshold reads as "no threshold".
-- Assume the reader has agreed to the direction: spend words on resolution, not
-  persuasion.
+There is no summary of it here on purpose. This store's owner edits these rules,
+and a summary would go on stating a rule after they had deleted it: a rule that
+is gone from the contract has nothing left to contradict a copy of itself.
 
 ## 4. The gate — loop until it passes
 
@@ -250,10 +240,12 @@ is usually failing to understand the rule rather than the spec. If you run out,
 hand over and say in one line which rules still fail — do not judge a rule you do
 not believe just to reach 0.
 
-`advisories` are reported and never block. `spec-language` is one of them, and it
-is the contract talking: em dashes, attention-curating phrases, precision
-theatre, hedged decisions. Clear it anyway. It cannot see aphorism or an
-unlabelled sentence, so a clean report is a floor, not a pass.
+`advisories` are reported and never block. `spec-language` is one of them: the
+mechanically detectable slice of the contract, as code. Being code, it reports
+the rules SpecForge ships whatever this store's contract now says, so read a hit
+against `language` before acting on it, and clear the ones that contract still
+asks for. It cannot see register at all, so a clean report is a floor, not a
+pass.
 
 The lint still exists and the gate is a superset of it; run
 `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>` only when you want

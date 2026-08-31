@@ -40,13 +40,14 @@ It prints `{ specId, htmlPath, language, threads, pending }`. `htmlPath` is the
 spec file to edit; each thread has `anchor.block` (`{ index, tag, text }` —
 `text` is the commented block's normalized text) and the human comment(s).
 
-**`language` is the user's authoring direction, and it outranks the house
-register.** A non-empty string is how this user wants prose written. It applies
-to everything you write here: replies, amendments, and asides alike, because a
+**`language` is the writing contract in force, and it is the whole of it.** Not a
+note added to a contract you read somewhere else: it already contains SpecForge's
+own rules, unless this store's owner edited or removed them. It applies to
+everything you write here: replies, amendments, and asides alike, because a
 register that changed between the spec body and the drafts written into it would
-read as two authors. Where it contradicts
-`references/spec-language.md`, the user's direction wins. Empty means no
-direction. Set in the Configuration pane, not here.
+read as two authors. Follow what it says and nothing it does not.
+Do not go looking for `references/spec-language.md` to supplement it: a rule the owner deleted is deleted.
+They edit this in the Configuration pane, under Language.
 
 ## 1a. Read the batch's `origin` — it decides what you may do
 
@@ -116,12 +117,12 @@ and amending are all edit work — and go straight to step 4, the reply:
    expect **zero hits**. Re-run the lint if you changed structure:
    `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" "<htmlPath>" --project "${CLAUDE_PLUGIN_ROOT}"`.
 
-   Prose you add is held to the same language contract as the original:
-   `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`. Answering a comment is
-   where explanatory, persuading register creeps in — the spec is still a
-   specification, not a reply. No aphorisms, no em dashes, no hedged decisions;
-   every sentence carries a decision, measurement, source, assumption or
-   specification. Watch the advisory `spec-language` line in the lint.
+   Prose you add is held to the same language contract as the original, which is
+   the `language` from step 1 and not the file on disk. Read it there; no summary
+   of it appears here, because a summary would go on stating a rule this store's
+   owner had deleted. Answering a comment is where explanatory, persuading
+   register creeps in: the spec is still a specification, not a reply. Watch the
+   advisory `spec-language` line in the lint.
 4. **Reply inline** (append-only, attributed to claude) via the CLI — never edit
    `comments.json` by hand, and never use the HTTP API (it is human-only):
 

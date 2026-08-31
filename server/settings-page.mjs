@@ -336,12 +336,16 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   .ro{border:1px solid var(--line);border-radius:8px;background:var(--panel2);
     padding:10px 12px;font-size:13px;color:var(--muted)}
 
-  /* The shipped contract, verbatim. It is a markdown document rather than a
-     field, so it is shown as written: a re-render could only lose fidelity. */
-  .contract{border:1px solid var(--line);border-radius:9px;background:var(--panel2);
-    padding:12px 14px;margin:0 0 6px;max-height:240px;overflow:auto}
-  .contract pre{margin:0;white-space:pre-wrap;word-break:break-word;color:var(--muted);
-    font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  /* The writing rules are a markdown document being edited as one, not a short
+     field: 110px of box for 3,300 characters is a slot you scroll rather than a
+     document you read, and the point of making it editable is that you can see
+     what you are changing. Monospace because it is markdown. */
+  #sf-lang{min-height:460px;
+    font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  /* .note is nowrap because it usually sits inline in a button row, where a
+     wrapped status line would push the row's height around. A note written as
+     its own paragraph is prose, and nowrap prose scrolls the page sideways. */
+  p.note{white-space:normal;line-height:1.55}
   .count{color:var(--muted);font-size:12px;margin-left:auto}
   .count.over{color:var(--red);font-weight:600}
 
@@ -547,28 +551,24 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     var L=state.language;
     var max=L.max||4000;
     panel.innerHTML=''
-      +'<p class="lede">Your authoring direction: tone, sentence length, language. '
-      +'It reaches the agent wherever it writes spec prose, and where it disagrees '
-      +'with the house register yours wins.</p>'
-      +'<p><b>SpecForge’s writing rules</b> <span class="chip">shipped</span></p>'
-      +'<div class="contract"><pre id="sf-contract"></pre></div>'
-      +'<div class="acts" style="margin-bottom:22px">'
-      +'<button class="btn quiet" id="sf-lang-copy" type="button">Copy into mine ↓</button>'
-      +'<span class="note">Read-only. Yours is added on top of these, so copy them in '
-      +'only if you mean to restate them.</span>'
-      +'</div>'
-      +'<p><b>Yours, on top of those</b> <span id="sf-lang-state">'+chip(L.customized)+'</span></p>'
-      +'<textarea id="sf-lang" placeholder="Write terse. No metaphors, even in asides."></textarea>'
+      +'<p class="lede">The writing rules every spec is authored against: tone, sentence '
+      +'length, what a sentence has to carry. They reach the agent wherever it writes spec '
+      +'prose. Edit them freely: this box is the whole contract, and what is in it is what '
+      +'the agent is told.</p>'
+      +'<p><b>Writing rules</b> <span id="sf-lang-state">'+chip(L.customized)+'</span></p>'
+      +'<textarea id="sf-lang" spellcheck="false" '
+      +'placeholder="Write terse. No metaphors, even in asides."></textarea>'
       +'<div class="acts">'
       +'<button class="btn primary" id="sf-lang-save" type="button">Save</button>'
       +'<button class="btn" id="sf-lang-reset" type="button"'+(L.customized?'':' disabled')
-      +'>Reset to default</button>'
+      +'>Reset to SpecForge’s</button>'
       +'<span class="note" id="sf-lang-msg"></span>'
       +'<span class="count" id="sf-lang-count"></span>'
-      +'</div>';
-    // textContent, not innerHTML: the contract is a markdown document and is
-    // shown as written rather than rendered, so nothing in it can become markup.
-    document.getElementById('sf-contract').textContent=L.contract||'';
+      +'</div>'
+      +'<p class="note" style="margin-top:14px">Editing these changes what the agent is '
+      +'<b>told</b>, not what <code>specforge verify</code> <b>checks</b>: the em dash, '
+      +'hedging and precision-theatre checks are code, and still report either way. '
+      +'Once you save, your copy stops tracking changes to SpecForge’s own.</p>';
     var ta=document.getElementById('sf-lang');
     var count=document.getElementById('sf-lang-count');
     ta.value=L.value;
@@ -585,24 +585,20 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
     ta.oninput=tally;
     tally();
 
-    document.getElementById('sf-lang-copy').onclick=function(){
-      // Backslashes are doubled because this script is a template literal in
-      // the module that serves it: a lone \\n would arrive as a real newline
-      // inside a quoted string and stop the page parsing.
-      var mine=ta.value.replace(/\\s+$/,'');
-      ta.value=mine?mine+'\\n\\n'+L.contract:L.contract;
-      tally();
-      ta.focus();
-    };
     document.getElementById('sf-lang-save').onclick=function(){
       if(tally()>max){
         flash('sf-lang-msg','Too long by '+(tally()-max)+' characters. Nothing was saved.','err');
         return;
       }
-      // Empty means "no direction", and clearing is explicit in the store: an
-      // empty string would merge as a no-op, so it is sent as null.
+      // Emptying the box is a reset, not a store with no writing rules at all.
+      // The box holds the whole contract now, so a blank one would mean the
+      // agent is told nothing about how to write, which nobody means by
+      // clearing a field. The server treats text identical to the shipped
+      // contract the same way.
       var v=ta.value.trim();
-      save({language:v?v:null}).then(function(){ flash('sf-lang-msg','Saved'); });
+      save({language:v?v:null}).then(function(){
+        flash('sf-lang-msg',v?'Saved':'Reset');
+      });
     };
     document.getElementById('sf-lang-reset').onclick=function(){
       save({language:null}).then(function(){ flash('sf-lang-msg','Reset'); });

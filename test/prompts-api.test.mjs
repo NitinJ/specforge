@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedPrompts, SAMPLE } from './helpers/prompts-store.mjs';
 import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
+import { readPrompts } from '../lib/store-prompts.mjs';
 import { SHIPPED_ACTIONS } from '../lib/actions/all.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-papi-');
@@ -23,7 +24,7 @@ const find = (state, id) => state.actions.shipped.concat(state.actions.custom)
 
 test('an untouched store reports everything as default', () => {
   const s = handlePromptsGet();
-  assert.equal(s.language.value, '');
+  assert.equal(s.language.value, s.language.contract, 'the box opens on the shipped rules');
   assert.equal(s.language.customized, false);
   assert.equal(s.actions.shipped.length, SHIPPED_ACTIONS.length);
   assert.equal(s.actions.custom.length, 0);
@@ -39,17 +40,77 @@ test('a shipped action carries both its effective and its shipped text', () => {
 });
 
 test('the shipped contract travels, so the page need not hold a copy of it', () => {
-  // The direction extends the contract rather than replacing it, so the page has
-  // to be able to show what is being extended. A copy in the page would drift
-  // the first time the contract was edited.
+  // It is both what the box opens on and what a reset restores, so the page has
+  // to be able to show it either way. A copy in the page would drift the first
+  // time the contract was edited.
   const s = handlePromptsGet();
   assert.match(s.language.contract, /Spec language contract/);
-  assert.equal(s.language.value, '', 'and it is not the box’s value');
   assert.equal(s.language.customized, false);
 });
 
-test('the cap travels too, because the store truncates at it silently', () => {
-  assert.equal(handlePromptsGet().language.max, 4000);
+test('an edit is what is in force, and the shipped text still travels beside it', () => {
+  seedPrompts({ language: 'Write terse. Nothing else.', languageMode: 'contract' });
+  const s = handlePromptsGet();
+  assert.equal(s.language.value, 'Write terse. Nothing else.', 'what the agent is told');
+  assert.match(s.language.contract, /Spec language contract/, 'and what a reset would restore');
+  assert.equal(s.language.customized, true);
+});
+
+test('a direction written before the box held the contract keeps the rules around it', () => {
+  // The upgrade case. Such a store holds two sentences that were ADDED to the
+  // shipped rules. Showing them alone would present them as the complete
+  // writing rules, and the next save would make that true.
+  seedPrompts({ language: 'Write terse.' });
+  const s = handlePromptsGet();
+  assert.match(s.language.value, /Spec language contract/, 'the shipped rules are still there');
+  assert.match(s.language.value, /Write terse\./, 'and so is the direction');
+  assert.ok(s.language.value.indexOf('Write terse.') > s.language.value.indexOf('Register'),
+    'the direction comes last, where the more specific instruction wins');
+  assert.equal(s.language.customized, true);
+});
+
+test('an unchanged save on a legacy store does not freeze it into a fork', () => {
+  // The box opens on the shipped rules with that store's direction appended, so
+  // an unedited Save sends back text that is not the shipped contract. Judged
+  // against the shipped text alone it looks like an edit, and the store would
+  // stop tracking shipped updates without anyone changing a character.
+  seedPrompts({ language: 'Write terse.' });
+  const shown = handlePromptsGet().language.value;
+  handlePromptsPut({ language: shown });
+  const raw = readPrompts();
+  assert.equal(raw.language, 'Write terse.', 'the direction is untouched');
+  assert.equal(raw.languageMode, undefined, 'and it is still read as an addition');
+  assert.equal(handlePromptsGet().language.value, shown, 'and nothing on screen moved');
+});
+
+test('saving over a legacy direction stamps it as the whole contract', () => {
+  seedPrompts({ language: 'Write terse.' });
+  const composed = handlePromptsGet().language.value;
+  handlePromptsPut({ language: `${composed}\n\nAnd never hedge.` });
+  const after = handlePromptsGet().language.value;
+  // Composed once, not again: a second open must not re-prepend the rules.
+  assert.equal(after.match(/Spec language contract/g).length, 1);
+  assert.match(after, /And never hedge\./);
+});
+
+test('saving the shipped rules back unchanged is not a customization', () => {
+  // Otherwise opening the tab and pressing Save freezes a copy that stops
+  // tracking the shipped text, and the page calls it customized while it is
+  // character for character the default.
+  const shipped = handlePromptsGet().language.contract;
+  const s = handlePromptsPut({ language: shipped });
+  assert.equal(s.language.customized, false);
+  assert.equal(s.language.value, shipped);
+});
+
+test('the cap holds the whole contract with room to edit inside it', () => {
+  // 4,000 was set when the box held a short direction added on top. It now
+  // holds the contract itself, and a cap the contract barely fits under is a
+  // cap that makes editing impossible.
+  const s = handlePromptsGet();
+  assert.equal(s.language.max, 12000);
+  assert.ok(s.language.max > s.language.contract.length * 2,
+    `the cap leaves no room: ${s.language.contract.length} of ${s.language.max}`);
 });
 
 test('the groups travel, so the create form need not hardcode them', () => {
@@ -120,7 +181,8 @@ test('deleteCustom removes it from the list and keeps its id resolving', async (
 test('a class reset answers with the state and clears only that class', () => {
   handlePromptsPut({ language: 'Terse.', actions: { hidden: ['visualize'] } });
   const after = handlePromptsReset('language');
-  assert.equal(after.language.value, '');
+  assert.equal(after.language.customized, false);
+  assert.equal(after.language.value, after.language.contract, 'back to the shipped rules');
   assert.equal(find(after, 'visualize').hidden, true, 'actions untouched');
 });
 

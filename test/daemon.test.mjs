@@ -319,6 +319,8 @@ test('the guard covers every write, not the route it was found on', async (t) =>
     });
     assert.equal(res.status, 403);
     const { handlePromptsGet } = await import('../lib/prompts-api.mjs');
-    assert.equal(handlePromptsGet().language.value, '', 'and nothing was written');
+    // Asked as "is anything stored", not "is the box empty": the box opens on
+    // the shipped contract, so an untouched store answers with that text.
+    assert.equal(handlePromptsGet().language.customized, false, 'and nothing was written');
   });
 });

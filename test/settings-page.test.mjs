@@ -45,44 +45,18 @@ test('the language tab shows the stored direction', async (t) => {
   assert.match(window.document.querySelector('#sf-lang-state .chip').textContent, /customized/);
 });
 
-test('an untouched direction reads as default', async (t) => {
+test('an untouched tab opens on the shipped rules, editable', async (t) => {
+  // The rules are the thing being edited, so they are in the field rather than
+  // in a panel beside it. Read-only was the old shape, and it left the only way
+  // to change a rule being to restate it in a second document that silently
+  // outranked the first.
   const { window } = open(t, 'language');
   await settle(window);
-  assert.equal(window.document.getElementById('sf-lang').value, '',
-    'the box is the user’s addition, so nothing they did not write is in it');
+  const ta = window.document.getElementById('sf-lang');
+  assert.match(ta.value, /Spec language contract/);
+  assert.equal(ta.tagName, 'TEXTAREA');
+  assert.equal(ta.hasAttribute('readonly'), false, 'the whole thing is editable');
   assert.match(window.document.querySelector('#sf-lang-state .chip').textContent, /default/);
-});
-
-test('the shipped contract is shown beside the box, read-only', async (t) => {
-  // The direction is added on top of the contract rather than replacing it, so
-  // the contract is reference rather than the box's value. Without it on screen
-  // there is nothing to write "on top of".
-  const { window } = open(t, 'language');
-  await settle(window);
-  const pre = window.document.getElementById('sf-contract');
-  assert.match(pre.textContent, /Spec language contract/);
-  assert.equal(pre.closest('textarea'), null, 'it is not an editable field');
-});
-
-test('copy puts the contract into the box without saving it', async (t) => {
-  const { window, calls } = open(t, 'language');
-  await settle(window);
-  window.document.getElementById('sf-lang-copy').click();
-  await settle(window);
-  assert.match(window.document.getElementById('sf-lang').value, /Spec language contract/);
-  assert.equal(calls.some((c) => c.method === 'PUT'), false, 'nothing was written yet');
-  assert.equal(handlePromptsGet().language.value, '');
-});
-
-test('copy appends rather than discarding what was already written', async (t) => {
-  handlePromptsPut({ language: 'Write terse.' });
-  const { window } = open(t, 'language');
-  await settle(window);
-  window.document.getElementById('sf-lang-copy').click();
-  await settle(window);
-  const v = window.document.getElementById('sf-lang').value;
-  assert.match(v, /^Write terse\./, 'the reader’s own words come first and survive');
-  assert.match(v, /Spec language contract/);
 });
 
 test('the box counts against the cap the store silently truncates at', async (t) => {
@@ -91,22 +65,59 @@ test('the box counts against the cap the store silently truncates at', async (t)
   const ta = window.document.getElementById('sf-lang');
   ta.value = 'x'.repeat(120);
   ta.dispatchEvent(new window.Event('input'));
-  assert.equal(window.document.getElementById('sf-lang-count').textContent, '120 / 4000');
+  assert.equal(window.document.getElementById('sf-lang-count').textContent, '120 / 12000');
+});
+
+test('the cap leaves room to edit the rules, not just to fit them', async (t) => {
+  // 4,000 was the cap when the box held a short addition. Against a 3,329
+  // character contract it left 671 to work in, which is why editing them was
+  // impossible rather than merely disallowed.
+  const { window } = open(t, 'language');
+  await settle(window);
+  const ta = window.document.getElementById('sf-lang');
+  ta.dispatchEvent(new window.Event('input'));
+  const [used, cap] = window.document.getElementById('sf-lang-count')
+    .textContent.split(' / ').map(Number);
+  assert.ok(cap - used > used, `only ${cap - used} characters spare against ${used} of rules`);
 });
 
 test('a save over the cap is refused, rather than losing the tail', async (t) => {
-  // The store truncates at 4,000 without saying so, so the one place a human
+  // The store truncates at the cap without saying so, so the one place a human
   // types this is where the limit has to bite.
   const { window, calls } = open(t, 'language');
   await settle(window);
   const ta = window.document.getElementById('sf-lang');
-  ta.value = 'x'.repeat(4001);
+  ta.value = 'x'.repeat(12001);
   ta.dispatchEvent(new window.Event('input'));
   window.document.getElementById('sf-lang-save').click();
   await settle(window);
   assert.match(window.document.getElementById('sf-lang-msg').textContent, /Too long by 1 character/);
   assert.equal(calls.some((c) => c.method === 'PUT'), false, 'nothing was sent');
-  assert.equal(handlePromptsGet().language.value, '');
+  assert.equal(handlePromptsGet().language.customized, false);
+});
+
+test('saving the rules back unedited leaves the store on the shipped ones', async (t) => {
+  // Opening the tab and pressing Save must not fork a copy that then stops
+  // tracking what SpecForge ships.
+  const { window } = open(t, 'language');
+  await settle(window);
+  window.document.getElementById('sf-lang-save').click();
+  await settle(window);
+  assert.equal(handlePromptsGet().language.customized, false);
+  assert.match(window.document.querySelector('#sf-lang-state .chip').textContent, /default/);
+});
+
+test('an edited rule is what reaches the store', async (t) => {
+  const { window } = open(t, 'language');
+  await settle(window);
+  const ta = window.document.getElementById('sf-lang');
+  ta.value = ta.value.replace(/No em dashes[^\n]*/, 'Em dashes are fine.');
+  window.document.getElementById('sf-lang-save').click();
+  await settle(window);
+  const stored = handlePromptsGet().language;
+  assert.match(stored.value, /Em dashes are fine\./);
+  assert.equal(stored.customized, true);
+  assert.match(stored.contract, /Spec language contract/, 'and the shipped text is still there');
 });
 
 test('saving the direction sends it and re-renders from the answer', async (t) => {
@@ -121,7 +132,9 @@ test('saving the direction sends it and re-renders from the answer', async (t) =
   assert.match(window.document.querySelector('#sf-lang-state .chip').textContent, /customized/);
 });
 
-test('saving an emptied box sends null, because an empty string cannot clear', async (t) => {
+test('emptying the box is a reset, not a store with no writing rules at all', async (t) => {
+  // The box holds the whole contract, so a blank one would mean the agent is
+  // told nothing about how to write. Nobody means that by clearing a field.
   handlePromptsPut({ language: 'Write terse.' });
   const { window, calls } = open(t, 'language');
   await settle(window);
@@ -130,7 +143,9 @@ test('saving an emptied box sends null, because an empty string cannot clear', a
   await settle(window);
   const put = calls.find((c) => c.method === 'PUT');
   assert.equal(put.body.language, null);
-  assert.equal(handlePromptsGet().language.value, '');
+  const after = handlePromptsGet().language;
+  assert.equal(after.customized, false);
+  assert.equal(after.value, after.contract);
 });
 
 test('reset is offered only once there is something to reset', async (t) => {
@@ -315,7 +330,7 @@ test('the class reset asks first and clears the whole class', async (t) => {
   window.document.getElementById('sf-reset-class').click();
   await settle(window);
   assert.equal(asked, 1, 'a destructive control confirms');
-  assert.equal(handlePromptsGet().language.value, '');
+  assert.equal(handlePromptsGet().language.customized, false);
 });
 
 test('declining the class reset changes nothing', async (t) => {

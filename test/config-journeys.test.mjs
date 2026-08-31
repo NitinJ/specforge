@@ -53,24 +53,29 @@ const confirmYes = (window) => { window.confirm = () => true; };
 
 const shipped = (id) => SHIPPED_ACTIONS.find((a) => a.id === id);
 
-test('journey: a house register set in the pane reaches every spec, and comes back off', async (t) => {
-  const PREAMBLE = 'Write terse. No metaphors, even in asides.';
+test('journey: a rule edited in the pane reaches every spec, and comes back off', async (t) => {
   const { window } = open(t, 'language');
   await settle(window);
 
-  window.document.getElementById('sf-lang').value = PREAMBLE;
+  // Delete a rule rather than add a note. Adding one always worked; removing one
+  // is what the pane could not do while the agent read the shipped file itself.
+  const ta = window.document.getElementById('sf-lang');
+  assert.match(ta.value, /em dash/i, 'the tab opens on the shipped rules');
+  ta.value = ta.value.replace(/^.*em dash.*$/gim, 'Em dashes are fine here.');
   window.document.getElementById('sf-lang-save').click();
   await settle(window);
 
   const during = await cmdCreate({ title: 'A spec written under it', type: 'design' }, deps);
-  assert.equal(during.language, PREAMBLE, 'the agent is told before it writes a word');
+  assert.match(during.language, /Em dashes are fine here\./,
+    'the agent is told before it writes a word');
+  assert.equal(/No em dashes/i.test(during.language), false, 'and the deleted rule is gone');
 
   confirmYes(window);
   window.document.getElementById('sf-reset-class').click();
   await settle(window);
 
   const after = await cmdCreate({ title: 'A spec written without it', type: 'design' }, deps);
-  assert.equal(after.language, '', 'and the reset reaches the same payload');
+  assert.match(after.language, /em dash/i, 'and the reset reaches the same payload');
   assert.match(window.document.querySelector('#sf-lang-state .chip').textContent, /default/);
 });
 

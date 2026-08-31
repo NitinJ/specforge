@@ -38,6 +38,10 @@ export function seedPrompts(shape = {}) {
 
   const file = {};
   if (language) file.language = language;
+  // Which of the two shapes `language` is in. Omitted seeds the pre-tab shape,
+  // a direction added on top of the shipped rules, which is what every store
+  // written before the Language tab held the contract carries.
+  if (language && shape.languageMode) file.languageMode = shape.languageMode;
   const actions = {};
   if (hidden.length) actions.hidden = hidden;
   if (Object.keys(overrides).length) actions.overrides = overrides;

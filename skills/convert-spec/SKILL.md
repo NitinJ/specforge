@@ -64,11 +64,12 @@ It prints `{ id, htmlPath, url, type, status, language, report }`. **Then edit
 `htmlPath`** — the deterministic pass gives you a valid document to improve,
 never a blank scaffold to fill.
 
-**`language` is the user's authoring direction, and it outranks the house
-register.** A non-empty string is how this user wants prose written; apply it to
-everything you write while improving the converted document. Where it
-contradicts `references/spec-language.md`, the user's direction wins. Empty
-means no direction. Set in the Configuration pane, not here.
+**`language` is the writing contract in force, and it is the whole of it.** Not a
+note added to a contract you read somewhere else: it already contains SpecForge's
+own rules, unless this store's owner edited or removed them. Follow what it says and nothing it does not,
+and apply it to everything you write while improving the converted document.
+Do not go looking for `references/spec-language.md` to supplement it: a rule the owner deleted is deleted.
+They edit this in the Configuration pane, under Language.
 
 Read the `report` before you touch anything; it is the list of what needs you:
 
@@ -87,7 +88,7 @@ Pass `--type` only when the source really is a design / research / impl doc.
 Then improve the result:
 
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`, and the
-  language contract it points to: `${CLAUDE_PLUGIN_ROOT}/references/spec-language.md`.
+  language contract, which is the `language` field above rather than a file.
   This is where an original's essay voice leaks through: convert the content, not
   the register.
 - Map the source onto the type's sections exactly as the `create-spec` skill
