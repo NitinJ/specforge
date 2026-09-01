@@ -19,7 +19,7 @@ import { specsForSession } from '../../lib/attach.mjs';
  * @returns {{ me: string, mine: string[] }} the session id + the spec ids it owns
  */
 export function mineFor(env = process.env, inputSessionId = '') {
-  const me = inputSessionId || env.CLAUDE_CODE_SESSION_ID || '';
+  const me = inputSessionId || env.SPECFORGE_SESSION_ID || env.CLAUDE_CODE_SESSION_ID || '';
   if (!me) return { me: '', mine: [] };
   return { me, mine: specsForSession(me) };
 }
