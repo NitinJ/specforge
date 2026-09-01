@@ -17,7 +17,13 @@ const batch = (over = {}) => ({
 test('an ordinary batch still says to amend the spec', () => {
   const out = reviewReason([batch()]);
   assert.match(out, /amend the spec/i);
+  assert.match(out, /specforge:review-spec/);
+});
+
+test('the same reason under Pi names the bare skill', () => {
+  const out = reviewReason([batch()], { SPECFORGE_SESSION_ID: 'pi-1' });
   assert.match(out, /(^|\s)review-spec/);
+  assert.doesNotMatch(out, /specforge:/);
 });
 
 test('a batch carrying an action says the actions decide what happens', () => {

@@ -1512,8 +1512,8 @@ function sfRevealDisclosures(el) {
       '  3. Arm the review watcher in the background so submitted comments reach you',
       '     while you are idle:                      node "' + cli + '" wait-batch',
       '',
-      'On the watcher completing, run the review-spec skill for each pending',
-      'spec and relaunch it; on timeout just relaunch it.',
+      'On the watcher completing, run the review-spec skill (specforge:review-spec',
+      'in Claude Code) for each pending spec and relaunch it; on timeout just relaunch it.',
     ].join('\n');
   }
   function copyReconnectPrompt() {

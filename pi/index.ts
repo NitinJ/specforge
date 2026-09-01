@@ -90,6 +90,11 @@ export default function (pi: ExtensionAPI) {
     pendingStartContext = "";
     afterInjection = false;
     sessionId = ctx.sessionManager.getSessionId();
+    // The hooks' run() calls below run in this process, so the harness marker
+    // their skill ids resolve against (lib/skill-ref.mjs) must be set here,
+    // not only on the children this extension spawns — without it every text
+    // they generate names the Claude form and Pi cannot run it.
+    process.env.SPECFORGE_SESSION_ID = sessionId;
     try {
       const out = sessionStartRun({ session_id: sid() });
       pendingStartContext = out?.hookSpecificOutput?.additionalContext ?? "";

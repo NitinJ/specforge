@@ -89,6 +89,12 @@ test('finishExport requires a url or an error (no "undefined" url)', () => {
 test('exportReason names the specs and points at the export skill', () => {
   const reason = exportReason([{ id, title: 'A spec' }]);
   assert.match(reason, /A spec/);
-  assert.match(reason, /(^|\s)export/);
+  assert.match(reason, /specforge:export/);
   assert.match(reason, /export-done/);
+});
+
+test('exportReason under Pi names the bare skill', () => {
+  const reason = exportReason([{ id, title: 'A spec' }], { SPECFORGE_SESSION_ID: 'pi-1' });
+  assert.match(reason, /(^|\s)export/);
+  assert.doesNotMatch(reason, /specforge:/);
 });
