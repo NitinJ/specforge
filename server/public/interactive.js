@@ -458,6 +458,206 @@
     });
   }
 
+  // ---------- expandable rows ----------
+  //
+  // A detail row is a real row and ships visible. This hides it and gives its
+  // summary row a chevron, so the un-enhanced page, the print stylesheet and
+  // the markdown export all still carry the detail in document order.
+  //
+  // The button goes inside the first cell rather than in a new leading column.
+  // A column would change the grid width and break every colspan in the table,
+  // including the detail row's own span, which is the thing being toggled.
+
+  /* Pair each summary row with its detail row by id.
+   *
+   * Matching on the value of data-sf-row rather than on adjacency, because a
+   * table can carry rows the author did not pair and an author can put the
+   * detail anywhere in the same tbody. A summary with no detail is left alone:
+   * a chevron that expands nothing is worse than no chevron.
+   *
+   * Both lookups are scoped against nested tables: a detail body can hold its
+   * own expandable table, and the summary rows of that inner table are also
+   * descendants of the outer one. A row belongs to the table it is a direct
+   * row of (closest('table')), and its detail must live in the same tbody of
+   * that same table - otherwise the outer table's chevron would pair with,
+   * toggle and name an element inside the nested one.
+   */
+  function pairsIn(table) {
+    var out = [];
+    Array.prototype.forEach.call(table.querySelectorAll('tr[data-sf-row]'), function (row) {
+      if (row.closest('table') !== table) return;
+      var id = row.getAttribute('data-sf-row');
+      if (!id) return;
+      // The first candidate is not necessarily the right one: a nested table
+      // earlier in the same tbody can carry a detail with the same pair id, and
+      // that candidate is rejected below - so scan until a candidate belongs to
+      // THIS table rather than rejecting the query's single answer.
+      var tbody = row.closest('tbody');
+      var detail = null;
+      if (tbody) {
+        var candidates = tbody.querySelectorAll('tr[data-sf-detail="' + cssEscape(id) + '"]');
+        for (var c = 0; c < candidates.length; c++) {
+          if (candidates[c].closest('table') === table) { detail = candidates[c]; break; }
+        }
+      }
+      if (detail) out.push({ row: row, detail: detail, id: id });
+    });
+    return out;
+  }
+
+  /* Escape a value for use inside an attribute selector.
+   *
+   * Author-written ids reach this from the document, and one containing a quote
+   * or a bracket would otherwise throw inside querySelector and stop the whole
+   * table from being enhanced.
+   */
+  function cssEscape(value) {
+    if (window.CSS && CSS.escape) return CSS.escape(value);
+    return String(value).replace(/["'\\\]\[]/g, '\\$&');
+  }
+
+  /* Move the detail cell's content into a wrapper the CSS can constrain.
+   *
+   * A table cell under `table-layout:auto` is sized by its content and no
+   * max-width on the cell changes that, so a wide detail widens the whole table.
+   * The wrapper is what carries the width rule; without script the detail is
+   * still a plain row, which is the degraded form we want for print and export.
+   */
+  function wrapDetailBody(detail) {
+    var cell = detail.cells[0];
+    if (!cell || cell.firstElementChild && cell.firstElementChild.className === 'sf-detail-body') return;
+    var body = document.createElement('div');
+    body.className = 'sf-detail-body';
+    while (cell.firstChild) body.appendChild(cell.firstChild);
+    cell.appendChild(body);
+  }
+
+  /* Claim a document-unique id derived from base.
+   *
+   * Generated detail ids are built from the pair id, which two tables on one
+   * page can share: ids must be unique across the document, not per table, or
+   * aria-controls becomes ambiguous and getElementById answers the wrong row.
+   */
+  function claimId(base) {
+    if (!document.getElementById(base)) return base;
+    var n = 2;
+    while (document.getElementById(base + '-' + n)) n += 1;
+    return base + '-' + n;
+  }
+
+  function initExpandable() {
+    Array.prototype.forEach.call(document.querySelectorAll('table.expandable'), function (table) {
+      pairsIn(table).forEach(function (pair, i) {
+        var cell = pair.row.cells[0];
+        if (!cell || cell.querySelector('.sf-expand')) return;
+
+        // An authored id on the detail is a contract with whatever links to it —
+        // UNLESS the document already uses it twice, in which case it is not an
+        // identity at all: aria-controls would reference an ambiguous id and
+        // getElementById would answer the wrong row. A duplicate is replaced
+        // rather than trusted, the same rule panelId applies to tab panels.
+        if (!pair.detail.id || idCount(pair.detail.id) > 1) {
+          pair.detail.id = claimId('sf-detail-' + pair.id + '-' + i);
+        }
+        pair.detail.hidden = true;
+        wrapDetailBody(pair.detail);
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sf-expand';
+        btn.setAttribute('aria-expanded', 'false');
+        btn.setAttribute('aria-controls', pair.detail.id);
+        // The row's own first cell is the accessible name: "expand" alone tells
+        // a screen reader nothing about which row is being expanded.
+        btn.setAttribute('aria-label', 'Details for ' + (cell.textContent || '').trim());
+
+        cell.insertBefore(btn, cell.firstChild);
+
+        btn.addEventListener('click', function () {
+          var open = btn.getAttribute('aria-expanded') === 'true';
+          btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+          pair.detail.hidden = open;
+        });
+      });
+    });
+  }
+
+  /* Fold what follows a marked heading, up to the next heading of any level.
+   *
+   * The group is computed rather than authored: an entry is "the heading and
+   * everything until the next one", which is what the document already says.
+   * Nothing is moved out of the section, so a comment anchored inside a fold
+   * still anchors where it did.
+   */
+  function initFold() {
+    Array.prototype.forEach.call(document.querySelectorAll('h3.fold'), function (head) {
+      if (head.querySelector('.sf-fold')) return;
+
+      // Stop at the next heading of the SAME OR HIGHER level, not at any
+      // heading. An h4 under an h3 is a subheading inside the entry; stopping
+      // there took two blocks of eight from the first entry in section 11 and
+      // left the rest hanging under a fold that no longer covered them.
+      var level = Number(head.tagName.slice(1));
+      var body = document.createElement('div');
+      body.className = 'sf-fold-body';
+      var next = head.nextElementSibling;
+      while (next && !(/^H[1-6]$/.test(next.tagName) && Number(next.tagName.slice(1)) <= level)) {
+        var take = next;
+        next = next.nextElementSibling;
+        body.appendChild(take);
+      }
+      // A heading with nothing under it has nothing to fold, and a control that
+      // opens an empty box is worse than no control.
+      if (!body.children.length) return;
+      head.parentNode.insertBefore(body, next);
+
+      if (!body.id) body.id = (head.id || 'sf-fold') + '-body';
+      var open = head.hasAttribute('open');
+      body.hidden = !open;
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'sf-fold';
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.setAttribute('aria-controls', body.id);
+      btn.setAttribute('aria-label', (head.textContent || '').trim());
+      head.insertBefore(btn, head.firstChild);
+
+      function set(want) {
+        btn.setAttribute('aria-expanded', want ? 'true' : 'false');
+        body.hidden = !want;
+      }
+      // The caret is the only target, and the heading is not. A heading is a
+      // commentable block, so a click anywhere on it opens the review layer's
+      // composer: making the whole line fold as well would mean every attempt to
+      // comment on an entry also collapsed it.
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        set(btn.getAttribute('aria-expanded') !== 'true');
+      });
+
+      head.sfFoldOpen = function () { set(true); };
+    });
+    revealFragment();
+  }
+
+  /* Open the fold the URL points into, so a contents link lands on content. */
+  function revealFragment() {
+    // currentFragment() rather than a raw hash slice: the DOM id is the decoded
+    // value, and a heading id containing a non-ASCII character is URL-encoded in
+    // the fragment, so the raw string matches nothing and the fold stays shut.
+    var id = currentFragment();
+    if (!id) return;
+    var target = document.getElementById(id);
+    if (!target) return;
+    var head = target.classList && target.classList.contains('fold')
+      ? target
+      : (target.closest('.sf-fold-body') || {}).previousElementSibling;
+    if (head && head.sfFoldOpen) head.sfFoldOpen();
+  }
+
+  window.addEventListener('hashchange', revealFragment);
+
   // ---------- boot ----------
 
   var booted = false;
@@ -468,6 +668,8 @@
     initCopy();
     initTabs();
     initSortable();
+    initExpandable();
+    initFold();
   }
 
   if (document.readyState === 'loading') {
@@ -483,5 +685,7 @@
     initCopy();
     initTabs();
     initSortable();
+    initExpandable();
+    initFold();
   });
 })();

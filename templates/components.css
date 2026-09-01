@@ -62,7 +62,7 @@ h5{font-size:12.5px;margin:22px 0 6px;color:var(--muted);
   border-radius:4px;padding:.1em .4em;white-space:nowrap}
 .term{border-bottom:1px dashed var(--muted);cursor:help}
 .footnote{color:var(--muted);font-size:12.5px}
-.src{color:var(--muted);font-size:12px;white-space:nowrap}
+.src{color:var(--muted);font-size:12px}
 .src::before{content:"source: "}
 /* data */
 table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
@@ -83,6 +83,35 @@ table.sortable th[aria-sort="ascending"] .sf-sort::after{opacity:1;
 table.sortable th[aria-sort="descending"] .sf-sort::after{opacity:1}
 table.sortable th .sf-sort:hover{color:var(--accent)}
 table.sortable th .sf-sort:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+table.expandable tr[data-sf-row] > td:first-child{white-space:nowrap}
+table.expandable .sf-expand{appearance:none;background:none;border:0;cursor:pointer;
+  color:var(--muted);padding:0;margin:0 7px 0 0;border-radius:3px;
+  width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;
+  vertical-align:-2px;transition:color .12s ease,background-color .12s ease}
+table.expandable .sf-expand::before{content:"";width:5px;height:5px;
+  border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+  transform:translateX(-1px) rotate(-45deg);transition:transform .15s ease}
+table.expandable .sf-expand[aria-expanded="true"]::before{
+  transform:translateY(-1px) rotate(45deg)}
+table.expandable .sf-expand:hover{color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 13%,transparent)}
+table.expandable .sf-expand:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+table.expandable tr[data-sf-row]:has(.sf-expand[aria-expanded="true"]) > td{
+  background:color-mix(in srgb,var(--accent) 7%,transparent)}
+table.expandable tr[data-sf-detail] > td{background:color-mix(in srgb,var(--ink) 3%,transparent);
+  border-top:none;padding-left:20px;
+  box-shadow:inset 3px 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}
+table.expandable .sf-detail-body{width:0;min-width:100%;box-sizing:border-box;
+  overflow-wrap:anywhere}
+table.expandable .sf-detail-body > :first-child{margin-top:0}
+table.expandable .sf-detail-body > :last-child{margin-bottom:0}
+table.expandable .sf-detail-body table{width:100%;table-layout:fixed}
+table.expandable .sf-detail-body pre{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+[data-sf-live] table.expandable tr[data-sf-detail][hidden]{display:none}
+@media print{
+  [data-sf-live] table.expandable tr[data-sf-detail][hidden]{display:table-row}
+  [data-sf-live] table.expandable .sf-expand{display:none}
+}
 .stats{display:flex;flex-wrap:wrap;gap:12px;margin:14px 0}
 .stat{flex:1 1 150px;background:color-mix(in srgb,var(--accent) 5%,var(--panel2));
   border:1px solid var(--line);border-top:2px solid var(--accent);
@@ -139,6 +168,21 @@ details.disclosure > :last-child{padding-bottom:14px}
   details.disclosure{break-inside:avoid}
   details.disclosure > summary::before{display:none}
   details.disclosure::details-content{content-visibility:visible}
+}
+h3.fold .sf-fold{appearance:none;background:none;border:0;cursor:pointer;
+  color:var(--muted);padding:0;margin:0 8px 0 0;border-radius:3px;
+  width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;
+  vertical-align:1px;transition:color .12s ease,background-color .12s ease}
+h3.fold .sf-fold::before{content:"";width:6px;height:6px;
+  border-right:1.8px solid currentColor;border-bottom:1.8px solid currentColor;
+  transform:translateX(-1px) rotate(-45deg);transition:transform .15s ease}
+h3.fold .sf-fold[aria-expanded="true"]::before{transform:translateY(-1px) rotate(45deg)}
+h3.fold:hover .sf-fold{color:var(--accent)}
+h3.fold .sf-fold:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+[data-sf-live] .sf-fold-body[hidden]{display:none}
+@media print{
+  [data-sf-live] .sf-fold-body[hidden]{display:block}
+  [data-sf-live] h3.fold .sf-fold{display:none}
 }
 .tabs{margin:16px 0}
 .tabs > .tab{border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:10px 0}
@@ -205,4 +249,4 @@ li[data-sf-task] span.verify{display:block;margin:2px 0 0 20px}
 .evidence .val{font-size:19px;font-weight:700;line-height:1.3;color:var(--accent)}
 .evidence .meta{color:var(--muted);font-size:12px;margin-top:3px}
 
-/* specforge:components end sha=0d79a2ba */
+/* specforge:components end sha=ba4d8416 */
