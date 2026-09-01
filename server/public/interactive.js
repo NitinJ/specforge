@@ -488,9 +488,19 @@
       if (row.closest('table') !== table) return;
       var id = row.getAttribute('data-sf-row');
       if (!id) return;
+      // The first candidate is not necessarily the right one: a nested table
+      // earlier in the same tbody can carry a detail with the same pair id, and
+      // that candidate is rejected below - so scan until a candidate belongs to
+      // THIS table rather than rejecting the query's single answer.
       var tbody = row.closest('tbody');
-      var detail = tbody ? tbody.querySelector('tr[data-sf-detail="' + cssEscape(id) + '"]') : null;
-      if (detail && detail.closest('table') === table) out.push({ row: row, detail: detail, id: id });
+      var detail = null;
+      if (tbody) {
+        var candidates = tbody.querySelectorAll('tr[data-sf-detail="' + cssEscape(id) + '"]');
+        for (var c = 0; c < candidates.length; c++) {
+          if (candidates[c].closest('table') === table) { detail = candidates[c]; break; }
+        }
+      }
+      if (detail) out.push({ row: row, detail: detail, id: id });
     });
     return out;
   }
