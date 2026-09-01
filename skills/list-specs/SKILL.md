@@ -32,17 +32,18 @@ already running.
 ## Present the result
 
 Render `rows` as a compact, numbered table — **# · id · title · type · status · attached** —
-showing `attached` as `free`, `this session`, or `held: <first 8 of the id>`. For
+showing `attached` as `free`, `mine` (this session), or `held: <first 8 of the id>`. For
 "all", also print `indexUrl` (the browser index links each row to `/spec/<id>`).
 
 ## Then offer to open / detach (the picker)
 
-Classify each row against `session`:
+Classify each row (the compact output renders `mine` for the calling session;
+`--json` output carries the raw session id instead):
 
 | `attached` | meaning | action |
 | --- | --- | --- |
 | `free` | unattached | **open** (attach to this session) |
-| equals `session` | attached here | **detach** |
+| `mine` (compact), or equals `session` (`--json`) | attached here | **detach** |
 | any other id | held by another live session | none (show it greyed) |
 
 If at least one row is actionable, call **AskUserQuestion** ("Open or detach a spec?").
