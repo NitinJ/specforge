@@ -151,9 +151,4 @@ export default function (pi: ExtensionAPI) {
       // fail-safe
     }
   });
-
-  pi.on("resources_discover", async () => ({
-    skillPaths: [join(ROOT, "skills")],
-    promptPaths: [join(ROOT, "pi", "prompts")],
-  }));
 }

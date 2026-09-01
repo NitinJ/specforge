@@ -155,7 +155,7 @@ test('Stop blocks on a queued export and routes to the export skill (surfaced on
   const id = specWithExportRequest('sess-1');
   const out = stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
   assert.equal(out.decision, 'block');
-  assert.match(out.reason, /specforge:export/);
+  assert.match(out.reason, /(^|\s)export/);
   assert.match(out.reason, /Google Docs/);
   assert.equal(readMeta(id).export.state, 'working', 'surfacing advances it so a re-Stop won’t repeat');
   assert.deepEqual(exportRequestsForSession('sess-1'), []);
@@ -172,7 +172,7 @@ test('a pending review batch takes priority over an export request', () => {
 test('UserPromptSubmit surfaces a queued export as additionalContext', () => {
   specWithExportRequest('sess-1');
   const out = upsRun({ prompt: 'hi' }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
-  assert.match(out.hookSpecificOutput.additionalContext, /specforge:export/);
+  assert.match(out.hookSpecificOutput.additionalContext, /(^|\s)export/);
 });
 
 test('export CLI: working then done records the Doc link; --error records a failure', async () => {

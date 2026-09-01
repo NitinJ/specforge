@@ -5,8 +5,8 @@ argument-hint: "[focus / notes]"
 
 Mine the SpecForge review-comment history, cluster the recurring cross-spec
 themes and redundant sections, and propose template changes as a spec before
-editing the templates. Load and follow the `specforge:tune-templates` skill (e.g.
-`/skill:specforge:tune-templates`, or read its SKILL.md under the specforge
+editing the templates. Load and follow the `tune-templates` skill (e.g.
+`/skill:tune-templates`, or read its SKILL.md under the specforge
 package's `skills/tune-templates/`). Optional focus / notes:
 
 $ARGUMENTS

@@ -1,5 +1,5 @@
 ---
-name: specforge:create-spec
+name: create-spec
 user-invocable: false
 description: |
   Author a new house-style spec into the SpecForge store. Use when the user asks to

@@ -1,5 +1,5 @@
 ---
-name: specforge:tune-templates
+name: tune-templates
 user-invocable: true
 description: |
   Optimize the SpecForge spec templates from the review-comment history. Use when

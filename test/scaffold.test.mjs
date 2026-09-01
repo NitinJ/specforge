@@ -58,7 +58,7 @@ test('every skill has a SKILL.md with name + description frontmatter', () => {
   for (const s of skills) {
     const md = readText(join('skills', s.name, 'SKILL.md'));
     assert.match(md, /^---/, `${s.name}/SKILL.md has frontmatter`);
-    assert.match(md, /\nname:\s*specforge:/, `${s.name}/SKILL.md declares a name`);
+    assert.match(md, /\nname:\s*[a-z0-9-]+\n/, `${s.name}/SKILL.md declares a name`);
     assert.match(md, /\ndescription:/, `${s.name}/SKILL.md declares a description`);
   }
 });

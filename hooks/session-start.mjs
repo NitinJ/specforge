@@ -28,7 +28,7 @@ export function run(input, env = process.env) {
     'running this session, relaunch it in the background so submitted comments are',
     'picked up while you are idle:',
     `  node "${CLI}" wait-batch`,
-    'On completion it returns { ready, pending } — on ready, run specforge:review-spec',
+    'On completion it returns { ready, pending } — on ready, run review-spec',
     'for each pending spec then relaunch it. It does not expire on its own — it',
     'runs until a batch arrives or this session ends.',
   ].join('\n');

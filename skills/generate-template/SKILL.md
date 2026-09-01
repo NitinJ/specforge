@@ -1,5 +1,5 @@
 ---
-name: specforge:generate-template
+name: generate-template
 user-invocable: false
 description: |
   Write a spec template from a prompt. Auto-invoked when the owning session's

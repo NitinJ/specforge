@@ -1,5 +1,5 @@
 ---
-name: specforge:export-md
+name: export-md
 user-invocable: true
 description: |
   Export a spec from the store as a GitHub-flavoured markdown file, plus a
