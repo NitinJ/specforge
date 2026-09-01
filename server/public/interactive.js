@@ -474,14 +474,23 @@
    * table can carry rows the author did not pair and an author can put the
    * detail anywhere in the same tbody. A summary with no detail is left alone:
    * a chevron that expands nothing is worse than no chevron.
+   *
+   * Both lookups are scoped against nested tables: a detail body can hold its
+   * own expandable table, and the summary rows of that inner table are also
+   * descendants of the outer one. A row belongs to the table it is a direct
+   * row of (closest('table')), and its detail must live in the same tbody of
+   * that same table - otherwise the outer table's chevron would pair with,
+   * toggle and name an element inside the nested one.
    */
   function pairsIn(table) {
     var out = [];
     Array.prototype.forEach.call(table.querySelectorAll('tr[data-sf-row]'), function (row) {
+      if (row.closest('table') !== table) return;
       var id = row.getAttribute('data-sf-row');
       if (!id) return;
-      var detail = table.querySelector('tr[data-sf-detail="' + cssEscape(id) + '"]');
-      if (detail) out.push({ row: row, detail: detail, id: id });
+      var tbody = row.closest('tbody');
+      var detail = tbody ? tbody.querySelector('tr[data-sf-detail="' + cssEscape(id) + '"]') : null;
+      if (detail && detail.closest('table') === table) out.push({ row: row, detail: detail, id: id });
     });
     return out;
   }
@@ -513,13 +522,26 @@
     cell.appendChild(body);
   }
 
+  /* Claim a document-unique id derived from base.
+   *
+   * Generated detail ids are built from the pair id, which two tables on one
+   * page can share: ids must be unique across the document, not per table, or
+   * aria-controls becomes ambiguous and getElementById answers the wrong row.
+   */
+  function claimId(base) {
+    if (!document.getElementById(base)) return base;
+    var n = 2;
+    while (document.getElementById(base + '-' + n)) n += 1;
+    return base + '-' + n;
+  }
+
   function initExpandable() {
     Array.prototype.forEach.call(document.querySelectorAll('table.expandable'), function (table) {
       pairsIn(table).forEach(function (pair, i) {
         var cell = pair.row.cells[0];
         if (!cell || cell.querySelector('.sf-expand')) return;
 
-        if (!pair.detail.id) pair.detail.id = 'sf-detail-' + pair.id + '-' + i;
+        if (!pair.detail.id) pair.detail.id = claimId('sf-detail-' + pair.id + '-' + i);
         pair.detail.hidden = true;
         wrapDetailBody(pair.detail);
 
@@ -604,7 +626,10 @@
 
   /* Open the fold the URL points into, so a contents link lands on content. */
   function revealFragment() {
-    var id = (location.hash || '').slice(1);
+    // currentFragment() rather than a raw hash slice: the DOM id is the decoded
+    // value, and a heading id containing a non-ASCII character is URL-encoded in
+    // the fragment, so the raw string matches nothing and the fold stays shut.
+    var id = currentFragment();
     if (!id) return;
     var target = document.getElementById(id);
     if (!target) return;
