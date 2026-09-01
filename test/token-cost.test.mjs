@@ -103,6 +103,17 @@ test('formatRowsCompact prints one line per spec: id status type attached title'
   assert.equal(line, 'b912d210dd  draft  design  free  UX architecture');
 });
 
+test('formatRowsCompact marks the calling session\'s specs as mine', () => {
+  const lines = formatRowsCompact([
+    { id: 'aaa', title: 'Mine', type: 'design', status: 'draft', attached: 'sess-1' },
+    { id: 'bbb', title: 'Held elsewhere', type: 'design', status: 'draft', attached: 'sess-9' },
+    { id: 'ccc', title: 'Free', type: 'design', status: 'draft', attached: 'free' },
+  ], 'sess-1');
+  assert.match(lines, /aaa  draft  design  mine  Mine/);
+  assert.match(lines, /bbb  draft  design  sess-9  Held elsewhere/);
+  assert.match(lines, /ccc  draft  design  free  Free/);
+});
+
 test('formatRowsCompact handles an empty store', () => {
   assert.equal(formatRowsCompact([]), '');
 });

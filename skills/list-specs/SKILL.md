@@ -19,7 +19,9 @@ allowed-tools: Read, Bash, AskUserQuestion
 - **This session's specs** (mode "mine"): `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list`
 
 The default output is compact: one line per spec — `id  status  type  attached  title` —
-plus `index: <url>` from `listall` (which also ensures the daemon is up). Pass
+where `attached` reads `mine` when it names the calling session (so the picker can
+classify rows from the lines alone), a session id when another session holds it,
+or `free`. `listall` adds `index: <url>` (and ensures the daemon is up). Pass
 `--json` for the machine shape: `session` plus `rows`
 (`{ id, title, type, status, attached }`, where `attached` is a session id or
 `free`). `list` reads straight from the store (no daemon needed). The picker's
