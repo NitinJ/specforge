@@ -458,6 +458,164 @@
     });
   }
 
+  // ---------- expandable rows ----------
+  //
+  // A detail row is a real row and ships visible. This hides it and gives its
+  // summary row a chevron, so the un-enhanced page, the print stylesheet and
+  // the markdown export all still carry the detail in document order.
+  //
+  // The button goes inside the first cell rather than in a new leading column.
+  // A column would change the grid width and break every colspan in the table,
+  // including the detail row's own span, which is the thing being toggled.
+
+  /* Pair each summary row with its detail row by id.
+   *
+   * Matching on the value of data-sf-row rather than on adjacency, because a
+   * table can carry rows the author did not pair and an author can put the
+   * detail anywhere in the same tbody. A summary with no detail is left alone:
+   * a chevron that expands nothing is worse than no chevron.
+   */
+  function pairsIn(table) {
+    var out = [];
+    Array.prototype.forEach.call(table.querySelectorAll('tr[data-sf-row]'), function (row) {
+      var id = row.getAttribute('data-sf-row');
+      if (!id) return;
+      var detail = table.querySelector('tr[data-sf-detail="' + cssEscape(id) + '"]');
+      if (detail) out.push({ row: row, detail: detail, id: id });
+    });
+    return out;
+  }
+
+  /* Escape a value for use inside an attribute selector.
+   *
+   * Author-written ids reach this from the document, and one containing a quote
+   * or a bracket would otherwise throw inside querySelector and stop the whole
+   * table from being enhanced.
+   */
+  function cssEscape(value) {
+    if (window.CSS && CSS.escape) return CSS.escape(value);
+    return String(value).replace(/["'\\\]\[]/g, '\\$&');
+  }
+
+  /* Move the detail cell's content into a wrapper the CSS can constrain.
+   *
+   * A table cell under `table-layout:auto` is sized by its content and no
+   * max-width on the cell changes that, so a wide detail widens the whole table.
+   * The wrapper is what carries the width rule; without script the detail is
+   * still a plain row, which is the degraded form we want for print and export.
+   */
+  function wrapDetailBody(detail) {
+    var cell = detail.cells[0];
+    if (!cell || cell.firstElementChild && cell.firstElementChild.className === 'sf-detail-body') return;
+    var body = document.createElement('div');
+    body.className = 'sf-detail-body';
+    while (cell.firstChild) body.appendChild(cell.firstChild);
+    cell.appendChild(body);
+  }
+
+  function initExpandable() {
+    Array.prototype.forEach.call(document.querySelectorAll('table.expandable'), function (table) {
+      pairsIn(table).forEach(function (pair, i) {
+        var cell = pair.row.cells[0];
+        if (!cell || cell.querySelector('.sf-expand')) return;
+
+        if (!pair.detail.id) pair.detail.id = 'sf-detail-' + pair.id + '-' + i;
+        pair.detail.hidden = true;
+        wrapDetailBody(pair.detail);
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sf-expand';
+        btn.setAttribute('aria-expanded', 'false');
+        btn.setAttribute('aria-controls', pair.detail.id);
+        // The row's own first cell is the accessible name: "expand" alone tells
+        // a screen reader nothing about which row is being expanded.
+        btn.setAttribute('aria-label', 'Details for ' + (cell.textContent || '').trim());
+
+        cell.insertBefore(btn, cell.firstChild);
+
+        btn.addEventListener('click', function () {
+          var open = btn.getAttribute('aria-expanded') === 'true';
+          btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+          pair.detail.hidden = open;
+        });
+      });
+    });
+  }
+
+  /* Fold what follows a marked heading, up to the next heading of any level.
+   *
+   * The group is computed rather than authored: an entry is "the heading and
+   * everything until the next one", which is what the document already says.
+   * Nothing is moved out of the section, so a comment anchored inside a fold
+   * still anchors where it did.
+   */
+  function initFold() {
+    Array.prototype.forEach.call(document.querySelectorAll('h3.fold'), function (head) {
+      if (head.querySelector('.sf-fold')) return;
+
+      // Stop at the next heading of the SAME OR HIGHER level, not at any
+      // heading. An h4 under an h3 is a subheading inside the entry; stopping
+      // there took two blocks of eight from the first entry in section 11 and
+      // left the rest hanging under a fold that no longer covered them.
+      var level = Number(head.tagName.slice(1));
+      var body = document.createElement('div');
+      body.className = 'sf-fold-body';
+      var next = head.nextElementSibling;
+      while (next && !(/^H[1-6]$/.test(next.tagName) && Number(next.tagName.slice(1)) <= level)) {
+        var take = next;
+        next = next.nextElementSibling;
+        body.appendChild(take);
+      }
+      // A heading with nothing under it has nothing to fold, and a control that
+      // opens an empty box is worse than no control.
+      if (!body.children.length) return;
+      head.parentNode.insertBefore(body, next);
+
+      if (!body.id) body.id = (head.id || 'sf-fold') + '-body';
+      var open = head.hasAttribute('open');
+      body.hidden = !open;
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'sf-fold';
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.setAttribute('aria-controls', body.id);
+      btn.setAttribute('aria-label', (head.textContent || '').trim());
+      head.insertBefore(btn, head.firstChild);
+
+      function set(want) {
+        btn.setAttribute('aria-expanded', want ? 'true' : 'false');
+        body.hidden = !want;
+      }
+      // The caret is the only target, and the heading is not. A heading is a
+      // commentable block, so a click anywhere on it opens the review layer's
+      // composer: making the whole line fold as well would mean every attempt to
+      // comment on an entry also collapsed it.
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        set(btn.getAttribute('aria-expanded') !== 'true');
+      });
+
+      head.sfFoldOpen = function () { set(true); };
+    });
+    revealFragment();
+  }
+
+  /* Open the fold the URL points into, so a contents link lands on content. */
+  function revealFragment() {
+    var id = (location.hash || '').slice(1);
+    if (!id) return;
+    var target = document.getElementById(id);
+    if (!target) return;
+    var head = target.classList && target.classList.contains('fold')
+      ? target
+      : (target.closest('.sf-fold-body') || {}).previousElementSibling;
+    if (head && head.sfFoldOpen) head.sfFoldOpen();
+  }
+
+  window.addEventListener('hashchange', revealFragment);
+
   // ---------- boot ----------
 
   var booted = false;
@@ -468,6 +626,8 @@
     initCopy();
     initTabs();
     initSortable();
+    initExpandable();
+    initFold();
   }
 
   if (document.readyState === 'loading') {
@@ -483,5 +643,7 @@
     initCopy();
     initTabs();
     initSortable();
+    initExpandable();
+    initFold();
   });
 })();

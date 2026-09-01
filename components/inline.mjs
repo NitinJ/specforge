@@ -50,7 +50,11 @@ export const inline = [
     name: 'src', family: 'inline', kind: 'class', block: false,
     rule: 'Attribution for a measured or cited value. Satisfies the language contract’s source sentence.',
     requires: ['the source', 'a retrieval date'],
-    css: `.src{color:var(--muted);font-size:12px;white-space:nowrap}
+    // Not nowrap. A citation naming several sources runs to 700px, and inside a
+    // table cell that is not a long line, it is a column the table cannot shrink
+    // and a page that scrolls sideways. A short citation still sits on one line
+    // without being told to.
+    css: `.src{color:var(--muted);font-size:12px}
 .src::before{content:"source: "}`,
     example: '<span class="src">audit-specforge-callouts.mjs, 2026-08-14</span>',
   },

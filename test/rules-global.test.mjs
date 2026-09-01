@@ -86,6 +86,46 @@ test('scaffolding rules come first, so the report reads in fix order', () => {
   );
 });
 
+// ── TOC sub-entries ─────────────────────────────────────────────────────────
+// A long section can carry an index of its own headings in the sidebar. Those
+// entries point at an h3 rather than at a section, and the lint accepts them, so
+// the gate has to as well: two gates disagreeing about one TOC is a spec the
+// author cannot make pass.
+
+/** The clean spec with `extra` spliced into its nav and `body` into its last section. */
+function withSubEntry(extra, body) {
+  return cleanSpec()
+    .replace('</nav>', `${extra}</nav>`)
+    .replace('</section>\n</body>', `${body}</section>\n</body>`);
+}
+
+test('a sub-entry pointing at a heading inside a section resolves', () => {
+  const html = withSubEntry(
+    '<a data-sub href="#s9-1">9.1 · Phase 1</a>',
+    '<h3 id="s9-1">9.1 · Phase 1</h3><p>Concierge onboarding of every install.</p>',
+  );
+  const v = verdictFor(html, 'toc-in-sync');
+  assert.equal(v.ok, true, v.detail);
+});
+
+test('a sub-entry pointing at nothing is a defect, and says so as a sub-entry', () => {
+  const html = withSubEntry('<a data-sub href="#s9-404">9.1 · Gone</a>', '');
+  const v = verdictFor(html, 'toc-in-sync');
+  assert.equal(v.ok, false);
+  assert.match(v.detail, /sub-entries link to nothing: s9-404/);
+});
+
+test('a sub-entry is not a section, so it never reads as one left unlisted', () => {
+  // The failure this prevents: counting the h3 as a section would demand a
+  // top-level entry for it, and adding one would demand a section to match.
+  const html = withSubEntry(
+    '<a data-sub href="#s9-1">9.1 · Phase 1</a>',
+    '<h3 id="s9-1">9.1 · Phase 1</h3><p>Concierge onboarding of every install.</p>',
+  );
+  const v = verdictFor(html, 'toc-in-sync');
+  assert.doesNotMatch(v.detail, /sections not linked/);
+});
+
 test('the clean spec passes every rule a function can answer', () => {
   const failed = runCheckRules(ALL_GLOBAL_RULES, cleanSpec()).filter((v) => !v.ok);
   assert.deepEqual(failed.map((v) => `${v.id}: ${v.detail}`), []);

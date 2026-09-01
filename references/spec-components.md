@@ -335,6 +335,24 @@ Variants: `sf-sort`.
 </table>
 ```
 
+### `table.expandable` · interactive
+
+A table whose rows each carry a paragraph or two a reader does not need in order to read the table. The row stays scannable and the detail is one press away. Below about six rows, or where the detail is a single clause, put it in a column instead: a disclosure that hides one sentence costs more attention than it saves.
+
+Must contain: a summary row carrying data-sf-row with an id; a detail row carrying data-sf-detail with the same id, whose cell spans the table.
+
+Variants: `sf-expand`, `sf-detail-body`.
+
+```html
+<table class="expandable">
+  <thead><tr><th>ID</th><th>Asset</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr data-sf-row="a16"><td>A16</td><td>Catalog qualifier</td><td>done</td></tr>
+    <tr data-sf-detail="a16"><td colspan="3">Reads /products.json, samples 20 images per store, classifies each against the canonical taxonomy.</td></tr>
+  </tbody>
+</table>
+```
+
 ### `.stat`
 
 Three to six headline numbers a reader should absorb before the prose.
@@ -404,6 +422,18 @@ Must contain: a summary that says what is inside, so the block can be skipped wi
   <summary>How the 61% was measured</summary>
   <p>Every spec in the store parsed for headings, counted against the levels the contents rail can reach. n=133, 2026-08-18.</p>
 </details>
+```
+
+### `h3.fold` · interactive
+
+A section of entries a reader picks one of rather than reads through: a runtime log, a changelog, dated findings. Never on an argument, where folding hides a step the next section depends on, and never to make a long section look short.
+
+Must contain: an id on the heading, so the contents rail can still reach it.
+
+Variants: `sf-fold`, `sf-fold-body`.
+
+```html
+<h3 class="fold" id="s11-9">11.9 · 2026-08-31 · The crawl, and the heuristic that was withdrawn</h3>
 ```
 
 ### `.tabs` · interactive

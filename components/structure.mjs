@@ -52,6 +52,43 @@ details.disclosure > :last-child{padding-bottom:14px}
 </details>`,
   },
   {
+    // The disclosure's rule forbids putting a heading behind a summary, and that
+    // rule is right: a part of the argument a reader cannot see in the outline is
+    // a part they miss. This is the other case, and it needs different markup.
+    // A runtime log, a changelog, a section of dated entries: the reader wants
+    // the list of entries, then one of them. The heading stays a real heading
+    // with its id, so the outline, the contents rail and the markdown export are
+    // all unchanged; only what sits under it folds.
+    //
+    // The grouping is done by the script rather than by the author, because the
+    // alternative is a wrapper element per entry, and a wrapper that must be
+    // added to every entry is a wrapper an author eventually forgets.
+    name: 'fold', family: 'structure', kind: 'class', block: false,
+    selector: 'h3.fold', layer: 'interactive', needs: 'script', detect: 'h3.fold',
+    rule: 'A section of entries a reader picks one of rather than reads through: a runtime log, a changelog, dated findings. Never on an argument, where folding hides a step the next section depends on, and never to make a long section look short.',
+    requires: ['an id on the heading, so the contents rail can still reach it'],
+    variants: ['sf-fold', 'sf-fold-body'],
+    // Folded closed by default, which is the whole point, so the hiding rule is
+    // behind [data-sf-live] and a document with no script shows every entry.
+    // `open` on the heading starts one expanded.
+    css: `h3.fold .sf-fold{appearance:none;background:none;border:0;cursor:pointer;
+  color:var(--muted);padding:0;margin:0 8px 0 0;border-radius:3px;
+  width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;
+  vertical-align:1px;transition:color .12s ease,background-color .12s ease}
+h3.fold .sf-fold::before{content:"";width:6px;height:6px;
+  border-right:1.8px solid currentColor;border-bottom:1.8px solid currentColor;
+  transform:translateX(-1px) rotate(-45deg);transition:transform .15s ease}
+h3.fold .sf-fold[aria-expanded="true"]::before{transform:translateY(-1px) rotate(45deg)}
+h3.fold:hover .sf-fold{color:var(--accent)}
+h3.fold .sf-fold:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+[data-sf-live] .sf-fold-body[hidden]{display:none}
+@media print{
+  [data-sf-live] .sf-fold-body[hidden]{display:block}
+  [data-sf-live] h3.fold .sf-fold{display:none}
+}`,
+    example: '<h3 class="fold" id="s11-9">11.9 · 2026-08-31 · The crawl, and the heuristic that was withdrawn</h3>',
+  },
+  {
     // Authored as a run of labelled panels, all visible. The script adds the
     // strip and hides all but one; with no script the reader gets every panel in
     // order, which is longer and complete. That is the enhancement contract, and

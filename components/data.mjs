@@ -81,6 +81,68 @@ table.sortable th .sf-sort:focus-visible{outline:2px solid var(--accent);outline
 </table>`,
   },
   {
+    name: 'expandable', family: 'data', kind: 'class', block: true,
+    selector: 'table.expandable',
+    layer: 'interactive', needs: 'script', detect: 'table.expandable',
+    rule: 'A table whose rows each carry a paragraph or two a reader does not need in order to read the table. The row stays scannable and the detail is one press away. Below about six rows, or where the detail is a single clause, put it in a column instead: a disclosure that hides one sentence costs more attention than it saves.',
+    requires: ['a summary row carrying data-sf-row with an id', 'a detail row carrying data-sf-detail with the same id, whose cell spans the table'],
+    variants: ['sf-expand', 'sf-detail-body'],
+    // The detail row is a real row and is VISIBLE until the script hides it, so
+    // a spec opened from file://, printed, or exported to markdown carries every
+    // detail in document order. The script reduces a whole document; it never
+    // builds one. That is why the [data-sf-live] guard is on the hiding rule
+    // rather than on the revealing one.
+    //
+    // The control is a button injected into the FIRST cell rather than a new
+    // leading column: a column would change every colspan in the table and
+    // break the detail row's span. It is a thin caret on the text baseline, not
+    // a filled triangle floating in the margin: the row is the thing being read
+    // and the control qualifies it.
+    //
+    // The detail body is wrapped in a div by the script, and the wrapper carries
+    // `width:0;min-width:100%`. A `max-width` on the cell itself does nothing:
+    // under `table-layout:auto` a cell is sized by its content, so the cell
+    // grows and takes the table with it. Percentages are ignored while a browser
+    // computes intrinsic width, so the wrapper contributes 0 to that pass and is
+    // then stretched back to the cell at layout time.
+    css: `table.expandable tr[data-sf-row] > td:first-child{white-space:nowrap}
+table.expandable .sf-expand{appearance:none;background:none;border:0;cursor:pointer;
+  color:var(--muted);padding:0;margin:0 7px 0 0;border-radius:3px;
+  width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;
+  vertical-align:-2px;transition:color .12s ease,background-color .12s ease}
+table.expandable .sf-expand::before{content:"";width:5px;height:5px;
+  border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+  transform:translateX(-1px) rotate(-45deg);transition:transform .15s ease}
+table.expandable .sf-expand[aria-expanded="true"]::before{
+  transform:translateY(-1px) rotate(45deg)}
+table.expandable .sf-expand:hover{color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 13%,transparent)}
+table.expandable .sf-expand:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+table.expandable tr[data-sf-row]:has(.sf-expand[aria-expanded="true"]) > td{
+  background:color-mix(in srgb,var(--accent) 7%,transparent)}
+table.expandable tr[data-sf-detail] > td{background:color-mix(in srgb,var(--ink) 3%,transparent);
+  border-top:none;padding-left:20px;
+  box-shadow:inset 3px 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}
+table.expandable .sf-detail-body{width:0;min-width:100%;box-sizing:border-box;
+  overflow-wrap:anywhere}
+table.expandable .sf-detail-body > :first-child{margin-top:0}
+table.expandable .sf-detail-body > :last-child{margin-bottom:0}
+table.expandable .sf-detail-body table{width:100%;table-layout:fixed}
+table.expandable .sf-detail-body pre{overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+[data-sf-live] table.expandable tr[data-sf-detail][hidden]{display:none}
+@media print{
+  [data-sf-live] table.expandable tr[data-sf-detail][hidden]{display:table-row}
+  [data-sf-live] table.expandable .sf-expand{display:none}
+}`,
+    example: `<table class="expandable">
+  <thead><tr><th>ID</th><th>Asset</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr data-sf-row="a16"><td>A16</td><td>Catalog qualifier</td><td>done</td></tr>
+    <tr data-sf-detail="a16"><td colspan="3">Reads /products.json, samples 20 images per store, classifies each against the canonical taxonomy.</td></tr>
+  </tbody>
+</table>`,
+  },
+  {
     name: 'stat', family: 'data', kind: 'class', block: true,
     rule: 'Three to six headline numbers a reader should absorb before the prose.',
     requires: ['a number', 'a unit', 'a label'],
