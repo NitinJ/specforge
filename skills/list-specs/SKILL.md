@@ -18,12 +18,14 @@ allowed-tools: Read, Bash, AskUserQuestion
 - **All specs** (mode "all"): `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" listall`
 - **This session's specs** (mode "mine"): `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list`
 
-Each returns `session` (this session's id) plus `rows`
-(`{ id, title, status, attached }`, where `attached` is a session id or `free`).
-`listall` also ensures the daemon is up and returns `indexUrl`; `list` reads
-straight from the store (no daemon needed). The picker's actions handle the
-daemon themselves: `open` starts it when needed and returns a URL, while `detach`
-is store-only — so both work whether or not the daemon was already running.
+The default output is compact: one line per spec — `id  status  type  attached  title` —
+plus `index: <url>` from `listall` (which also ensures the daemon is up). Pass
+`--json` for the machine shape: `session` plus `rows`
+(`{ id, title, type, status, attached }`, where `attached` is a session id or
+`free`). `list` reads straight from the store (no daemon needed). The picker's
+actions handle the daemon themselves: `open` starts it when needed and returns a
+URL, while `detach` is store-only — so both work whether or not the daemon was
+already running.
 
 ## Present the result
 

@@ -24,10 +24,12 @@ routes here. The hook message lists each queued spec **id** and title.
 For each queued spec id:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" comments <id>
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" comments <id> --all
 ```
 
-prints `{ specId, htmlPath, ... }`. `htmlPath` is the on-disk spec (clean content —
+prints `{ specId, htmlPath, ... }` (`--all` because this flow wants the full
+comment history; the default payload is batch-scoped to pending threads).
+`htmlPath` is the on-disk spec (clean content —
 the review layer is injected only at serve time, so the file is plain house HTML).
 Use the spec **title** from the hook message for the Doc title.
 
