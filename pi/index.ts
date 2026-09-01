@@ -17,6 +17,7 @@
 // byte-identical between harnesses.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,9 +39,51 @@ export default function (pi: ExtensionAPI) {
   // Mirrors `stop_hook_active`: true for the settle immediately following the
   // continuation we injected, so the stop logic caps its own loop.
   let afterInjection = false;
+  // The extension-managed review watcher: a wait-batch child the extension owns.
+  // In Claude Code the in-session watcher is a background Task whose completion
+  // notification wakes an idle session. Pi has no such channel for a nohup'd
+  // process, so the extension runs the watcher itself and routes its result:
+  // on exit with a pending batch, a followUp message starts the review run —
+  // which is the idle wake-up the Stop hook provides in Claude Code.
+  let watcher: ChildProcess | null = null;
 
   function sid(): string {
     return sessionId;
+  }
+
+  function armWatcher() {
+    if (watcher || !sessionId) return;
+    let child: ChildProcess;
+    try {
+      child = spawn(process.execPath, [join(ROOT, "lib", "specforge-cli.mjs"), "wait-batch"], {
+        env: { ...process.env, SPECFORGE_SESSION_ID: sessionId, CLAUDE_PLUGIN_ROOT: ROOT },
+        stdio: "ignore",
+      });
+    } catch {
+      return;
+    }
+    watcher = child;
+    const started = Date.now();
+    child.on("exit", () => {
+      if (watcher !== child) return; // a newer watcher owns this slot
+      watcher = null;
+      let route = "";
+      try {
+        const out = promptSubmitRun({ session_id: sessionId });
+        route = out?.hookSpecificOutput?.additionalContext ?? "";
+      } catch {
+        // fail-safe: treat as nothing pending
+      }
+      if (route) {
+        afterInjection = true; // one nag per continuation chain, as with the stop path
+        pi.sendUserMessage(route, { deliverAs: "followUp" });
+        return; // re-arms at the settle that follows the review run
+      }
+      // No batch behind the exit: daemon hiccup or drained elsewhere. Re-arm
+      // only when the child lived long enough to be healthy; an instant-death
+      // loop is not something to spin on from here.
+      if (Date.now() - started > 10_000) armWatcher();
+    });
   }
 
   pi.on("session_start", async (_event, ctx) => {
@@ -52,6 +95,16 @@ export default function (pi: ExtensionAPI) {
       pendingStartContext = out?.hookSpecificOutput?.additionalContext ?? "";
     } catch {
       // fail-safe: mirrors the hooks' exit-0 contract
+    }
+    // A resumed session whose specs were under review needs the watcher back
+    // without waiting for a turn (the SessionStart nudge in Claude Code).
+    armWatcher();
+  });
+
+  pi.on("session_shutdown", async () => {
+    if (watcher) {
+      watcher.kill();
+      watcher = null;
     }
   });
 
@@ -88,6 +141,7 @@ export default function (pi: ExtensionAPI) {
     try {
       const hooked = afterInjection;
       afterInjection = false;
+      armWatcher(); // owns the pid the stop logic checks, so armWatcherReason rarely fires
       const out = stopRun({ session_id: sid(), stop_hook_active: hooked });
       if (out?.decision === "block" && out.reason) {
         afterInjection = true;
