@@ -551,7 +551,14 @@
         var cell = pair.row.cells[0];
         if (!cell || cell.querySelector('.sf-expand')) return;
 
-        if (!pair.detail.id) pair.detail.id = claimId('sf-detail-' + pair.id + '-' + i);
+        // An authored id on the detail is a contract with whatever links to it —
+        // UNLESS the document already uses it twice, in which case it is not an
+        // identity at all: aria-controls would reference an ambiguous id and
+        // getElementById would answer the wrong row. A duplicate is replaced
+        // rather than trusted, the same rule panelId applies to tab panels.
+        if (!pair.detail.id || idCount(pair.detail.id) > 1) {
+          pair.detail.id = claimId('sf-detail-' + pair.id + '-' + i);
+        }
         pair.detail.hidden = true;
         wrapDetailBody(pair.detail);
 
