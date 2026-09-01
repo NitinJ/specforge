@@ -18,27 +18,32 @@ allowed-tools: Read, Bash, AskUserQuestion
 - **All specs** (mode "all"): `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" listall`
 - **This session's specs** (mode "mine"): `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" list`
 
-Each returns `session` (this session's id) plus `rows`
-(`{ id, title, status, attached }`, where `attached` is a session id or `free`).
-`listall` also ensures the daemon is up and returns `indexUrl`; `list` reads
-straight from the store (no daemon needed). The picker's actions handle the
-daemon themselves: `open` starts it when needed and returns a URL, while `detach`
-is store-only — so both work whether or not the daemon was already running.
+The default output is compact: one line per spec — `id  status  type  attached  title` —
+where `attached` reads `mine` when it names the calling session (so the picker can
+classify rows from the lines alone), a session id when another session holds it,
+or `free`. `listall` adds `index: <url>` (and ensures the daemon is up). Pass
+`--json` for the machine shape: `session` plus `rows`
+(`{ id, title, type, status, attached }`, where `attached` is a session id or
+`free`). `list` reads straight from the store (no daemon needed). The picker's
+actions handle the daemon themselves: `open` starts it when needed and returns a
+URL, while `detach` is store-only — so both work whether or not the daemon was
+already running.
 
 ## Present the result
 
 Render `rows` as a compact, numbered table — **# · id · title · type · status · attached** —
-showing `attached` as `free`, `this session`, or `held: <first 8 of the id>`. For
+showing `attached` as `free`, `mine` (this session), or `held: <first 8 of the id>`. For
 "all", also print `indexUrl` (the browser index links each row to `/spec/<id>`).
 
 ## Then offer to open / detach (the picker)
 
-Classify each row against `session`:
+Classify each row (the compact output renders `mine` for the calling session;
+`--json` output carries the raw session id instead):
 
 | `attached` | meaning | action |
 | --- | --- | --- |
 | `free` | unattached | **open** (attach to this session) |
-| equals `session` | attached here | **detach** |
+| `mine` (compact), or equals `session` (`--json`) | attached here | **detach** |
 | any other id | held by another live session | none (show it greyed) |
 
 If at least one row is actionable, call **AskUserQuestion** ("Open or detach a spec?").

@@ -63,8 +63,10 @@ injects the review layer at serve time.
   right?"). One line, not a menu: the user corrects a wrong pick faster than they
   answer a question about it.
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
-- Read the component rules: `${CLAUDE_PLUGIN_ROOT}/references/spec-components.md`.
-  43 components, each with the rule for when it applies. Pick by what a block
+- Read the component rules: `${CLAUDE_PLUGIN_ROOT}/references/spec-components.md`
+  — keep its **Choosing** table (top of the file) in context; read an individual
+  component's entry when that component is used (grep the file for its heading),
+  not before. Pick by what a block
   **asserts**, never by how it should look. Its **Drawing** section is the choice
   between the three ways to draw; read it before writing any diagram, because the
   cheapest option and the most powerful one are different choices:
@@ -90,9 +92,16 @@ injects the review layer at serve time.
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type> [--project <name>]
 ```
 
-Prints `{ id, htmlPath, url, status, type, project, language, prompts }`. It has
-started/reused the daemon, copied the type's shell to `htmlPath`, and attached the
-spec to this session. **Author into `htmlPath`** — that file IS the spec.
+Prints `{ id, htmlPath, url, status, type, project, language, skeleton, prompts }`.
+It has started/reused the daemon, copied the type's shell to `htmlPath`, and
+attached the spec to this session. **Author into `htmlPath`** — that file IS the
+spec — but do **not** read the whole file to find the blanks: the payload's
+`skeleton` array lists every section with its id, line range, heading and
+placeholder text. Fill sections one at a time: read the section's slice with
+`spec-nav section <id> --spec "<htmlPath>"`, edit in place between the section's
+existing tags, then move to the next. The style block, the TOC and the section
+ids never need re-reading; the `verify` gate checks TOC sync and section ids
+either way.
 
 **Most types arrive with their sections already in place.** The shell you get is
 that type's own: its headings, its table of contents, its `{{ … }}` placeholders.

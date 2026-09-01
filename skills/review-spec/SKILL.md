@@ -27,6 +27,12 @@ For a batch's spec id:
 node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" comments <id>
 ```
 
+The payload is **batch-scoped**: only the threads named in the spec's pending
+batches, plus the language contract. Resolved history and discussion threads are
+excluded — exactly the threads this skill says to leave alone. The rare flow
+that genuinely wants every thread (exporting a comment history, auditing)
+passes `--all`.
+
 **A batch is not every thread on the spec.** Only threads where a human wrote
 `@agent` are submitted; the rest are discussion between people and are not yours
 to answer. Work the `threadIds` on the pending batch, and leave the others alone
