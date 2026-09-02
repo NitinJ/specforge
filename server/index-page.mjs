@@ -635,6 +635,39 @@ ${LIST_CSS}
     .crow{width:auto}
     .tags,.id{display:none}
   }
+
+  /* ── phone: the row becomes two lines ─────────────────────────────── */
+  /* The shared ladder in theme.mjs sheds the type badge at 1180 and the stamp
+     at 900, and that is as far as one line goes. What is left here does not
+     shrink: the checkbox, the signal slot, the connection slot, the status
+     badge and the kebab are ~260px of fixed width, and with the gaps and the
+     row padding ~343px of furniture. A 390px phone leaves ~354px, so the title
+     — the only flexible thing in the row — got about 11px and rendered as one
+     letter and an ellipsis.
+     Rather than shed another column, the signals move under the title. Every
+     one of them is kept: it is the title that a list is scanned by, and the
+     column below a signal repeats it anyway. The slots go auto-width on their
+     own line, where a fixed width buys alignment nobody is reading across. */
+  @media(max-width:600px){
+    .row{flex-wrap:wrap;padding-top:9px;padding-bottom:9px}
+    .main{flex:1 1 auto}
+    .meta{flex:1 0 100%;margin-left:0;margin-top:4px;gap:10px}
+    .sig{width:auto;justify-content:flex-start}
+    .sig:empty{display:none}
+    .lv{width:auto}
+    .badge.s{width:auto}
+    /* Back to the right edge, where a touch target belongs and where it sat
+       when the row was one line. */
+    .acts{margin-left:auto}
+
+    /* The header ran off the screen for the same reason: a 280px search box and
+       a share link up to 260px on a no-wrap row. It wraps, and the search takes
+       the second line whole instead of being clipped at the viewport edge. */
+    header{height:auto;flex-wrap:wrap;gap:10px;padding:10px 0}
+    .spacer{display:none}
+    .searchbox{flex:1 0 100%}
+    .search{width:100%}
+  }
 </style></head><body${selected === null ? '' : ' class="inproj"'}>
 <div class="app">
 <aside class="side">
