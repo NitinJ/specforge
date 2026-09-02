@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { run as sessionStartRun } from "../hooks/session-start.mjs";
 import { run as promptSubmitRun } from "../hooks/user-prompt-submit.mjs";
 import { run as stopRun } from "../hooks/stop.mjs";
+import { PI_HARNESS } from "../lib/skill-ref.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -51,12 +52,27 @@ export default function (pi: ExtensionAPI) {
     return sessionId;
   }
 
+  // The env SpecForge code runs under here: this session's id, the plugin root
+  // the skills' commands expand, and the harness marker lib/skill-ref.mjs reads
+  // to name skills the way Pi can run them. Handed explicitly to every hook
+  // run() and every spawned child rather than written onto process.env — a
+  // global write would reach every unrelated child the agent starts, outliving
+  // the session and defeating the touchesSpecforge gate below.
+  function sfEnv(): Record<string, string | undefined> {
+    return {
+      ...process.env,
+      SPECFORGE_SESSION_ID: sessionId,
+      SPECFORGE_HARNESS: PI_HARNESS,
+      CLAUDE_PLUGIN_ROOT: ROOT,
+    };
+  }
+
   function armWatcher() {
     if (watcher || !sessionId) return;
     let child: ChildProcess;
     try {
       child = spawn(process.execPath, [join(ROOT, "lib", "specforge-cli.mjs"), "wait-batch"], {
-        env: { ...process.env, SPECFORGE_SESSION_ID: sessionId, CLAUDE_PLUGIN_ROOT: ROOT },
+        env: sfEnv(),
         stdio: "ignore",
       });
     } catch {
@@ -69,7 +85,7 @@ export default function (pi: ExtensionAPI) {
       watcher = null;
       let route = "";
       try {
-        const out = promptSubmitRun({ session_id: sessionId });
+        const out = promptSubmitRun({ session_id: sessionId }, sfEnv());
         route = out?.hookSpecificOutput?.additionalContext ?? "";
       } catch {
         // fail-safe: treat as nothing pending
@@ -90,13 +106,8 @@ export default function (pi: ExtensionAPI) {
     pendingStartContext = "";
     afterInjection = false;
     sessionId = ctx.sessionManager.getSessionId();
-    // The hooks' run() calls below run in this process, so the harness marker
-    // their skill ids resolve against (lib/skill-ref.mjs) must be set here,
-    // not only on the children this extension spawns — without it every text
-    // they generate names the Claude form and Pi cannot run it.
-    process.env.SPECFORGE_SESSION_ID = sessionId;
     try {
-      const out = sessionStartRun({ session_id: sid() });
+      const out = sessionStartRun({ session_id: sid() }, sfEnv());
       pendingStartContext = out?.hookSpecificOutput?.additionalContext ?? "";
     } catch {
       // fail-safe: mirrors the hooks' exit-0 contract
@@ -119,6 +130,7 @@ export default function (pi: ExtensionAPI) {
     if (!input.command || !touchesSpecforge(input.command)) return;
     input.command =
       `export SPECFORGE_SESSION_ID=${JSON.stringify(sid())}\n` +
+      `export SPECFORGE_HARNESS=${JSON.stringify(PI_HARNESS)}\n` +
       `export CLAUDE_PLUGIN_ROOT=${JSON.stringify(ROOT)}\n` +
       input.command;
   });
@@ -130,7 +142,7 @@ export default function (pi: ExtensionAPI) {
       pendingStartContext = "";
     }
     try {
-      const out = promptSubmitRun({ session_id: sid() });
+      const out = promptSubmitRun({ session_id: sid() }, sfEnv());
       const ctxText = out?.hookSpecificOutput?.additionalContext ?? "";
       if (ctxText) chunks.push(ctxText);
     } catch {
@@ -147,7 +159,7 @@ export default function (pi: ExtensionAPI) {
       const hooked = afterInjection;
       afterInjection = false;
       armWatcher(); // owns the pid the stop logic checks, so armWatcherReason rarely fires
-      const out = stopRun({ session_id: sid(), stop_hook_active: hooked });
+      const out = stopRun({ session_id: sid(), stop_hook_active: hooked }, sfEnv());
       if (out?.decision === "block" && out.reason) {
         afterInjection = true;
         pi.sendUserMessage(out.reason, { deliverAs: "followUp" });

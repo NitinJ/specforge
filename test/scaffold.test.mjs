@@ -58,7 +58,13 @@ test('every skill has a SKILL.md with name + description frontmatter', () => {
   for (const s of skills) {
     const md = readText(join('skills', s.name, 'SKILL.md'));
     assert.match(md, /^---/, `${s.name}/SKILL.md has frontmatter`);
-    assert.match(md, /\nname:\s*[a-z0-9-]+\n/, `${s.name}/SKILL.md declares a name`);
+    // Tied to the directory, not merely well-formed. Claude Code builds the id
+    // it lists from the plugin name plus this directory, while every route text
+    // is built by skillRef() from the same directory name — so a frontmatter
+    // name that drifts from its folder produces a registered skill nothing
+    // addresses, and "Unknown skill" at the review handoff with a green suite.
+    assert.match(md, new RegExp(`\\nname:\\s*${s.name}\\n`),
+      `${s.name}/SKILL.md declares the name matching its directory`);
     assert.match(md, /\ndescription:/, `${s.name}/SKILL.md declares a description`);
   }
 });

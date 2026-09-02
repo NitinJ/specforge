@@ -15,13 +15,16 @@ const batch = (over = {}) => ({
 });
 
 test('an ordinary batch still says to amend the spec', () => {
-  const out = reviewReason([batch()]);
+  // Explicit env, or the skill id read here would be whatever the shell running
+  // the suite happens to export and the assertion below would pass or fail on
+  // the developer's terminal rather than on the code.
+  const out = reviewReason([batch()], { CLAUDE_CODE_SESSION_ID: 'cc-1' });
   assert.match(out, /amend the spec/i);
   assert.match(out, /specforge:review-spec/);
 });
 
 test('the same reason under Pi names the bare skill', () => {
-  const out = reviewReason([batch()], { SPECFORGE_SESSION_ID: 'pi-1' });
+  const out = reviewReason([batch()], { SPECFORGE_HARNESS: 'pi' });
   assert.match(out, /(^|\s)review-spec/);
   assert.doesNotMatch(out, /specforge:/);
 });

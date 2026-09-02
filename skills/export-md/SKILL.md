@@ -83,5 +83,7 @@ is long.
 - Nothing is written into the store. The markdown is a rendering of `spec.html`
   at the moment you asked, so re-exporting after an edit is how you refresh it;
   there is no stale copy to invalidate.
-- The reverse direction is `/specforge:convert <file.md>`, which imports markdown
-  as a **new** spec and never writes over an existing one.
+- The reverse direction is the convert command — `/specforge:convert <file.md>`
+  under Claude Code, `/spec-convert <file.md>` under Pi — which imports markdown
+  as a **new** spec and never writes over an existing one. Name the one your
+  harness registers; the other does not exist there.

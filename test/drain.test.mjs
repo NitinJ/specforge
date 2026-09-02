@@ -171,10 +171,24 @@ test('a pending review batch takes priority over an export request', () => {
 
 test('Stop blocks on a queued export under Pi with the bare skill name', () => {
   specWithExportRequest('sess-pi');
-  const out = stopRun({ stop_hook_active: false }, { SPECFORGE_SESSION_ID: 'sess-pi' });
+  // The shape Pi's extension really hands the hooks: its session id AND its
+  // harness marker. The id alone identifies the session, not the harness.
+  const out = stopRun({ stop_hook_active: false },
+    { SPECFORGE_SESSION_ID: 'sess-pi', SPECFORGE_HARNESS: 'pi' });
   assert.equal(out.decision, 'block');
   assert.match(out.reason, /(^|\s)export/);
   assert.doesNotMatch(out.reason, /specforge:/);
+});
+
+test('a Claude session that set the session-id override still gets the namespaced skill', () => {
+  // lib/specforge-cli.mjs names SPECFORGE_SESSION_ID to the user when wait-batch
+  // finds no id, so a Claude Code user arming a watcher from a plain terminal
+  // has it set and no CLAUDE_CODE_SESSION_ID. Reading that as "Pi is running"
+  // handed them a bare name their own Skill tool rejects.
+  specWithExportRequest('sess-cc');
+  const out = stopRun({ stop_hook_active: false }, { SPECFORGE_SESSION_ID: 'sess-cc' });
+  assert.equal(out.decision, 'block');
+  assert.match(out.reason, /specforge:export/);
 });
 
 test('UserPromptSubmit surfaces a queued export as additionalContext', () => {
@@ -185,7 +199,8 @@ test('UserPromptSubmit surfaces a queued export as additionalContext', () => {
 
 test('UserPromptSubmit under Pi surfaces the bare skill name', () => {
   specWithExportRequest('sess-pi');
-  const out = upsRun({ prompt: 'hi' }, { SPECFORGE_SESSION_ID: 'sess-pi' });
+  const out = upsRun({ prompt: 'hi' },
+    { SPECFORGE_SESSION_ID: 'sess-pi', SPECFORGE_HARNESS: 'pi' });
   assert.match(out.hookSpecificOutput.additionalContext, /(^|\s)export/);
   assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /specforge:/);
 });
