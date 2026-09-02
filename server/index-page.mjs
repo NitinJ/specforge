@@ -667,6 +667,16 @@ ${LIST_CSS}
     .spacer{display:none}
     .searchbox{flex:1 0 100%}
     .search{width:100%}
+    /* Wrapping only saves a row whose every item fits the line on its own. The
+       title already ellipsises. The share link carries a desktop 260px cap that
+       clears the 269px line at 320px by 9px, which is arithmetic rather than a
+       guarantee, so it is bounded by the line instead. The percentage has to
+       resolve against something bounded: .pshare-on is content-sized, so it is
+       made shrinkable and capped to the header first, and the link's cap then
+       resolves against that. Its ellipsis does the rest. */
+    .htitle{min-width:0}
+    .pshare-on{flex:0 1 auto;min-width:0;max-width:100%}
+    .pshare-link{max-width:100%}
   }
 </style></head><body${selected === null ? '' : ' class="inproj"'}>
 <div class="app">
