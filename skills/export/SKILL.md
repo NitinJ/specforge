@@ -1,5 +1,5 @@
 ---
-name: specforge:export
+name: export
 user-invocable: false
 description: |
   Export a spec from the store to Google Docs. Auto-invoked when the owning

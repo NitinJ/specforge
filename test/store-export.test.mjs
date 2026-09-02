@@ -92,3 +92,9 @@ test('exportReason names the specs and points at the export skill', () => {
   assert.match(reason, /specforge:export/);
   assert.match(reason, /export-done/);
 });
+
+test('exportReason under Pi names the bare skill', () => {
+  const reason = exportReason([{ id, title: 'A spec' }], { SPECFORGE_HARNESS: 'pi' });
+  assert.match(reason, /(^|\s)export/);
+  assert.doesNotMatch(reason, /specforge:/);
+});

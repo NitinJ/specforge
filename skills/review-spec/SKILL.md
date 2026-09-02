@@ -1,5 +1,5 @@
 ---
-name: specforge:review-spec
+name: review-spec
 user-invocable: false
 description: |
   Process a submitted batch of human comments on a spec in the store: reply to

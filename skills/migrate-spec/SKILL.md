@@ -1,5 +1,5 @@
 ---
-name: specforge:migrate-spec
+name: migrate-spec
 user-invocable: true
 description: |
   Move one existing spec onto the SpecForge component library. Use when the user

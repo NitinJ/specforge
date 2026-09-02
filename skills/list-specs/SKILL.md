@@ -1,5 +1,5 @@
 ---
-name: specforge:list-specs
+name: list-specs
 user-invocable: false
 description: |
   List SpecForge specs — either every spec in the store (mode "all") or just the
@@ -72,4 +72,6 @@ Act on the choice:
 - **Just viewing** → stop, no action.
 
 Skip the picker when nothing is actionable. In "mine" mode with no rows, say no spec
-is attached to this session and point to `/specforge:listall` to open one.
+is attached to this session and point to the list-all command to open one — that is
+`/specforge:listall` under Claude Code and `/spec-listall` under Pi. Name the one
+your harness registers; the other does not exist there.

@@ -27,19 +27,19 @@ export function run(input, env = process.env) {
   markSeen(me);
   const batches = pendingForSession(me);
   if (batches.length) {
-    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: reviewReason(batches) } };
+    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: reviewReason(batches, env) } };
   }
   // Ahead of the export for the same reason as in the Stop hook: someone is
   // watching a dialog for this one.
   const toGenerate = generateRequestsForSession(me);
   if (toGenerate.length) {
     toGenerate.forEach((m) => markGenerateWorking(m.id));
-    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: generateReason(toGenerate) } };
+    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: generateReason(toGenerate, env) } };
   }
   const toExport = exportRequestsForSession(me);
   if (toExport.length) {
     toExport.forEach((m) => markExportWorking(m.id));
-    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: exportReason(toExport) } };
+    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: exportReason(toExport, env) } };
   }
   return null;
 }

@@ -35,7 +35,7 @@ export function run(input, env = process.env) {
 
   // Pending review batches take priority — route to review-spec before settling.
   const batches = pendingForSession(me);
-  if (batches.length) return { decision: 'block', reason: reviewReason(batches) };
+  if (batches.length) return { decision: 'block', reason: reviewReason(batches, env) };
 
   // Human clicked "Add a template" — route to the generate skill once. Ahead of
   // the export below because of who is waiting: an export lands in a Google Doc
@@ -44,14 +44,14 @@ export function run(input, env = process.env) {
   const toGenerate = generateRequestsForSession(me);
   if (toGenerate.length) {
     toGenerate.forEach((m) => markGenerateWorking(m.id));
-    return { decision: 'block', reason: generateReason(toGenerate) };
+    return { decision: 'block', reason: generateReason(toGenerate, env) };
   }
 
   // Human clicked "Export to Google Docs" — route to the export skill once.
   const toExport = exportRequestsForSession(me);
   if (toExport.length) {
     toExport.forEach((m) => markExportWorking(m.id));
-    return { decision: 'block', reason: exportReason(toExport) };
+    return { decision: 'block', reason: exportReason(toExport, env) };
   }
 
   // Last: don't settle owning specs nobody is listening to. Blocking rather than
@@ -60,7 +60,7 @@ export function run(input, env = process.env) {
   // human none the wiser. The stop_hook_active guard above caps this at one nag
   // per settle, and once a watcher is beating it never fires again.
   if (!watcherBeating(me)) {
-    return { decision: 'block', reason: armWatcherReason(mine) };
+    return { decision: 'block', reason: armWatcherReason(mine, env) };
   }
 
   return null;
