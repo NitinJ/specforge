@@ -253,6 +253,18 @@ export async function bootReviewLayer(t, opts = {}) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ children: other }) });
     }
     if (String(url).indexOf('/meta') !== -1) {
+      // `metaGate` hands the test control of when each meta request settles, so
+      // a slow response for one child can be made to land after another was
+      // opened. Races are not testable by timing.
+      if (opts.metaGate) {
+        return new Promise((resolveP, rejectP) => {
+          opts.metaGate(
+            String(url),
+            () => resolveP({ ok: true, json: () => Promise.resolve(meta) }),
+            (e) => rejectP(e || new Error('gone')),
+          );
+        });
+      }
       // `childGone` is a child deleted between the drawer rendering and the
       // reader clicking it: the meta 404s while the page around it is fine.
       const forSpec = String(url).match(/\/api\/spec\/([\w-]+)\/meta/);

@@ -179,6 +179,61 @@ test('opening a child writes nothing against that child', async (t) => {
   assert.deepEqual(forChild, []);
 });
 
+test('a slow request for one child does not clear another that was opened after it', async (t) => {
+  // A request cannot be cancelled once sent. Without a check against what the
+  // panel is currently showing, A's meta failing late reported B as missing and
+  // cleared B's frame.
+  let failFirst;
+  const { window } = await bootReviewLayer(t, {
+    children: ROWS,
+    metaGate: (url, resolve, reject) => {
+      if (/aaa1111111/.test(url)) failFirst = reject;
+      else resolve();
+    },
+  });
+
+  await openChild(window, 0);
+  await openChild(window, 1);
+  failFirst(new Error('gone'));
+  await new Promise((r) => window.setTimeout(r, 10));
+
+  assert.equal(
+    window.document.querySelector('#sf-child-panel .sf-child-missing'),
+    null,
+    "the stale request reported the child that is open as missing",
+  );
+  assert.match(frame(window).getAttribute('src'), /bbb2222222/);
+});
+
+test('Escape closes the panel and nothing else', async (t) => {
+  const { window } = await bootReviewLayer(t, { children: ROWS });
+  await openChild(window, 0);
+
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  assert.equal(panel(window).classList.contains('open'), false);
+  assert.equal(frame(window).getAttribute('src'), null);
+});
+
+test('opening the panel moves focus into it, and closing gives it back', async (t) => {
+  const { window } = await bootReviewLayer(t, { children: ROWS });
+  const launcher = window.document.querySelector('#sf-launcher');
+  launcher.focus();
+
+  await openChild(window, 0);
+  // The panel covers the page; a keyboard reader left underneath it is tabbing
+  // through a document they cannot see.
+  assert.ok(
+    panel(window).contains(window.document.activeElement),
+    'focus stayed outside the panel',
+  );
+
+  window.document.querySelector('#sf-child-panel .sf-child-close').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  assert.equal(panel(window).contains(window.document.activeElement), false);
+});
+
 test('an embedded page builds no panel of its own', async (t) => {
   const { window } = await bootReviewLayer(t, { children: ROWS, embed: true });
   assert.equal(panel(window), null);

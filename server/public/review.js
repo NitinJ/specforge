@@ -1373,7 +1373,15 @@ function sfRevealDisclosures(el) {
       // the composer behind the dialog — losing an unposted draft to a keypress
       // that was meant to close a confirmation.
       if (window.SFUI && window.SFUI.dialogOpen()) return;
-      if (e.key === 'Escape') { clearHover(); closeMenu(); collapseThread(); cancelCompose(); }
+      if (e.key === 'Escape') {
+        // The child panel first, and alone: it covers the page, so Escape means
+        // the thing on top rather than everything underneath it at once.
+        if (els.childPanel && els.childPanel.classList.contains('open')) {
+          closeChildPanel();
+          return;
+        }
+        clearHover(); closeMenu(); collapseThread(); cancelCompose();
+      }
       if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) onSaveKey(e);
     });
   }
@@ -1702,6 +1710,11 @@ function sfRevealDisclosures(el) {
   // to be stopped from replacing the frame (done at serve time), and the reader
   // needs a way out to the full page, because commenting lives there.
   var childTrail = [];   // the descent so far, which the breadcrumb renders
+  // Which child the panel is showing. Every request the panel makes is answered
+  // against this: a reader who opens A, waits, then opens B must not have B's
+  // frame cleared by A's request finishing late and reporting A missing.
+  var childOpen = 0;
+  var childFocusReturn = null;   // where focus was before the panel took it
 
   /** The URL of a child's embed view, painted in this page's theme. */
   function childSrc(child) {
@@ -1727,19 +1740,47 @@ function sfRevealDisclosures(el) {
     els.childFrame.hidden = false;
     els.childFrame.setAttribute('src', childSrc(child));
     renderChildHead(child);
+    var wasOpen = els.childPanel.classList.contains('open');
     els.childPanel.classList.add('open');
     document.body.classList.add('sf-child-open');
+    if (!wasOpen) takeChildFocus();
 
     // A child that has gone since the drawer rendered leaves an empty frame,
     // which reads as a broken panel rather than as a spec that is not there.
     // Ask, and say so.
+    //
+    // Answered against the panel's current state. A request cannot be cancelled
+    // once sent, so a slow one for A finishing after the reader opened B would
+    // otherwise clear B's frame and report B missing.
+    childOpen += 1;
+    var mine = childOpen;
     fetch(apiFor(child.id) + '/meta')
       .then(function (r) {
-        if (r && r.ok === false) throw new Error('gone');
+        if (!r || r.ok === false) throw new Error('gone');
         return r.json();
       })
       .then(function (meta) { if (!meta || meta.error) throw new Error('gone'); })
-      .catch(function () { showChildMissing(); });
+      .catch(function () { if (mine === childOpen) showChildMissing(); });
+  }
+
+  /**
+   * Move focus into the panel, and remember where it was.
+   *
+   * The panel covers most of the page, and without this a keyboard reader stays
+   * on a control underneath it: tabbing walks a document they cannot see. Escape
+   * closes, which is what every other overlay here does.
+   */
+  function takeChildFocus() {
+    childFocusReturn = document.activeElement;
+    var first = els.childPanel.querySelector('.sf-child-close');
+    if (first && first.focus) first.focus();
+  }
+
+  function releaseChildFocus() {
+    if (childFocusReturn && childFocusReturn.focus && childFocusReturn.isConnected) {
+      childFocusReturn.focus();
+    }
+    childFocusReturn = null;
   }
 
   function showChildMissing() {
@@ -1778,9 +1819,16 @@ function sfRevealDisclosures(el) {
     els.childDown.hidden = !child.hasChildren;
     els.childDown.onclick = function () {
       fetch(apiFor(child.id) + '/children')
-        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          // Checked, not assumed. A child deleted since its hasChildren was
+          // read answers 404, and parsing that as JSON turned "this spec is
+          // gone" into an empty drawer that said nothing was wrong.
+          if (!r || r.ok === false) throw new Error('gone');
+          return r.json();
+        })
         .then(function (data) {
-          childSpecs = (data && data.children) || [];
+          if (!data || !data.children) throw new Error('malformed');
+          childSpecs = data.children;
           renderChildDrawer();
           setChildDrawer(true);
         })
@@ -1790,12 +1838,16 @@ function sfRevealDisclosures(el) {
 
   function closeChildPanel() {
     if (!els.childPanel) return;
+    var wasOpen = els.childPanel.classList.contains('open');
     els.childPanel.classList.remove('open');
     document.body.classList.remove('sf-child-open');
     // Cleared rather than hidden. A closed panel still holding a document keeps
     // a connection and a live-reload stream open for something nobody is reading.
     els.childFrame.removeAttribute('src');
     childTrail = [];
+    // Any request still in flight now answers for a panel nobody is looking at.
+    childOpen += 1;
+    if (wasOpen) releaseChildFocus();
   }
 
   function buildChildPanel() {
@@ -1807,11 +1859,26 @@ function sfRevealDisclosures(el) {
       + '<a class="sf-child-newtab" target="_blank" rel="noopener noreferrer"></a>'
       + '<button class="sf-child-close" type="button" title="Close" aria-label="Close">×</button>'
       + '</div>'
-      // The sandbox is not a formality. allow-scripts and allow-same-origin are
-      // what make the child render at all (mermaid, prism, the daemon's own
-      // assets); allow-popups lets its links reach a new tab; and
-      // allow-top-navigation is withheld, so nothing inside the frame can
-      // replace the page around it.
+      // What the sandbox is and is not.
+      //
+      // allow-scripts and allow-same-origin together mean this frame is NOT a
+      // security boundary against the document inside it: a same-origin frame
+      // that can run scripts can reach window.parent. That is deliberate and it
+      // costs nothing here, because the document inside it is a spec from this
+      // user's own store, served from this origin, which already runs with full
+      // access on its own page. A frame cannot make it more trusted than it
+      // already is, and both tokens are what make it render at all: mermaid,
+      // prism and the daemon's own assets.
+      //
+      // What the sandbox does buy is the accident rather than the attack.
+      // allow-top-navigation is withheld, so a link or a script inside a child
+      // cannot replace the page around it and leave the reader looking at
+      // something else in a panel that claims to show a child spec.
+      // allow-popups keeps its links able to reach a new tab.
+      //
+      // The boundary that matters for untrusted content is elsewhere: markdown
+      // import sanitises raw HTML on the way in, which is where content that is
+      // not the user's own enters the store.
       + '<iframe id="sf-child-frame" title="Child spec"'
       + ' sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox">'
       + '</iframe>';
