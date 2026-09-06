@@ -1012,6 +1012,10 @@ html[data-sf-header] body { padding-top: var(--sf-header-h); }
 html[data-sf-header] #sf-toc { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
 html[data-sf-header] #sf-rail { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
 html[data-sf-header] #sf-sidebar { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
+/* The child drawer shares the comments drawer's gutter, so it shares its offset:
+   without this its own header sat behind the fixed spec header, which put the
+   drawer's title and its close control out of reach. */
+html[data-sf-header] #sf-children { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
 html[data-sf-header] #sf-top { top: calc(var(--sf-header-h) + 12px); }
 /* The TOC chevron is CENTRED (top:50% with a -50% translate), so it must not be
    given a fixed top like the others — that would drop it to the top edge and

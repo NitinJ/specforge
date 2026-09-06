@@ -11,6 +11,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+
 import { bootReviewLayer } from './helpers/review-dom.mjs';
 
 /** Boot with a children endpoint answering `rows`. */
@@ -167,4 +169,15 @@ test('the rows come from the children endpoint, and no child document is fetched
 test('an embedded page builds no child drawer either', async (t) => {
   const { window } = await withChildren(t, ROWS, { embed: true });
   assert.equal(window.document.querySelector('#sf-children'), null);
+});
+
+test('the drawer is offset beneath a fixed spec header, like the one it sits beside', () => {
+  // Both drawers live in the same gutter, and the comments one has cleared the
+  // header since it was written. Without the same rule the child drawer's own
+  // title and its close control sat behind the bar, out of reach — the whole
+  // drawer visible and neither control clickable.
+  const css = readFileSync(new URL('../server/public/review.css', import.meta.url), 'utf8');
+  const offset = (sel) => new RegExp('html\\[data-sf-header\\]\\s*' + sel + '\\s*\\{[^}]*top:\\s*var\\(--sf-header-h\\)');
+  assert.match(css, offset('#sf-sidebar'), 'the comments drawer lost its offset, so this proves nothing');
+  assert.match(css, offset('#sf-children'));
 });
