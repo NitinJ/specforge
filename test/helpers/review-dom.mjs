@@ -209,11 +209,16 @@ export async function bootReviewLayer(t, opts = {}) {
   const puts = [];
   const patches = [];
   const dels = [];
+  // Every URL the client asked for, in order. Reads as well as writes, because
+  // the child-spec panel's whole claim is about what it does NOT fetch, and an
+  // absence can only be asserted against a record of what was.
+  const fetched = [];
   // DELETE is captured like the others. Without it a client DELETE fell through
   // to the read branch, whose response carries no `ok`, so code that checks
   // Response.ok saw undefined and reported a failure the server never sent.
   const BUCKETS = { POST: posts, PUT: puts, PATCH: patches, DELETE: dels };
   window.fetch = (url, init) => {
+    fetched.push(String(url));
     const bucket = init && BUCKETS[init.method];
     if (bucket) {
       bucket.push({ url, body: init.body ? JSON.parse(init.body) : {} });
@@ -233,6 +238,14 @@ export async function bootReviewLayer(t, opts = {}) {
       // keep working without it.
       if (opts.blocksFail) return Promise.reject(new Error('no registry'));
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ registry: opts.registry || null }) });
+    }
+    if (String(url).indexOf('/children') !== -1) {
+      // Defaults to none, which is what every spec written before child specs
+      // has, and what the menu row's absence is asserted against.
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ children: opts.children || [] }),
+      });
     }
     if (String(url).indexOf('/meta') !== -1) {
       return Promise.resolve({ json: () => Promise.resolve(meta) });
@@ -268,7 +281,7 @@ export async function bootReviewLayer(t, opts = {}) {
   }
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
   await new Promise((r) => window.setTimeout(r, 0)); // flush load()/render microtasks
-  return { window, posts, puts, patches, dels };
+  return { window, posts, puts, patches, dels, fetched };
 }
 
 /**

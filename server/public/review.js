@@ -406,6 +406,9 @@ function sfRevealDisclosures(el) {
     }
 
     buildChrome();
+    // Which specs belong to this one. One request, no child documents: opening
+    // a child is what loads its document, and that is the panel's job.
+    loadChildren();
     // Diagrams before the reconcile, never beside it. Rendering replaces a
     // block's contents, and the reconcile identifies a block by its text, so
     // running them concurrently would record whichever answer won the race.
@@ -1342,6 +1345,7 @@ function sfRevealDisclosures(el) {
 
     buildLauncher();
     buildCtxMenu();
+    buildChildDrawer();
     buildAsides();
     buildTop();
     buildTitleBar();
@@ -1613,11 +1617,95 @@ function sfRevealDisclosures(el) {
   // Sidebar open/close — also flags the body so the floating launcher can
   // get out of the sidebar's way (CSS: body.sf-side-open).
   function setSidebar(open) {
+    // The child drawer shares this gutter, so opening comments closes it.
+    if (open && els.children) els.children.classList.remove('open');
     els.sidebar.classList.toggle('open', open);
-    document.body.classList.toggle('sf-side-open', open);
+    document.body.classList.toggle(
+      'sf-side-open',
+      open || !!(els.children && els.children.classList.contains('open')),
+    );
     syncRailVisibility(); // the drawer and the rail share the right gutter
   }
   function toggleSidebar() { setSidebar(!els.sidebar.classList.contains('open')); }
+
+  // ---------- child specs ----------
+  // A child spec is a spec of its own that records which spec it belongs to. The
+  // drawer lists them; opening one is the panel's job (it loads a different
+  // document, which is why it is a frame and not a section).
+  //
+  // The list is fetched once on boot, because the menu has to know whether to
+  // carry the row at all: an entry that opens an empty drawer is a worse answer
+  // than no entry. Listing costs one request and no child document.
+  var childSpecs = [];
+
+  function loadChildren() {
+    if ((window.SPECFORGE || {}).embed) return Promise.resolve([]);
+    // SPEC_API, not API: the latter is the comments base, and /children hangs
+    // off the spec.
+    return fetch(SPEC_API + '/children')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        childSpecs = (data && data.children) || [];
+        // The menu is built lazily, but if it is already open the row has to
+        // appear rather than wait for the next open.
+        if (els.menu && els.menu.classList.contains('open')) buildMenuRows();
+        return childSpecs;
+      })
+      .catch(function () { return []; });
+  }
+
+  // Both drawers live in the right gutter, so opening one closes the other. A
+  // second drawer opened over the first is not a layout problem, it is two
+  // things claiming the same space and the reader losing the one they were in.
+  function setChildDrawer(open) {
+    if (!els.children) return;
+    if (open) setSidebar(false);
+    els.children.classList.toggle('open', open);
+    document.body.classList.toggle('sf-side-open', open || els.sidebar.classList.contains('open'));
+    syncRailVisibility();
+  }
+
+  function renderChildDrawer() {
+    if (!els.childList) return;
+    els.childList.innerHTML = '';
+    childSpecs.forEach(function (child) {
+      var row = create('button', { class: 'sf-child-row', type: 'button' });
+      row.appendChild(create('span', { class: 'sf-child-title' }, child.title || child.id));
+
+      var meta = create('span', { class: 'sf-child-meta' });
+      if (child.type) meta.appendChild(create('span', { class: 'sf-child-type' }, child.type));
+      if (child.status) meta.appendChild(create('span', { class: 'sf-child-status' }, child.status));
+      var open = child.comments && child.comments.open;
+      // Only when there is something to answer. A "0" on every row is a column
+      // of noise that says nothing.
+      if (open) meta.appendChild(create('span', { class: 'sf-child-comments' }, String(open) + ' open'));
+      if (child.hasChildren) meta.appendChild(create('span', { class: 'sf-child-more' }, 'has children'));
+      row.appendChild(meta);
+
+      row.onclick = function () { openChild(child); };
+      els.childList.appendChild(row);
+    });
+  }
+
+  // Opening a child. For now its own tab, which is where it is fully usable:
+  // comments, the menu, everything. The read-only panel that shows it in place
+  // replaces this, and keeps a control that does exactly what this does.
+  function openChild(child) {
+    if (!child || !child.id) return;
+    window.open('/spec/' + encodeURIComponent(child.id), '_blank', 'noopener');
+  }
+
+  function buildChildDrawer() {
+    els.children = create('div', { id: 'sf-children' });
+    els.children.innerHTML =
+      '<div class="sf-side-head"><b>Child specs</b>'
+      + '<button class="sf-side-close" title="Close child specs" aria-label="Close child specs">×</button>'
+      + '</div>'
+      + '<div class="sf-child-list"></div>';
+    document.body.appendChild(els.children);
+    els.childList = els.children.querySelector('.sf-child-list');
+    els.children.querySelector('.sf-side-close').onclick = function () { setChildDrawer(false); };
+  }
 
   // ---------- lifecycle action button ----------
   // One contextual primary CTA, rendered in the sidebar command bar (the comments
@@ -2329,7 +2417,20 @@ function sfRevealDisclosures(el) {
       var badge = create('span', { class: 'sf-menu-badge' }, String(unresolved));
       comments.querySelector('.sf-row-main').appendChild(badge);
     }
-    menuGroup('Review', [comments]);
+    var reviewRows = [comments];
+    // Only when there is something behind it. A spec with no children carrying
+    // a row that opens an empty drawer is a worse answer than no row.
+    if (childSpecs.length) {
+      var kids = menuRow('🗂', 'Child specs', function () {
+        renderChildDrawer();
+        setChildDrawer(true);
+        closeMenu();
+      });
+      var count = create('span', { class: 'sf-menu-badge' }, String(childSpecs.length));
+      kids.querySelector('.sf-row-main').appendChild(count);
+      reviewRows.push(kids);
+    }
+    menuGroup('Review', reviewRows);
 
     // Everything that changes how the page looks and nothing that changes what
     // it says. Width is an inline range; the other three are dropdowns.
