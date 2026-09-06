@@ -144,7 +144,7 @@ function serveMarkdown(id, res) {
   return res.end(archive);
 }
 
-function serveSpec(id, res) {
+function serveSpec(id, res, { embed = false, theme } = {}) {
   let html;
   // A reserved entry has a spec's layout on disk, which is what makes the review
   // APIs work on it. This route is where the difference is enforced: the library
@@ -155,7 +155,7 @@ function serveSpec(id, res) {
   } catch {
     return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
   }
-  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id }));
+  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id, embed, theme }));
 }
 
 /**
@@ -740,7 +740,15 @@ export function createDaemon({ publications: pubs = publications } = {}) {
       const reserved = reservedIdForRoute(path);
       if (reserved) return serveComponentsDoc(reserved, res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
-      if (sm) return serveSpec(sm[1], res);
+      if (sm) {
+        // The embed view, for a child shown inside its parent's page. The theme
+        // rides along so the frame paints in the parent's on its first render
+        // rather than flashing the store's and correcting.
+        return serveSpec(sm[1], res, {
+          embed: url.searchParams.get('embed') === '1',
+          theme: url.searchParams.get('theme'),
+        });
+      }
       const pub = path.match(/^\/public\/([\w.-]+)$/);
       if (pub) return serveStatic(pub[1], res, req);
     }

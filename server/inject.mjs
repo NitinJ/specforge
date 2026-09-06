@@ -33,8 +33,19 @@ const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'spe
  *   publication.
  * @returns {string} HTML with the live tracker + review layer injected
  */
-export function injectReviewLayer(html, { specId, transport = 'sse', api, servedAt } = {}) {
+export function injectReviewLayer(html, {
+  specId, transport = 'sse', api, servedAt, embed = false, theme: themeOverride,
+} = {}) {
   let out = renderLiveTracker(html);
+
+  // The embed view: this page is about to be shown inside another spec's page,
+  // in an iframe, read only. The chrome is suppressed by the client (see the
+  // `embed` branch in review.js boot), and the one thing that has to happen
+  // here is the links: a click on an ordinary link inside a frame replaces the
+  // frame, which would leave the reader looking at an unrelated page in a panel
+  // that claims to be showing a child spec. Same-document anchors are left
+  // alone, because following one is the reader scrolling, not leaving.
+  if (embed) out = openLinksInNewTab(out);
 
   // ui.css first: review.css is the layer's own chrome, and where the two speak
   // about the same thing (a dialog, a message) the layer's sheet should win.
@@ -46,12 +57,17 @@ export function injectReviewLayer(html, { specId, transport = 'sse', api, served
   // Named rather than spread: ui.json also holds the index page's collection
   // order, and this same layer is what a published spec serves to a stranger.
   const { theme, font, mono } = readGlobalPrefs();
+  // A frame is painted by whoever opened it, so the parent's theme wins over the
+  // store's when one is passed. Validated against the two it can be: this value
+  // arrives from a query string and ends up in the client config.
+  const framed = themeOverride === 'dark' || themeOverride === 'light' ? themeOverride : null;
   const layer = reviewSnippet(specId, {
     ...(theme ? { theme } : {}),
     ...(font ? { font } : {}),
     ...(mono ? { mono } : {}),
     ...readPrefs(specId),
-  }, transport, api, servedAt);
+    ...(framed ? { theme: framed } : {}),
+  }, transport, api, servedAt, embed);
   if (out.includes('</body>')) {
     out = out.replace('</body>', `${layer}\n</body>`);
   } else {
@@ -193,7 +209,24 @@ function pollWatcher(api, interval, servedAt) {
 /** How often a published page asks whether the spec moved. */
 const POLL_INTERVAL_MS = 5000;
 
-function reviewSnippet(specId, prefs, transport, api, servedAt) {
+/**
+ * Point every off-document link at a new tab.
+ *
+ * Only `href` values that navigate away: a `#fragment` stays in the frame,
+ * because following it is scrolling. An anchor that already names a target is
+ * left as its author wrote it.
+ */
+function openLinksInNewTab(html) {
+  return html.replace(/<a\b([^>]*)>/gi, (tag, attrs) => {
+    if (/\btarget\s*=/i.test(attrs)) return tag;
+    const href = attrs.match(/\bhref\s*=\s*("([^"]*)"|'([^']*)')/i);
+    const value = href ? (href[2] ?? href[3] ?? '') : '';
+    if (!value || value.startsWith('#')) return tag;
+    return `<a${attrs} target="_blank" rel="noopener noreferrer">`;
+  });
+}
+
+function reviewSnippet(specId, prefs, transport, api, servedAt, embed) {
   const id = JSON.stringify(specId);
   // Embed the persisted prefs (store-wide theme/font + per-spec width/…) so
   // review.js applies them on boot with no flash and no extra round-trip.
@@ -205,6 +238,8 @@ function reviewSnippet(specId, prefs, transport, api, servedAt) {
   const base = api || `/api/spec/${specId}`;
   const cfg = JSON.stringify({
     specId, prefs: prefs || {}, transport, api: base,
+    // Read only, inside somebody else's page: no chrome, and no writes.
+    ...(embed ? { embed: true } : {}),
     // The library's block components, so the review client can anchor a comment
     // to every one of them. Without this the client's selector list and the
     // lint's idea of what is commentable drift apart, and the lint silences a

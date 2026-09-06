@@ -389,6 +389,19 @@ function sfRevealDisclosures(el) {
     flagDeck();            // so the stylesheet can leave a paged spec's spacing alone
     initHighlight();       // and colour the code blocks whose author named a language
     initInteractive();     // and give the interactive components their behaviour
+
+    // The embed view: this page is inside another spec's page, in a frame, and
+    // the reader is looking at it rather than working on it.
+    //
+    // Everything above still runs, because all of it is what makes a spec
+    // readable. Everything below does not: a second launcher and a second
+    // contents rail inside a panel are noise, a comment affordance here would
+    // write to a spec the reader did not open, and the block-registry sync is a
+    // write, so it would edit a document from inside somebody else's page. To
+    // comment on a child you open it in its own tab, which is what the panel's
+    // control is for.
+    if ((window.SPECFORGE || {}).embed) return;
+
     buildChrome();
     // Diagrams before the reconcile, never beside it. Rendering replaces a
     // block's contents, and the reconcile identifies a block by its text, so
