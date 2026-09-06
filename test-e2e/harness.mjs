@@ -175,6 +175,24 @@ export async function withSpecTree(opts, fn) {
   let server;
   let browser;
   try {
+    // Validated before anything is written, because the failure it prevents is
+    // silent: a misspelled `parent` key resolves to undefined, the spec is
+    // created as a root, and every later assertion then tests a topology nobody
+    // asked for and the test still passes.
+    const keys = new Set();
+    for (const s of specs) {
+      if (!s.key) throw new Error('withSpecTree: every spec needs a key');
+      if (keys.has(s.key)) throw new Error(`withSpecTree: duplicate key ${s.key}`);
+      keys.add(s.key);
+    }
+    for (const s of specs) {
+      if (s.parent === undefined || s.parent === null) continue;
+      if (!keys.has(s.parent)) {
+        throw new Error(`withSpecTree: ${s.key} names parent ${s.parent}, which is not a key`);
+      }
+      if (s.parent === s.key) throw new Error(`withSpecTree: ${s.key} is its own parent`);
+    }
+
     // Two passes: create every spec, then set parents, so an entry may name a
     // parent declared after it.
     const ids = {};
@@ -191,6 +209,7 @@ export async function withSpecTree(opts, fn) {
       const meta = readMeta(ids[s.key]);
       writeMeta(ids[s.key], { ...meta, parent: ids[s.parent] });
     }
+    if (open && !keys.has(open)) throw new Error(`withSpecTree: open names ${open}, which is not a key`);
 
     server = createDaemon();
     await new Promise((r) => server.listen(0, '127.0.0.1', r));

@@ -7,6 +7,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedSpec } from './helpers/spec-tree-fixtures.mjs';
@@ -71,6 +72,26 @@ test('json() returns status and parsed body together', async () => {
   assert.equal(body.title, 'Meta please');
 });
 
+test('close returns even with an SSE stream still open', async () => {
+  const id = seedSpec({ title: 'Streaming' });
+  const local = await startDaemon();
+
+  // /events never completes by design. server.close() waits for open
+  // connections, so without socket tracking this teardown hangs the run.
+  const controller = new AbortController();
+  const stream = fetch(`${local.base}/events?spec=${id}`, { signal: controller.signal });
+  await new Promise((r) => { setTimeout(r, 100); });
+
+  const closed = await Promise.race([
+    local.close().then(() => 'closed'),
+    new Promise((r) => { setTimeout(() => r('hung'), 3000); }),
+  ]);
+  assert.equal(closed, 'closed', 'close() hung on the open SSE stream');
+
+  controller.abort();
+  await stream.catch(() => {});
+});
+
 test('the gateway harness issues a token that serves its spec', async () => {
   const id = seedSpec({ title: 'Shared' });
   d = await startGateway();
@@ -120,6 +141,12 @@ test('the scratch store is disposable and refuses to delete anything outside /tm
   assert.equal(scratch.env.SPECFORGE_HOME, scratch.dir);
 
   assert.throws(() => removeScratchStore('/home/nitin/.specforge'), /refusing to remove/);
+  // A prefix check passes this and a recursive delete then leaves the temp dir.
+  assert.throws(() => removeScratchStore(`${tmpdir()}/../home`), /refusing to remove/);
+  assert.throws(() => removeScratchStore(tmpdir()), /refusing to remove/);
+  assert.throws(() => removeScratchStore(''), /refusing to remove/);
+  assert.throws(() => removeScratchStore(null), /refusing to remove/);
+
   removeScratchStore(scratch.dir);
   assert.equal(existsSync(scratch.dir), false);
 });

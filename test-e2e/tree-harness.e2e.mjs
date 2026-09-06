@@ -47,6 +47,29 @@ test('the recorder captures the page load itself', needsChrome, async () => {
   });
 });
 
+test('a parent key that names nothing is refused, not silently made a root', async () => {
+  await assert.rejects(
+    () => withSpecTree({
+      specs: [{ key: 'root' }, { key: 'kid', parent: 'raot' }],
+    }, async () => {}),
+    /names parent raot/,
+  );
+});
+
+test('a duplicate key is refused', async () => {
+  await assert.rejects(
+    () => withSpecTree({ specs: [{ key: 'a' }, { key: 'a' }] }, async () => {}),
+    /duplicate key a/,
+  );
+});
+
+test('opening a key that does not exist is refused', async () => {
+  await assert.rejects(
+    () => withSpecTree({ specs: [{ key: 'a' }], open: 'b' }, async () => {}),
+    /open names b/,
+  );
+});
+
 test('opening a parent fetches no other spec document', needsChrome, async () => {
   await withSpecTree({
     specs: [

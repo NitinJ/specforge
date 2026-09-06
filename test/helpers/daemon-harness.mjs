@@ -17,6 +17,33 @@ function listen(server) {
 }
 
 /**
+ * Close a server without waiting for connections that never end.
+ *
+ * `server.close` waits for open connections to finish, and the daemon serves an
+ * SSE stream at /events that by design never finishes. A test that opens a spec
+ * page and then fails leaves that stream open, and an unguarded close would hang
+ * the whole run rather than reporting the failure. So every socket is tracked
+ * and destroyed on the way out.
+ */
+function closeHard(server, sockets) {
+  return new Promise((resolve) => {
+    server.close(resolve);
+    for (const s of sockets) s.destroy();
+    sockets.clear();
+  });
+}
+
+/** Track sockets so closeHard can end them. */
+function trackSockets(server) {
+  const sockets = new Set();
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+  return sockets;
+}
+
+/**
  * A running daemon against whatever store SPECFORGE_HOME currently names.
  *
  * Call inside a test that has already installed a temp store; this does not make
@@ -26,6 +53,7 @@ function listen(server) {
  */
 export async function startDaemon() {
   const server = createDaemon();
+  const sockets = trackSockets(server);
   const port = await listen(server);
   const base = `http://127.0.0.1:${port}`;
 
@@ -42,7 +70,7 @@ export async function startDaemon() {
   return {
     base,
     server,
-    close: () => new Promise((r) => server.close(r)),
+    close: () => closeHard(server, sockets),
     get: (path) => fetch(base + path),
     post: send('POST'),
     patch: send('PATCH'),
@@ -72,6 +100,7 @@ export async function startGateway(resolve) {
   const tokens = new Map();
   const resolver = resolve || ((t) => tokens.get(t) || null);
   const server = createGatewayServer(resolver);
+  const sockets = trackSockets(server);
   const port = await listen(server);
   const base = `http://127.0.0.1:${port}`;
 
@@ -81,7 +110,7 @@ export async function startGateway(resolve) {
     base,
     server,
     tokens,
-    close: () => new Promise((r) => server.close(r)),
+    close: () => closeHard(server, sockets),
     share(specId) {
       const token = newToken();
       tokens.set(token, specId);
