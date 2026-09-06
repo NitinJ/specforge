@@ -82,6 +82,54 @@ test('the attention view flattens the indent and names the parent', needsChrome,
   });
 });
 
+test('sorting keeps each child with its parent', needsChrome, async () => {
+  await withIndex(seedTree, async ({ page, ids }) => {
+    // Sorting every row independently pulled children away from their parents,
+    // leaving an indented row under an unrelated spec, still claiming to belong
+    // to it.
+    await page.selectOption('#fsort', 'title');
+    await page.waitForTimeout(200);
+
+    const order = await page.evaluate(() => Array.prototype.map.call(
+      document.querySelectorAll('li.row'),
+      (r) => [r.getAttribute('data-id'), r.getAttribute('data-depth')],
+    ));
+
+    const rootAt = order.findIndex(([id]) => id === ids.root);
+    assert.ok(rootAt >= 0, 'the parent is not on the page');
+    // Both children follow it, before any other root.
+    const after = order.slice(rootAt + 1, rootAt + 3).map(([id]) => id);
+    assert.deepEqual([...after].sort(), [ids.a, ids.b].sort());
+    for (const [, depth] of order.slice(rootAt + 1, rootAt + 3)) assert.equal(depth, '1');
+  });
+});
+
+test('leaving a flat view puts the tree back', needsChrome, async () => {
+  await withIndex(seedTree, async ({ page, ids }) => {
+    await page.click('.nav[data-view="attn"]');
+    await page.waitForFunction(() => document.body.getAttribute('data-view') === 'attn');
+
+    // Picking a collection resets the view without going through a view button,
+    // and three such paths used to leave the flat styling in place.
+    await page.click('.cnav');
+    await page.waitForFunction(() => document.body.getAttribute('data-view') === 'all');
+
+    const shown = await page.evaluate((specId) => {
+      const row = document.querySelector(`li.row[data-id="${specId}"]`);
+      const under = row.querySelector('.under');
+      return {
+        view: document.body.getAttribute('data-view'),
+        padding: getComputedStyle(row.querySelector('.main')).paddingLeft,
+        under: under ? getComputedStyle(under).display : 'missing',
+      };
+    }, ids.a);
+
+    assert.equal(shown.view, 'all');
+    assert.notEqual(shown.padding, '0px', 'the indent did not come back');
+    assert.equal(shown.under, 'none', 'the parent name is still showing outside a flat view');
+  });
+});
+
 test('deleting a parent says how many go, and can be undone', needsChrome, async () => {
   await withIndex(seedTree, async ({ page, ids }) => {
     await page.click(`li.row[data-id="${ids.root}"] .acts button`);

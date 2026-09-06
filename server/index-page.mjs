@@ -187,6 +187,34 @@ function orderWithChildren(list, childrenByParent) {
   return out;
 }
 
+/**
+ * Every spec, with its tree root's project and collection for grouping.
+ *
+ * Returns copies. The stored fields are untouched: this decides which section a
+ * row is drawn in, and nothing else. A spec whose parent is missing, or that
+ * sits in a cycle, keeps its own address, which is what puts an orphan at the
+ * top level of the section it was filed in.
+ */
+function groupByRoot(list) {
+  const byId = new Map(list.map((m) => [m.id, m]));
+  const rootOf = (m) => {
+    const seen = new Set([m.id]);
+    let cur = m;
+    for (;;) {
+      // spec-tree-ok: walks the rows this page already has, not the store
+      const parent = cur.parent && byId.get(cur.parent);
+      if (!parent || seen.has(parent.id)) return cur;
+      seen.add(parent.id);
+      cur = parent;
+    }
+  };
+  return list.map((m) => {
+    const root = rootOf(m);
+    if (root === m) return m;
+    return { ...m, project: root.project || null, collection: root.collection || null };
+  });
+}
+
 /** parent id → its children among `list`, in the order the list gives them. */
 function indexChildren(list) {
   const byParent = new Map();
@@ -352,7 +380,17 @@ export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   const all = listSpecs().sort((a, b) => (b.updated || 0) - (a.updated || 0));
   // Templates are excluded from the list; they are configuration and live on
   // /settings now (spec 094abd0b9d, P7).
-  const specs = all.filter((m) => !m.template);
+  // A child is grouped by its ROOT's address, not its own.
+  //
+  // `project` and `collection` decide which section a row is drawn in, and a
+  // child is drawn under its parent. If the two carry different collections,
+  // grouping each by its own would put the child in a section its parent is not
+  // in, where it renders as a root: the relation disappears from the page and
+  // the child looks like a spec belonging to nothing.
+  //
+  // Only the grouping is affected. Neither field is rewritten, and both still
+  // travel independently: this is where a row is DRAWN, not where it is filed.
+  const specs = groupByRoot(all.filter((m) => !m.template));
   const n = specs.length;
   const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, shareInfo, m)]));
   const sigOf = (m) => sigs.get(m.id);
@@ -1573,6 +1611,11 @@ ${strip}
   }
 
   function applyFilters(){
+    // Here rather than at each call site. Picking a collection or clearing the
+    // filters both reset fview to 'all' and then call this; three of those
+    // paths did not call applyView, so the page kept the flat-view styling
+    // (no indent, parent names showing) while claiming to show the tree.
+    applyView();
     var q=(search&&search.value.trim().toLowerCase())||'';
     var ty=(ftype&&ftype.value)||'';
     var shown=0;
@@ -1754,17 +1797,54 @@ ${strip}
     total=rows.length;
     applyFilters();
   }
+  /**
+   * Sort the rows in every group, keeping each tree together.
+   *
+   * Sorting every row independently pulled children away from their parents: an
+   * indented row would land under an unrelated spec, still indented, saying it
+   * belonged to something it does not. So the sort runs over ROOTS, and each
+   * root carries its own children with it, sorted among themselves.
+   *
+   * The flat views are the exception, and deliberately: there the rows are not a
+   * tree, every row names its own parent, and the question the reader is asking
+   * is "what needs me", not "what belongs to what".
+   */
   function applySort(){
     var mode=(fsort&&fsort.value)||'recent';
+    var flat=fview==='attn'||fview==='live';
+    function cmp(a,b){
+      if(mode==='title') return a.querySelector('.title').textContent.localeCompare(b.querySelector('.title').textContent);
+      if(mode==='status') return (SORDER[a.getAttribute('data-s')]||9)-(SORDER[b.getAttribute('data-s')]||9);
+      return (+b.getAttribute('data-u'))-(+a.getAttribute('data-u'));
+    }
     grps.forEach(function(g){
       var ul=g.querySelector('.rows'); if(!ul) return;
       var list=[].slice.call(ul.children);
-      list.sort(function(a,b){
-        if(mode==='title') return a.querySelector('.title').textContent.localeCompare(b.querySelector('.title').textContent);
-        if(mode==='status') return (SORDER[a.getAttribute('data-s')]||9)-(SORDER[b.getAttribute('data-s')]||9);
-        return (+b.getAttribute('data-u'))-(+a.getAttribute('data-u'));
+      if(flat){ list.sort(cmp); list.forEach(function(li){ul.appendChild(li);}); return; }
+
+      var kids={},roots=[];
+      list.forEach(function(li){
+        var p=li.getAttribute('data-parent');
+        // A row whose parent is not in this group is a root here, which is what
+        // an orphan is and what a top-level spec is.
+        if(p&&list.some(function(x){return x.getAttribute('data-id')===p;})){
+          (kids[p]=kids[p]||[]).push(li);
+        } else roots.push(li);
       });
-      list.forEach(function(li){ul.appendChild(li);});
+      roots.sort(cmp);
+      Object.keys(kids).forEach(function(k){kids[k].sort(cmp);});
+      var seen={};
+      (function place(rows){
+        rows.forEach(function(li){
+          var id=li.getAttribute('data-id');
+          if(seen[id])return;           // a cycle must not loop here
+          seen[id]=1;
+          ul.appendChild(li);
+          if(kids[id])place(kids[id]);
+        });
+      })(roots);
+      // Anything a cycle kept out of the walk still has to be on the page.
+      list.forEach(function(li){if(!seen[li.getAttribute('data-id')])ul.appendChild(li);});
     });
   }
   function paintNav(){
@@ -1818,7 +1898,7 @@ ${strip}
     applyFilters();
   };});
   navs.forEach(function(nv){nv.onclick=function(){
-    fview=nv.getAttribute('data-view'); fcoll=null; paintNav(); applyView(); applyFilters();
+    fview=nv.getAttribute('data-view'); fcoll=null; paintNav(); applyFilters();
   };});
   cnavs.forEach(function(cv){cv.onclick=function(){
     var c=cv.getAttribute('data-c');
@@ -1905,7 +1985,11 @@ ${strip}
    * what a confirmation dialog is about to describe.
    */
   function descendantIds(id){
+    // The starting spec is seen from the outset. Without it a hand-written cycle
+    // (A → B → C → A) walked back round to A and counted it as its own child, so
+    // deleting A said it would take three child specs when it takes two.
     var out=[],queue=[id],seen={};
+    seen[id]=1;
     while(queue.length){
       var cur=queue.shift();
       var kids=[].slice.call(document.querySelectorAll('li.row[data-parent="'+cur+'"]'));
@@ -1980,7 +2064,6 @@ ${strip}
   // The server rendered the selection; this makes the rest of the page agree
   // with it — the rail narrowed, the counts scoped, the project headings gone.
   paintNav();
-  applyView();
   applyFilters();
   // A selection that arrived in the URL (a spec page's header chip) has not been
   // stored yet. Persisting it here rather than on the GET keeps the request free

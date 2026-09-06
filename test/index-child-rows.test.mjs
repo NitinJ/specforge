@@ -16,7 +16,7 @@ import { JSDOM } from 'jsdom';
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedSpec, buildShape } from './helpers/spec-tree-fixtures.mjs';
 import { renderIndex } from '../server/index-page.mjs';
-import { listSpecs } from '../lib/meta.mjs';
+import { listSpecs, readMeta } from '../lib/meta.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-idxchild-');
 
@@ -100,15 +100,55 @@ test('a child carries its parent id, so a flat view can name it', () => {
   assert.equal(row.getAttribute('data-parent'), root);
 });
 
-test('a parent and child in different collections still draw together', () => {
+test('a parent and child in different collections draw in the same group', () => {
   // The child inherits its parent's address at creation, but the two can be
-  // moved apart afterwards. Drawing the child in its own collection would put
-  // it under a parent that is not on screen.
+  // moved apart afterwards. Drawing the child in its own collection puts it in a
+  // section its parent is not in, where it renders as a root: the relation
+  // disappears and the child looks like a spec belonging to nothing.
+  //
+  // An earlier version of this test checked adjacency across ALL rows and passed
+  // while the child was in a separate group, because two groups of one put the
+  // rows next to each other anyway. Group membership is the thing to assert.
   const root = seedSpec({ title: 'Root', collection: 'Design' });
   const child = seedSpec({ title: 'Child', parent: root, collection: 'Testing' });
 
-  const ordered = rows(dom()).map((r) => r.getAttribute('data-id'));
-  assert.equal(ordered[ordered.indexOf(root) + 1], child);
+  const doc = dom();
+  const group = doc.querySelector(`li.row[data-id="${root}"]`).closest('section.grp');
+  const inGroup = Array.prototype.map.call(group.querySelectorAll('li.row'), (r) => r.getAttribute('data-id'));
+
+  assert.deepEqual(inGroup, [root, child], 'the child is not drawn with its parent');
+  assert.equal(group.getAttribute('data-coll'), 'Design', "the group is the parent's");
+  assert.equal(depthOf(doc.querySelector(`li.row[data-id="${child}"]`)), 1);
+});
+
+test('a parent and child in different projects draw in the same project section', () => {
+  const root = seedSpec({ title: 'Root', project: 'alpha' });
+  const child = seedSpec({ title: 'Child', parent: root, project: 'beta' });
+
+  const doc = dom();
+  const section = doc.querySelector(`li.row[data-id="${root}"]`).closest('section.pgrp');
+  const ids = Array.prototype.map.call(section.querySelectorAll('li.row'), (r) => r.getAttribute('data-id'));
+  assert.deepEqual(ids, [root, child]);
+  assert.equal(section.getAttribute('data-p'), 'alpha');
+});
+
+test('grouping a child under its root does not rewrite what it is filed as', () => {
+  const root = seedSpec({ title: 'Root', collection: 'Design' });
+  const child = seedSpec({ title: 'Child', parent: root, collection: 'Testing' });
+  renderIndex({});
+
+  // Where a row is DRAWN is not where the spec is FILED. A render that quietly
+  // refiled specs would move them for every other reader of the store too.
+  assert.equal(readMeta(child).collection, 'Testing');
+  assert.equal(readMeta(root).collection, 'Design');
+});
+
+test('an orphan keeps its own address', () => {
+  const { child } = buildShape('dangling');
+  const doc = dom();
+  const row = doc.querySelector(`li.row[data-id="${child}"]`);
+  assert.equal(depthOf(row), 0);
+  assert.ok(row.closest('section.grp'), 'the orphan is not in a group at all');
 });
 
 test('the flat views name a child parent, and the tree views do not show it', () => {
