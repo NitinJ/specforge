@@ -62,7 +62,22 @@ function sourceFiles() {
 
 const MARKER = /spec-tree-ok:/;
 
-/** Every unmarked `.parent` mention outside the allow-list. */
+/**
+ * The ways JavaScript can reach the field.
+ *
+ * Dot access is the obvious one and was the only one the first version caught.
+ * Destructuring and bracket access reach the same field and would have gone
+ * unnoticed, which is a gap worth closing in a rule whose whole value is that it
+ * cannot be got round by accident.
+ */
+const ACCESS = [
+  /\.parent\b/,                          // meta.parent
+  /\[\s*['"`]parent['"`]\s*\]/,          // meta['parent']
+  /\{[^}]*\bparent\b[^}]*\}\s*=/,        // const { parent } = meta
+  /\bparent\s*:\s*\w+\s*\}\s*=/,         // const { parent: p } = meta
+];
+
+/** Every unmarked mention of the field outside the allow-list. */
 export function parentReadsOutsideOwner(files) {
   const offenders = [];
   for (const file of files) {
@@ -71,7 +86,7 @@ export function parentReadsOutsideOwner(files) {
 
     const lines = readFileSync(file, 'utf8').split('\n');
     lines.forEach((line, i) => {
-      if (!/\.parent\b/.test(line)) return;
+      if (!ACCESS.some((re) => re.test(line))) return;
       // A comment explaining the field is not a read of it.
       if (/^\s*(\/\/|\*)/.test(line)) return;
       if (MARKER.test(line)) return;
@@ -125,6 +140,27 @@ test('the detector catches a two-line walk, which the first version did not', ()
     );
   } finally {
     rmSync(probe, { force: true });
+  }
+});
+
+test('the detector catches destructuring and bracket access, not just dots', () => {
+  const cases = {
+    __probe_destructure: 'export function f(meta) { const { parent } = meta; return parent; }',
+    __probe_renamed: 'export function f(meta) { const { parent: p } = meta; return p; }',
+    __probe_bracket: "export function f(meta) { return meta['parent']; }",
+  };
+  for (const [name, source] of Object.entries(cases)) {
+    const probe = join(ROOT, 'lib', `${name}.mjs`);
+    writeFileSync(probe, `${source}\n`);
+    try {
+      const offenders = parentReadsOutsideOwner(sourceFiles());
+      assert.ok(
+        offenders.some((o) => o.includes(name)),
+        `the detector missed ${name}: ${source}`,
+      );
+    } finally {
+      rmSync(probe, { force: true });
+    }
   }
 });
 

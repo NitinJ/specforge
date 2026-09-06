@@ -7,12 +7,16 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedSpec, buildShape } from './helpers/spec-tree-fixtures.mjs';
 import {
   childrenOf, descendantsOf, ancestryOf, wouldCycle,
 } from '../lib/spec-tree.mjs';
+import { readMeta } from '../lib/meta.mjs';
+import { storeRoot, metaPath } from '../lib/store-paths.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-tree-');
 
@@ -55,6 +59,14 @@ test('childrenOf is empty for a leaf and for an unknown id', () => {
 
 test('childrenOf refuses an id that would escape the store', () => {
   assert.throws(() => childrenOf('../../etc'), /spec id/i);
+});
+
+test('childrenOf of a spec that does not exist is empty, even when an orphan points at it', () => {
+  // Otherwise childrenOf would report a child of a spec that is not there, and
+  // disagree with descendantsOf and ancestryOf, which both ignore that edge.
+  const { child, missing } = buildShape('dangling');
+  assert.deepEqual(childrenOf(missing), []);
+  assert.equal(readMeta(child).parent, missing, 'the fixture still points at the missing spec');
 });
 
 // ── descendantsOf ───────────────────────────────────────────────────────────
@@ -125,6 +137,37 @@ test('ancestryOf terminates on a cycle', () => {
 
 test('ancestryOf of an unknown id is empty', () => {
   assert.deepEqual(ancestryOf('0000000000'), []);
+});
+
+// ── a parent read off disk is input ─────────────────────────────────────────
+
+test('a persisted parent that would escape the store is ignored, not followed', () => {
+  // metaPath() joins whatever it is given, so an unchecked value here would make
+  // the ancestry walk read and parse a file outside the store. Reachable only by
+  // editing meta.json by hand, which is exactly the case the walk has to survive.
+  // metaPath joins under specs/, so ONE `..` reaches the store root. The target
+  // is placed exactly where an unguarded walk would find it: an earlier version
+  // of this test used two and escaped to a path with nothing at it, so it passed
+  // against the unfixed code too.
+  const outside = join(storeRoot(), 'escaped-meta-target');
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, 'meta.json'), JSON.stringify({ id: 'escaped', title: 'Outside' }));
+
+  const child = seedSpec({ title: 'Traversing', parent: '../escaped-meta-target' });
+
+  assert.deepEqual(ancestryOf(child), [child], 'the walk followed a traversing parent');
+  assert.deepEqual(descendantsOf(child), [child]);
+  assert.equal(childrenOf(child).length, 0);
+});
+
+test('a persisted parent that is not a string is ignored', () => {
+  const id = seedSpec({ title: 'Odd' });
+  const meta = JSON.parse(readFileSync(metaPath(id), 'utf8'));
+  meta.parent = { id: 'nope' };
+  writeFileSync(metaPath(id), JSON.stringify(meta));
+
+  assert.deepEqual(ancestryOf(id), [id]);
+  assert.deepEqual(descendantsOf(id), [id]);
 });
 
 // ── wouldCycle ──────────────────────────────────────────────────────────────
