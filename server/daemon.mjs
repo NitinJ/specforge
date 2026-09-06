@@ -22,7 +22,9 @@
 //   DELETE /api/spec/<id>/aside/<asideId>       → delete an aside + its threads
 //   POST /api/spec/<id>/block/delete            → delete one block (section/tag/text)
 //   POST /api/spec/<id>/rename                  → set title (meta + spec <h1>/<title>)
-//   PATCH /api/spec/<id>/organize               → set tags / collection / project
+//   PATCH /api/spec/<id>/organize               → set tags / collection / project / parent
+//   GET  /api/spec/<id>/children                → the specs naming this one as parent
+//   DELETE /api/spec/<id>                        → remove the spec
 //
 // ensureServer() (below) is the singleton entrypoint every v2 command calls:
 // bind the port, or find out who already has it. Holding the port IS being the
@@ -51,7 +53,8 @@ import {
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
   handleBlocksGet, handleBlocksPut,
-  handleRename, handleOrganize, handleExport, handleDelete, handleAsideDelete, handleBlockDelete,
+  handleRename, handleOrganize, handleChildren,
+  handleExport, handleDelete, handleAsideDelete, handleBlockDelete,
 } from '../lib/store-api.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
@@ -506,6 +509,11 @@ export function createDaemon({ publications: pubs = publications } = {}) {
       return readJsonBody(req)
         .then((b) => handleRename(rename[1], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
+    }
+    const children = path.match(/^\/api\/spec\/([\w-]+)\/children$/);
+    if (children) {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleChildren(children[1], res);
     }
     const organize = path.match(/^\/api\/spec\/([\w-]+)\/organize$/);
     if (organize) {
