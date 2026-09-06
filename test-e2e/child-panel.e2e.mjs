@@ -112,6 +112,34 @@ test('the child renders inside the frame, with no chrome of its own', needsChrom
   });
 });
 
+test('the drawer and the panel clear the fixed spec header', needsChrome, async () => {
+  // Both live in the gutter the comments drawer uses, and that drawer is offset
+  // beneath the header. Without the same offset the child drawer's own title and
+  // close control sat behind it, out of reach.
+  await withSpecTree({ specs: TREE, open: 'root' }, async ({ page }) => {
+    await page.click('#sf-launcher');
+    await page.waitForSelector('#sf-menu');
+    await page.click('#sf-menu .sf-menu-row:has-text("Child specs")');
+    await page.waitForSelector('#sf-children.open');
+
+    const tops = await page.evaluate(() => {
+      const box = (sel) => {
+        const el = document.querySelector(sel);
+        return el ? Math.round(el.getBoundingClientRect().top) : null;
+      };
+      return {
+        header: box('#sf-titlebar'),
+        comments: box('#sf-sidebar'),
+        children: box('#sf-children'),
+      };
+    });
+
+    assert.ok(tops.header !== null, 'no fixed header on this page, so the test proves nothing');
+    assert.equal(tops.children, tops.comments, 'the child drawer does not sit where the comments drawer does');
+    assert.ok(tops.children > 0, 'the child drawer starts behind the fixed header');
+  });
+});
+
 test('closing the panel unloads the child', needsChrome, async () => {
   await withSpecTree({ specs: TREE, open: 'root' }, async ({ page }) => {
     await openFirstChild(page);

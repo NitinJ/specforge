@@ -297,6 +297,47 @@ Everything else in this skill still applies: an action arrives as a comment,
 `origin` still decides whether you may edit, and the thread still gets a reply
 saying what you did.
 
+## Comments asking for a child spec
+
+A **child spec** is a full spec of its own that records which spec it belongs
+to: its own id, its own URL, its own status, its own review cycle. It exists so
+one area of an over-long spec can be read on its own.
+
+There is no action for it and no menu entry. It arrives as an ordinary comment,
+in whatever words the reviewer used: "move this into a child spec", "this
+deserves its own spec", "pull the code grounding out". Read the intent rather
+than matching a phrase.
+
+When a thread asks for one, on a `daemon` batch:
+
+1. **Make it**, with the parent set:
+
+   ```
+   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create \
+     --title "<title>" --type <type> --parent <parentSpecId>
+   ```
+
+   The type is chosen the way `create-spec` chooses one: a child is not a kind
+   of spec, it is a spec with a parent. Code grounding is usually
+   `code-exploration-spec`, background is `research`, a test strategy is
+   `test-plan`.
+
+2. **Author it** through the `create-spec` flow. A child gets the same treatment
+   as any other spec: the type's sections, the language contract, the lint.
+
+3. **Reply with its id and URL.** The reviewer cannot see it otherwise: the
+   parent's Child specs drawer will list it, but the thread is where they asked.
+
+**What this does not mean.** The parent is not emptied. Moving existing sections
+out of a spec is a different operation, with its own problems (comment threads
+anchored to those sections, and every block index after them), and it is not
+part of this. If the comment asks for content that is already in the parent to
+be moved rather than for a new spec to be written, say so and ask: leaving the
+sections in place and writing a child that duplicates them is worse than either.
+
+On a `share` batch the rule above holds: reply, and create nothing. A child spec
+is a new document in somebody else's store.
+
 ## 4. Mark the batch done
 
 When every thread in a batch has a reply:
