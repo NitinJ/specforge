@@ -1716,16 +1716,36 @@ function sfRevealDisclosures(el) {
   var childOpen = 0;
   var childFocusReturn = null;   // where focus was before the panel took it
 
+  // Where /spec/<id> lives, which is not the same on both sockets. The daemon
+  // serves it at the root; the gateway serves it under the token, and a reader
+  // holds a capability for a subtree rather than for the store. Derived from the
+  // api base the server injected, so one page cannot disagree with itself.
+  //
+  //   daemon        /api/spec/<id>            ->  ''
+  //   shared root   /s/<token>/api            ->  /s/<token>
+  //   shared child  /s/<token>/spec/<id>/api  ->  /s/<token>
+  var SPEC_ROOT = (function () {
+    var m = SPEC_API.match(/^(\/s\/[^/]+)\//);
+    return m ? m[1] : '';
+  }());
+
+  /** The page a child is read at, in its own tab. */
+  function childHref(id) {
+    return SPEC_ROOT + '/spec/' + encodeURIComponent(id);
+  }
+
   /** The URL of a child's embed view, painted in this page's theme. */
   function childSrc(child) {
     var theme = document.documentElement.getAttribute('data-theme');
-    return '/spec/' + encodeURIComponent(child.id) + '?embed=1'
+    return childHref(child.id) + '?embed=1'
       + (theme ? '&theme=' + encodeURIComponent(theme) : '');
   }
 
   /** The API base for a spec other than this page's own. */
   function apiFor(id) {
-    return '/api/spec/' + encodeURIComponent(id);
+    return SPEC_ROOT
+      ? SPEC_ROOT + '/spec/' + encodeURIComponent(id) + '/api'
+      : '/api/spec/' + encodeURIComponent(id);
   }
 
   function openChild(child) {
@@ -1813,7 +1833,7 @@ function sfRevealDisclosures(el) {
 
     // Commenting lives on the full page. This is the way there, and it is what
     // lets the panel be read only without being a dead end.
-    els.childTab.setAttribute('href', '/spec/' + encodeURIComponent(child.id));
+    els.childTab.setAttribute('href', childHref(child.id));
     els.childTab.textContent = 'Open in new tab';
 
     els.childDown.hidden = !child.hasChildren;
