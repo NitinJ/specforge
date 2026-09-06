@@ -350,3 +350,36 @@ test('a spec reparented INTO the subtree is left alone', () => {
   assert.deepEqual(removed, [root]);
   assert.ok(readMeta(joined), 'a spec the route never checked was deleted');
 });
+
+test('two deletions in the same millisecond still list in the order they happened', () => {
+  // Date.now() has a millisecond of resolution and deleting two specs takes
+  // less than one, so the stamps tied and readdir order decided the listing.
+  // Undo is the first row, and the first row was whichever the filesystem
+  // happened to name first — a coin flip on the one control that matters.
+  const ids = [0, 1, 2, 3, 4].map((n) => seedSpec({ title: `Spec ${n}` }));
+  const order = ids.map((id) => deleteSubtree(id).deletionId);
+
+  const listed = listDeletions().map((d) => d.deletionId);
+  assert.deepEqual(listed, [...order].reverse());
+});
+
+test('a deletion is newer than every record already in the trash', () => {
+  // The stamp has to beat what is ON DISK, not what this process happens to
+  // remember. A restart forgets, and a clock that steps backwards makes Date.now
+  // itself the wrong answer; either way the newest deletion sorted behind an
+  // older one and undo restored the wrong thing.
+  const before = seedSpec({ title: 'Before' });
+  const first = deleteSubtree(before).deletionId;
+
+  // A record written by another process, or by this one before the clock moved,
+  // stamped further ahead than the wall clock now reads.
+  const path = trashRecordPath(first);
+  const record = JSON.parse(readFileSync(path, 'utf8'));
+  record.deletedAt = Date.now() + 60_000;
+  writeFileSync(path, JSON.stringify(record, null, 2));
+
+  const after = seedSpec({ title: 'After' });
+  const second = deleteSubtree(after).deletionId;
+
+  assert.deepEqual(listDeletions().map((d) => d.deletionId), [second, first]);
+});
