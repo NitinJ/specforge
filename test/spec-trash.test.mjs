@@ -308,3 +308,45 @@ test('deleteSpec does not take a subtree: that is deleteSubtree', () => {
   assert.equal(existsSync(specDir(children[0])), true, 'deleteSpec must stay single-spec');
 });
 
+
+// ── a plan that went stale ──────────────────────────────────────────────────
+//
+// The DELETE route resolves the subtree, refuses a protected spec, revokes
+// every share, and only then deletes — and revoking is a round trip. A reparent
+// landing in that window leaves the plan describing a tree that no longer
+// exists, so the plan is re-read against the store before anything moves.
+
+test('a spec reparented out of the subtree is not deleted with it', () => {
+  const root = seedSpec({ title: 'Root' });
+  const child = seedSpec({ title: 'Child', parent: root });
+  const gone = seedSpec({ title: 'Detached while the route was working' });
+
+  // The plan names it, because it was a child when the plan was made.
+  const { removed } = deleteSubtree(root, { ids: [root, child, gone] });
+
+  assert.deepEqual(removed.sort(), [root, child].sort());
+  assert.ok(readMeta(gone), 'a spec taken out of the tree was deleted anyway');
+  assert.ok(existsSync(specDir(gone)));
+});
+
+test('the record names only what was actually moved', () => {
+  const root = seedSpec({ title: 'Root' });
+  const gone = seedSpec({ title: 'Not ours any more' });
+
+  const { deletionId } = deleteSubtree(root, { ids: [root, gone] });
+  const record = JSON.parse(readFileSync(trashRecordPath(deletionId), 'utf8'));
+  assert.deepEqual(record.specs.map((s) => s.id), [root]);
+});
+
+test('a spec reparented INTO the subtree is left alone', () => {
+  // The opposite direction, and deliberately not handled the same way. The
+  // guards the route ran — the protected-spec check, the share revocation —
+  // never ran against it, and deleting a spec whose share is still live is
+  // worse than leaving one behind.
+  const root = seedSpec({ title: 'Root' });
+  const joined = seedSpec({ title: 'Joined late', parent: root });
+
+  const { removed } = deleteSubtree(root, { ids: [root] });
+  assert.deepEqual(removed, [root]);
+  assert.ok(readMeta(joined), 'a spec the route never checked was deleted');
+});
