@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedSpec, buildShape } from './helpers/spec-tree-fixtures.mjs';
 import {
-  childrenOf, descendantsOf, ancestryOf, wouldCycle,
+  childrenOf, descendantsOf, ancestryOf, wouldCycle, childIdsWithChildren,
 } from '../lib/spec-tree.mjs';
 import { readMeta } from '../lib/meta.mjs';
 import { storeRoot, metaPath } from '../lib/store-paths.mjs';
@@ -137,6 +137,28 @@ test('ancestryOf terminates on a cycle', () => {
 
 test('ancestryOf of an unknown id is empty', () => {
   assert.deepEqual(ancestryOf('0000000000'), []);
+});
+
+// ── childIdsWithChildren ────────────────────────────────────────────────────
+
+test('childIdsWithChildren answers for a whole list in one pass', () => {
+  const root = seedSpec({ title: 'Root' });
+  const leaf = seedSpec({ title: 'Leaf', parent: root });
+  const branch = seedSpec({ title: 'Branch', parent: root });
+  seedSpec({ title: 'Grandchild', parent: branch });
+
+  const got = childIdsWithChildren([leaf, branch]);
+  assert.equal(got.has(branch), true);
+  assert.equal(got.has(leaf), false);
+});
+
+test('childIdsWithChildren of an empty list is empty and reads nothing', () => {
+  buildShape('fan');
+  assert.equal(childIdsWithChildren([]).size, 0);
+});
+
+test('childIdsWithChildren ignores ids that are not in the store', () => {
+  assert.equal(childIdsWithChildren(['0000000000']).size, 0);
 });
 
 // ── a parent read off disk is input ─────────────────────────────────────────

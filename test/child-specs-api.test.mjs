@@ -101,6 +101,24 @@ test('organize refuses a parent that is not a string or null', async () => {
   }
 });
 
+test('an empty parent is refused, not treated as a detach', async () => {
+  const { root, children } = buildShape('fan');
+  const res = await d.patch(`/api/spec/${children[0]}/organize`, { parent: '' });
+
+  // Falling through on falsiness would make this a silent detach reporting 200:
+  // malformed input accepted, with the spec quietly moved. `null` is how a
+  // caller says detach, and it is the only way.
+  assert.equal(res.status, 400);
+  assert.equal(readMeta(children[0]).parent, root, 'the spec was moved by a refused request');
+});
+
+test('a whitespace parent is refused too', async () => {
+  const { root, children } = buildShape('fan');
+  const res = await d.patch(`/api/spec/${children[0]}/organize`, { parent: '   ' });
+  assert.equal(res.status, 400);
+  assert.equal(readMeta(children[0]).parent, root);
+});
+
 test('organize refuses a parent id that would escape the store', async () => {
   const child = seedSpec({ title: 'Child' });
   const res = await d.patch(`/api/spec/${child}/organize`, { parent: '../../etc/passwd' });
@@ -167,13 +185,26 @@ test('children never recurses: a chain of five returns one row', async () => {
   assert.equal(body.children.length, 1);
 });
 
-test('children returns four rows for a fan, in creation order', async () => {
+test('children returns every child of a fan, in creation order', async () => {
   const root = seedSpec({ title: 'Root' });
-  const first = seedSpec({ title: 'First', parent: root, created: 1000 });
-  const second = seedSpec({ title: 'Second', parent: root, created: 2000 });
+  const ids = [1000, 2000, 3000, 4000].map((created, n) => seedSpec({
+    title: `Child ${n}`, parent: root, created,
+  }));
 
   const { body } = await d.json(`/api/spec/${root}/children`);
-  assert.deepEqual(body.children.map((c) => c.id), [first, second]);
+  assert.deepEqual(body.children.map((c) => c.id), ids);
+});
+
+test('hasChildren is answered for every row without a scan per row', async () => {
+  const root = seedSpec({ title: 'Root' });
+  const leaf = seedSpec({ title: 'Leaf', parent: root, created: 1000 });
+  const branch = seedSpec({ title: 'Branch', parent: root, created: 2000 });
+  seedSpec({ title: 'Grandchild', parent: branch });
+
+  const { body } = await d.json(`/api/spec/${root}/children`);
+  const byId = Object.fromEntries(body.children.map((c) => [c.id, c]));
+  assert.equal(byId[leaf].hasChildren, false);
+  assert.equal(byId[branch].hasChildren, true);
 });
 
 test('children of a leaf is an empty array, not a 404', async () => {
