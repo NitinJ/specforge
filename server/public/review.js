@@ -2660,7 +2660,20 @@ function sfRevealDisclosures(el) {
     menuGroup('Export', [
       // Export PDF — open the print dialog (pick "Save as PDF"); the review
       // chrome is hidden by the print stylesheet so the PDF is just the spec.
-      menuRow('⤓', 'Export PDF', function () { closeMenu(); window.print(); }),
+      //
+      // A spec with children prints the FLAT view instead. The print dialog can
+      // only print what is in the page, and a child lives in an iframe, so
+      // printing this page would produce a document with the children missing
+      // and nothing to say so.
+      menuRow('⤓', 'Export PDF', function () {
+        closeMenu();
+        if (!childSpecs.length) return window.print();
+        var w = window.open(SPEC_ROOT + '/spec/' + encodeURIComponent(SPEC) + '?flat=1', '_blank');
+        if (!w) return flashErr('Allow pop-ups to print a spec with its children.');
+        // Printed from the new window once it has the document. Its own load
+        // event, not a timer: a spec with diagrams takes as long as it takes.
+        w.addEventListener('load', function () { w.print(); });
+      }),
       // Google Docs — relayed through the attached session (it runs the Drive
       // MCP); the row reflects meta.export and updates live on the poll.
       exportRow(),
