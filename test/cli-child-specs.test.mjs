@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedSpec } from './helpers/spec-tree-fixtures.mjs';
 import {
-  cmdCreate, cmdReparent, cmdRestore, cmdListall, formatRowsCompact,
+  cmdCreate, cmdReparent, cmdRestore, cmdListall, formatRowsCompact, parseArgs,
 } from '../lib/specforge-cli.mjs';
 import { readMeta } from '../lib/meta.mjs';
 import { specDir } from '../lib/store-paths.mjs';
@@ -176,4 +176,50 @@ test('the compact listing keeps one line per spec, with a parent column', async 
   assert.match(byId[grand], new RegExp(child));
   // The root has none, and an empty column reads as one, not as a missing field.
   assert.doesNotMatch(byId[root], /\bundefined\b/);
+});
+
+test('--detach is a flag, not something that eats the next word', () => {
+  // Every command in the docs is a command somebody will paste. This one threw
+  // "flag --detach requires a value" and there was no value to give it.
+  const { positional, flags } = parseArgs(['reparent', 'abc1234567', '--detach']);
+  assert.deepEqual(positional, ['reparent', 'abc1234567']);
+  assert.equal(flags.detach, true);
+});
+
+test('the cycle message names the branch that would close, and not the rest', async () => {
+  // descendantsOf is the whole subtree, and a spec with four unrelated children
+  // listed all of them, leaving the caller to work out which one was in the way
+  // — which is the job the message exists to do.
+  const root = seedSpec({ title: 'Root' });
+  const mid = seedSpec({ title: 'Middle', parent: root });
+  const deep = seedSpec({ title: 'Deep', parent: mid });
+  const aside = seedSpec({ title: 'Nothing to do with it', parent: root });
+
+  await assert.rejects(
+    () => cmdReparent({ id: root, to: deep }, deps),
+    (err) => {
+      assert.match(err.message, new RegExp(`${root}[^]*${mid}[^]*${deep}`));
+      assert.doesNotMatch(err.message, new RegExp(aside), 'an unrelated branch is in the message');
+      return true;
+    },
+  );
+});
+
+test('a spec deleted while the daemon was starting is not reparented anyway', async () => {
+  // The checks ran before `await ensureDaemon()` and the write after it, and
+  // starting a daemon is not instant. Anything the store did in between was
+  // written over by a decision taken before it happened.
+  const root = seedSpec({ title: 'Root' });
+  const child = seedSpec({ title: 'Child' });
+
+  const slowDeps = {
+    session: '',
+    ensureDaemon: async () => {
+      deleteSubtree(root);
+      return { url: 'http://127.0.0.1:4180' };
+    },
+  };
+
+  await assert.rejects(() => cmdReparent({ id: child, to: root }, slowDeps), /not found/i);
+  assert.equal(readMeta(child).parent, null, 'the child was parented onto a spec that is gone');
 });
