@@ -160,3 +160,24 @@ test('deleting a parent says how many go, and can be undone', needsChrome, async
     assert.equal(depth, '1');
   });
 });
+
+test('coming back from a flat view puts the order back, not just the indent', needsChrome, async () => {
+  await withIndex(seedTree, async ({ page, ids }) => {
+    // A flat view sorts every row independently, which is right there. Coming
+    // back restored the indentation and left the flat DOM order, so a child sat
+    // indented under a spec that is not its parent — the row now claims a
+    // relation that is not in the store.
+    await page.click('.nav[data-view="attn"]');
+    await page.waitForFunction(() => document.body.getAttribute('data-view') === 'attn');
+    await page.selectOption('#fsort', 'title');
+    await page.click('.nav[data-view="all"]');
+    await page.waitForFunction(() => document.body.getAttribute('data-view') === 'all');
+
+    const order = await page.evaluate(() => Array.prototype.map.call(
+      document.querySelectorAll('li.row'),
+      (r) => r.getAttribute('data-id'),
+    ));
+    const at = order.indexOf(ids.root);
+    assert.deepEqual(order.slice(at + 1, at + 3).sort(), [ids.a, ids.b].sort());
+  });
+});

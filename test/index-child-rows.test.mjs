@@ -183,3 +183,33 @@ test('every spec in the store gets a row, whatever the shape', () => {
   const drawn = rows(dom()).map((r) => r.getAttribute('data-id')).sort();
   assert.deepEqual(drawn, ids);
 });
+
+test('a child drawn with its parent still carries its own address', () => {
+  // Where a row is DRAWN is a presentation choice; what a row SAYS it is filed
+  // as is read by the move controls, which then write it back. A child grouped
+  // under its parent that reported the parent's collection would offer to move
+  // it out of a collection it was never in.
+  const root = seedSpec({ title: 'Root', project: 'alpha', collection: 'Design' });
+  const child = seedSpec({ title: 'Child', parent: root, project: 'beta', collection: 'Testing' });
+
+  const row = dom().querySelector(`li.row[data-id="${child}"]`);
+  assert.equal(row.getAttribute('data-c'), 'Testing');
+  assert.equal(row.getAttribute('data-p'), 'beta');
+});
+
+test('a cycle member keeps its own address rather than a neighbour\u2019s', () => {
+  // The walk up stops at a repeat, and the spec it stops ON is whichever member
+  // came first \u2014 not the one being placed. Two members filed differently then
+  // swapped addresses, which is a row in a section it was never filed in.
+  const a = seedSpec({ title: 'Ring A', collection: 'Design', project: 'alpha' });
+  const b = seedSpec({ title: 'Ring B', collection: 'Testing', project: 'beta' });
+  seedSpec({ id: a, title: 'Ring A', parent: b, collection: 'Design', project: 'alpha' });
+  seedSpec({ id: b, title: 'Ring B', parent: a, collection: 'Testing', project: 'beta' });
+
+  const doc = dom();
+  for (const id of [a, b]) {
+    const row = doc.querySelector(`li.row[data-id="${id}"]`);
+    assert.equal(row.getAttribute('data-c'), readMeta(id).collection || '');
+    assert.equal(row.getAttribute('data-p'), readMeta(id).project || '');
+  }
+});

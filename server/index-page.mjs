@@ -203,7 +203,11 @@ function groupByRoot(list) {
     for (;;) {
       // spec-tree-ok: walks the rows this page already has, not the store
       const parent = cur.parent && byId.get(cur.parent);
-      if (!parent || seen.has(parent.id)) return cur;
+      if (!parent) return cur;
+      // A ring has no root. Whichever member the walk happens to stop on is not
+      // this one, and taking its address would file two specs in each other's
+      // sections. Everything in a cycle keeps its own.
+      if (seen.has(parent.id)) return m;
       seen.add(parent.id);
       cur = parent;
     }
@@ -211,7 +215,17 @@ function groupByRoot(list) {
   return list.map((m) => {
     const root = rootOf(m);
     if (root === m) return m;
-    return { ...m, project: root.project || null, collection: root.collection || null };
+    // `filed` is what the spec says it is; project and collection are where the
+    // row is DRAWN. The two differ only for a child moved away from its parent,
+    // and the difference matters because the move controls read a row's address
+    // off the row and write it back: a child reporting its parent's collection
+    // would offer to move it out of one it was never in.
+    return {
+      ...m,
+      project: root.project || null,
+      collection: root.collection || null,
+      filed: { project: m.project || null, collection: m.collection || null },
+    };
   });
 }
 
@@ -257,8 +271,11 @@ function rowHtml(m, sig, { depth = 0, kids = 0, parentTitle = '' } = {}) {
   const rawStatus = m.status || 'draft';
   const att = attachedLabel(m);
   const tags = Array.isArray(m.tags) ? m.tags : [];
-  const coll = m.collection || '';
-  const proj = m.project || '';
+  // What the spec is filed as, which is not always where its row is drawn: see
+  // groupByRoot. The move controls read these back off the row.
+  const filed = m.filed || m;
+  const coll = filed.collection || '';
+  const proj = filed.project || '';
   const key = esc(`${m.id} ${titleRaw} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'} ${tags.join(' ')} ${coll} ${proj}`.toLowerCase());
   const chips = tags.map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}<button class="x" type="button" title="Remove tag" aria-label="Remove tag">×</button></span>`).join('');
   // "Connected" is a beating watcher, not merely an attached session — see
@@ -1606,8 +1623,18 @@ ${strip}
   // filtered independently already, so a matching child is shown regardless —
   // what changes here is how it READS: flat, with its parent named, instead of
   // indented under a row that is not on screen. All and Shared keep the tree.
+  // A flat view sorts every row on its own, which is right while it is flat.
+  // Coming back restored the indentation and left that order in place, so a
+  // child sat indented under a spec that is not its parent: the row then claims
+  // a relation the store does not have. Re-sorting on the way across puts the
+  // trees back, and only on the way across, since applyFilters runs per
+  // keystroke.
+  var wasFlat=null;
   function applyView(){
     document.body.setAttribute('data-view',fview);
+    var flat=fview==='attn'||fview==='live';
+    if(wasFlat!==null&&wasFlat!==flat) applySort();
+    wasFlat=flat;
   }
 
   function applyFilters(){
