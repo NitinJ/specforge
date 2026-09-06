@@ -137,7 +137,91 @@ function shareHtml(sig) {
 }
 
 /** One working-spec row. */
-function rowHtml(m, sig) {
+/**
+ * Draw a group's specs as a tree: parents at the top level, children under them.
+ *
+ * A child does not get a row of its own at the top level. The whole point of
+ * splitting a spec up is to reduce what a reviewer has to hold in their head,
+ * and a list that grows a row per child would be longer than it was before the
+ * feature existed.
+ *
+ * One level of indentation, and only one. A grandchild is drawn under its own
+ * parent, which is itself indented once: deeper nesting is the panel's job, and
+ * a list indented four times is a list nobody can scan.
+ *
+ * A child is drawn beside its parent even when the two carry different
+ * collections. The alternative puts it under a parent that is not on screen.
+ * A child whose parent is not in this store at all is drawn at the top level,
+ * which is where an orphan from an interrupted delete belongs.
+ */
+function orderWithChildren(list, childrenByParent) {
+  const present = new Set(list.map((m) => m.id));
+  const out = [];
+  const seen = new Set();
+
+  // Depth first, so a spec is always directly below the one it belongs to. The
+  // INDENT is capped at one; the ORDER is not. That is what "a grandchild
+  // renders under its own parent" means on a page that only draws one level:
+  // it sits immediately after its parent, at the same indent as it.
+  const walk = (meta, depth) => {
+    if (seen.has(meta.id)) return;   // a hand-written cycle must not loop here
+    seen.add(meta.id);
+    out.push({ meta, depth: Math.min(depth, 1) });
+    for (const kid of childrenByParent.get(meta.id) || []) walk(kid, depth + 1);
+  };
+
+  for (const m of list) {
+    // spec-tree-ok: reads this row's own field to decide whether it is a root here
+    const parent = m.parent || null;
+    // A child whose parent is not in this store is an orphan from an interrupted
+    // delete, and it belongs at the top level rather than nowhere.
+    if (parent && present.has(parent)) continue;
+    walk(m, 0);
+  }
+
+  // Anything left is inside a cycle, so no walk reached it. Drawn at the top
+  // level rather than dropped: a spec missing from the page is worse than one
+  // drawn in the wrong place, and the page is how you would notice.
+  for (const m of list) if (!seen.has(m.id)) walk(m, 0);
+
+  return out;
+}
+
+/** parent id → its children among `list`, in the order the list gives them. */
+function indexChildren(list) {
+  const byParent = new Map();
+  for (const m of list) {
+    // spec-tree-ok: groups rows by the field they carry; does not walk it
+    const parent = m.parent || null;
+    if (!parent) continue;
+    if (!byParent.has(parent)) byParent.set(parent, []);
+    byParent.get(parent).push(m);
+  }
+  return byParent;
+}
+
+/**
+ * One group's rows, as a tree.
+ *
+ * Every spec in `list` gets exactly one row; the tree decides where. The counts
+ * come from this group, so a parent shows the children drawn beneath it rather
+ * than a number the reader cannot reconcile with what is on screen.
+ */
+function renderRows(list, sigOf) {
+  const byParent = indexChildren(list);
+  const titles = new Map(list.map((m) => [m.id, m.title || 'Untitled']));
+  return orderWithChildren(list, byParent).map(({ meta, depth }) => rowHtml(meta, sigOf(meta), {
+    depth,
+    kids: (byParent.get(meta.id) || []).length,
+    // Carried on every child row and shown only in the flat views, where the
+    // row is out of its tree. "Testing strategy" with no idea what it is the
+    // testing strategy for is a row that has lost what made it worth reading.
+    // spec-tree-ok: names this row's own parent, does not walk the edge
+    parentTitle: depth ? titles.get(meta.parent) || '' : '',
+  })).join('\n');
+}
+
+function rowHtml(m, sig, { depth = 0, kids = 0, parentTitle = '' } = {}) {
   const id = esc(m.id);
   const titleRaw = m.title || 'Untitled';
   const title = esc(titleRaw);
@@ -158,10 +242,22 @@ function rowHtml(m, sig) {
       : '<span class="off" title="' + att + '">○ disconnected</span>')
     : '';
   const edge = m.attachedSession ? (isLive ? ' edge-live' : ' edge-off') : '';
-  return `<li class="row${edge}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}">
+  // spec-tree-ok: this row's own parent, for the flat views that name it
+  const parentId = m.parent || '';
+  // Only in the views that render flat. There the child is out of its tree, and
+  // "Testing strategy" with no idea what it is the testing strategy for is a row
+  // that has lost the thing that made it worth reading.
+  const under = parentTitle
+    ? `<span class="under" title="Child of ${esc(parentTitle)}">in ${esc(parentTitle)}</span>` : '';
+  // A count, not a disclosure: the children are already on screen, indented
+  // below. This says how many, so a collapsed-looking gap is never a surprise.
+  const kidCount = kids
+    ? `<span class="kids" title="${kids} child spec${kids === 1 ? '' : 's'}">${kids}</span>` : '';
+
+  return `<li class="row${edge}${depth ? ' kid' : ''}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}" data-depth="${depth}" data-parent="${esc(parentId)}">
   <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
-    <a class="title" href="/spec/${id}" title="${title}">${title}</a>
+    <a class="title" href="/spec/${id}" title="${title}">${title}</a>${kidCount}${under}
     <span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span>
     <span class="id" title="Spec id">${id}</span>
     <span class="att" hidden>${att}</span>
@@ -332,7 +428,7 @@ export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   const groups = projOrder.filter(({ specs: list }) => list.length).map(({ key: pk, specs: plist }) => {
     const inner = groupByCollection(plist, prefs.collectionOrder).order.map(({ key, specs: list }, i) => `<section class="grp${i === 0 ? ' lead' : ''}" data-p="${esc(pk)}" data-coll="${esc(key)}">
   <h2>${key === '' ? 'Uncollected' : esc(key)} <span class="gcount">${list.length}</span></h2>
-  <div class="card"><ul class="rows">${list.map((m) => rowHtml(m, sigOf(m))).join('\n')}</ul></div>
+  <div class="card"><ul class="rows">${renderRows(list, sigOf)}</ul></div>
 </section>`).join('\n');
     const hidden = selected !== null && selected !== pk;
     const off = hidden ? ' style="display:none"' : '';
@@ -648,6 +744,22 @@ ${LIST_CSS}
      one of them is kept: it is the title that a list is scanned by, and the
      column below a signal repeats it anyway. The slots go auto-width on their
      own line, where a fixed width buys alignment nobody is reading across. */
+  /* Child rows. One level of indent, drawn with a rule rather than whitespace
+     so the relationship survives a narrow window, where padding alone reads as
+     a rendering accident. */
+  .row.kid .main{padding-left:18px;border-left:2px solid var(--line);margin-left:2px}
+  /* How many specs belong to this one. A count, not a disclosure: they are
+     already on screen, immediately below. */
+  .kids{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;
+    padding:0 6px;margin-left:6px;flex:0 0 auto}
+  .kids::before{content:"⌄ ";opacity:.7}
+  /* Which spec a child belongs to. Only in the flat views, where the row is out
+     of its tree and the indent above is gone. */
+  .under{display:none;font-size:11px;color:var(--muted);margin-left:6px}
+  body[data-view="attn"] .row.kid .main,
+  body[data-view="live"] .row.kid .main{padding-left:0;border-left:0;margin-left:0}
+  body[data-view="attn"] .under,
+  body[data-view="live"] .under{display:inline}
   @media(max-width:600px){
     .row{flex-wrap:wrap;padding-top:9px;padding-bottom:9px}
     .main{flex:1 1 auto}
@@ -989,12 +1101,27 @@ ${strip}
       }},
       {sep:true},
       {icon:'\\ud83d\\uddd1',label:'Delete spec\\u2026',danger:true,run:function(){
-        askConfirm({title:'Delete spec',body:'Delete "'+title+'"? This cannot be undone.',onOk:function(){
+        // Deleting a parent takes its children with it, so the confirmation has
+        // to say so. "Delete this spec?" over an action that removes four is
+        // the wrong question.
+        var kin=descendantIds(id), n=kin.length;
+        var body=n
+          ?'Delete "'+title+'" and '+(n===1?'its 1 child spec':'its '+n+' child specs')+'? You can undo this.'
+          :'Delete "'+title+'"? You can undo this.';
+        askConfirm({title:n?'Delete spec and children':'Delete spec',body:body,onOk:function(){
           // Key on the HTTP status: a non-2xx (404/403-template/500) means the
           // spec was NOT deleted, so keep the row.
           api(id,'','DELETE').then(function(x){
             if(!x||!x.ok) throw new Error('delete failed');
-            row.remove(); removeRow(id);
+            return x.json().catch(function(){return null;});
+          }).then(function(out){
+            var gone=(out&&out.removed)||[id].concat(kin);
+            gone.forEach(function(g){
+              var r=document.querySelector('li.row[data-id="'+g+'"]');
+              if(r) r.remove();
+              removeRow(g);
+            });
+            offerUndo(out&&out.deletionId,gone.length);
           }).catch(function(){});
         }});
       }},
@@ -1436,6 +1563,15 @@ ${strip}
       &&projOk(r)
       &&(fcoll===null||r.getAttribute('data-c')===fcoll);
   }
+  // Needs-you and Live answer "what should I look at now", and a row that
+  // matches must be reachable whether or not its parent does. Every row is
+  // filtered independently already, so a matching child is shown regardless —
+  // what changes here is how it READS: flat, with its parent named, instead of
+  // indented under a row that is not on screen. All and Shared keep the tree.
+  function applyView(){
+    document.body.setAttribute('data-view',fview);
+  }
+
   function applyFilters(){
     var q=(search&&search.value.trim().toLowerCase())||'';
     var ty=(ftype&&ftype.value)||'';
@@ -1682,7 +1818,7 @@ ${strip}
     applyFilters();
   };});
   navs.forEach(function(nv){nv.onclick=function(){
-    fview=nv.getAttribute('data-view'); fcoll=null; paintNav(); applyFilters();
+    fview=nv.getAttribute('data-view'); fcoll=null; paintNav(); applyView(); applyFilters();
   };});
   cnavs.forEach(function(cv){cv.onclick=function(){
     var c=cv.getAttribute('data-c');
@@ -1760,6 +1896,50 @@ ${strip}
   var MSGKEY='sf-index-msg';
   function warn(text){try{sessionStorage.setItem(MSGKEY,text);}catch(e){} showMsg(text);}
   function showMsg(text){ return SFUI.snack(text,{tone:'err'}); }
+
+  /**
+   * Every spec below this one, read off the rows already on the page.
+   *
+   * The page draws one level of indent but every child row carries data-parent,
+   * so the whole subtree is recoverable from the DOM without asking the server
+   * what a confirmation dialog is about to describe.
+   */
+  function descendantIds(id){
+    var out=[],queue=[id],seen={};
+    while(queue.length){
+      var cur=queue.shift();
+      var kids=[].slice.call(document.querySelectorAll('li.row[data-parent="'+cur+'"]'));
+      kids.forEach(function(k){
+        var kid=k.getAttribute('data-id');
+        if(seen[kid]) return;      // a cycle in the data must not hang the page
+        seen[kid]=1; out.push(kid); queue.push(kid);
+      });
+    }
+    return out;
+  }
+
+  /**
+   * The way back from a delete.
+   *
+   * Deletion moves directories to trash and returns the id of the action, so
+   * undo is one request. Offered rather than assumed: the snackbar goes away on
+   * its own, and the deletion stays restorable from the CLI afterwards.
+   */
+  function offerUndo(deletionId,count){
+    if(!deletionId) return;
+    var what=count===1?'Spec deleted':count+' specs deleted';
+    SFUI.snack(what,{timeout:12000,action:{label:'Undo',run:function(){
+      fetch('/api/deletion/'+encodeURIComponent(deletionId)+'/restore',{method:'POST'})
+        .then(function(r){
+          if(!r||!r.ok) throw new Error('restore failed');
+          // The rows were removed from a page that no longer describes the
+          // store, and the tree has to be redrawn around them. A reload is the
+          // honest way to get both.
+          location.reload();
+        })
+        .catch(function(){ showMsg('Could not undo that delete.'); });
+    }}});
+  }
   // ui.js is a deferred script, so it has not run while this one is parsing.
   // Everything else here is reached from an event; this is the one thing that
   // would fire at parse time.
@@ -1800,6 +1980,7 @@ ${strip}
   // The server rendered the selection; this makes the rest of the page agree
   // with it — the rail narrowed, the counts scoped, the project headings gone.
   paintNav();
+  applyView();
   applyFilters();
   // A selection that arrived in the URL (a spec page's header chip) has not been
   // stored yet. Persisting it here rather than on the GET keeps the request free
