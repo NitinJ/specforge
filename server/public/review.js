@@ -1346,6 +1346,7 @@ function sfRevealDisclosures(el) {
     buildLauncher();
     buildCtxMenu();
     buildChildDrawer();
+    buildChildPanel();
     buildAsides();
     buildTop();
     buildTitleBar();
@@ -1687,12 +1688,139 @@ function sfRevealDisclosures(el) {
     });
   }
 
-  // Opening a child. For now its own tab, which is where it is fully usable:
-  // comments, the menu, everything. The read-only panel that shows it in place
-  // replaces this, and keeps a control that does exactly what this does.
+  // ---------- the child panel ----------
+  // A child is shown in an IFRAME, not injected into this page.
+  //
+  // Every spec.html is a self-contained document carrying its own inline CSS, so
+  // two of them in one DOM collide, and there is no general fix: scoping one
+  // spec's rules means rewriting a stylesheet nobody controls. A frame makes the
+  // isolation a property of the element rather than something to enforce, and it
+  // makes the loading lazy by construction — nothing is fetched until `src` is
+  // set, which happens when the reader opens a child and not before.
+  //
+  // What it costs is the boundary. The theme has to be handed over, links have
+  // to be stopped from replacing the frame (done at serve time), and the reader
+  // needs a way out to the full page, because commenting lives there.
+  var childTrail = [];   // the descent so far, which the breadcrumb renders
+
+  /** The URL of a child's embed view, painted in this page's theme. */
+  function childSrc(child) {
+    var theme = document.documentElement.getAttribute('data-theme');
+    return '/spec/' + encodeURIComponent(child.id) + '?embed=1'
+      + (theme ? '&theme=' + encodeURIComponent(theme) : '');
+  }
+
+  /** The API base for a spec other than this page's own. */
+  function apiFor(id) {
+    return '/api/spec/' + encodeURIComponent(id);
+  }
+
   function openChild(child) {
-    if (!child || !child.id) return;
-    window.open('/spec/' + encodeURIComponent(child.id), '_blank', 'noopener');
+    if (!child || !child.id || !els.childPanel) return;
+    childTrail.push(child);
+    showChild(child);
+  }
+
+  function showChild(child) {
+    var missing = els.childPanel.querySelector('.sf-child-missing');
+    if (missing) missing.parentNode.removeChild(missing);
+    els.childFrame.hidden = false;
+    els.childFrame.setAttribute('src', childSrc(child));
+    renderChildHead(child);
+    els.childPanel.classList.add('open');
+    document.body.classList.add('sf-child-open');
+
+    // A child that has gone since the drawer rendered leaves an empty frame,
+    // which reads as a broken panel rather than as a spec that is not there.
+    // Ask, and say so.
+    fetch(apiFor(child.id) + '/meta')
+      .then(function (r) {
+        if (r && r.ok === false) throw new Error('gone');
+        return r.json();
+      })
+      .then(function (meta) { if (!meta || meta.error) throw new Error('gone'); })
+      .catch(function () { showChildMissing(); });
+  }
+
+  function showChildMissing() {
+    if (!els.childPanel) return;
+    els.childFrame.removeAttribute('src');
+    els.childFrame.hidden = true;
+    var note = create('div', { class: 'sf-child-missing' });
+    note.appendChild(create('p', {}, 'This child spec no longer exists.'));
+    var again = create('button', { class: 'sf-child-refresh', type: 'button' }, 'Refresh');
+    again.onclick = function () {
+      closeChildPanel();
+      loadChildren().then(function () { renderChildDrawer(); });
+    };
+    note.appendChild(again);
+    els.childPanel.appendChild(note);
+  }
+
+  function renderChildHead(child) {
+    els.childCrumbs.innerHTML = '';
+    childTrail.forEach(function (step, i) {
+      var crumb = create('button', { class: 'sf-crumb', type: 'button' }, step.title || step.id);
+      crumb.onclick = function () {
+        // Going back up truncates the trail rather than pushing onto it, so the
+        // breadcrumb says where you are and not where you have been.
+        childTrail = childTrail.slice(0, i + 1);
+        showChild(step);
+      };
+      els.childCrumbs.appendChild(crumb);
+    });
+
+    // Commenting lives on the full page. This is the way there, and it is what
+    // lets the panel be read only without being a dead end.
+    els.childTab.setAttribute('href', '/spec/' + encodeURIComponent(child.id));
+    els.childTab.textContent = 'Open in new tab';
+
+    els.childDown.hidden = !child.hasChildren;
+    els.childDown.onclick = function () {
+      fetch(apiFor(child.id) + '/children')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          childSpecs = (data && data.children) || [];
+          renderChildDrawer();
+          setChildDrawer(true);
+        })
+        .catch(function () { flashErr('Could not read that spec\'s children.'); });
+    };
+  }
+
+  function closeChildPanel() {
+    if (!els.childPanel) return;
+    els.childPanel.classList.remove('open');
+    document.body.classList.remove('sf-child-open');
+    // Cleared rather than hidden. A closed panel still holding a document keeps
+    // a connection and a live-reload stream open for something nobody is reading.
+    els.childFrame.removeAttribute('src');
+    childTrail = [];
+  }
+
+  function buildChildPanel() {
+    els.childPanel = create('div', { id: 'sf-child-panel' });
+    els.childPanel.innerHTML =
+      '<div class="sf-child-head">'
+      + '<div class="sf-child-crumbs"></div>'
+      + '<button class="sf-child-down" type="button" hidden>Children</button>'
+      + '<a class="sf-child-newtab" target="_blank" rel="noopener noreferrer"></a>'
+      + '<button class="sf-child-close" type="button" title="Close" aria-label="Close">×</button>'
+      + '</div>'
+      // The sandbox is not a formality. allow-scripts and allow-same-origin are
+      // what make the child render at all (mermaid, prism, the daemon's own
+      // assets); allow-popups lets its links reach a new tab; and
+      // allow-top-navigation is withheld, so nothing inside the frame can
+      // replace the page around it.
+      + '<iframe id="sf-child-frame" title="Child spec"'
+      + ' sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox">'
+      + '</iframe>';
+    document.body.appendChild(els.childPanel);
+    els.childFrame = els.childPanel.querySelector('#sf-child-frame');
+    els.childCrumbs = els.childPanel.querySelector('.sf-child-crumbs');
+    els.childTab = els.childPanel.querySelector('.sf-child-newtab');
+    els.childDown = els.childPanel.querySelector('.sf-child-down');
+    els.childPanel.querySelector('.sf-child-close').onclick = closeChildPanel;
   }
 
   function buildChildDrawer() {
