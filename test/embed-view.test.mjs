@@ -183,3 +183,42 @@ test('a right-click in an embedded page opens no context menu', async (t) => {
   assert.equal(window.document.querySelector('#sf-ctx'), null);
   assert.equal(ev.defaultPrevented, false, "the browser's own menu should be left alone");
 });
+
+test('an existing target is recognised only as an attribute of its own', () => {
+  // Three ways this went wrong, each of them ordinary HTML. `target=` inside a
+  // quoted value is a query string, not an attribute. `target=` after an
+  // unquoted `?` is the same thing without the quotes. And `data-target` ends
+  // in the word but is not it. Each one looked like a link that had already
+  // named a target, so each was left to navigate the frame it sits in.
+  const doc = '<html><head></head><body>'
+    + '<a href="https://example.com/?target=self">a</a>'
+    + '<a title="target=nothing" href="https://example.com/b">b</a>'
+    + '<a href=https://example.com/c?target=self>c</a>'
+    + '<a data-target="x" href="https://example.com/d">d</a>'
+    // And a path segment called `target=` is a path segment.
+    + '<a href=https://example.com/target=report>e</a>'
+    // A solidus separates attributes in HTML, and browsers follow this link.
+    + '<a/href="https://example.com/f">f</a>'
+    + '</body></html>';
+  const html = injectReviewLayer(doc, { specId: 'abc1234567', embed: true });
+  assert.equal((html.match(/target="_blank"/g) || []).length, 6, html);
+});
+
+test('an href-shaped string in another attribute is not the href', () => {
+  // The scan read the raw attribute text, so a quoted value containing
+  // ` href=…` was picked up as the link's own address. This anchor points at a
+  // fragment, which is the reader scrolling and must stay in the frame; read as
+  // the decoy it was sent outward instead.
+  const doc = `<html><head></head><body><a title=" href=https://elsewhere.test" href="#local">x</a></body></html>`;
+  const html = injectReviewLayer(doc, { specId: 'abc1234567', embed: true });
+  assert.doesNotMatch(html, /target="_blank"/);
+});
+
+test('a link that really does name a target keeps it, quoted or not', () => {
+  const doc = '<html><head></head><body>'
+    + '<a href="https://x.test" target="_self">x</a>'
+    + '<a href="https://y.test" target=_self>y</a>'
+    + '</body></html>';
+  const html = injectReviewLayer(doc, { specId: 'abc1234567', embed: true });
+  assert.doesNotMatch(html, /target="_blank"/);
+});

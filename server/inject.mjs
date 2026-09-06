@@ -216,15 +216,44 @@ const POLL_INTERVAL_MS = 5000;
  * because following it is scrolling. An anchor that already names a target is
  * left as its author wrote it.
  */
+/**
+ * The attributes of one tag, by name.
+ *
+ * A scanner rather than a pattern per question, which is what this was and what
+ * kept being wrong. Every failure had the same shape: text that looks like an
+ * attribute but is part of a value. `target=` in a query string; `/target=` in
+ * an unquoted URL's path; ` href=` inside a title. A scanner cannot be fooled by
+ * any of them, because it consumes each value before looking for the next name,
+ * so the inside of a value is never read as one.
+ *
+ * `data-target` is a different name from `target` and comes back as itself. A
+ * repeated attribute keeps its first value, which is what browsers do.
+ *
+ * @param {string} s the text between `<a` and `>`
+ * @returns {Record<string,string>} lowercased names to values, '' when valueless
+ */
+function tagAttrs(s) {
+  const out = {};
+  // A name starts the string or follows whitespace or a `/` — HTML allows the
+  // solidus as a separator, and browsers follow `<a/href="…">`.
+  const re = /(?:^|[\s/])([a-z_:][-\w:.]*)(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]*)))?/gi;
+  let m = re.exec(s);
+  while (m) {
+    const name = m[1].toLowerCase();
+    if (!(name in out)) out[name] = m[3] ?? m[4] ?? m[5] ?? '';
+    m = re.exec(s);
+  }
+  return out;
+}
+
 function openLinksInNewTab(html) {
   // Quote-aware, because a `>` inside an href is not the end of the tag. The
   // naive scan stopped there, matched no href, and left the one link most in
   // need of a target without one — so the frame navigated to it.
   return html.replace(/<a\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi, (tag, attrs) => {
-    if (/\btarget\s*=/i.test(attrs)) return tag;
-    const href = attrs.match(/\bhref\s*=\s*("([^"]*)"|'([^']*)')/i);
-    const value = href ? (href[2] ?? href[3] ?? '') : '';
-    if (!value || value.startsWith('#')) return tag;
+    const at = tagAttrs(attrs);
+    if (at.target !== undefined) return tag;
+    if (!at.href || at.href.startsWith('#')) return tag;
     return `<a${attrs} target="_blank" rel="noopener noreferrer">`;
   });
 }
