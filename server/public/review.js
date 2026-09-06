@@ -400,7 +400,10 @@ function sfRevealDisclosures(el) {
     // write, so it would edit a document from inside somebody else's page. To
     // comment on a child you open it in its own tab, which is what the panel's
     // control is for.
-    if ((window.SPECFORGE || {}).embed) return;
+    if ((window.SPECFORGE || {}).embed) {
+      initMermaid(function () {});
+      return;
+    }
 
     buildChrome();
     // Diagrams before the reconcile, never beside it. Rendering replaces a

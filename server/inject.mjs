@@ -217,7 +217,10 @@ const POLL_INTERVAL_MS = 5000;
  * left as its author wrote it.
  */
 function openLinksInNewTab(html) {
-  return html.replace(/<a\b([^>]*)>/gi, (tag, attrs) => {
+  // Quote-aware, because a `>` inside an href is not the end of the tag. The
+  // naive scan stopped there, matched no href, and left the one link most in
+  // need of a target without one — so the frame navigated to it.
+  return html.replace(/<a\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi, (tag, attrs) => {
     if (/\btarget\s*=/i.test(attrs)) return tag;
     const href = attrs.match(/\bhref\s*=\s*("([^"]*)"|'([^']*)')/i);
     const value = href ? (href[2] ?? href[3] ?? '') : '';
@@ -307,9 +310,13 @@ ${watcher}
 <!-- Before review.js, which reads it off window while rendering a diagram: an
      author's own fill and stroke are inline and no stylesheet can retint them. -->
 <script src="/public/mermaid-theme.js" defer></script>
-<script src="/public/review.js" defer></script>
+<script src="/public/review.js" defer></script>${embed ? '' : `
 <!-- The full-screen preview, after review.js because it is review.js that tells
-     it which block is hovered. zoom-view.js first: zoom.js reads it off window. -->
+     it which block is hovered. zoom-view.js first: zoom.js reads it off window.
+     Not in the embed view: the trigger is drawn by the chrome's hover
+     reporting, which that view does not build, so the two assets would be
+     fetched per child for behaviour that cannot happen. A preview clipped to
+     the panel would not be one anyway. -->
 <script src="/public/zoom-view.js" defer></script>
-<script src="/public/zoom.js" defer></script>`;
+<script src="/public/zoom.js" defer></script>`}`;
 }

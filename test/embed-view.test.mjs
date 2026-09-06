@@ -3,7 +3,12 @@
 // A child spec is shown inside its parent in an iframe, so the page it loads
 // must not carry a second launcher, a second comment rail or a second contents
 // rail. What it must keep is everything that makes a spec readable: mermaid
-// diagrams, highlighted code, zoom, and the interactive components.
+// diagrams, highlighted code, and the interactive components.
+//
+// Zoom is the one that does not come. Its trigger is drawn by the chrome's own
+// hover reporting, which embed mode does not build, and a full-screen preview
+// inside a panel would be clipped to the frame anyway. Shipping the asset for
+// behaviour that cannot happen is two requests per child for nothing.
 //
 // Two levels of assertion. The served response is checked for the flag and for
 // the assets, and the booted DOM is checked for what was and was not built,
@@ -46,10 +51,23 @@ test('the embed view still carries the renderers a spec needs', async () => {
   // The document is only readable if these still load. Suppressing the chrome
   // must not turn the page into plain text.
   assert.match(html, /review\.js/);
-  assert.match(html, /zoom\.css/);
   assert.match(html, /"blocks":/, 'the component list the client anchors on');
   assert.match(html, /"live":/, 'the interactive-component selectors');
 });
+
+test('the embed view does not ship the zoom assets it cannot use', async () => {
+  const id = seedSpec({ title: 'Child' });
+  d = await startDaemon();
+  const embedded = await (await d.get(`/spec/${id}?embed=1`)).text();
+  const ordinary = await (await d.get(`/spec/${id}`)).text();
+
+  assert.doesNotMatch(embedded, /zoom\.js/);
+  assert.doesNotMatch(embedded, /zoom-view\.js/);
+  // The ordinary page still has them, so the assertion above means something.
+  assert.match(ordinary, /zoom\.js/);
+});
+
+
 
 test('the embed view serves the spec body unchanged', async () => {
   const id = seedSpec({ title: 'Child' });
@@ -93,6 +111,16 @@ test('the same page without the flag is left alone', () => {
   assert.match(html, /<a href="https:\/\/example\.com">out<\/a>/);
 });
 
+test('a link whose href contains a > still opens in a new tab', () => {
+  // The attribute scan stopped at the first `>`, which inside a quoted href is
+  // not the end of the tag. The anchor then matched nothing, took no target,
+  // and the one link the frame most needed to send outward was the one it
+  // navigated to instead.
+  const doc = `<html><head></head><body><a href="https://example.com/?q=a>b">out</a></body></html>`;
+  const html = injectReviewLayer(doc, { specId: 'abc1234567', embed: true });
+  assert.match(html, /target="_blank"/);
+});
+
 test('an anchor that already names a target keeps it', () => {
   const doc = '<html><head></head><body><a href="https://x.test" target="_self">x</a></body></html>';
   const html = injectReviewLayer(doc, { specId: 'abc1234567', embed: true });
@@ -101,6 +129,22 @@ test('an anchor that already names a target keeps it', () => {
 });
 
 // ── what the client builds, and does not ────────────────────────────────────
+
+test('an embedded page renders its diagrams', async (t) => {
+  // The whole reason the embed view exists is that a reader is reading the
+  // child. The early return sits above everything the chrome needs, and putting
+  // it above the mermaid pass too left every diagram as its own source, which
+  // is a spec nobody can read. Found by looking at one, not by a test.
+  const { window } = await bootReviewLayer(t, {
+    embed: true,
+    body: '<pre data-lang="mermaid"><code>flowchart LR\n  A --&gt; B</code></pre>',
+  });
+  const srcs = Array.prototype.map.call(
+    window.document.querySelectorAll('script[src]'),
+    (el) => el.getAttribute('src'),
+  );
+  assert.ok(srcs.some((s) => /mermaid/.test(s)), `the renderer was never asked for: ${srcs.join(', ')}`);
+});
 
 test('an embedded page builds no review chrome', async (t) => {
   const { window } = await bootReviewLayer(t, { embed: true });
