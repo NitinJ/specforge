@@ -1724,8 +1724,14 @@ function sfRevealDisclosures(el) {
   //   daemon        /api/spec/<id>            ->  ''
   //   shared root   /s/<token>/api            ->  /s/<token>
   //   shared child  /s/<token>/spec/<id>/api  ->  /s/<token>
+  //   shared project/p/<token>/spec/<id>/api  ->  /p/<token>
+  //
+  // Both schemes, because a project share is served the same page under a
+  // different prefix. Reading only /s/ left this empty there, which is the
+  // daemon's answer, and sent every child link and child request to the
+  // gateway root where nothing answers.
   var SPEC_ROOT = (function () {
-    var m = SPEC_API.match(/^(\/s\/[^/]+)\//);
+    var m = SPEC_API.match(/^(\/[sp]\/[^/]+)\//);
     return m ? m[1] : '';
   }());
 

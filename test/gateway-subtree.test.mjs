@@ -219,3 +219,64 @@ test('a cycle in stored data does not hang a reader request', async () => {
   const res = await g.get(`/s/${g.share(ids[0])}/spec/${ids[1]}`);
   assert.equal(res.status, 200);
 });
+
+// ── what the reader is told about the tree above them ───────────────────────
+//
+// `parent` is on the reader's meta so a shared parent's drawer knows where it
+// is in its own subtree. Above the shared root there is no subtree: the id of a
+// spec the token does not grant is a store fact, and the reader learning it can
+// go on to ask for it. It is reported only when it names a spec this token
+// already serves.
+
+test('the shared root does not name the parent it was cut out of', async () => {
+  const outerRoot = seedSpec({ title: 'The big one' });
+  const shared = seedSpec({ title: 'Testing strategy', parent: outerRoot });
+  g = await startGateway();
+
+  const body = await (await g.get(`/s/${g.share(shared)}/api/meta`)).json();
+  assert.equal(body.parent, null, 'the reader was handed an id the token does not serve');
+});
+
+test('a descendant names its parent, which the token does serve', async () => {
+  const t = tree();
+  g = await startGateway();
+  const body = await (await g.get(`/s/${g.share(t.root)}/spec/${t.grand}/api/meta`)).json();
+  assert.equal(body.parent, t.a);
+});
+
+// ── a project share is the other way in ─────────────────────────────────────
+//
+// /p/<token> grants a project, not a subtree, and membership is checked per
+// request. A child filed elsewhere is outside that grant however close the
+// relation is, so it is neither listed nor served.
+
+test('a project reader sees the children that are in the project', async () => {
+  const root = seedSpec({ title: 'Root', project: 'atlas' });
+  const kid = seedSpec({ title: 'Kid', parent: root, project: 'atlas' });
+  g = await startGateway();
+  const token = g.shareProject('atlas');
+
+  const body = await (await g.get(`/p/${token}/spec/${root}/api/children`)).json();
+  assert.deepEqual(body.children.map((c) => c.id), [kid]);
+  assert.equal((await g.get(`/p/${token}/spec/${kid}`)).status, 200);
+});
+
+test('a child filed in another project is not listed to a project reader', async () => {
+  const root = seedSpec({ title: 'Root', project: 'atlas' });
+  const moved = seedSpec({ title: 'Moved away', parent: root, project: 'other' });
+  g = await startGateway();
+  const token = g.shareProject('atlas');
+
+  const body = await (await g.get(`/p/${token}/spec/${root}/api/children`)).json();
+  assert.deepEqual(body.children, [], 'a row was offered for a spec this token refuses');
+  assert.equal((await g.get(`/p/${token}/spec/${moved}`)).status, 404);
+});
+
+test('a project reader is not told a parent outside the project', async () => {
+  const root = seedSpec({ title: 'Root', project: 'atlas' });
+  const kid = seedSpec({ title: 'Kid', parent: root, project: 'beta' });
+  g = await startGateway();
+
+  const body = await (await g.get(`/p/${g.shareProject('beta')}/spec/${kid}/api/meta`)).json();
+  assert.equal(body.parent, null);
+});

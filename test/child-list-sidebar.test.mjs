@@ -181,3 +181,54 @@ test('the drawer is offset beneath a fixed spec header, like the one it sits bes
   assert.match(css, offset('#sf-sidebar'), 'the comments drawer lost its offset, so this proves nothing');
   assert.match(css, offset('#sf-children'));
 });
+
+// ── the two share schemes ───────────────────────────────────────────────────
+//
+// A page served through a share is not at the store root, and it cannot be told
+// where it is except by what the server injected. SPEC_ROOT is derived from the
+// api base for exactly that reason, and it has to cover both schemes: /s/ for a
+// spec and its subtree, /p/ for a project. The page's OWN api base is handed to
+// it whole; it is every address for a spec other than itself that has to be
+// built, and those are the ones that went to the wrong socket.
+
+async function openDrawerAt(window) {
+  window.document.querySelector('#sf-launcher').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const rows = Array.prototype.slice.call(window.document.querySelectorAll('#sf-menu .sf-menu-row'));
+  rows.find((el) => /Child specs/.test(el.textContent)).click();
+  await new Promise((r) => window.setTimeout(r, 0));
+}
+
+test('a project share opens a child under its own token', async (t) => {
+  // A SPEC_ROOT regex that knew only /s/ left this empty, and every child link
+  // and child request went to the gateway root, where nothing answers.
+  const { window } = await withChildren(t, ROWS, {
+    transport: 'poll', api: '/p/tok123/spec/test-spec/api',
+  });
+  await openDrawerAt(window);
+  window.document.querySelectorAll('#sf-children .sf-child-row')[0].click();
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  const src = window.document.querySelector('#sf-child-frame').getAttribute('src');
+  assert.match(src, /^\/p\/tok123\/spec\/aaa1111111\?/);
+  const tab = window.document.querySelector('#sf-child-panel .sf-child-newtab');
+  assert.equal(tab.getAttribute('href'), '/p/tok123/spec/aaa1111111');
+});
+
+test('descending inside a project share stays inside it', async (t) => {
+  const { window, fetched } = await withChildren(t, ROWS, {
+    transport: 'poll',
+    api: '/p/tok123/spec/test-spec/api',
+    childrenById: { bbb2222222: [{ id: 'ccc3333333', title: 'Deeper', type: 'general', status: 'draft', comments: { open: 0, total: 0 }, hasChildren: false }] },
+  });
+  await openDrawerAt(window);
+  window.document.querySelectorAll('#sf-children .sf-child-row')[1].click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  window.document.querySelector('#sf-child-panel .sf-child-down').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+
+  assert.ok(
+    fetched.some((u) => u === '/p/tok123/spec/bbb2222222/api/children'),
+    `a child's own list was asked for off the share: ${fetched.join(', ')}`,
+  );
+});
