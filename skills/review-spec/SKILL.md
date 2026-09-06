@@ -314,8 +314,14 @@ When a thread asks for one, on a `daemon` batch:
 
    ```
    node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create \
-     --title "<title>" --type <type> --parent <parentSpecId>
+     --title '<title>' --type <type> --parent <parentSpecId>
    ```
+
+   **The title is yours to write, not the reviewer's to supply.** A comment is
+   text somebody typed, and pasting it between double quotes hands the shell
+   `$(…)` and backticks to run before the CLI sees any of it. Write a short
+   title from what the thread asked for, in single quotes, and if it contains a
+   single quote of its own, reword it.
 
    The type is chosen the way `create-spec` chooses one: a child is not a kind
    of spec, it is a spec with a parent. Code grounding is usually

@@ -14,8 +14,27 @@ import { join } from 'node:path';
 const out = process.argv[2] || join(tmpdir(), 'child-specs-shots');
 mkdirSync(out, { recursive: true });
 
+// Everything acquired below is torn down by `cleanup`, which is registered
+// immediately and run from both the finally and the signals. A walkthrough is
+// interrupted more often than it is finished — the whole point is to look at a
+// screenshot and stop — and a throwaway store that outlives its run is not
+// throwaway.
 const store = mkdtempSync(join(tmpdir(), 'sf-walk-'));
 process.env.SPECFORGE_HOME = store;
+
+let browser;
+let server;
+let cleaned = false;
+async function cleanup() {
+  if (cleaned) return;
+  cleaned = true;
+  try { if (browser) await browser.close(); } catch {}
+  try { if (server) server.close(); } catch {}
+  rmSync(store, { recursive: true, force: true });
+}
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(sig, () => { cleanup().then(() => process.exit(130)); });
+}
 
 const { createSpec } = await import('../lib/store.mjs');
 const { createDaemon } = await import('../server/daemon.mjs');
@@ -47,15 +66,15 @@ const kid = createSpec({ title: 'Code grounding', type: 'research', parent: root
 const kid2 = createSpec({ title: 'Testing strategy', type: 'test-plan', parent: root, html: doc('Testing strategy') });
 createSpec({ title: 'Fixture inventory', type: 'general', parent: kid2, html: doc('Fixture inventory') });
 
-const server = createDaemon();
-await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const base = `http://127.0.0.1:${server.address().port}`;
-
-const browser = await chromium.launch({ executablePath: CHROME });
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-const shot = (name) => page.screenshot({ path: join(out, `${name}.png`) });
-
 try {
+  server = createDaemon();
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  browser = await chromium.launch({ executablePath: CHROME });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const shot = (name) => page.screenshot({ path: join(out, `${name}.png`) });
+
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('li.row');
   await shot('01-index-tree');
@@ -95,7 +114,5 @@ try {
   console.log(`screenshots in ${out}`);
   console.log(`ids: root=${root} children=${kid},${kid2}`);
 } finally {
-  await browser.close();
-  server.close();
-  rmSync(store, { recursive: true, force: true });
+  await cleanup();
 }
