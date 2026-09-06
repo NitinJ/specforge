@@ -173,3 +173,22 @@ test('a cycle in stored data terminates', () => {
   const html = flattenSubtree(ids[0]);
   assert.ok(html.length > 0);
 });
+
+test('an id written with single quotes is namespaced too', () => {
+  // Spec HTML is written by hand and by agents, and both forms are valid. A
+  // rule that only saw double quotes left half a document unprefixed, which is
+  // the collision this whole mechanism exists to prevent — silently, because
+  // the other half moved.
+  const root = seedSpec({ title: 'Root', html: `<html><body><h1>Root</h1><section id='tldr'>r</section></body></html>` });
+  const a = seedSpec({
+    title: 'A',
+    parent: root,
+    html: `<html><body><h1>A</h1><section id='tldr'>a</section>`
+      + `<p><a href='#tldr'>mine</a></p></body></html>`,
+  });
+
+  const d = doc(flattenSubtree(root));
+  assert.ok(d.querySelector(`[id="${a}-tldr"]`), "a single-quoted id was left where the root's is");
+  const hrefs = Array.prototype.map.call(d.querySelectorAll('a[href^="#"]'), (el) => el.getAttribute('href'));
+  assert.deepEqual(hrefs, [`#${a}-tldr`]);
+});

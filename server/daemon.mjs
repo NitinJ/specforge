@@ -63,6 +63,7 @@ import {
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
 import { renderMd } from '../lib/store-md.mjs';
+import { slug } from '../lib/html-to-md.mjs';
 import { readSubscriptions, parseShareUrl } from '../lib/store-subscriptions.mjs';
 import { contributeSpec, withdrawSpec } from '../lib/contribute.mjs';
 import { readShareToken } from '../lib/store-share.mjs';
@@ -162,6 +163,34 @@ function safeBase(slug, id) {
 }
 
 /**
+ * Where one spec goes in the archive: `<parent path>/<its own name>`.
+ *
+ * Two things this has to get right, and both were wrong.
+ *
+ * A name is slugged from a title, and nothing stops two siblings sharing one.
+ * Two specs called Testing produced the same path, and the archive came out
+ * holding one file that claimed to be both. `taken` numbers the second.
+ *
+ * A spec that could not be rendered still holds a place in the tree. Skipping it
+ * outright left its children with no parent path, so they unzipped beside the
+ * root looking like specs belonging to nothing — the layout IS the relation
+ * here, so losing it loses the export's whole point.
+ *
+ * @param {Map<string,string>} dirOf each spec's path so far
+ * @param {Set<string>} taken every path already handed out
+ */
+function placeIn(dirOf, taken, meta, id, base) {
+  // spec-tree-ok: reads this spec's own field to place it under its parent
+  const parent = meta && meta.parent;
+  const parentDir = parent && dirOf.has(parent) ? dirOf.get(parent) : '';
+  let dir = parentDir ? `${parentDir}/${base}` : base;
+  for (let n = 2; taken.has(dir); n++) dir = `${parentDir ? `${parentDir}/` : ''}${base}-${n}`;
+  taken.add(dir);
+  dirOf.set(id, dir);
+  return dir;
+}
+
+/**
  * A whole subtree as a zip, one markdown file per spec.
  *
  * Laid out by the tree rather than flat, because the directory structure is the
@@ -178,6 +207,7 @@ function serveMarkdownBundle(rootId, ids, res) {
   // Each spec's path within the archive, so a child sits inside a folder named
   // for its parent.
   const dirOf = new Map();
+  const taken = new Set();
 
   for (const id of ids) {
     const meta = readMeta(id);
@@ -186,17 +216,13 @@ function serveMarkdownBundle(rootId, ids, res) {
       rendered = renderMd(id);
     } catch (err) {
       skipped.push(`${id} (${(meta && meta.title) || 'unknown'}): ${err.message}`);
+      // Placed anyway, with the name its title would have given it. Nothing is
+      // written at that path; it exists so its children still nest under it.
+      placeIn(dirOf, taken, meta, id, safeBase(slug((meta && meta.title) || ''), id));
       continue;
     }
-    const base = safeBase(rendered.slug, id);
-    // spec-tree-ok: reads this spec's own field to place it under its parent
-    const parent = meta && meta.parent;
-    const parentDir = parent && dirOf.has(parent) ? dirOf.get(parent) : '';
-    const dir = parentDir ? `${parentDir}/${base}` : base;
-    dirOf.set(id, dir);
-
-    const at = id === rootId ? `${base}.md` : `${dir}.md`;
-    entries.push({ name: at, data: rendered.markdown });
+    const dir = placeIn(dirOf, taken, meta, id, safeBase(rendered.slug, id));
+    entries.push({ name: `${dir}.md`, data: rendered.markdown });
     for (const a of rendered.assets) {
       entries.push({ name: `${dir}.assets/${a.name}`, data: a.svg });
     }
@@ -226,10 +252,12 @@ function serveMarkdownBundle(rootId, ids, res) {
 /**
  * A spec and its subtree as one document, for printing.
  *
- * No review layer at all. This page exists to be printed, and the print
- * stylesheet's job on an ordinary spec page is to hide chrome that is not here
- * in the first place. It is also why the flatten is a separate route rather than
- * a mode of the spec page: the reader is not reading this, the printer is.
+ * Served in the embed mode a child panel uses: no menu, no rail, nothing to
+ * click, because the reader is not reading this — the printer is. But the layer
+ * itself is there, because a mermaid block is source until it renders, and a
+ * parent printed without it came out with its diagrams as code, which is
+ * usually the thing the tree was being printed to see. Prism and the
+ * interactive components are in the same position.
  */
 function serveFlat(id, res) {
   if (isReservedId(id)) return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
@@ -239,7 +267,7 @@ function serveFlat(id, res) {
   } catch {
     return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
   }
-  send(res, 200, 'text/html; charset=utf-8', html);
+  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id, embed: true }));
 }
 
 function serveSpec(id, res, { embed = false, theme } = {}) {

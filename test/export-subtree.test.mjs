@@ -94,13 +94,17 @@ test('the flat view carries the whole subtree in one document', async () => {
   assert.match(html, /Child one/);
 });
 
-test('the flat view carries no review layer, because a printer is reading it', async () => {
+test('the flat view carries the layer that draws diagrams, and no chrome', async () => {
+  // A printer is reading it, so nothing it could click belongs here. But a
+  // mermaid block is source until the layer renders it, and a parent printed
+  // without the layer came out with its diagrams as code — the one thing the
+  // reader was printing the tree to see.
   const root = seedSpec({ title: 'Root', html: specHtml('Root') });
   seedSpec({ title: 'Child', parent: root, html: specHtml('Child') });
 
   const html = await (await d.get(`/spec/${root}?flat=1`)).text();
-  assert.doesNotMatch(html, /review\.js/);
-  assert.doesNotMatch(html, /window\.SPECFORGE/);
+  assert.match(html, /review\.js/);
+  assert.match(html, /"embed":true/, 'the flat view was served with the full chrome');
 });
 
 test('the ordinary spec page is unaffected by the flag being absent', async () => {
@@ -127,4 +131,34 @@ test('section ids stay unique across the flattened subtree', async () => {
   const html = await (await d.get(`/spec/${root}?flat=1`)).text();
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
   assert.equal(new Set(ids).size, ids.length, `duplicate ids: ${ids.join(', ')}`);
+});
+
+// ── the seams ───────────────────────────────────────────────────────────────
+
+test('two siblings with the same title get one file each', async () => {
+  // Slugged from the title, so two specs called the same thing produced the
+  // same path and the archive held one of them under a name claiming both.
+  const root = seedSpec({ title: 'Root', html: specHtml('Root') });
+  seedSpec({ title: 'Testing', parent: root, html: specHtml('Testing') });
+  seedSpec({ title: 'Testing', parent: root, html: specHtml('Testing') });
+
+  const names = zipNames(Buffer.from(await (await d.get(`/api/spec/${root}/md`)).arrayBuffer()));
+  const md = names.filter((n) => n.endsWith('.md'));
+  assert.equal(md.length, 3, `expected one file per spec: ${names.join(', ')}`);
+  assert.equal(new Set(md).size, md.length, `two specs share a path: ${md.join(', ')}`);
+});
+
+test('a skipped parent does not lift its children to the top of the archive', needsPoison, async () => {
+  // The layout IS the relation. A parent that could not be rendered still has
+  // to hold the folder its children go in, or they unzip beside the root
+  // looking like specs that belong to nothing.
+  const root = seedSpec({ title: 'Root', html: specHtml('Root') });
+  const mid = seedSpec({ title: 'Middle', parent: root, html: specHtml('Middle') });
+  seedSpec({ title: 'Leaf', parent: mid, html: specHtml('Leaf') });
+  poison(specHtmlPath(mid));
+
+  const names = zipNames(Buffer.from(await (await d.get(`/api/spec/${root}/md`)).arrayBuffer()));
+  const leaf = names.find((n) => /leaf\.md$/.test(n));
+  assert.ok(leaf, `the leaf is not in the archive: ${names.join(', ')}`);
+  assert.match(leaf, /^root\/middle\/leaf\.md$/, 'the leaf came out of its parent folder');
 });
