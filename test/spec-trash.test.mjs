@@ -182,7 +182,7 @@ test('listDeletions is empty on a store that has never deleted anything', () => 
 
 // ── partial failure ─────────────────────────────────────────────────────────
 
-test('a delete that fails partway reports what it moved and writes no record', () => {
+test('a delete that fails partway reports what it moved, and stays restorable', () => {
   const root = seedSpec({ title: 'Root' });
   const a = seedSpec({ title: 'A', parent: root });
   const b = seedSpec({ title: 'B', parent: a });
@@ -198,13 +198,83 @@ test('a delete that fails partway reports what it moved and writes no record', (
   assert.ok(err, 'a failed delete must throw rather than report success');
   assert.equal(err.removed.length, 1, 'the first spec was moved');
   assert.equal(calls.length, 2);
-  assert.equal(
-    existsSync(trashRecordPath(err.deletionId)),
-    false,
-    'no record: a partial delete is not restorable as a unit',
-  );
+  // The record is written BEFORE the first move, so a delete that failed
+  // partway leaves what it moved recoverable rather than stranded. Restore
+  // tolerates an entry whose directory was never moved.
+  assert.equal(existsSync(trashRecordPath(err.deletionId)), true);
   // The specs that were not reached are untouched.
   assert.equal(existsSync(specDir(root)), true);
+});
+
+test('a partial delete is still restorable, because the record is written first', () => {
+  const root = seedSpec({ title: 'Root' });
+  const a = seedSpec({ title: 'A', parent: root });
+  seedSpec({ title: 'B', parent: a });
+
+  const { move } = moverFailingAt(2);
+  let err;
+  try {
+    deleteSubtree(root, { move });
+  } catch (e) {
+    err = e;
+  }
+
+  // Writing the record after the moves meant a delete that moved three
+  // directories and then failed left all three with nothing naming them. The
+  // record now exists first, and restore tolerates an entry whose directory was
+  // never moved, so the failure costs nothing that cannot be undone.
+  assert.ok(existsSync(trashRecordPath(err.deletionId)), 'a failed delete stranded what it moved');
+
+  const { restored } = restoreDeletion(err.deletionId);
+  assert.deepEqual(restored, err.removed);
+  assert.equal(readMeta(err.removed[0]) !== null, true, 'the moved spec did not come back');
+});
+
+test('a partial delete names the spec that actually failed', () => {
+  const root = seedSpec({ title: 'Root' });
+  const a = seedSpec({ title: 'A', parent: root });
+  const b = seedSpec({ title: 'B', parent: a });
+
+  const { move } = moverFailingAt(2);
+  let err;
+  try {
+    deleteSubtree(root, { move });
+  } catch (e) {
+    err = e;
+  }
+
+  // Deepest first, so the order is B, A, root and the second call is A. Taking
+  // failedAt from the root-first list reported `root`, which the loop had not
+  // reached.
+  assert.deepEqual(err.removed, [b]);
+  assert.equal(err.failedAt, a);
+});
+
+test('a restore that failed partway can be retried rather than being stuck', () => {
+  const root = seedSpec({ title: 'Root' });
+  const a = seedSpec({ title: 'A', parent: root });
+  seedSpec({ title: 'B', parent: a });
+
+  const { deletionId } = deleteSubtree(root);
+
+  // Fail the second move back, leaving one spec live and two in trash.
+  const failing = moverFailingAt(2);
+  assert.throws(() => restoreDeletion(deletionId, { move: failing.move }));
+
+  // The retry must not refuse on the spec the first attempt already returned:
+  // that id is live AND no longer in trash, which is not a collision.
+  const { restored, alreadyBack } = restoreDeletion(deletionId);
+  assert.equal(alreadyBack.length, 1, 'the already-restored spec was not recognised');
+  assert.equal(restored.length + alreadyBack.length, 3);
+  for (const id of [root, a]) assert.ok(readMeta(id), `${id} is still missing`);
+});
+
+test('a genuine id collision is still refused', () => {
+  const id = seedSpec({ title: 'Doomed' });
+  const { deletionId } = deleteSubtree(id);
+  // Live AND still in trash: the real collision, and the one restore must refuse.
+  seedSpec({ id, title: 'A different spec' });
+  assert.throws(() => restoreDeletion(deletionId), /already in the store/i);
 });
 
 test('a partial delete leaves the moved directories in trash for a human to find', () => {

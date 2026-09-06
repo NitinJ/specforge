@@ -676,7 +676,9 @@ export function createDaemon({ publications: pubs = publications } = {}) {
         ? run()
         : pubs.unshareThen(ids[0], () => revokeAll(ids.slice(1), run)));
 
-      return revokeAll(plan.ids, () => handleSubtreeDelete(rootId, res))
+      // The same ids the guards above ran against are handed to the delete, so
+      // a reparent landing during the revokes cannot change what is removed.
+      return revokeAll(plan.ids, () => handleSubtreeDelete(rootId, res, plan.ids))
         // Deleting the last spec of a published project empties it, the same
         // way an organize move can. Swept behind the response, like the others.
         .then(() => { pubs.sweepProjects(); })
