@@ -62,6 +62,29 @@ injects the review layer at serve time.
 - **Confirm in one line before writing** ("Creating a *launch-plan* spec — sound
   right?"). One line, not a menu: the user corrects a wrong pick faster than they
   answer a question about it.
+
+**Is it a child spec?** A child spec is a full spec of its own that records
+which spec it belongs to: its own id, its own URL, its own status, its own
+review cycle. What it is for is one area of a larger spec that has grown enough
+to be read on its own — the code grounding behind a design, the research it
+rests on, the testing strategy that follows from it.
+
+Pass `--parent <id>` when the user asks for one, in either of the two ways they
+arrive:
+
+- **In the request.** "Write a design spec for X, with a child spec for the code
+  grounding" is two creates, the second carrying `--parent` with the first's id.
+- **In a review comment.** A comment on a parent asking for a child is answered
+  by making one and replying with its id and URL. See the `review-spec` skill.
+
+Do **not** reach for one unasked. Splitting a spec is the user's call about how
+they want to read it, and a design that is 900 words does not need a child spec
+for its testing section. The type is still chosen from the list above and on the
+same rules: a child is not a kind of spec, it is a spec with a parent.
+
+A child takes its parent's project and collection unless you pass your own, so
+it is filed beside the spec it belongs to rather than wherever the home page was
+pointing.
 - Read the house rules: `${CLAUDE_PLUGIN_ROOT}/templates/house-rules.md`.
 - Read the component rules: `${CLAUDE_PLUGIN_ROOT}/references/spec-components.md`
   — keep its **Choosing** table (top of the file) in context; read an individual
@@ -89,10 +112,10 @@ injects the review layer at serve time.
 ## 2. Scaffold into the store
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type> [--project <name>]
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type> [--project <name>] [--parent <id>]
 ```
 
-Prints `{ id, htmlPath, url, status, type, project, language, skeleton, prompts }`.
+Prints `{ id, htmlPath, url, status, type, project, parent, parentTitle, language, skeleton, prompts }`.
 It has started/reused the daemon, copied the type's shell to `htmlPath`, and
 attached the spec to this session. **Author into `htmlPath`** — that file IS the
 spec — but do **not** read the whole file to find the blanks: the payload's

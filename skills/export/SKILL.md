@@ -33,6 +33,21 @@ comment history; the default payload is batch-scoped to pending threads).
 the review layer is injected only at serve time, so the file is plain house HTML).
 Use the spec **title** from the hook message for the Doc title.
 
+**A spec with child specs exports as one flat document, not as its root alone.**
+A Doc has no folder, so a recipient given only the parent gets a document with
+holes in it and no way to tell how much is missing. Ask the daemon for the
+flattened tree instead of reading `htmlPath`:
+
+```
+curl -s "http://127.0.0.1:4180/spec/<id>?flat=1"
+```
+
+That is the root's document with every descendant appended, each in its own
+section, section ids namespaced so the anchors inside it still resolve. Check
+first with `curl -s "http://127.0.0.1:4180/api/spec/<id>/children"`, and use
+`htmlPath` unchanged when the list is empty, which is every spec written before
+child specs existed.
+
 ## 2. Mark it in-progress
 
 So the dropdown shows "Exporting…" (the hook already does this when it routes here;
