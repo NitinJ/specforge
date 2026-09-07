@@ -112,6 +112,46 @@ test('the child renders inside the frame, with no chrome of its own', needsChrom
   });
 });
 
+test('the drawer and the panel clear the fixed spec header', needsChrome, async () => {
+  // Both live in the gutter the comments drawer uses, and that drawer is offset
+  // beneath the header. Without the same offset the child drawer's own title and
+  // close control sat behind it, out of reach.
+  await withSpecTree({ specs: TREE, open: 'root' }, async ({ page }) => {
+    await page.click('#sf-launcher');
+    await page.waitForSelector('#sf-menu');
+    await page.click('#sf-menu .sf-menu-row:has-text("Child specs")');
+    await page.waitForSelector('#sf-children.open');
+
+    // Opened as well, because the drawer and the panel carry separate CSS
+    // declarations: measuring only the drawer leaves the panel's offset free to
+    // regress with this test still green.
+    await page.click('#sf-children .sf-child-row');
+    await page.waitForSelector('#sf-child-panel.open');
+
+    const box = (sel) => page.evaluate((s) => {
+      const el = document.querySelector(s);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { top: Math.round(r.top), height: Math.round(r.height) };
+    }, sel);
+
+    const header = await box('#sf-titlebar');
+    const comments = await box('#sf-sidebar');
+    const children = await box('#sf-children');
+    const panel = await box('#sf-child-panel');
+    const viewport = await page.evaluate(() => window.innerHeight);
+
+    assert.ok(header, 'no fixed header on this page, so the test proves nothing');
+    assert.ok(header.height > 0);
+
+    assert.equal(children.top, comments.top, 'the child drawer does not sit where the comments drawer does');
+    assert.equal(children.top, header.height, 'the child drawer starts behind the fixed header');
+
+    assert.equal(panel.top, header.height, 'the child panel starts behind the fixed header');
+    assert.equal(panel.height, viewport - header.height, 'the child panel runs off the bottom of the page');
+  });
+});
+
 test('closing the panel unloads the child', needsChrome, async () => {
   await withSpecTree({ specs: TREE, open: 'root' }, async ({ page }) => {
     await openFirstChild(page);
@@ -122,5 +162,35 @@ test('closing the panel unloads the child', needsChrome, async () => {
     });
     const open = await page.evaluate(() => document.querySelector('#sf-child-panel').classList.contains('open'));
     assert.equal(open, false);
+  });
+});
+
+test('the flat print view draws the diagrams in every spec in the tree', needsChrome, async () => {
+  // The reason this route carries the review layer at all. A mermaid block is
+  // source until something renders it, and a parent printed to PDF without the
+  // layer came out with its diagrams as code — usually the thing the tree was
+  // being printed to see. Both specs, because the descendant is spliced in and
+  // could easily be reached by a pass that only ran over the root.
+  const diagram = (t) => baseSpec(t).replace(
+    '</main>',
+    `<section id="d"><h2>D</h2><pre data-lang="mermaid"><code>flowchart LR\n  A --&gt; B</code></pre></section>\n</main>`,
+  );
+  const specs = [
+    { key: 'root', title: 'Root', html: diagram('Root') },
+    { key: 'kid', title: 'Kid', parent: 'root', html: diagram('Kid') },
+  ];
+
+  await withSpecTree({ specs, open: 'root' }, async ({ page, base, ids }) => {
+    await page.goto(`${base}/spec/${ids.root}?flat=1`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.querySelectorAll('svg').length >= 2, null, { timeout: 20000 });
+
+    const shown = await page.evaluate(() => ({
+      source: document.body.textContent.includes('flowchart LR'),
+      launcher: !!document.querySelector('#sf-launcher'),
+      rail: !!document.querySelector('#sf-rail'),
+    }));
+    assert.equal(shown.source, false, 'a diagram is still printing as its source');
+    assert.equal(shown.launcher, false, 'the print view carries chrome the printer would print');
+    assert.equal(shown.rail, false);
   });
 });
