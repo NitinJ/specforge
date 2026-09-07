@@ -1678,7 +1678,11 @@ ${strip}
     var anyColl=0;
     crows.forEach(function(cr){
       var c=cr.getAttribute('data-c');
-      var n=rows.filter(function(r){return r.getAttribute('data-c')===c&&projOk(r);}).length;
+      // The DRAWN collection, because that is what selecting this row filters
+      // on. Counting the filed one put a nonzero count on a rail row that then
+      // opened empty: a child filed in Testing and drawn in Design with its
+      // parent was counted under Testing and hidden by it.
+      var n=rows.filter(function(r){return r.getAttribute('data-gc')===c&&projOk(r);}).length;
       var nc=cr.querySelector('.nc'); if(nc) nc.textContent=n;
       cr.hidden=!n&&c!==fcoll;
       if(!cr.hidden) anyColl++;

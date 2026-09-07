@@ -649,7 +649,20 @@ export function createDaemon({ publications: pubs = publications } = {}) {
     if (organize) {
       if (method !== 'PATCH') return sendJson(res, 405, { error: 'method not allowed' });
       return readJsonBody(req)
-        .then((b) => handleOrganize(organize[1], b, res))
+        .then((b) => {
+          // A reparent lands in one field, but the DELETE route reads its plan,
+          // revokes every share in the subtree and only then moves anything. A
+          // reparent arriving in that window takes a spec out of the subtree:
+          // the delete then correctly leaves it standing, with its public link
+          // already revoked and no way to put it back. Refused while the delete
+          // holds it — the revocation is the irreversible half, and a reparent
+          // is a keystroke to retry.
+          if (Object.prototype.hasOwnProperty.call(b || {}, 'parent')
+            && pubs.isDeleting(organize[1])) {
+            return sendJson(res, 409, { error: 'spec is being deleted' });
+          }
+          return handleOrganize(organize[1], b, res);
+        })
         // Moving a spec can empty a published project (a rename is N of these
         // moves). The sweep retires such shares without waiting for a restart.
         .then(() => { pubs.sweepProjects(); })
@@ -804,7 +817,13 @@ export function createDaemon({ publications: pubs = publications } = {}) {
 
       // The same ids the guards above ran against are handed to the delete, so
       // a reparent landing during the revokes cannot change what is removed.
-      return revokeAll(plan.ids, () => handleSubtreeDelete(rootId, res, plan.ids))
+      // The whole planned set is claimed before the first revoke. The nesting
+      // below only holds a spec once the revokes reach it, and a reparent
+      // landing before that takes the spec out of the deletion: the re-read in
+      // deleteSubtree then correctly leaves it standing, with its share already
+      // revoked and no way to put the link back.
+      return pubs.holdSubtree(plan.ids,
+        () => revokeAll(plan.ids, () => handleSubtreeDelete(rootId, res, plan.ids)))
         // Deleting the last spec of a published project empties it, the same
         // way an organize move can. Swept behind the response, like the others.
         .then(() => { pubs.sweepProjects(); })

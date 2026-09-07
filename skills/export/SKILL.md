@@ -59,7 +59,12 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" export-working <id>
 
 ## 3. Create the Google Doc via the Drive MCP
 
-Read the full `htmlPath` contents, then create the doc with your connected Google
+Use the document step 1 settled on — the flattened tree for a spec with
+children, `htmlPath`'s full contents for a spec without. Reading `htmlPath` here
+regardless is the mistake this sentence exists to prevent: it makes a Doc of the
+root alone, which is exactly the document with holes in it that step 1 is about.
+
+Create the doc with your connected Google
 Drive MCP's create-file tool (`mcp__claude_ai_Google_Drive__create_file`, or the
 equivalent on whatever Drive MCP is connected):
 
