@@ -129,6 +129,110 @@ export async function withSpec(opts, fn) {
 }
 
 /**
+ * Record every request a page makes, from before the first navigation.
+ *
+ * The child-spec panel claims to load nothing until the reader opens a child.
+ * That claim is only checkable as a count over time: "no request for this URL
+ * yet, then exactly one after the click". Attach this before `goto`, because a
+ * listener added afterwards has already missed the page's own load.
+ *
+ * @param {object} page playwright page
+ * @returns {{urls: string[], matching: (re: RegExp) => string[], clear: () => void}}
+ */
+export function recordRequests(page) {
+  const urls = [];
+  page.on('request', (r) => urls.push(r.url()));
+  return {
+    urls,
+    matching: (re) => urls.filter((u) => re.test(u)),
+    clear: () => { urls.length = 0; },
+  };
+}
+
+/**
+ * Serve a whole tree of specs from a throwaway store and open one of them.
+ *
+ * `withSpec` covers one document, which is every e2e test written before child
+ * specs. This is the same harness with a tree: `specs` is a list of
+ * `{ key, title, html, type, parent }`, where `parent` names another entry's
+ * `key`, and `open` says which key to navigate to. Requests are recorded from
+ * before the first navigation, so a test can assert what was NOT fetched.
+ *
+ * @param {object} opts
+ * @param {Array<object>} opts.specs
+ * @param {string} [opts.open] key to open; defaults to the first entry
+ * @param {string} [opts.wait] selector proving the review layer booted
+ * @param {(ctx:{page:object, base:string, ids:object, requests:object}) => Promise<any>} fn
+ */
+export async function withSpecTree(opts, fn) {
+  const { specs = [], open, wait = '#sf-launcher' } = opts || {};
+  if (!specs.length) throw new Error('withSpecTree needs at least one spec');
+
+  const home = mkdtempSync(join(tmpdir(), 'sf-e2e-tree-'));
+  const prevHome = process.env.SPECFORGE_HOME;
+  process.env.SPECFORGE_HOME = home;
+
+  let server;
+  let browser;
+  try {
+    // Validated before anything is written, because the failure it prevents is
+    // silent: a misspelled `parent` key resolves to undefined, the spec is
+    // created as a root, and every later assertion then tests a topology nobody
+    // asked for and the test still passes.
+    const keys = new Set();
+    for (const s of specs) {
+      if (!s.key) throw new Error('withSpecTree: every spec needs a key');
+      if (keys.has(s.key)) throw new Error(`withSpecTree: duplicate key ${s.key}`);
+      keys.add(s.key);
+    }
+    for (const s of specs) {
+      if (s.parent === undefined || s.parent === null) continue;
+      if (!keys.has(s.parent)) {
+        throw new Error(`withSpecTree: ${s.key} names parent ${s.parent}, which is not a key`);
+      }
+      if (s.parent === s.key) throw new Error(`withSpecTree: ${s.key} is its own parent`);
+    }
+
+    // Two passes: create every spec, then set parents, so an entry may name a
+    // parent declared after it.
+    const ids = {};
+    for (const s of specs) {
+      ids[s.key] = createSpec({
+        title: s.title || s.key,
+        html: s.html || baseSpec(s.title || s.key),
+        type: s.type,
+      });
+    }
+    const { readMeta, writeMeta } = await import('../lib/meta.mjs');
+    for (const s of specs) {
+      if (!s.parent) continue;
+      const meta = readMeta(ids[s.key]);
+      writeMeta(ids[s.key], { ...meta, parent: ids[s.parent] });
+    }
+    if (open && !keys.has(open)) throw new Error(`withSpecTree: open names ${open}, which is not a key`);
+
+    server = createDaemon();
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${server.address().port}`;
+
+    browser = await chromium.launch({ executablePath: CHROME });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const requests = recordRequests(page);
+
+    const openKey = open || specs[0].key;
+    await page.goto(`${base}/spec/${ids[openKey]}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector(wait);
+    return await fn({ page, base, ids, requests });
+  } finally {
+    if (browser) await browser.close();
+    if (server) await new Promise((r) => server.close(r));
+    if (prevHome === undefined) delete process.env.SPECFORGE_HOME;
+    else process.env.SPECFORGE_HOME = prevHome;
+    rmSync(home, { recursive: true, force: true });
+  }
+}
+
+/**
  * What a CSS property computes to in light and in dark, and whether it moved.
  *
  * This is the only way to tell a palette-driven colour from a hard-coded one:

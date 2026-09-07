@@ -389,7 +389,38 @@ function sfRevealDisclosures(el) {
     flagDeck();            // so the stylesheet can leave a paged spec's spacing alone
     initHighlight();       // and colour the code blocks whose author named a language
     initInteractive();     // and give the interactive components their behaviour
+
+    // The embed view: this page is inside another spec's page, in a frame, and
+    // the reader is looking at it rather than working on it.
+    //
+    // Everything that makes a spec READABLE still runs, and that includes the
+    // diagrams: an embedded child rendering its mermaid source as a code block
+    // is a spec the reader cannot actually read. Rendered here rather than
+    // below, because everything below is about working on a document — a second
+    // launcher and a second contents rail inside a panel are noise, a comment
+    // affordance would write to a spec the reader did not open, and the
+    // block-registry sync is a write, so it would edit a document from inside
+    // somebody else's page. To comment on a child you open it in its own tab,
+    // which is what the panel's control is for.
+    //
+    // syncBlocks is deliberately not called: it is the write.
+    if ((window.SPECFORGE || {}).embed) {
+      // The flag the print path waits on. Mermaid renders asynchronously, so
+      // this document's `load` event fires while the diagrams are still source:
+      // an opener that printed on `load` produced a PDF of code blocks. The
+      // attribute is set whichever way initMermaid settles, because a renderer
+      // that never arrived is a finished outcome too — the print then has the
+      // source, which is what the page has.
+      initMermaid(function () {
+        document.documentElement.setAttribute('data-sf-render', 'done');
+      });
+      return;
+    }
+
     buildChrome();
+    // Which specs belong to this one. One request, no child documents: opening
+    // a child is what loads its document, and that is the panel's job.
+    loadChildren();
     // Diagrams before the reconcile, never beside it. Rendering replaces a
     // block's contents, and the reconcile identifies a block by its text, so
     // running them concurrently would record whichever answer won the race.
@@ -1326,6 +1357,8 @@ function sfRevealDisclosures(el) {
 
     buildLauncher();
     buildCtxMenu();
+    buildChildDrawer();
+    buildChildPanel();
     buildAsides();
     buildTop();
     buildTitleBar();
@@ -1352,7 +1385,15 @@ function sfRevealDisclosures(el) {
       // the composer behind the dialog — losing an unposted draft to a keypress
       // that was meant to close a confirmation.
       if (window.SFUI && window.SFUI.dialogOpen()) return;
-      if (e.key === 'Escape') { clearHover(); closeMenu(); collapseThread(); cancelCompose(); }
+      if (e.key === 'Escape') {
+        // The child panel first, and alone: it covers the page, so Escape means
+        // the thing on top rather than everything underneath it at once.
+        if (els.childPanel && els.childPanel.classList.contains('open')) {
+          closeChildPanel();
+          return;
+        }
+        clearHover(); closeMenu(); collapseThread(); cancelCompose();
+      }
       if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) onSaveKey(e);
     });
   }
@@ -1597,11 +1638,352 @@ function sfRevealDisclosures(el) {
   // Sidebar open/close — also flags the body so the floating launcher can
   // get out of the sidebar's way (CSS: body.sf-side-open).
   function setSidebar(open) {
+    // The child drawer shares this gutter, so opening comments closes it.
+    if (open && els.children) els.children.classList.remove('open');
     els.sidebar.classList.toggle('open', open);
-    document.body.classList.toggle('sf-side-open', open);
+    document.body.classList.toggle(
+      'sf-side-open',
+      open || !!(els.children && els.children.classList.contains('open')),
+    );
     syncRailVisibility(); // the drawer and the rail share the right gutter
   }
   function toggleSidebar() { setSidebar(!els.sidebar.classList.contains('open')); }
+
+  // ---------- child specs ----------
+  // A child spec is a spec of its own that records which spec it belongs to. The
+  // drawer lists them; opening one is the panel's job (it loads a different
+  // document, which is why it is a frame and not a section).
+  //
+  // The list is fetched once on boot, because the menu has to know whether to
+  // carry the row at all: an entry that opens an empty drawer is a worse answer
+  // than no entry. Listing costs one request and no child document.
+  var childSpecs = [];
+
+  function loadChildren() {
+    if ((window.SPECFORGE || {}).embed) return Promise.resolve([]);
+    // SPEC_API, not API: the latter is the comments base, and /children hangs
+    // off the spec.
+    return fetch(SPEC_API + '/children')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        childSpecs = (data && data.children) || [];
+        // The menu is built lazily, but if it is already open the row has to
+        // appear rather than wait for the next open.
+        if (els.menu && els.menu.classList.contains('open')) buildMenuRows();
+        return childSpecs;
+      })
+      .catch(function () { return []; });
+  }
+
+  // Both drawers live in the right gutter, so opening one closes the other. A
+  // second drawer opened over the first is not a layout problem, it is two
+  // things claiming the same space and the reader losing the one they were in.
+  function setChildDrawer(open) {
+    if (!els.children) return;
+    if (open) setSidebar(false);
+    els.children.classList.toggle('open', open);
+    document.body.classList.toggle('sf-side-open', open || els.sidebar.classList.contains('open'));
+    syncRailVisibility();
+  }
+
+  function renderChildDrawer() {
+    if (!els.childList) return;
+    els.childList.innerHTML = '';
+    childSpecs.forEach(function (child) {
+      var row = create('button', { class: 'sf-child-row', type: 'button' });
+      row.appendChild(create('span', { class: 'sf-child-title' }, child.title || child.id));
+
+      var meta = create('span', { class: 'sf-child-meta' });
+      if (child.type) meta.appendChild(create('span', { class: 'sf-child-type' }, child.type));
+      if (child.status) meta.appendChild(create('span', { class: 'sf-child-status' }, child.status));
+      var open = child.comments && child.comments.open;
+      // Only when there is something to answer. A "0" on every row is a column
+      // of noise that says nothing.
+      if (open) meta.appendChild(create('span', { class: 'sf-child-comments' }, String(open) + ' open'));
+      if (child.hasChildren) meta.appendChild(create('span', { class: 'sf-child-more' }, 'has children'));
+      row.appendChild(meta);
+
+      row.onclick = function () { openChild(child); };
+      els.childList.appendChild(row);
+    });
+  }
+
+  // ---------- the child panel ----------
+  // A child is shown in an IFRAME, not injected into this page.
+  //
+  // Every spec.html is a self-contained document carrying its own inline CSS, so
+  // two of them in one DOM collide, and there is no general fix: scoping one
+  // spec's rules means rewriting a stylesheet nobody controls. A frame makes the
+  // isolation a property of the element rather than something to enforce, and it
+  // makes the loading lazy by construction — nothing is fetched until `src` is
+  // set, which happens when the reader opens a child and not before.
+  //
+  // What it costs is the boundary. The theme has to be handed over, links have
+  // to be stopped from replacing the frame (done at serve time), and the reader
+  // needs a way out to the full page, because commenting lives there.
+  var childTrail = [];   // the descent so far, which the breadcrumb renders
+  // Which child the panel is showing. Every request the panel makes is answered
+  // against this: a reader who opens A, waits, then opens B must not have B's
+  // frame cleared by A's request finishing late and reporting A missing.
+  var childOpen = 0;
+  var childFocusReturn = null;   // where focus was before the panel took it
+
+  // Where /spec/<id> lives, which is not the same on both sockets. The daemon
+  // serves it at the root; the gateway serves it under the token, and a reader
+  // holds a capability for a subtree rather than for the store. Derived from the
+  // api base the server injected, so one page cannot disagree with itself.
+  //
+  //   daemon        /api/spec/<id>            ->  ''
+  //   shared root   /s/<token>/api            ->  /s/<token>
+  //   shared child  /s/<token>/spec/<id>/api  ->  /s/<token>
+  //   shared project/p/<token>/spec/<id>/api  ->  /p/<token>
+  //
+  // Both schemes, because a project share is served the same page under a
+  // different prefix. Reading only /s/ left this empty there, which is the
+  // daemon's answer, and sent every child link and child request to the
+  // gateway root where nothing answers.
+  var SPEC_ROOT = (function () {
+    var m = SPEC_API.match(/^(\/[sp]\/[^/]+)\//);
+    return m ? m[1] : '';
+  }());
+
+  /** The page a child is read at, in its own tab. */
+  function childHref(id) {
+    return SPEC_ROOT + '/spec/' + encodeURIComponent(id);
+  }
+
+  /** The URL of a child's embed view, painted in this page's theme. */
+  function childSrc(child) {
+    var theme = document.documentElement.getAttribute('data-theme');
+    return childHref(child.id) + '?embed=1'
+      + (theme ? '&theme=' + encodeURIComponent(theme) : '');
+  }
+
+  /** The API base for a spec other than this page's own. */
+  function apiFor(id) {
+    return SPEC_ROOT
+      ? SPEC_ROOT + '/spec/' + encodeURIComponent(id) + '/api'
+      : '/api/spec/' + encodeURIComponent(id);
+  }
+
+  // The longest the print waits on the flat window's renderers. Above the
+  // renderer's own 15s give-up, so the ordinary slow-bundle case is decided by
+  // the page rather than cut off here.
+  var PRINT_RENDER_TIMEOUT = 20000;
+
+  /**
+   * Print a flat window once it has finished drawing itself.
+   *
+   * Not on `load`: that fires when the bytes are in, and the flat view renders
+   * its mermaid asynchronously after that, so printing there caught the
+   * diagrams as source. The flat page marks itself `data-sf-render="done"` when
+   * its renderers settle, whichever way they settle. Same origin, so the
+   * attribute is readable from here.
+   *
+   * The wait is bounded. A reader who cannot print is worse off than one whose
+   * PDF has a diagram in it as code, so after PRINT_RENDER_TIMEOUT we print
+   * what there is.
+   */
+  function printWhenRendered(w) {
+    var printed = false;
+    var go = function () {
+      if (printed || w.closed) return;
+      printed = true;
+      try { w.print(); } catch (e) { /* the reader closed it, or the browser refused */ }
+    };
+    var ready = function () {
+      try {
+        var d = w.document;
+        return !!(d && d.documentElement
+          && d.documentElement.getAttribute('data-sf-render') === 'done');
+      } catch (e) {
+        // Cross-origin is not reachable here (the flat view is same-origin),
+        // so a throw means the window is going away. Stop waiting on it.
+        return true;
+      }
+    };
+    var t = setInterval(function () {
+      if (printed || w.closed) return clearInterval(t);
+      if (!ready()) return;
+      clearInterval(t);
+      go();
+    }, 120);
+    setTimeout(function () { clearInterval(t); go(); }, PRINT_RENDER_TIMEOUT);
+  }
+
+  function openChild(child) {
+    if (!child || !child.id || !els.childPanel) return;
+    childTrail.push(child);
+    showChild(child);
+  }
+
+  function showChild(child) {
+    var missing = els.childPanel.querySelector('.sf-child-missing');
+    if (missing) missing.parentNode.removeChild(missing);
+    els.childFrame.hidden = false;
+    els.childFrame.setAttribute('src', childSrc(child));
+    renderChildHead(child);
+    var wasOpen = els.childPanel.classList.contains('open');
+    els.childPanel.classList.add('open');
+    document.body.classList.add('sf-child-open');
+    if (!wasOpen) takeChildFocus();
+
+    // A child that has gone since the drawer rendered leaves an empty frame,
+    // which reads as a broken panel rather than as a spec that is not there.
+    // Ask, and say so.
+    //
+    // Answered against the panel's current state. A request cannot be cancelled
+    // once sent, so a slow one for A finishing after the reader opened B would
+    // otherwise clear B's frame and report B missing.
+    childOpen += 1;
+    var mine = childOpen;
+    fetch(apiFor(child.id) + '/meta')
+      .then(function (r) {
+        if (!r || r.ok === false) throw new Error('gone');
+        return r.json();
+      })
+      .then(function (meta) { if (!meta || meta.error) throw new Error('gone'); })
+      .catch(function () { if (mine === childOpen) showChildMissing(); });
+  }
+
+  /**
+   * Move focus into the panel, and remember where it was.
+   *
+   * The panel covers most of the page, and without this a keyboard reader stays
+   * on a control underneath it: tabbing walks a document they cannot see. Escape
+   * closes, which is what every other overlay here does.
+   */
+  function takeChildFocus() {
+    childFocusReturn = document.activeElement;
+    var first = els.childPanel.querySelector('.sf-child-close');
+    if (first && first.focus) first.focus();
+  }
+
+  function releaseChildFocus() {
+    if (childFocusReturn && childFocusReturn.focus && childFocusReturn.isConnected) {
+      childFocusReturn.focus();
+    }
+    childFocusReturn = null;
+  }
+
+  function showChildMissing() {
+    if (!els.childPanel) return;
+    els.childFrame.removeAttribute('src');
+    els.childFrame.hidden = true;
+    var note = create('div', { class: 'sf-child-missing' });
+    note.appendChild(create('p', {}, 'This child spec no longer exists.'));
+    var again = create('button', { class: 'sf-child-refresh', type: 'button' }, 'Refresh');
+    again.onclick = function () {
+      closeChildPanel();
+      loadChildren().then(function () { renderChildDrawer(); });
+    };
+    note.appendChild(again);
+    els.childPanel.appendChild(note);
+  }
+
+  function renderChildHead(child) {
+    els.childCrumbs.innerHTML = '';
+    childTrail.forEach(function (step, i) {
+      var crumb = create('button', { class: 'sf-crumb', type: 'button' }, step.title || step.id);
+      crumb.onclick = function () {
+        // Going back up truncates the trail rather than pushing onto it, so the
+        // breadcrumb says where you are and not where you have been.
+        childTrail = childTrail.slice(0, i + 1);
+        showChild(step);
+      };
+      els.childCrumbs.appendChild(crumb);
+    });
+
+    // Commenting lives on the full page. This is the way there, and it is what
+    // lets the panel be read only without being a dead end.
+    els.childTab.setAttribute('href', childHref(child.id));
+    els.childTab.textContent = 'Open in new tab';
+
+    els.childDown.hidden = !child.hasChildren;
+    els.childDown.onclick = function () {
+      fetch(apiFor(child.id) + '/children')
+        .then(function (r) {
+          // Checked, not assumed. A child deleted since its hasChildren was
+          // read answers 404, and parsing that as JSON turned "this spec is
+          // gone" into an empty drawer that said nothing was wrong.
+          if (!r || r.ok === false) throw new Error('gone');
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data || !data.children) throw new Error('malformed');
+          childSpecs = data.children;
+          renderChildDrawer();
+          setChildDrawer(true);
+        })
+        .catch(function () { flashErr('Could not read that spec\'s children.'); });
+    };
+  }
+
+  function closeChildPanel() {
+    if (!els.childPanel) return;
+    var wasOpen = els.childPanel.classList.contains('open');
+    els.childPanel.classList.remove('open');
+    document.body.classList.remove('sf-child-open');
+    // Cleared rather than hidden. A closed panel still holding a document keeps
+    // a connection and a live-reload stream open for something nobody is reading.
+    els.childFrame.removeAttribute('src');
+    childTrail = [];
+    // Any request still in flight now answers for a panel nobody is looking at.
+    childOpen += 1;
+    if (wasOpen) releaseChildFocus();
+  }
+
+  function buildChildPanel() {
+    els.childPanel = create('div', { id: 'sf-child-panel' });
+    els.childPanel.innerHTML =
+      '<div class="sf-child-head">'
+      + '<div class="sf-child-crumbs"></div>'
+      + '<button class="sf-child-down" type="button" hidden>Children</button>'
+      + '<a class="sf-child-newtab" target="_blank" rel="noopener noreferrer"></a>'
+      + '<button class="sf-child-close" type="button" title="Close" aria-label="Close">×</button>'
+      + '</div>'
+      // What the sandbox is and is not.
+      //
+      // allow-scripts and allow-same-origin together mean this frame is NOT a
+      // security boundary against the document inside it: a same-origin frame
+      // that can run scripts can reach window.parent. That is deliberate and it
+      // costs nothing here, because the document inside it is a spec from this
+      // user's own store, served from this origin, which already runs with full
+      // access on its own page. A frame cannot make it more trusted than it
+      // already is, and both tokens are what make it render at all: mermaid,
+      // prism and the daemon's own assets.
+      //
+      // What the sandbox does buy is the accident rather than the attack.
+      // allow-top-navigation is withheld, so a link or a script inside a child
+      // cannot replace the page around it and leave the reader looking at
+      // something else in a panel that claims to show a child spec.
+      // allow-popups keeps its links able to reach a new tab.
+      //
+      // The boundary that matters for untrusted content is elsewhere: markdown
+      // import sanitises raw HTML on the way in, which is where content that is
+      // not the user's own enters the store.
+      + '<iframe id="sf-child-frame" title="Child spec"'
+      + ' sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox">'
+      + '</iframe>';
+    document.body.appendChild(els.childPanel);
+    els.childFrame = els.childPanel.querySelector('#sf-child-frame');
+    els.childCrumbs = els.childPanel.querySelector('.sf-child-crumbs');
+    els.childTab = els.childPanel.querySelector('.sf-child-newtab');
+    els.childDown = els.childPanel.querySelector('.sf-child-down');
+    els.childPanel.querySelector('.sf-child-close').onclick = closeChildPanel;
+  }
+
+  function buildChildDrawer() {
+    els.children = create('div', { id: 'sf-children' });
+    els.children.innerHTML =
+      '<div class="sf-side-head"><b>Child specs</b>'
+      + '<button class="sf-side-close" title="Close child specs" aria-label="Close child specs">×</button>'
+      + '</div>'
+      + '<div class="sf-child-list"></div>';
+    document.body.appendChild(els.children);
+    els.childList = els.children.querySelector('.sf-child-list');
+    els.children.querySelector('.sf-side-close').onclick = function () { setChildDrawer(false); };
+  }
 
   // ---------- lifecycle action button ----------
   // One contextual primary CTA, rendered in the sidebar command bar (the comments
@@ -1894,6 +2276,12 @@ function sfRevealDisclosures(el) {
   // An aside is a section of the spec carrying data-sf-aside, stored directly
   // after the section it came from. That is the model, and it is what makes
   // export, anchoring, comments and the gate work with nothing written for them.
+  //
+  // The CHILD PANEL above looks like this and is the opposite underneath. An
+  // aside's content is already in this document; a child spec is a different
+  // document, loaded into a frame. Nothing about a child is ever in this page's
+  // DOM, which is why it does not appear in the block registry, the contents
+  // rail, or anything this page prints.
   //
   // The rendering is separate: the section is MOVED out of the flow into a
   // right-hand panel, because a draft you have not accepted should not push the
@@ -2313,7 +2701,20 @@ function sfRevealDisclosures(el) {
       var badge = create('span', { class: 'sf-menu-badge' }, String(unresolved));
       comments.querySelector('.sf-row-main').appendChild(badge);
     }
-    menuGroup('Review', [comments]);
+    var reviewRows = [comments];
+    // Only when there is something behind it. A spec with no children carrying
+    // a row that opens an empty drawer is a worse answer than no row.
+    if (childSpecs.length) {
+      var kids = menuRow('🗂', 'Child specs', function () {
+        renderChildDrawer();
+        setChildDrawer(true);
+        closeMenu();
+      });
+      var count = create('span', { class: 'sf-menu-badge' }, String(childSpecs.length));
+      kids.querySelector('.sf-row-main').appendChild(count);
+      reviewRows.push(kids);
+    }
+    menuGroup('Review', reviewRows);
 
     // Everything that changes how the page looks and nothing that changes what
     // it says. Width is an inline range; the other three are dropdowns.
@@ -2322,7 +2723,18 @@ function sfRevealDisclosures(el) {
     menuGroup('Export', [
       // Export PDF — open the print dialog (pick "Save as PDF"); the review
       // chrome is hidden by the print stylesheet so the PDF is just the spec.
-      menuRow('⤓', 'Export PDF', function () { closeMenu(); window.print(); }),
+      //
+      // A spec with children prints the FLAT view instead. The print dialog can
+      // only print what is in the page, and a child lives in an iframe, so
+      // printing this page would produce a document with the children missing
+      // and nothing to say so.
+      menuRow('⤓', 'Export PDF', function () {
+        closeMenu();
+        if (!childSpecs.length) return window.print();
+        var w = window.open(SPEC_ROOT + '/spec/' + encodeURIComponent(SPEC) + '?flat=1', '_blank');
+        if (!w) return flashErr('Allow pop-ups to print a spec with its children.');
+        printWhenRendered(w);
+      }),
       // Google Docs — relayed through the attached session (it runs the Drive
       // MCP); the row reflects meta.export and updates live on the poll.
       exportRow(),

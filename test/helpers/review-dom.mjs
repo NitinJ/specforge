@@ -198,6 +198,9 @@ export async function bootReviewLayer(t, opts = {}) {
     // A published page sets this when its poll finds a newer spec. Settable at
     // boot so a test can exercise a stale page without driving the poll.
     ...(opts.stale ? { stale: true } : {}),
+    // The embed view: served to a child spec shown inside its parent's page.
+    // The client builds no chrome and writes nothing when this is set.
+    ...(opts.embed ? { embed: true } : {}),
   };
   // jsdom defaults innerWidth to 1024 (below the TOC auto-collapse threshold);
   // let tests widen it so the floating TOC shows in auto mode.
@@ -206,11 +209,16 @@ export async function bootReviewLayer(t, opts = {}) {
   const puts = [];
   const patches = [];
   const dels = [];
+  // Every URL the client asked for, in order. Reads as well as writes, because
+  // the child-spec panel's whole claim is about what it does NOT fetch, and an
+  // absence can only be asserted against a record of what was.
+  const fetched = [];
   // DELETE is captured like the others. Without it a client DELETE fell through
   // to the read branch, whose response carries no `ok`, so code that checks
   // Response.ok saw undefined and reported a failure the server never sent.
   const BUCKETS = { POST: posts, PUT: puts, PATCH: patches, DELETE: dels };
   window.fetch = (url, init) => {
+    fetched.push(String(url));
     const bucket = init && BUCKETS[init.method];
     if (bucket) {
       bucket.push({ url, body: init.body ? JSON.parse(init.body) : {} });
@@ -231,8 +239,43 @@ export async function bootReviewLayer(t, opts = {}) {
       if (opts.blocksFail) return Promise.reject(new Error('no registry'));
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ registry: opts.registry || null }) });
     }
+    if (String(url).indexOf('/children') !== -1) {
+      // Defaults to none, which is what every spec written before child specs
+      // has, and what the menu row's absence is asserted against.
+      //
+      // `childrenById` answers for a spec other than the page's own, which is
+      // how descending into a grandchild is exercised: the panel asks the child
+      // it is showing who ITS children are.
+      const forSpec = String(url).match(/\/api\/spec\/([\w-]+)\/children/);
+      const other = forSpec && forSpec[1] !== 'test-spec'
+        ? (opts.childrenById || {})[forSpec[1]] || []
+        : opts.children || [];
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ children: other }) });
+    }
     if (String(url).indexOf('/meta') !== -1) {
-      return Promise.resolve({ json: () => Promise.resolve(meta) });
+      // `metaGate` hands the test control of when each meta request settles, so
+      // a slow response for one child can be made to land after another was
+      // opened. Races are not testable by timing.
+      if (opts.metaGate) {
+        return new Promise((resolveP, rejectP) => {
+          opts.metaGate(
+            String(url),
+            () => resolveP({ ok: true, json: () => Promise.resolve(meta) }),
+            (e) => rejectP(e || new Error('gone')),
+          );
+        });
+      }
+      // `childGone` is a child deleted between the drawer rendering and the
+      // reader clicking it: the meta 404s while the page around it is fine.
+      const forSpec = String(url).match(/\/api\/spec\/([\w-]+)\/meta/);
+      if (opts.childGone && forSpec && forSpec[1] !== 'test-spec') {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: () => Promise.resolve({ error: 'spec not found' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(meta) });
     }
     return Promise.resolve({ text: () => Promise.resolve(threadsJson) });
   };
@@ -265,7 +308,7 @@ export async function bootReviewLayer(t, opts = {}) {
   }
   window.document.dispatchEvent(new window.Event('DOMContentLoaded')); // the DCL that follows
   await new Promise((r) => window.setTimeout(r, 0)); // flush load()/render microtasks
-  return { window, posts, puts, patches, dels };
+  return { window, posts, puts, patches, dels, fetched };
 }
 
 /**

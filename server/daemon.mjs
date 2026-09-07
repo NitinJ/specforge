@@ -22,7 +22,12 @@
 //   DELETE /api/spec/<id>/aside/<asideId>       → delete an aside + its threads
 //   POST /api/spec/<id>/block/delete            → delete one block (section/tag/text)
 //   POST /api/spec/<id>/rename                  → set title (meta + spec <h1>/<title>)
-//   PATCH /api/spec/<id>/organize               → set tags / collection / project
+//   PATCH /api/spec/<id>/organize               → set tags / collection / project / parent
+//   GET  /api/spec/<id>/children                → the specs naming this one as parent
+//   DELETE /api/spec/<id>                        → move the spec and its subtree
+//                                                  to trash, returning a deletionId
+//   POST /api/deletion/<deletionId>/restore      → put that whole delete back
+//   GET  /api/deletions                          → what can still be restored
 //
 // ensureServer() (below) is the singleton entrypoint every v2 command calls:
 // bind the port, or find out who already has it. Holding the port IS being the
@@ -51,16 +56,21 @@ import {
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
   handleBlocksGet, handleBlocksPut,
-  handleRename, handleOrganize, handleExport, handleDelete, handleAsideDelete, handleBlockDelete,
+  handleRename, handleOrganize, handleChildren,
+  planSubtreeDelete, handleSubtreeDelete, handleRestore, handleDeletions,
+  handleExport, handleDelete, handleAsideDelete, handleBlockDelete,
 } from '../lib/store-api.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
 import { renderMd } from '../lib/store-md.mjs';
+import { slug } from '../lib/html-to-md.mjs';
 import { readSubscriptions, parseShareUrl } from '../lib/store-subscriptions.mjs';
 import { contributeSpec, withdrawSpec } from '../lib/contribute.mjs';
 import { readShareToken } from '../lib/store-share.mjs';
 import { readMeta } from '../lib/meta.mjs';
 import { zip } from '../lib/zip.mjs';
+import { flattenSubtree } from '../lib/flatten-tree.mjs';
+import { descendantsOf } from '../lib/spec-tree.mjs';
 
 // Publications live for the daemon's lifetime, which is what lets a share
 // outlive the terminal that made it. One registry per process.
@@ -104,6 +114,16 @@ function send(res, status, type, body) {
  * /public/* and /s/<token>/*, so no share link can reach this.
  */
 function serveMarkdown(id, res) {
+  // A spec with children exports as the whole tree. Markdown's consumers are a
+  // repo and another agent, and both want the files: a flattened wall of text is
+  // the document child specs were split up to avoid. The document consumers
+  // (print, Google Docs) get the flat view instead.
+  let subtree = [];
+  try {
+    subtree = descendantsOf(id);
+  } catch { /* an unreadable tree exports as one spec, below */ }
+  if (subtree.length > 1) return serveMarkdownBundle(id, subtree, res);
+
   let rendered;
   try {
     rendered = renderMd(id);
@@ -137,7 +157,120 @@ function serveMarkdown(id, res) {
   return res.end(archive);
 }
 
-function serveSpec(id, res) {
+/** A filename component that cannot escape the archive or hide as a dotfile. */
+function safeBase(slug, id) {
+  return (slug || id).replace(/[^\w.-]/g, '').replace(/^\.+/, '') || 'spec';
+}
+
+/**
+ * Where one spec goes in the archive: `<parent path>/<its own name>`.
+ *
+ * Two things this has to get right, and both were wrong.
+ *
+ * A name is slugged from a title, and nothing stops two siblings sharing one.
+ * Two specs called Testing produced the same path, and the archive came out
+ * holding one file that claimed to be both. `taken` numbers the second.
+ *
+ * A spec that could not be rendered still holds a place in the tree. Skipping it
+ * outright left its children with no parent path, so they unzipped beside the
+ * root looking like specs belonging to nothing — the layout IS the relation
+ * here, so losing it loses the export's whole point.
+ *
+ * @param {Map<string,string>} dirOf each spec's path so far
+ * @param {Set<string>} taken every path already handed out
+ */
+function placeIn(dirOf, taken, meta, id, base) {
+  // spec-tree-ok: reads this spec's own field to place it under its parent
+  const parent = meta && meta.parent;
+  const parentDir = parent && dirOf.has(parent) ? dirOf.get(parent) : '';
+  let dir = parentDir ? `${parentDir}/${base}` : base;
+  for (let n = 2; taken.has(dir); n++) dir = `${parentDir ? `${parentDir}/` : ''}${base}-${n}`;
+  taken.add(dir);
+  dirOf.set(id, dir);
+  return dir;
+}
+
+/**
+ * A whole subtree as a zip, one markdown file per spec.
+ *
+ * Laid out by the tree rather than flat, because the directory structure is the
+ * relation: unzipped, a parent's children sit beside it in a folder named after
+ * it, and that survives being copied into a repo with nothing else to explain it.
+ *
+ * A spec that cannot be rendered (an unreadable file, or a deck, which has no
+ * markdown form) is named in a NOTES file rather than failing the export. One
+ * bad descendant should not cost the other five.
+ */
+function serveMarkdownBundle(rootId, ids, res) {
+  const entries = [];
+  const skipped = [];
+  // Each spec's path within the archive, so a child sits inside a folder named
+  // for its parent.
+  const dirOf = new Map();
+  const taken = new Set();
+
+  for (const id of ids) {
+    const meta = readMeta(id);
+    let rendered;
+    try {
+      rendered = renderMd(id);
+    } catch (err) {
+      skipped.push(`${id} (${(meta && meta.title) || 'unknown'}): ${err.message}`);
+      // Placed anyway, with the name its title would have given it. Nothing is
+      // written at that path; it exists so its children still nest under it.
+      placeIn(dirOf, taken, meta, id, safeBase(slug((meta && meta.title) || ''), id));
+      continue;
+    }
+    const dir = placeIn(dirOf, taken, meta, id, safeBase(rendered.slug, id));
+    entries.push({ name: `${dir}.md`, data: rendered.markdown });
+    for (const a of rendered.assets) {
+      entries.push({ name: `${dir}.assets/${a.name}`, data: a.svg });
+    }
+  }
+
+  if (!entries.length) return sendJson(res, 404, { error: 'nothing in this subtree could be exported' });
+  if (skipped.length) {
+    entries.push({
+      name: 'NOT-EXPORTED.txt',
+      data: `These specs are part of the tree and are not in this archive:\n\n${skipped.join('\n')}\n`,
+    });
+  }
+
+  // The root's own file name, which renderMd already slugged for us.
+  const rootEntry = entries.find((e) => !e.name.includes('/') && e.name.endsWith('.md'));
+  const name = safeBase(rootEntry && rootEntry.name.replace(/\.md$/, ''), rootId);
+  const archive = zip(entries);
+  res.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Disposition': `attachment; filename="${name}.zip"`,
+    'Content-Length': archive.length,
+    'Cache-Control': 'no-store',
+  });
+  return res.end(archive);
+}
+
+/**
+ * A spec and its subtree as one document, for printing.
+ *
+ * Served in the embed mode a child panel uses: no menu, no rail, nothing to
+ * click, because the reader is not reading this — the printer is. But the layer
+ * itself is there, because a mermaid block is source until it renders, and a
+ * parent printed without it came out with its diagrams as code, which is
+ * usually the thing the tree was being printed to see. Prism and the
+ * interactive components are in the same position.
+ */
+function serveFlat(id, res) {
+  if (isReservedId(id)) return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
+  let html;
+  try {
+    html = flattenSubtree(id);
+  } catch {
+    return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
+  }
+  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id, embed: true }));
+}
+
+function serveSpec(id, res, { embed = false, theme } = {}) {
   let html;
   // A reserved entry has a spec's layout on disk, which is what makes the review
   // APIs work on it. This route is where the difference is enforced: the library
@@ -148,7 +281,7 @@ function serveSpec(id, res) {
   } catch {
     return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
   }
-  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id }));
+  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id, embed, theme }));
 }
 
 /**
@@ -507,11 +640,44 @@ export function createDaemon({ publications: pubs = publications } = {}) {
         .then((b) => handleRename(rename[1], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
+    const children = path.match(/^\/api\/spec\/([\w-]+)\/children$/);
+    if (children) {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleChildren(children[1], res);
+    }
     const organize = path.match(/^\/api\/spec\/([\w-]+)\/organize$/);
     if (organize) {
       if (method !== 'PATCH') return sendJson(res, 405, { error: 'method not allowed' });
       return readJsonBody(req)
-        .then((b) => handleOrganize(organize[1], b, res))
+        .then((b) => {
+          // A reparent lands in one field, but the DELETE route reads its plan,
+          // revokes every share in the subtree and only then moves anything. A
+          // reparent arriving in that window is refused at BOTH ends of the
+          // edge, because the plan is fixed and each end fails differently:
+          //
+          //   moving a held spec OUT takes it off the plan, so the delete
+          //   correctly leaves it standing — with its public link already
+          //   revoked and no token left to put back;
+          //   moving an unheld spec IN attaches it to a parent the delete is
+          //   about to remove and was never planning to take, so the reparent
+          //   reports success and leaves a spec pointing at nothing.
+          //
+          // Refusing costs a retry. Neither failure can be undone.
+          if (Object.prototype.hasOwnProperty.call(b || {}, 'parent')) {
+            // The edge this request asks for, off the body rather than a stored
+            // meta. Nothing here follows it; it is compared against the set the
+            // running delete is holding and then handed on unchanged.
+            // spec-tree-ok: reads the request's own field, does not walk it
+            const wanted = b.parent;
+            if (pubs.isDeleting(organize[1])) {
+              return sendJson(res, 409, { error: 'spec is being deleted' });
+            }
+            if (typeof wanted === 'string' && pubs.isDeleting(wanted)) {
+              return sendJson(res, 409, { error: 'the parent is being deleted' });
+            }
+          }
+          return handleOrganize(organize[1], b, res);
+        })
         // Moving a spec can empty a published project (a rename is N of these
         // moves). The sweep retires such shares without waiting for a restart.
         .then(() => { pubs.sweepProjects(); })
@@ -643,15 +809,52 @@ export function createDaemon({ publications: pubs = publications } = {}) {
     const specRes = path.match(/^\/api\/spec\/([\w-]+)$/);
     if (specRes) {
       if (method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
-      // Revoke first, and keep new shares for this spec refused for the whole
-      // delete. The delete removes the directory holding the share record, so a
-      // share committing anywhere inside it would leave a public URL serving a
-      // spec that no longer exists, with nothing on disk left to find it by.
-      return pubs.unshareThen(specRes[1], () => handleDelete(specRes[1], res))
+      const rootId = specRes[1];
+
+      // A delete now takes the whole subtree, so the plan is read first: a
+      // template anywhere below refuses the delete rather than stopping it
+      // halfway, and the ids are needed to revoke every share before anything
+      // moves.
+      const plan = planSubtreeDelete(rootId);
+      if (plan.error) return sendJson(res, plan.status, { error: plan.error });
+
+      // Revoke first, and keep new shares refused for the whole delete. The
+      // delete moves the directory holding the share record, so a share
+      // committing anywhere inside it would leave a public URL serving a spec
+      // that is no longer there, with nothing on disk left to find it by.
+      //
+      // Nested rather than looped in parallel: unshareThen holds a per-spec
+      // guard for the duration of its callback, and every spec in the subtree
+      // has to stay guarded until the last one has moved.
+      const revokeAll = (ids, run) => (ids.length === 0
+        ? run()
+        : pubs.unshareThen(ids[0], () => revokeAll(ids.slice(1), run)));
+
+      // The same ids the guards above ran against are handed to the delete, so
+      // a reparent landing during the revokes cannot change what is removed.
+      // The whole planned set is claimed before the first revoke. The nesting
+      // below only holds a spec once the revokes reach it, and a reparent
+      // landing before that takes the spec out of the deletion: the re-read in
+      // deleteSubtree then correctly leaves it standing, with its share already
+      // revoked and no way to put the link back.
+      return pubs.holdSubtree(plan.ids,
+        () => revokeAll(plan.ids, () => handleSubtreeDelete(rootId, res, plan.ids)))
         // Deleting the last spec of a published project empties it, the same
         // way an organize move can. Swept behind the response, like the others.
         .then(() => { pubs.sweepProjects(); })
         .catch((e) => sendJson(res, 500, { error: e.message }));
+    }
+
+    // Restore everything one delete moved. Keyed by the deletion, not by a spec:
+    // a subtree delete is one action and comes back as one.
+    const restore = path.match(/^\/api\/deletion\/([\w-]+)\/restore$/);
+    if (restore) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleRestore(restore[1], res);
+    }
+    if (path === '/api/deletions') {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleDeletions(res);
     }
 
     if (method === 'GET') {
@@ -697,7 +900,20 @@ export function createDaemon({ publications: pubs = publications } = {}) {
       const reserved = reservedIdForRoute(path);
       if (reserved) return serveComponentsDoc(reserved, res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
-      if (sm) return serveSpec(sm[1], res);
+      if (sm) {
+        // The flat view: this spec and everything below it as one document, for
+        // printing. The browser's print dialog can only print what is in the
+        // page, and a child lives in an iframe, so a parent printed from its own
+        // page would come out without its children.
+        if (url.searchParams.get('flat') === '1') return serveFlat(sm[1], res);
+        // The embed view, for a child shown inside its parent's page. The theme
+        // rides along so the frame paints in the parent's on its first render
+        // rather than flashing the store's and correcting.
+        return serveSpec(sm[1], res, {
+          embed: url.searchParams.get('embed') === '1',
+          theme: url.searchParams.get('theme'),
+        });
+      }
       const pub = path.match(/^\/public\/([\w.-]+)$/);
       if (pub) return serveStatic(pub[1], res, req);
     }
