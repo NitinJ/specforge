@@ -63,11 +63,14 @@ import {
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
 import { renderMd } from '../lib/store-md.mjs';
+import { slug } from '../lib/html-to-md.mjs';
 import { readSubscriptions, parseShareUrl } from '../lib/store-subscriptions.mjs';
 import { contributeSpec, withdrawSpec } from '../lib/contribute.mjs';
 import { readShareToken } from '../lib/store-share.mjs';
 import { readMeta } from '../lib/meta.mjs';
 import { zip } from '../lib/zip.mjs';
+import { flattenSubtree } from '../lib/flatten-tree.mjs';
+import { descendantsOf } from '../lib/spec-tree.mjs';
 
 // Publications live for the daemon's lifetime, which is what lets a share
 // outlive the terminal that made it. One registry per process.
@@ -111,6 +114,16 @@ function send(res, status, type, body) {
  * /public/* and /s/<token>/*, so no share link can reach this.
  */
 function serveMarkdown(id, res) {
+  // A spec with children exports as the whole tree. Markdown's consumers are a
+  // repo and another agent, and both want the files: a flattened wall of text is
+  // the document child specs were split up to avoid. The document consumers
+  // (print, Google Docs) get the flat view instead.
+  let subtree = [];
+  try {
+    subtree = descendantsOf(id);
+  } catch { /* an unreadable tree exports as one spec, below */ }
+  if (subtree.length > 1) return serveMarkdownBundle(id, subtree, res);
+
   let rendered;
   try {
     rendered = renderMd(id);
@@ -142,6 +155,119 @@ function serveMarkdown(id, res) {
     'Cache-Control': 'no-store',
   });
   return res.end(archive);
+}
+
+/** A filename component that cannot escape the archive or hide as a dotfile. */
+function safeBase(slug, id) {
+  return (slug || id).replace(/[^\w.-]/g, '').replace(/^\.+/, '') || 'spec';
+}
+
+/**
+ * Where one spec goes in the archive: `<parent path>/<its own name>`.
+ *
+ * Two things this has to get right, and both were wrong.
+ *
+ * A name is slugged from a title, and nothing stops two siblings sharing one.
+ * Two specs called Testing produced the same path, and the archive came out
+ * holding one file that claimed to be both. `taken` numbers the second.
+ *
+ * A spec that could not be rendered still holds a place in the tree. Skipping it
+ * outright left its children with no parent path, so they unzipped beside the
+ * root looking like specs belonging to nothing — the layout IS the relation
+ * here, so losing it loses the export's whole point.
+ *
+ * @param {Map<string,string>} dirOf each spec's path so far
+ * @param {Set<string>} taken every path already handed out
+ */
+function placeIn(dirOf, taken, meta, id, base) {
+  // spec-tree-ok: reads this spec's own field to place it under its parent
+  const parent = meta && meta.parent;
+  const parentDir = parent && dirOf.has(parent) ? dirOf.get(parent) : '';
+  let dir = parentDir ? `${parentDir}/${base}` : base;
+  for (let n = 2; taken.has(dir); n++) dir = `${parentDir ? `${parentDir}/` : ''}${base}-${n}`;
+  taken.add(dir);
+  dirOf.set(id, dir);
+  return dir;
+}
+
+/**
+ * A whole subtree as a zip, one markdown file per spec.
+ *
+ * Laid out by the tree rather than flat, because the directory structure is the
+ * relation: unzipped, a parent's children sit beside it in a folder named after
+ * it, and that survives being copied into a repo with nothing else to explain it.
+ *
+ * A spec that cannot be rendered (an unreadable file, or a deck, which has no
+ * markdown form) is named in a NOTES file rather than failing the export. One
+ * bad descendant should not cost the other five.
+ */
+function serveMarkdownBundle(rootId, ids, res) {
+  const entries = [];
+  const skipped = [];
+  // Each spec's path within the archive, so a child sits inside a folder named
+  // for its parent.
+  const dirOf = new Map();
+  const taken = new Set();
+
+  for (const id of ids) {
+    const meta = readMeta(id);
+    let rendered;
+    try {
+      rendered = renderMd(id);
+    } catch (err) {
+      skipped.push(`${id} (${(meta && meta.title) || 'unknown'}): ${err.message}`);
+      // Placed anyway, with the name its title would have given it. Nothing is
+      // written at that path; it exists so its children still nest under it.
+      placeIn(dirOf, taken, meta, id, safeBase(slug((meta && meta.title) || ''), id));
+      continue;
+    }
+    const dir = placeIn(dirOf, taken, meta, id, safeBase(rendered.slug, id));
+    entries.push({ name: `${dir}.md`, data: rendered.markdown });
+    for (const a of rendered.assets) {
+      entries.push({ name: `${dir}.assets/${a.name}`, data: a.svg });
+    }
+  }
+
+  if (!entries.length) return sendJson(res, 404, { error: 'nothing in this subtree could be exported' });
+  if (skipped.length) {
+    entries.push({
+      name: 'NOT-EXPORTED.txt',
+      data: `These specs are part of the tree and are not in this archive:\n\n${skipped.join('\n')}\n`,
+    });
+  }
+
+  // The root's own file name, which renderMd already slugged for us.
+  const rootEntry = entries.find((e) => !e.name.includes('/') && e.name.endsWith('.md'));
+  const name = safeBase(rootEntry && rootEntry.name.replace(/\.md$/, ''), rootId);
+  const archive = zip(entries);
+  res.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Disposition': `attachment; filename="${name}.zip"`,
+    'Content-Length': archive.length,
+    'Cache-Control': 'no-store',
+  });
+  return res.end(archive);
+}
+
+/**
+ * A spec and its subtree as one document, for printing.
+ *
+ * Served in the embed mode a child panel uses: no menu, no rail, nothing to
+ * click, because the reader is not reading this — the printer is. But the layer
+ * itself is there, because a mermaid block is source until it renders, and a
+ * parent printed without it came out with its diagrams as code, which is
+ * usually the thing the tree was being printed to see. Prism and the
+ * interactive components are in the same position.
+ */
+function serveFlat(id, res) {
+  if (isReservedId(id)) return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
+  let html;
+  try {
+    html = flattenSubtree(id);
+  } catch {
+    return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
+  }
+  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id, embed: true }));
 }
 
 function serveSpec(id, res, { embed = false, theme } = {}) {
@@ -741,6 +867,11 @@ export function createDaemon({ publications: pubs = publications } = {}) {
       if (reserved) return serveComponentsDoc(reserved, res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
       if (sm) {
+        // The flat view: this spec and everything below it as one document, for
+        // printing. The browser's print dialog can only print what is in the
+        // page, and a child lives in an iframe, so a parent printed from its own
+        // page would come out without its children.
+        if (url.searchParams.get('flat') === '1') return serveFlat(sm[1], res);
         // The embed view, for a child shown inside its parent's page. The theme
         // rides along so the frame paints in the parent's on its first render
         // rather than flashing the store's and correcting.

@@ -234,6 +234,27 @@ test('opening the panel moves focus into it, and closing gives it back', async (
   assert.equal(panel(window).contains(window.document.activeElement), false);
 });
 
+test('on a shared page the panel stays inside the token', async (t) => {
+  // A reader holds a capability for a subtree, not for the store, and the
+  // gateway serves /spec/<id> under the token. A panel that built the daemon's
+  // URL would 404 for every reader.
+  const { window } = await bootReviewLayer(t, {
+    children: ROWS,
+    transport: 'poll',
+    api: '/s/abcdef0123456789abcdef0123456789/api',
+  });
+  await openChild(window, 0);
+
+  assert.match(
+    frame(window).getAttribute('src'),
+    /^\/s\/abcdef0123456789abcdef0123456789\/spec\/aaa1111111\?/,
+  );
+  assert.equal(
+    window.document.querySelector('#sf-child-panel .sf-child-newtab').getAttribute('href'),
+    '/s/abcdef0123456789abcdef0123456789/spec/aaa1111111',
+  );
+});
+
 test('an embedded page builds no panel of its own', async (t) => {
   const { window } = await bootReviewLayer(t, { children: ROWS, embed: true });
   assert.equal(panel(window), null);
