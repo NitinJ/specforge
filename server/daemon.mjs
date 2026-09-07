@@ -652,14 +652,29 @@ export function createDaemon({ publications: pubs = publications } = {}) {
         .then((b) => {
           // A reparent lands in one field, but the DELETE route reads its plan,
           // revokes every share in the subtree and only then moves anything. A
-          // reparent arriving in that window takes a spec out of the subtree:
-          // the delete then correctly leaves it standing, with its public link
-          // already revoked and no way to put it back. Refused while the delete
-          // holds it — the revocation is the irreversible half, and a reparent
-          // is a keystroke to retry.
-          if (Object.prototype.hasOwnProperty.call(b || {}, 'parent')
-            && pubs.isDeleting(organize[1])) {
-            return sendJson(res, 409, { error: 'spec is being deleted' });
+          // reparent arriving in that window is refused at BOTH ends of the
+          // edge, because the plan is fixed and each end fails differently:
+          //
+          //   moving a held spec OUT takes it off the plan, so the delete
+          //   correctly leaves it standing — with its public link already
+          //   revoked and no token left to put back;
+          //   moving an unheld spec IN attaches it to a parent the delete is
+          //   about to remove and was never planning to take, so the reparent
+          //   reports success and leaves a spec pointing at nothing.
+          //
+          // Refusing costs a retry. Neither failure can be undone.
+          if (Object.prototype.hasOwnProperty.call(b || {}, 'parent')) {
+            // The edge this request asks for, off the body rather than a stored
+            // meta. Nothing here follows it; it is compared against the set the
+            // running delete is holding and then handed on unchanged.
+            // spec-tree-ok: reads the request's own field, does not walk it
+            const wanted = b.parent;
+            if (pubs.isDeleting(organize[1])) {
+              return sendJson(res, 409, { error: 'spec is being deleted' });
+            }
+            if (typeof wanted === 'string' && pubs.isDeleting(wanted)) {
+              return sendJson(res, 409, { error: 'the parent is being deleted' });
+            }
           }
           return handleOrganize(organize[1], b, res);
         })

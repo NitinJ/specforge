@@ -96,6 +96,29 @@ test('a reparent aimed at a spec a delete is holding is refused', async (t) => {
   assert.equal(existsSync(specDir(child)), false);
 });
 
+test('a reparent INTO a subtree a delete is holding is refused', async (t) => {
+  // The other end of the same edge. The plan is fixed before the revokes, so a
+  // spec attached after it is not taken by the delete: the reparent reports
+  // success and leaves a spec pointing at a parent that is about to be gone.
+  const root = seedSpec({ title: 'Root' });
+  const child = seedSpec({ title: 'Child', parent: root });
+  const outsider = seedSpec({ title: 'Outsider' });
+
+  const d = await withStalledDelete(t);
+  const deleting = fetch(`${d.base}/api/spec/${root}`, { method: 'DELETE', headers: { Origin: d.base } });
+  await d.gate.reached;
+
+  const res = await d.patch(`/api/spec/${outsider}/organize`, { parent: child });
+  assert.equal(res.status, 409);
+  assert.equal((await res.json()).error, 'the parent is being deleted');
+  assert.equal(readMeta(outsider).parent, null, 'the reparent was refused and still wrote');
+
+  d.gate.release();
+  await deleting;
+  assert.equal(existsSync(specDir(outsider)), true, 'a spec outside the plan was deleted');
+  assert.equal(readMeta(outsider).parent, null, 'left pointing at a spec that is gone');
+});
+
 test('a move that is not a reparent still lands during a delete', async (t) => {
   // The refusal is about the tree edge, which is the only field that can change
   // what a running delete covers. Filing a spec elsewhere does not.
