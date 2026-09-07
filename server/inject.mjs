@@ -33,8 +33,19 @@ const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'spe
  *   publication.
  * @returns {string} HTML with the live tracker + review layer injected
  */
-export function injectReviewLayer(html, { specId, transport = 'sse', api, servedAt } = {}) {
+export function injectReviewLayer(html, {
+  specId, transport = 'sse', api, servedAt, embed = false, theme: themeOverride,
+} = {}) {
   let out = renderLiveTracker(html);
+
+  // The embed view: this page is about to be shown inside another spec's page,
+  // in an iframe, read only. The chrome is suppressed by the client (see the
+  // `embed` branch in review.js boot), and the one thing that has to happen
+  // here is the links: a click on an ordinary link inside a frame replaces the
+  // frame, which would leave the reader looking at an unrelated page in a panel
+  // that claims to be showing a child spec. Same-document anchors are left
+  // alone, because following one is the reader scrolling, not leaving.
+  if (embed) out = openLinksInNewTab(out);
 
   // ui.css first: review.css is the layer's own chrome, and where the two speak
   // about the same thing (a dialog, a message) the layer's sheet should win.
@@ -46,12 +57,17 @@ export function injectReviewLayer(html, { specId, transport = 'sse', api, served
   // Named rather than spread: ui.json also holds the index page's collection
   // order, and this same layer is what a published spec serves to a stranger.
   const { theme, font, mono } = readGlobalPrefs();
+  // A frame is painted by whoever opened it, so the parent's theme wins over the
+  // store's when one is passed. Validated against the two it can be: this value
+  // arrives from a query string and ends up in the client config.
+  const framed = themeOverride === 'dark' || themeOverride === 'light' ? themeOverride : null;
   const layer = reviewSnippet(specId, {
     ...(theme ? { theme } : {}),
     ...(font ? { font } : {}),
     ...(mono ? { mono } : {}),
     ...readPrefs(specId),
-  }, transport, api, servedAt);
+    ...(framed ? { theme: framed } : {}),
+  }, transport, api, servedAt, embed);
   if (out.includes('</body>')) {
     out = out.replace('</body>', `${layer}\n</body>`);
   } else {
@@ -193,7 +209,56 @@ function pollWatcher(api, interval, servedAt) {
 /** How often a published page asks whether the spec moved. */
 const POLL_INTERVAL_MS = 5000;
 
-function reviewSnippet(specId, prefs, transport, api, servedAt) {
+/**
+ * Point every off-document link at a new tab.
+ *
+ * Only `href` values that navigate away: a `#fragment` stays in the frame,
+ * because following it is scrolling. An anchor that already names a target is
+ * left as its author wrote it.
+ */
+/**
+ * The attributes of one tag, by name.
+ *
+ * A scanner rather than a pattern per question, which is what this was and what
+ * kept being wrong. Every failure had the same shape: text that looks like an
+ * attribute but is part of a value. `target=` in a query string; `/target=` in
+ * an unquoted URL's path; ` href=` inside a title. A scanner cannot be fooled by
+ * any of them, because it consumes each value before looking for the next name,
+ * so the inside of a value is never read as one.
+ *
+ * `data-target` is a different name from `target` and comes back as itself. A
+ * repeated attribute keeps its first value, which is what browsers do.
+ *
+ * @param {string} s the text between `<a` and `>`
+ * @returns {Record<string,string>} lowercased names to values, '' when valueless
+ */
+function tagAttrs(s) {
+  const out = {};
+  // A name starts the string or follows whitespace or a `/` — HTML allows the
+  // solidus as a separator, and browsers follow `<a/href="…">`.
+  const re = /(?:^|[\s/])([a-z_:][-\w:.]*)(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]*)))?/gi;
+  let m = re.exec(s);
+  while (m) {
+    const name = m[1].toLowerCase();
+    if (!(name in out)) out[name] = m[3] ?? m[4] ?? m[5] ?? '';
+    m = re.exec(s);
+  }
+  return out;
+}
+
+function openLinksInNewTab(html) {
+  // Quote-aware, because a `>` inside an href is not the end of the tag. The
+  // naive scan stopped there, matched no href, and left the one link most in
+  // need of a target without one — so the frame navigated to it.
+  return html.replace(/<a\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi, (tag, attrs) => {
+    const at = tagAttrs(attrs);
+    if (at.target !== undefined) return tag;
+    if (!at.href || at.href.startsWith('#')) return tag;
+    return `<a${attrs} target="_blank" rel="noopener noreferrer">`;
+  });
+}
+
+function reviewSnippet(specId, prefs, transport, api, servedAt, embed) {
   const id = JSON.stringify(specId);
   // Embed the persisted prefs (store-wide theme/font + per-spec width/…) so
   // review.js applies them on boot with no flash and no extra round-trip.
@@ -205,6 +270,8 @@ function reviewSnippet(specId, prefs, transport, api, servedAt) {
   const base = api || `/api/spec/${specId}`;
   const cfg = JSON.stringify({
     specId, prefs: prefs || {}, transport, api: base,
+    // Read only, inside somebody else's page: no chrome, and no writes.
+    ...(embed ? { embed: true } : {}),
     // The library's block components, so the review client can anchor a comment
     // to every one of them. Without this the client's selector list and the
     // lint's idea of what is commentable drift apart, and the lint silences a
@@ -272,9 +339,13 @@ ${watcher}
 <!-- Before review.js, which reads it off window while rendering a diagram: an
      author's own fill and stroke are inline and no stylesheet can retint them. -->
 <script src="/public/mermaid-theme.js" defer></script>
-<script src="/public/review.js" defer></script>
+<script src="/public/review.js" defer></script>${embed ? '' : `
 <!-- The full-screen preview, after review.js because it is review.js that tells
-     it which block is hovered. zoom-view.js first: zoom.js reads it off window. -->
+     it which block is hovered. zoom-view.js first: zoom.js reads it off window.
+     Not in the embed view: the trigger is drawn by the chrome's hover
+     reporting, which that view does not build, so the two assets would be
+     fetched per child for behaviour that cannot happen. A preview clipped to
+     the panel would not be one anyway. -->
 <script src="/public/zoom-view.js" defer></script>
-<script src="/public/zoom.js" defer></script>`;
+<script src="/public/zoom.js" defer></script>`}`;
 }

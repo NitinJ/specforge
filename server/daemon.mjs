@@ -22,7 +22,12 @@
 //   DELETE /api/spec/<id>/aside/<asideId>       → delete an aside + its threads
 //   POST /api/spec/<id>/block/delete            → delete one block (section/tag/text)
 //   POST /api/spec/<id>/rename                  → set title (meta + spec <h1>/<title>)
-//   PATCH /api/spec/<id>/organize               → set tags / collection / project
+//   PATCH /api/spec/<id>/organize               → set tags / collection / project / parent
+//   GET  /api/spec/<id>/children                → the specs naming this one as parent
+//   DELETE /api/spec/<id>                        → move the spec and its subtree
+//                                                  to trash, returning a deletionId
+//   POST /api/deletion/<deletionId>/restore      → put that whole delete back
+//   GET  /api/deletions                          → what can still be restored
 //
 // ensureServer() (below) is the singleton entrypoint every v2 command calls:
 // bind the port, or find out who already has it. Holding the port IS being the
@@ -51,7 +56,9 @@ import {
   handleMeta, handleStatus, handleResolveAll, handleDetach,
   handlePrefsGet, handlePrefsPut, handleGlobalPrefsGet, handleGlobalPrefsPut,
   handleBlocksGet, handleBlocksPut,
-  handleRename, handleOrganize, handleExport, handleDelete, handleAsideDelete, handleBlockDelete,
+  handleRename, handleOrganize, handleChildren,
+  planSubtreeDelete, handleSubtreeDelete, handleRestore, handleDeletions,
+  handleExport, handleDelete, handleAsideDelete, handleBlockDelete,
 } from '../lib/store-api.mjs';
 import { ensureTemplates } from '../lib/store-templates.mjs';
 import { createPublications } from '../lib/publications.mjs';
@@ -137,7 +144,7 @@ function serveMarkdown(id, res) {
   return res.end(archive);
 }
 
-function serveSpec(id, res) {
+function serveSpec(id, res, { embed = false, theme } = {}) {
   let html;
   // A reserved entry has a spec's layout on disk, which is what makes the review
   // APIs work on it. This route is where the difference is enforced: the library
@@ -148,7 +155,7 @@ function serveSpec(id, res) {
   } catch {
     return send(res, 404, 'text/plain; charset=utf-8', 'spec not found');
   }
-  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id }));
+  send(res, 200, 'text/html; charset=utf-8', injectReviewLayer(html, { specId: id, embed, theme }));
 }
 
 /**
@@ -507,6 +514,11 @@ export function createDaemon({ publications: pubs = publications } = {}) {
         .then((b) => handleRename(rename[1], b, res))
         .catch(() => sendJson(res, 400, { error: 'invalid JSON body' }));
     }
+    const children = path.match(/^\/api\/spec\/([\w-]+)\/children$/);
+    if (children) {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleChildren(children[1], res);
+    }
     const organize = path.match(/^\/api\/spec\/([\w-]+)\/organize$/);
     if (organize) {
       if (method !== 'PATCH') return sendJson(res, 405, { error: 'method not allowed' });
@@ -643,15 +655,46 @@ export function createDaemon({ publications: pubs = publications } = {}) {
     const specRes = path.match(/^\/api\/spec\/([\w-]+)$/);
     if (specRes) {
       if (method !== 'DELETE') return sendJson(res, 405, { error: 'method not allowed' });
-      // Revoke first, and keep new shares for this spec refused for the whole
-      // delete. The delete removes the directory holding the share record, so a
-      // share committing anywhere inside it would leave a public URL serving a
-      // spec that no longer exists, with nothing on disk left to find it by.
-      return pubs.unshareThen(specRes[1], () => handleDelete(specRes[1], res))
+      const rootId = specRes[1];
+
+      // A delete now takes the whole subtree, so the plan is read first: a
+      // template anywhere below refuses the delete rather than stopping it
+      // halfway, and the ids are needed to revoke every share before anything
+      // moves.
+      const plan = planSubtreeDelete(rootId);
+      if (plan.error) return sendJson(res, plan.status, { error: plan.error });
+
+      // Revoke first, and keep new shares refused for the whole delete. The
+      // delete moves the directory holding the share record, so a share
+      // committing anywhere inside it would leave a public URL serving a spec
+      // that is no longer there, with nothing on disk left to find it by.
+      //
+      // Nested rather than looped in parallel: unshareThen holds a per-spec
+      // guard for the duration of its callback, and every spec in the subtree
+      // has to stay guarded until the last one has moved.
+      const revokeAll = (ids, run) => (ids.length === 0
+        ? run()
+        : pubs.unshareThen(ids[0], () => revokeAll(ids.slice(1), run)));
+
+      // The same ids the guards above ran against are handed to the delete, so
+      // a reparent landing during the revokes cannot change what is removed.
+      return revokeAll(plan.ids, () => handleSubtreeDelete(rootId, res, plan.ids))
         // Deleting the last spec of a published project empties it, the same
         // way an organize move can. Swept behind the response, like the others.
         .then(() => { pubs.sweepProjects(); })
         .catch((e) => sendJson(res, 500, { error: e.message }));
+    }
+
+    // Restore everything one delete moved. Keyed by the deletion, not by a spec:
+    // a subtree delete is one action and comes back as one.
+    const restore = path.match(/^\/api\/deletion\/([\w-]+)\/restore$/);
+    if (restore) {
+      if (method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleRestore(restore[1], res);
+    }
+    if (path === '/api/deletions') {
+      if (method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' });
+      return handleDeletions(res);
     }
 
     if (method === 'GET') {
@@ -697,7 +740,15 @@ export function createDaemon({ publications: pubs = publications } = {}) {
       const reserved = reservedIdForRoute(path);
       if (reserved) return serveComponentsDoc(reserved, res);
       const sm = path.match(/^\/spec\/([\w-]+)$/);
-      if (sm) return serveSpec(sm[1], res);
+      if (sm) {
+        // The embed view, for a child shown inside its parent's page. The theme
+        // rides along so the frame paints in the parent's on its first render
+        // rather than flashing the store's and correcting.
+        return serveSpec(sm[1], res, {
+          embed: url.searchParams.get('embed') === '1',
+          theme: url.searchParams.get('theme'),
+        });
+      }
       const pub = path.match(/^\/public\/([\w.-]+)$/);
       if (pub) return serveStatic(pub[1], res, req);
     }

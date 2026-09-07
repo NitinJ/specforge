@@ -69,7 +69,13 @@ test('DELETE /api/spec/:id removes a spec and drops it from its session', async 
   assert.deepEqual(specsForSession('sess-del'), [specId], 'attached first');
   const r = await send('DELETE', `/api/spec/${specId}`);
   assert.equal(r.status, 200);
-  assert.deepEqual(await r.json(), { ok: true, id: specId });
+  // The response gained `deletionId` and `removed` when delete became a subtree
+  // operation: a caller has to be told what went, and how to put it back.
+  const body = await r.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.id, specId);
+  assert.deepEqual(body.removed, [specId], 'a leaf removes exactly itself');
+  assert.ok(body.deletionId, 'the delete is undoable, so it names itself');
   assert.equal(existsSync(specDir(specId)), false, 'spec dir removed');
   assert.equal(readMeta(specId), null, 'meta gone');
   assert.deepEqual(specsForSession('sess-del'), [], 'dropped from the session index');
