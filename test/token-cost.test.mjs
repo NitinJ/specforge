@@ -96,11 +96,24 @@ test('comments with nothing pending returns empty threads, not the whole spec', 
 
 // --- R2: compact list output ---
 
-test('formatRowsCompact prints one line per spec: id status type attached title', () => {
+test('formatRowsCompact prints one line per spec: id status type attached parent title', () => {
   const line = formatRowsCompact([
     { id: 'b912d210dd', title: 'UX architecture', type: 'design', status: 'draft', attached: 'free' },
   ]);
-  assert.equal(line, 'b912d210dd  draft  design  free  UX architecture');
+  // A dash for no parent, so the columns hold their positions whether or not a
+  // spec is in a tree.
+  assert.equal(line, 'b912d210dd  draft  design  free  -  UX architecture');
+});
+
+test('formatRowsCompact names the parent of a child spec', () => {
+  const lines = formatRowsCompact([
+    { id: 'b912d210dd', title: 'Design', type: 'design', status: 'draft', attached: 'free' },
+    {
+      id: 'c8fb987ad0', title: 'Testing', type: 'test-plan', status: 'draft',
+      attached: 'free', parent: 'b912d210dd',
+    },
+  ]);
+  assert.match(lines, /c8fb987ad0 {2}draft {2}test-plan {2}free {2}b912d210dd {2}Testing/);
 });
 
 test('formatRowsCompact marks the calling session\'s specs as mine', () => {
@@ -109,9 +122,9 @@ test('formatRowsCompact marks the calling session\'s specs as mine', () => {
     { id: 'bbb', title: 'Held elsewhere', type: 'design', status: 'draft', attached: 'sess-9' },
     { id: 'ccc', title: 'Free', type: 'design', status: 'draft', attached: 'free' },
   ], 'sess-1');
-  assert.match(lines, /aaa  draft  design  mine  Mine/);
-  assert.match(lines, /bbb  draft  design  sess-9  Held elsewhere/);
-  assert.match(lines, /ccc  draft  design  free  Free/);
+  assert.match(lines, /aaa  draft  design  mine  -  Mine/);
+  assert.match(lines, /bbb  draft  design  sess-9  -  Held elsewhere/);
+  assert.match(lines, /ccc  draft  design  free  -  Free/);
 });
 
 test('formatRowsCompact handles an empty store', () => {

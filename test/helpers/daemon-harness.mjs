@@ -98,8 +98,9 @@ export async function startDaemon() {
  */
 export async function startGateway(resolve) {
   const tokens = new Map();
+  const projects = new Map();
   const resolver = resolve || ((t) => tokens.get(t) || null);
-  const server = createGatewayServer(resolver);
+  const server = createGatewayServer(resolver, (t) => projects.get(t) || null);
   const sockets = trackSockets(server);
   const port = await listen(server);
   const base = `http://127.0.0.1:${port}`;
@@ -110,10 +111,17 @@ export async function startGateway(resolve) {
     base,
     server,
     tokens,
+    projects,
     close: () => closeHard(server, sockets),
     share(specId) {
       const token = newToken();
       tokens.set(token, specId);
+      return token;
+    },
+    /** The other share scheme: a whole project, served under /p/<token>. */
+    shareProject(name) {
+      const token = newToken();
+      projects.set(token, name);
       return token;
     },
     get: (path) => fetch(base + path),

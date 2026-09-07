@@ -159,6 +159,26 @@ test('the same page without the flag builds its chrome, so the test is not vacuo
   assert.ok(window.document.querySelector('#sf-launcher'), 'the launcher is missing without embed');
 });
 
+test('an embedded page still renders its diagrams', async (t) => {
+  // A child showing its mermaid source as a code block is a spec the reader
+  // cannot read. The first version of the embed branch returned before
+  // initMermaid, and every assertion still passed: only a screenshot showed it.
+  let rendered = false;
+  await bootReviewLayer(t, {
+    embed: true,
+    body: '<main><pre data-lang="mermaid"><code>flowchart LR\n  A --&gt; B</code></pre></main>',
+    preBoot: (window) => {
+      window.mermaid = {
+        initialize() {},
+        run: async () => { rendered = true; },
+        render: async () => { rendered = true; return { svg: '<svg/>' }; },
+      };
+    },
+  });
+  await new Promise((r) => { setTimeout(r, 50); });
+  assert.equal(rendered, true, 'the embed view never asked mermaid to render');
+});
+
 test('an embedded page still applies the theme', async (t) => {
   const { window } = await bootReviewLayer(t, { embed: true, prefs: { theme: 'light' } });
   assert.equal(window.document.documentElement.getAttribute('data-theme'), 'light');

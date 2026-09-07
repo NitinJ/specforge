@@ -242,13 +242,40 @@ export async function bootReviewLayer(t, opts = {}) {
     if (String(url).indexOf('/children') !== -1) {
       // Defaults to none, which is what every spec written before child specs
       // has, and what the menu row's absence is asserted against.
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ children: opts.children || [] }),
-      });
+      //
+      // `childrenById` answers for a spec other than the page's own, which is
+      // how descending into a grandchild is exercised: the panel asks the child
+      // it is showing who ITS children are.
+      const forSpec = String(url).match(/\/api\/spec\/([\w-]+)\/children/);
+      const other = forSpec && forSpec[1] !== 'test-spec'
+        ? (opts.childrenById || {})[forSpec[1]] || []
+        : opts.children || [];
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ children: other }) });
     }
     if (String(url).indexOf('/meta') !== -1) {
-      return Promise.resolve({ json: () => Promise.resolve(meta) });
+      // `metaGate` hands the test control of when each meta request settles, so
+      // a slow response for one child can be made to land after another was
+      // opened. Races are not testable by timing.
+      if (opts.metaGate) {
+        return new Promise((resolveP, rejectP) => {
+          opts.metaGate(
+            String(url),
+            () => resolveP({ ok: true, json: () => Promise.resolve(meta) }),
+            (e) => rejectP(e || new Error('gone')),
+          );
+        });
+      }
+      // `childGone` is a child deleted between the drawer rendering and the
+      // reader clicking it: the meta 404s while the page around it is fine.
+      const forSpec = String(url).match(/\/api\/spec\/([\w-]+)\/meta/);
+      if (opts.childGone && forSpec && forSpec[1] !== 'test-spec') {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: () => Promise.resolve({ error: 'spec not found' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(meta) });
     }
     return Promise.resolve({ text: () => Promise.resolve(threadsJson) });
   };
