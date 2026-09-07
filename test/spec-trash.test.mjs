@@ -169,11 +169,30 @@ test('listDeletions reports what can be restored, newest first', () => {
   const a = deleteSubtree(first);
   const b = deleteSubtree(second);
 
+  // Both deletes land in the same millisecond often enough to make this flaky
+  // on the clock rather than on the code, so the older one is dated back. The
+  // tie itself is covered by the test below.
+  const olderPath = trashRecordPath(a.deletionId);
+  const older = JSON.parse(readFileSync(olderPath, 'utf8'));
+  older.deletedAt -= 1000;
+  writeFileSync(olderPath, JSON.stringify(older));
+
   const listed = listDeletions();
   assert.equal(listed.length, 2);
   assert.deepEqual(listed.map((d) => d.deletionId), [b.deletionId, a.deletionId]);
   assert.equal(listed[0].rootTitle, 'Second');
   assert.equal(listed[0].count, 1);
+});
+
+test('two deletions in the same millisecond list in a stable order', () => {
+  deleteSubtree(seedSpec({ title: 'First' }));
+  deleteSubtree(seedSpec({ title: 'Second' }));
+
+  // Arbitrary is fine; changing between reads is not. A listing that reorders
+  // itself is a restore control that moves under the cursor.
+  const once = listDeletions().map((d) => d.deletionId);
+  assert.deepEqual(listDeletions().map((d) => d.deletionId), once);
+  assert.equal(once.length, 2);
 });
 
 test('listDeletions is empty on a store that has never deleted anything', () => {

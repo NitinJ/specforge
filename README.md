@@ -73,6 +73,28 @@ own `--type`, its own template to comment on, and its own row in the type filter
 Already have a doc? `/specforge:convert <file>` brings a `.md` or `.html` into
 the store, either as-is or re-authored into house style.
 
+### Split a spec that has grown
+
+A spec that covers a lot of ground gets hard to review in one pass. A **child
+spec** moves one area of it into a spec of its own: the code grounding behind a
+design, the research it rests on, the testing strategy that follows from it.
+
+Ask for one when you write the spec, or in a review comment on it. A child is a
+full spec, with its own URL, its own status and its own review cycle. What makes
+it a child is one field, and what that buys you:
+
+- it appears under its parent on the home page, indented, rather than as another
+  row in the list;
+- the parent's **Child specs** drawer lists them, and opening one shows it in
+  place, read only. Open it in its own tab to comment on it;
+- sharing the parent shares the whole tree, so a reader is never handed a
+  document with holes in it;
+- deleting the parent takes the children with it, and offers an undo. To keep
+  one, take it out of the tree first with
+  `specforge reparent <id> --detach`;
+- exporting to markdown gives you the tree as a zip; printing or exporting to
+  Google Docs gives you one flattened document.
+
 ### Review it in the browser
 
 Hover any block, click, and type. Threads stick to the block they were left on
@@ -266,8 +288,17 @@ nudge when the code drifts from the plan. Hooks are fail-safe: any error exits
 | `/specforge:convert <file>` | Bring an existing doc into the store |
 | `/specforge:export-md` | Write a spec out as markdown, diagrams included |
 | `/specforge:list` | Specs attached to this session |
-| `/specforge:listall` | Every spec, with the index URL |
+| `/specforge:listall` | Every spec, with the index URL and each spec's parent |
 | `/specforge:start` | Start or reuse the review server, print the index URL |
+
+For the tree, from a terminal:
+
+| Command | Does |
+|---|---|
+| `specforge create --parent <id>` | Scaffold a child spec under an existing one |
+| `specforge reparent <id> --to <parentId>` | Move a spec under another |
+| `specforge reparent <id> --detach` | Take it out of its tree, so its parent's deletion leaves it standing |
+| `specforge restore [deletionId]` | List what a delete moved, or put one whole delete back |
 
 Reviewing needs no command. Submitted comments reach the session that owns the
 spec on their own.
