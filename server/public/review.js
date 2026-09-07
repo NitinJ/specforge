@@ -393,13 +393,17 @@ function sfRevealDisclosures(el) {
     // The embed view: this page is inside another spec's page, in a frame, and
     // the reader is looking at it rather than working on it.
     //
-    // Everything above still runs, because all of it is what makes a spec
-    // readable. Everything below does not: a second launcher and a second
-    // contents rail inside a panel are noise, a comment affordance here would
-    // write to a spec the reader did not open, and the block-registry sync is a
-    // write, so it would edit a document from inside somebody else's page. To
-    // comment on a child you open it in its own tab, which is what the panel's
-    // control is for.
+    // Everything that makes a spec READABLE still runs, and that includes the
+    // diagrams: an embedded child rendering its mermaid source as a code block
+    // is a spec the reader cannot actually read. Rendered here rather than
+    // below, because everything below is about working on a document — a second
+    // launcher and a second contents rail inside a panel are noise, a comment
+    // affordance would write to a spec the reader did not open, and the
+    // block-registry sync is a write, so it would edit a document from inside
+    // somebody else's page. To comment on a child you open it in its own tab,
+    // which is what the panel's control is for.
+    //
+    // syncBlocks is deliberately not called: it is the write.
     if ((window.SPECFORGE || {}).embed) {
       initMermaid(function () {});
       return;
@@ -2220,6 +2224,12 @@ function sfRevealDisclosures(el) {
   // after the section it came from. That is the model, and it is what makes
   // export, anchoring, comments and the gate work with nothing written for them.
   //
+  // The CHILD PANEL above looks like this and is the opposite underneath. An
+  // aside's content is already in this document; a child spec is a different
+  // document, loaded into a frame. Nothing about a child is ever in this page's
+  // DOM, which is why it does not appear in the block registry, the contents
+  // rail, or anything this page prints.
+  //
   // The rendering is separate: the section is MOVED out of the flow into a
   // right-hand panel, because a draft you have not accepted should not push the
   // document you are reading down the page. Moved, not copied — one aside, one
@@ -2660,7 +2670,20 @@ function sfRevealDisclosures(el) {
     menuGroup('Export', [
       // Export PDF — open the print dialog (pick "Save as PDF"); the review
       // chrome is hidden by the print stylesheet so the PDF is just the spec.
-      menuRow('⤓', 'Export PDF', function () { closeMenu(); window.print(); }),
+      //
+      // A spec with children prints the FLAT view instead. The print dialog can
+      // only print what is in the page, and a child lives in an iframe, so
+      // printing this page would produce a document with the children missing
+      // and nothing to say so.
+      menuRow('⤓', 'Export PDF', function () {
+        closeMenu();
+        if (!childSpecs.length) return window.print();
+        var w = window.open(SPEC_ROOT + '/spec/' + encodeURIComponent(SPEC) + '?flat=1', '_blank');
+        if (!w) return flashErr('Allow pop-ups to print a spec with its children.');
+        // Printed from the new window once it has the document. Its own load
+        // event, not a timer: a spec with diagrams takes as long as it takes.
+        w.addEventListener('load', function () { w.print(); });
+      }),
       // Google Docs — relayed through the attached session (it runs the Drive
       // MCP); the row reflects meta.export and updates live on the poll.
       exportRow(),
