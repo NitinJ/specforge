@@ -280,3 +280,37 @@ test('a project reader is not told a parent outside the project', async () => {
   const body = await (await g.get(`/p/${g.shareProject('beta')}/spec/${kid}/api/meta`)).json();
   assert.equal(body.parent, null);
 });
+
+test('a reader printing a shared parent gets the whole tree, not just the root', async () => {
+  const t = tree();
+  g = await startGateway();
+  const token = g.share(t.root);
+
+  const res = await g.get(`/s/${token}/spec/${t.root}?flat=1`);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  for (const title of ['Root', 'A', 'B', 'Grand']) {
+    assert.match(html, new RegExp(title), `${title} is missing from the flat document`);
+  }
+  assert.doesNotMatch(html, /Somebody else/, 'the flat view reached outside the grant');
+});
+
+test('the flat view of a spec the token does not cover is refused', async () => {
+  const t = tree();
+  g = await startGateway();
+  const token = g.share(t.a);
+
+  for (const id of [t.root, t.b, t.outside]) {
+    assert.equal((await g.get(`/s/${token}/spec/${id}?flat=1`)).status, 404, id);
+  }
+});
+
+test('the flat view of a child covers that child and below, and no more', async () => {
+  const t = tree();
+  g = await startGateway();
+
+  const html = await (await g.get(`/s/${g.share(t.a)}/spec/${t.a}?flat=1`)).text();
+  assert.match(html, /Grand/);
+  assert.doesNotMatch(html, /Somebody else/);
+});
+

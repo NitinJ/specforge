@@ -259,3 +259,73 @@ test('an embedded page builds no panel of its own', async (t) => {
   const { window } = await bootReviewLayer(t, { children: ROWS, embed: true });
   assert.equal(panel(window), null);
 });
+
+
+function fakeWindow(window, { rendered = false } = {}) {
+  const html = window.document.implementation.createHTMLDocument('flat');
+  if (rendered) html.documentElement.setAttribute('data-sf-render', 'done');
+  return {
+    closed: false,
+    printed: 0,
+    document: html,
+    print() { this.printed += 1; },
+    finishRendering() { html.documentElement.setAttribute('data-sf-render', 'done'); },
+  };
+}
+
+async function clickExportPdf(window, open) {
+  window.open = open;
+  window.document.querySelector('#sf-launcher').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const rows = Array.prototype.slice.call(window.document.querySelectorAll('#sf-menu .sf-menu-row'));
+  rows.find((el) => /Export PDF/.test(el.textContent)).click();
+  await new Promise((r) => window.setTimeout(r, 0));
+}
+
+test('a parent prints the flat view rather than its own page', async (t) => {
+  const { window } = await bootReviewLayer(t, { children: ROWS });
+  let asked = null;
+  const flat = fakeWindow(window, { rendered: true });
+  await clickExportPdf(window, (url) => { asked = url; return flat; });
+
+  assert.match(asked, /\/spec\/[^?]+\?flat=1$/, 'the parent printed its own page, children missing');
+});
+
+test('printing waits for the flat window to finish drawing itself', async (t) => {
+  const { window } = await bootReviewLayer(t, { children: ROWS });
+  const flat = fakeWindow(window);
+  await clickExportPdf(window, () => flat);
+
+  await new Promise((r) => window.setTimeout(r, 400));
+  assert.equal(flat.printed, 0, 'printed while the diagrams were still source');
+
+  flat.finishRendering();
+  await new Promise((r) => window.setTimeout(r, 400));
+  assert.equal(flat.printed, 1, 'never printed once the page was drawn');
+});
+
+test('printing is not held for ever by a window that never finishes', async (t) => {
+  const { window } = await bootReviewLayer(t, { children: ROWS });
+  const flat = fakeWindow(window);
+  await clickExportPdf(window, () => flat);
+
+  flat.closed = true;
+  await new Promise((r) => window.setTimeout(r, 400));
+  assert.equal(flat.printed, 0, 'a closed window was printed');
+});
+
+test('a leaf still prints its own page', async (t) => {
+  const { window } = await bootReviewLayer(t, { children: [] });
+  let opened = 0;
+  let printed = 0;
+  window.open = () => { opened += 1; return null; };
+  window.print = () => { printed += 1; };
+  window.document.querySelector('#sf-launcher').click();
+  await new Promise((r) => window.setTimeout(r, 0));
+  const rows = Array.prototype.slice.call(window.document.querySelectorAll('#sf-menu .sf-menu-row'));
+  rows.find((el) => /Export PDF/.test(el.textContent)).click();
+
+  assert.equal(opened, 0, 'a spec with no children opened a second window');
+  assert.equal(printed, 1);
+});
+

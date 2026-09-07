@@ -213,3 +213,33 @@ test('a cycle member keeps its own address rather than a neighbour\u2019s', () =
     assert.equal(row.getAttribute('data-p'), readMeta(id).project || '');
   }
 });
+
+test('a refiled child is filtered by the section it is drawn in, not the one it is filed in', () => {
+  const root = seedSpec({ title: 'Root', project: 'alpha', collection: 'Design' });
+  const child = seedSpec({ title: 'Child', parent: root, project: 'beta', collection: 'Testing' });
+
+  const row = dom().querySelector(`li.row[data-id="${child}"]`);
+  assert.equal(row.getAttribute('data-gp'), 'alpha', 'the filter would show it under beta');
+  assert.equal(row.getAttribute('data-gc'), 'Design', 'the filter would show it under Testing');
+  assert.equal(row.getAttribute('data-p'), 'beta', 'the move controls lost its own address');
+  assert.equal(row.getAttribute('data-c'), 'Testing', 'the move controls lost its own address');
+});
+
+test('a root and an unrelated spec are drawn where they are filed', () => {
+  const root = seedSpec({ title: 'Root', project: 'alpha', collection: 'Design' });
+  const other = seedSpec({ title: 'Other', project: 'beta', collection: 'Testing' });
+
+  const doc = dom();
+  for (const [id, p, c] of [[root, 'alpha', 'Design'], [other, 'beta', 'Testing']]) {
+    const row = doc.querySelector(`li.row[data-id="${id}"]`);
+    assert.equal(row.getAttribute('data-gp'), p);
+    assert.equal(row.getAttribute('data-gc'), c);
+  }
+});
+
+test('the filters read the drawn address', () => {
+  const html = renderIndex({});
+  assert.match(html, /function projOk\(r\)\{ return fproj===null\|\|r\.getAttribute\('data-gp'\)===fproj; \}/);
+  assert.match(html, /fcoll===null\|\|r\.getAttribute\('data-gc'\)===fcoll/);
+});
+

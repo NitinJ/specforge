@@ -276,6 +276,14 @@ function rowHtml(m, sig, { depth = 0, kids = 0, parentTitle = '' } = {}) {
   const filed = m.filed || m;
   const coll = filed.collection || '';
   const proj = filed.project || '';
+  // Where the row is DRAWN — the root's address, from groupByRoot. The two
+  // differ only for a child filed away from its parent, and the filters have to
+  // read this one: a section is emitted under the root's project, so filtering
+  // by the child's own would re-show that whole foreign section around it and
+  // leave the visible heading disagreeing with the selected project. Identical
+  // for collections, hence both.
+  const drawnColl = m.collection || '';
+  const drawnProj = m.project || '';
   const key = esc(`${m.id} ${titleRaw} ${rawType} ${rawStatus} ${m.attachedSession ? sessionDisplay(m) : 'free'} ${tags.join(' ')} ${coll} ${proj}`.toLowerCase());
   const chips = tags.map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}<button class="x" type="button" title="Remove tag" aria-label="Remove tag">×</button></span>`).join('');
   // "Connected" is a beating watcher, not merely an attached session — see
@@ -299,7 +307,7 @@ function rowHtml(m, sig, { depth = 0, kids = 0, parentTitle = '' } = {}) {
   const kidCount = kids
     ? `<span class="kids" title="${kids} child spec${kids === 1 ? '' : 's'}">${kids}</span>` : '';
 
-  return `<li class="row${edge}${depth ? ' kid' : ''}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}" data-depth="${depth}" data-parent="${esc(parentId)}">
+  return `<li class="row${edge}${depth ? ' kid' : ''}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-gc="${esc(drawnColl)}" data-gp="${esc(drawnProj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}" data-depth="${depth}" data-parent="${esc(parentId)}">
   <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
     <a class="title" href="/spec/${id}" title="${title}">${title}</a>${kidCount}${under}
@@ -1610,13 +1618,13 @@ ${strip}
    * nobody asked and put rows on screen the rail says are not here. All projects
    * is the way to search the whole store, and it is where the page opens.
    */
-  function projOk(r){ return fproj===null||r.getAttribute('data-p')===fproj; }
+  function projOk(r){ return fproj===null||r.getAttribute('data-gp')===fproj; }
   function base(r,q,ty){
     return (!q||r.getAttribute('data-k').indexOf(q)!==-1)
       &&(!ty||r.getAttribute('data-t')===ty)
       &&viewOk(r)
       &&projOk(r)
-      &&(fcoll===null||r.getAttribute('data-c')===fcoll);
+      &&(fcoll===null||r.getAttribute('data-gc')===fcoll);
   }
   // Needs-you and Live answer "what should I look at now", and a row that
   // matches must be reachable whether or not its parent does. Every row is

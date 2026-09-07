@@ -405,7 +405,15 @@ function sfRevealDisclosures(el) {
     //
     // syncBlocks is deliberately not called: it is the write.
     if ((window.SPECFORGE || {}).embed) {
-      initMermaid(function () {});
+      // The flag the print path waits on. Mermaid renders asynchronously, so
+      // this document's `load` event fires while the diagrams are still source:
+      // an opener that printed on `load` produced a PDF of code blocks. The
+      // attribute is set whichever way initMermaid settles, because a renderer
+      // that never arrived is a finished outcome too — the print then has the
+      // source, which is what the page has.
+      initMermaid(function () {
+        document.documentElement.setAttribute('data-sf-render', 'done');
+      });
       return;
     }
 
@@ -1758,6 +1766,51 @@ function sfRevealDisclosures(el) {
       : '/api/spec/' + encodeURIComponent(id);
   }
 
+  // The longest the print waits on the flat window's renderers. Above the
+  // renderer's own 15s give-up, so the ordinary slow-bundle case is decided by
+  // the page rather than cut off here.
+  var PRINT_RENDER_TIMEOUT = 20000;
+
+  /**
+   * Print a flat window once it has finished drawing itself.
+   *
+   * Not on `load`: that fires when the bytes are in, and the flat view renders
+   * its mermaid asynchronously after that, so printing there caught the
+   * diagrams as source. The flat page marks itself `data-sf-render="done"` when
+   * its renderers settle, whichever way they settle. Same origin, so the
+   * attribute is readable from here.
+   *
+   * The wait is bounded. A reader who cannot print is worse off than one whose
+   * PDF has a diagram in it as code, so after PRINT_RENDER_TIMEOUT we print
+   * what there is.
+   */
+  function printWhenRendered(w) {
+    var printed = false;
+    var go = function () {
+      if (printed || w.closed) return;
+      printed = true;
+      try { w.print(); } catch (e) { /* the reader closed it, or the browser refused */ }
+    };
+    var ready = function () {
+      try {
+        var d = w.document;
+        return !!(d && d.documentElement
+          && d.documentElement.getAttribute('data-sf-render') === 'done');
+      } catch (e) {
+        // Cross-origin is not reachable here (the flat view is same-origin),
+        // so a throw means the window is going away. Stop waiting on it.
+        return true;
+      }
+    };
+    var t = setInterval(function () {
+      if (printed || w.closed) return clearInterval(t);
+      if (!ready()) return;
+      clearInterval(t);
+      go();
+    }, 120);
+    setTimeout(function () { clearInterval(t); go(); }, PRINT_RENDER_TIMEOUT);
+  }
+
   function openChild(child) {
     if (!child || !child.id || !els.childPanel) return;
     childTrail.push(child);
@@ -2680,9 +2733,7 @@ function sfRevealDisclosures(el) {
         if (!childSpecs.length) return window.print();
         var w = window.open(SPEC_ROOT + '/spec/' + encodeURIComponent(SPEC) + '?flat=1', '_blank');
         if (!w) return flashErr('Allow pop-ups to print a spec with its children.');
-        // Printed from the new window once it has the document. Its own load
-        // event, not a timer: a spec with diagrams takes as long as it takes.
-        w.addEventListener('load', function () { w.print(); });
+        printWhenRendered(w);
       }),
       // Google Docs — relayed through the attached session (it runs the Drive
       // MCP); the row reflects meta.export and updates live on the poll.
