@@ -10,7 +10,7 @@
 // through no matter how it imported its functions.
 
 import { chmodSync, mkdirSync, writeFileSync, statSync, renameSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 
 const restorers = [];
 
@@ -73,6 +73,29 @@ export function moverFailingAt(failAt, code = 'EACCES') {
       err.code = code;
       throw err;
     }
+    // Same as the real mover: the destination's parent may not exist yet. An
+    // earlier version skipped this and every call failed with ENOENT, so the
+    // injected failure never happened and the test measured nothing.
+    mkdirSync(dirname(to), { recursive: true });
+    return renameSync(from, to);
+  };
+  return { move, calls };
+}
+
+/**
+ * A mover that does the real thing and records what it was asked to move.
+ *
+ * For asserting order rather than failure: a subtree has to be moved deepest
+ * first, so that a parent directory is never taken out from under a child that
+ * has not moved yet.
+ *
+ * @returns {{move: Function, calls: string[][]}}
+ */
+export function recordingMover() {
+  const calls = [];
+  const move = (from, to) => {
+    calls.push([from, to]);
+    mkdirSync(dirname(to), { recursive: true });
     return renameSync(from, to);
   };
   return { move, calls };

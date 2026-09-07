@@ -198,6 +198,9 @@ export async function bootReviewLayer(t, opts = {}) {
     // A published page sets this when its poll finds a newer spec. Settable at
     // boot so a test can exercise a stale page without driving the poll.
     ...(opts.stale ? { stale: true } : {}),
+    // The embed view: served to a child spec shown inside its parent's page.
+    // The client builds no chrome and writes nothing when this is set.
+    ...(opts.embed ? { embed: true } : {}),
   };
   // jsdom defaults innerWidth to 1024 (below the TOC auto-collapse threshold);
   // let tests widen it so the floating TOC shows in auto mode.
