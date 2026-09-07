@@ -393,13 +393,17 @@ function sfRevealDisclosures(el) {
     // The embed view: this page is inside another spec's page, in a frame, and
     // the reader is looking at it rather than working on it.
     //
-    // Everything above still runs, because all of it is what makes a spec
-    // readable. Everything below does not: a second launcher and a second
-    // contents rail inside a panel are noise, a comment affordance here would
-    // write to a spec the reader did not open, and the block-registry sync is a
-    // write, so it would edit a document from inside somebody else's page. To
-    // comment on a child you open it in its own tab, which is what the panel's
-    // control is for.
+    // Everything that makes a spec READABLE still runs, and that includes the
+    // diagrams: an embedded child rendering its mermaid source as a code block
+    // is a spec the reader cannot actually read. Rendered here rather than
+    // below, because everything below is about working on a document — a second
+    // launcher and a second contents rail inside a panel are noise, a comment
+    // affordance would write to a spec the reader did not open, and the
+    // block-registry sync is a write, so it would edit a document from inside
+    // somebody else's page. To comment on a child you open it in its own tab,
+    // which is what the panel's control is for.
+    //
+    // syncBlocks is deliberately not called: it is the write.
     if ((window.SPECFORGE || {}).embed) {
       initMermaid(function () {});
       return;
@@ -2219,6 +2223,12 @@ function sfRevealDisclosures(el) {
   // An aside is a section of the spec carrying data-sf-aside, stored directly
   // after the section it came from. That is the model, and it is what makes
   // export, anchoring, comments and the gate work with nothing written for them.
+  //
+  // The CHILD PANEL above looks like this and is the opposite underneath. An
+  // aside's content is already in this document; a child spec is a different
+  // document, loaded into a frame. Nothing about a child is ever in this page's
+  // DOM, which is why it does not appear in the block registry, the contents
+  // rail, or anything this page prints.
   //
   // The rendering is separate: the section is MOVED out of the flow into a
   // right-hand panel, because a draft you have not accepted should not push the

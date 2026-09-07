@@ -614,7 +614,10 @@
      e2e test, which is the only place a real cascade runs. */
   position: fixed; top: 0; right: 0; height: 100vh; z-index: 47;
   width: min(760px, 60vw);
-  background: var(--sf-bg); border-left: 1px solid var(--sf-hairline);
+  /* panel2, not a page background: the review layer has no --sf-bg token, and
+     an undefined custom property resolves to nothing, which left this panel
+     transparent with the page showing through behind the frame. */
+  background: var(--sf-panel2); border-left: 1px solid var(--sf-hairline);
   color: var(--sf-ink); display: none; flex-direction: column;
   box-shadow: -18px 0 44px rgba(0, 0, 0, .24);
 }
@@ -635,19 +638,24 @@
 .sf-crumb:last-child { color: var(--sf-ink); font-weight: 650; }
 .sf-crumb:hover { background: var(--sf-panel2); color: var(--sf-ink); }
 .sf-child-crumbs .sf-crumb + .sf-crumb::before { content: "›"; margin-right: 6px; color: var(--sf-muted); }
+/* Solid, and readable. These sit on the panel's own header, which is a lighter
+   surface than the page: at panel2 they washed out to the point of reading as
+   disabled. */
 .sf-child-down, .sf-child-newtab {
   border: 1px solid var(--sf-line); border-radius: var(--sf-r-xs);
-  background: var(--sf-panel2); color: var(--sf-ink); font: inherit;
-  padding: 3px 8px; cursor: pointer; text-decoration: none; white-space: nowrap;
+  background: var(--sf-panel2); color: var(--sf-ink); font: inherit; font-weight: 600;
+  padding: 4px 10px; cursor: pointer; text-decoration: none; white-space: nowrap;
 }
-.sf-child-down:hover, .sf-child-newtab:hover { border-color: var(--sf-accent); }
+.sf-child-down:hover, .sf-child-newtab:hover {
+  border-color: var(--sf-accent); color: var(--sf-accent);
+}
 .sf-child-close {
   background: none; border: none; color: var(--sf-muted);
   font: 400 20px/1 system-ui, sans-serif; cursor: pointer; padding: 2px 6px;
   border-radius: var(--sf-r-xs);
 }
 .sf-child-close:hover { color: var(--sf-ink); background: var(--sf-panel2); }
-#sf-child-frame { flex: 1; width: 100%; border: 0; background: var(--sf-bg); }
+#sf-child-frame { flex: 1; width: 100%; border: 0; background: var(--sf-panel2); }
 .sf-child-missing { padding: 24px 20px; color: var(--sf-muted); }
 .sf-child-missing p { margin: 0 0 12px; }
 .sf-child-refresh {
@@ -656,6 +664,12 @@
   padding: 4px 10px; cursor: pointer;
 }
 @media (max-width: 900px) { #sf-child-panel { width: 100vw; } }
+/* The floating launcher sits at z-index 48 and would otherwise hover over the
+   panel, on top of a document it has nothing to do with. Hidden while a child
+   is open: the panel has its own close control, and the menu is one Escape
+   away. Same for the back-to-top button, which belongs to the page behind. */
+body.sf-child-open #sf-launcher,
+body.sf-child-open #sf-top { display: none; }
 /* thread card — flat fill + hairline at rest; accent border + inset accent bar
    when active (box-shadow, not border, so the radius is undisturbed). */
 .sf-thread { border: 1px solid var(--sf-line); border-radius: var(--sf-r-md); padding: 10px 12px; margin: 8px 0;
@@ -1068,8 +1082,10 @@ html[data-sf-header] #sf-rail { top: var(--sf-header-h); height: calc(100vh - va
 html[data-sf-header] #sf-sidebar { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
 /* The child drawer shares the comments drawer's gutter, so it shares its offset:
    without this its own header sat behind the fixed spec header, which put the
-   drawer's title and its close control out of reach. */
+   drawer's title and its close control out of reach. The child panel is offset
+   too, so its breadcrumb and controls clear the same bar. */
 html[data-sf-header] #sf-children { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
+html[data-sf-header] #sf-child-panel { top: var(--sf-header-h); height: calc(100vh - var(--sf-header-h)); }
 html[data-sf-header] #sf-top { top: calc(var(--sf-header-h) + 12px); }
 /* The TOC chevron is CENTRED (top:50% with a -50% translate), so it must not be
    given a fixed top like the others — that would drop it to the top edge and
