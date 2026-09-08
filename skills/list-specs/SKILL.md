@@ -11,7 +11,9 @@ allowed-tools: Read, Bash, AskUserQuestion
 
 # list-specs
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory.
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command.
 
 ## Run the CLI
 

@@ -15,7 +15,9 @@ Process one or more **pending review batches** for specs in the global store:
 reply inline to each comment thread and amend the spec per the comments. The
 browser updates live (the spec file change triggers an SSE reload).
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Specs live in the
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command. Specs live in the
 store at `~/.specforge/specs/<id>/spec.html`; you address them by spec **id**
 (the hook message lists each batch's `specId` + `batchId`).
 

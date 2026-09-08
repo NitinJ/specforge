@@ -43,6 +43,7 @@ import { renderIndex } from './index-page.mjs';
 import { renderSettings } from './settings-page.mjs';
 import { handlePromptsGet, handlePromptsPut, handlePromptsReset } from '../lib/prompts-api.mjs';
 import { handleTypeCreate, handleTypeGet, handleTypeDelete } from '../lib/types-api.mjs';
+import { isDirectRun } from '../lib/harness-context.mjs';
 import {
   handleTemplateBlocksGet, handleTemplateBlocksPut, handleTemplateBlocksReset,
 } from '../lib/template-blocks-api.mjs';
@@ -1036,8 +1037,7 @@ export async function ensureServer({ port = defaultPort() } = {}) {
 
 // Runnable like start.mjs: `node server/daemon.mjs` starts the daemon and keeps
 // it alive until SIGINT/SIGTERM.
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) {
+if (isDirectRun(import.meta.url)) {
   ensureServer().then(({ url, server }) => {
     if (!server) {
       console.log(`SpecForge daemon already running: ${url}`);

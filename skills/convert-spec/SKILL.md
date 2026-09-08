@@ -13,8 +13,10 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 
 # convert-spec
 
-Bring an existing file into the SpecForge store. `${CLAUDE_PLUGIN_ROOT}` is the
-installed plugin directory.
+Bring an existing file into the SpecForge store. `${CLAUDE_PLUGIN_ROOT}` below
+denotes the installed plugin directory. Claude and Pi export it; Codex provides
+the exact value in SpecForge SessionStart context. Substitute it in every path
+and shell command.
 
 ## 1. Inspect the source
 

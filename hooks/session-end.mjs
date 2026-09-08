@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readStdin, parseInput } from './lib/io.mjs';
-import { resolveSessionId } from '../lib/harness-context.mjs';
+import { isDirectRun, resolveSessionId } from '../lib/harness-context.mjs';
 import { endSession } from '../lib/attach.mjs';
 
 export function run(input, env = process.env) {
@@ -14,5 +14,4 @@ async function main() {
   run(parseInput(await readStdin()));
 }
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) main().then(() => process.exit(0)).catch(() => process.exit(0));
+if (isDirectRun(import.meta.url)) main().then(() => process.exit(0)).catch(() => process.exit(0));

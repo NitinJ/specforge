@@ -59,6 +59,16 @@ test('hooks no-op when the session owns no specs', () => {
   assert.equal(sessionStartRun({}, env), null);
 });
 
+test('a fresh Codex session receives the installed runtime root', () => {
+  const out = sessionStartRun(
+    { session_id: 'codex-fresh' },
+    { SPECFORGE_HARNESS: 'codex', PLUGIN_ROOT: '/installed path/specforge' },
+  );
+  assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart');
+  assert.match(out.hookSpecificOutput.additionalContext, /\/installed path\/specforge/);
+  assert.match(out.hookSpecificOutput.additionalContext, /CLAUDE_PLUGIN_ROOT/);
+});
+
 test('hooks take the session id from the stdin payload when env lacks it', () => {
   // Claude Code sends session_id in every hook payload; the env var is the
   // fallback. A hook context without CLAUDE_CODE_SESSION_ID must still find

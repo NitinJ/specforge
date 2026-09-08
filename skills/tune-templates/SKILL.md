@@ -32,7 +32,9 @@ is how a type gets silently skipped.
 `template-general` is deliberately section-free: tune its chrome and its authoring
 comment, never add sections to it.
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Templates live in the
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command. Templates live in the
 store at `~/.specforge/specs/template-<type>/spec.html`; the bundled seeds are at
 `${CLAUDE_PLUGIN_ROOT}/templates/spec-base-<type>.html` (fallback + fresh-install).
 
