@@ -443,6 +443,21 @@ test('a claude (agent) comment has no Edit control', async (t) => {
   assert.ok(!c2.querySelector('.sf-edit-c'), 'claude comments are not editable');
 });
 
+test('a Codex agent reply keeps its displayed identity and is not editable', async (t) => {
+  const threads = [{
+    id: 't1', state: 'replied',
+    comments: [
+      { id: 'c1', author: 'human', kind: 'human', body: 'x', batchId: 'b1' },
+      { id: 'c2', author: 'codex', kind: 'agent', body: 'updated the ownership section' },
+    ],
+    anchor: EDIT_ANCHOR,
+  }];
+  const { window } = await bootReviewLayer(t, { threads });
+  const reply = window.document.querySelector('.sf-comment[data-cid="c2"]');
+  assert.match(reply.textContent, /codex/i);
+  assert.equal(reply.querySelector('.sf-edit-c'), null);
+});
+
 // The rail is where a thread is actually read. It rendered comments with its own
 // copy of the markup and lost the Edit control by omission, so the same comment
 // was editable in the sidebar and frozen in the bubble.
@@ -2019,6 +2034,69 @@ test('a connected spec says so, quietly, with nothing to do', async (t) => {
   assert.equal(pill.querySelector('.sf-conn-act'), null, 'nothing to fix');
 });
 
+test('an active Codex foreground worker is labelled Listening', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: {
+      id: 'test-spec', status: 'draft', attachedSession: 'codex-thread', connected: true,
+      delivery: { state: 'ready', mode: 'active-foreground', harness: 'codex' },
+    },
+  });
+  const pill = connPill(window);
+  assert.match(pill.textContent, /Listening/);
+  assert.match(pill.getAttribute('title'), /review mode is active/i);
+  assert.equal(pill.querySelector('.sf-conn-act'), null);
+});
+
+test('a paused Codex thread says Review queued and copies continuation guidance', async (t) => {
+  const copied = [];
+  const { window } = await bootReviewLayer(t, {
+    meta: {
+      id: 'test-spec', status: 'draft', attachedSession: 'codex-thread', connected: false,
+      delivery: { state: 'paused', mode: 'next-turn', harness: 'codex' },
+    },
+    preBoot: (w) => {
+      Object.defineProperty(w.navigator, 'clipboard', {
+        value: { writeText: (text) => { copied.push(text); return Promise.resolve(); } },
+        configurable: true,
+      });
+    },
+  });
+  const pill = connPill(window);
+  assert.match(pill.textContent, /Review queued/);
+  assert.match(pill.querySelector('.sf-conn-act').textContent, /Continue in Codex/);
+  pill.querySelector('.sf-conn-act').click();
+  assert.match(copied[0], /foreground/);
+  assert.match(copied[0], /review-wait/);
+  assert.match(copied[0], /do not take ownership silently/i);
+});
+
+test('an agent working a round is labelled Reviewing without a takeover action', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: {
+      id: 'test-spec', status: 'draft', attachedSession: 'claude-session', connected: false,
+      delivery: { state: 'working', mode: null, harness: 'claude' },
+    },
+  });
+  const pill = connPill(window);
+  assert.match(pill.textContent, /Reviewing/);
+  assert.match(pill.getAttribute('title'), /working on the submitted review/i);
+  assert.equal(pill.querySelector('.sf-conn-act'), null, 'do not offer takeover mid-round');
+});
+
+test('a missing Google Docs integration surfaces its error and offers retry', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: {
+      id: 'test-spec', status: 'draft', attachedSession: 'codex-thread',
+      export: { state: 'error', error: 'Google Drive integration is unavailable' },
+    },
+  });
+  window.document.querySelector('#sf-launcher').click();
+  const row = Array.from(window.document.querySelectorAll('#sf-menu .sf-menu-row'))
+    .find((candidate) => /Export to Google Docs/.test(candidate.textContent));
+  assert.match(row.textContent, /retry/i);
+  assert.match(row.getAttribute('title'), /Google Drive integration is unavailable/);
+});
+
 test('a disconnected spec reads as a fault and offers Reconnect', async (t) => {
   const { window } = await bootReviewLayer(t, {
     meta: { id: 'test-spec', status: 'draft', attachedSession: 'sess-1', sessionLabel: 'session sess-1', connected: false },
@@ -2095,6 +2173,27 @@ test('Reconnect copies a prompt naming this spec and the takeover steps', async 
   assert.match(text, /detach test-spec/, 'frees it from the session that stopped watching');
   assert.match(text, /open test-spec/, 'attaches it to the pasting session');
   assert.match(text, /review-wait/, 'and arms delivery, or it would disconnect again at once');
+});
+
+test('Reconnect targets Codex and keeps its delivery command in the foreground', async (t) => {
+  const copied = [];
+  const { window } = await bootReviewLayer(t, {
+    meta: {
+      id: 'test-spec', status: 'draft', attachedSession: 'old-codex', connected: false,
+      delivery: { state: 'disconnected', mode: null, harness: 'codex' },
+    },
+    preBoot: (w) => {
+      Object.defineProperty(w.navigator, 'clipboard', {
+        value: { writeText: (text) => { copied.push(text); return Promise.resolve(); } },
+        configurable: true,
+      });
+    },
+  });
+  connPill(window).querySelector('.sf-conn-act').click();
+  assert.match(copied[0], /Codex thread/);
+  assert.match(copied[0], /foreground/);
+  assert.doesNotMatch(copied[0], /background/);
+  assert.match(copied[0], /detach test-spec/, 'a different owner still requires explicit transfer');
 });
 
 // ---------- launcher unresolved-comment pill ----------

@@ -76,11 +76,10 @@ function sfRevealDisclosures(el) {
     return c.author === 'claude';
   }
 
-  /** The letter on a bubble: the agent's C, else the author's own initial. */
+  /** The letter on a bubble follows the displayed author, including each agent. */
   function initialOf(c) {
-    if (isAgentComment(c)) return 'C';
     var m = /[a-z0-9]/i.exec((c && c.author) || '');
-    return m ? m[0].toUpperCase() : 'H';
+    return m ? m[0].toUpperCase() : isAgentComment(c) ? 'A' : 'H';
   }
 
   // Addressing, mirroring lib/mentions.mjs. A comment is agent work when it
@@ -1512,21 +1511,59 @@ function sfRevealDisclosures(el) {
     els.conn.removeAttribute('hidden');
     els.conn.innerHTML = '';
     var attached = !!meta.attachedSession;
-    var connected = !!meta.connected;
-    els.conn.className = 'sf-tb-conn' + (connected ? '' : ' sf-tb-conn-off');
+    var delivery = meta.delivery || null;
+    var ready = delivery ? delivery.state === 'ready' : !!meta.connected;
+    var working = !!(delivery && delivery.state === 'working');
+    var pausedCodex = !!(delivery && delivery.state === 'paused' && delivery.harness === 'codex');
+    var activeCodex = !!(ready && delivery && delivery.mode === 'active-foreground');
+    els.conn.className = 'sf-tb-conn' + (ready ? '' : ' sf-tb-conn-off');
     var who = meta.sessionLabel || ('session ' + String(meta.attachedSession).slice(0, 8));
     els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
     els.conn.appendChild(create('span', { class: 'sf-conn-label' },
-      connected ? 'Connected' : attached ? 'Disconnected' : 'No agent'));
-    els.conn.title = connected
-      ? who + ' is watching this spec — comments you submit reach it on its own'
+      activeCodex ? 'Listening' : ready ? 'Connected' : working ? 'Reviewing' : pausedCodex ? 'Review queued' : attached ? 'Disconnected' : 'No agent'));
+    els.conn.title = activeCodex
+      ? 'Listening while review mode is active in Codex. Comments you submit reach this thread.'
+      : ready
+        ? who + ' is watching this spec — comments you submit reach it on its own'
+        : working
+          ? who + ' is working on the submitted review. New comments wait for the next delivery cycle.'
+          : pausedCodex
+          ? 'Review queued: continue in the owning Codex thread to receive it.'
       : attached
         ? who + ' has stopped watching. Comments you submit will sit unread until a session picks this spec up.'
         : 'No session owns this spec. Comments you submit will sit unread until one takes it.';
-    if (connected) return;
-    var btn = create('button', { class: 'sf-conn-act', type: 'button' }, attached ? 'Reconnect' : 'Connect');
-    btn.onclick = function (e) { e.stopPropagation(); copyReconnectPrompt(); };
+    if (ready || working) return;
+    var btn = create('button', { class: 'sf-conn-act', type: 'button' },
+      pausedCodex ? 'Continue in Codex' : attached ? 'Reconnect' : 'Connect');
+    btn.onclick = function (e) {
+      e.stopPropagation();
+      if (pausedCodex) copyCodexContinuePrompt();
+      else copyReconnectPrompt();
+    };
     els.conn.appendChild(btn);
+  }
+
+  function codexContinuePrompt() {
+    var cli = (window.SPECFORGE || {}).cli;
+    return [
+      'Continue SpecForge review for spec ' + SPEC + ' in its owning Codex thread.',
+      '',
+      'Run active review delivery in the foreground and leave the tool call active:',
+      '  node "' + cli + '" review-wait',
+      '',
+      'When it returns { ready, kind, work, reason }, follow reason and run it again.',
+      'If this is a different thread, do not take ownership silently; detach and open the spec explicitly first.',
+    ].join('\n');
+  }
+
+  function copyCodexContinuePrompt() {
+    var text = codexContinuePrompt();
+    var done = function () { flash('Prompt copied. Paste it into the owning Codex thread.'); };
+    try {
+      navigator.clipboard.writeText(text).then(done, function () { flash(text); });
+    } catch (e) {
+      flash(text);
+    }
   }
 
   /**
@@ -1540,8 +1577,22 @@ function sfRevealDisclosures(el) {
   function reconnectPrompt() {
     var cli = (window.SPECFORGE || {}).cli;
     var attached = !!(state.meta && state.meta.attachedSession);
+    var harness = state.meta && state.meta.delivery && state.meta.delivery.harness;
+    var target = harness === 'codex' ? 'Codex thread' : harness === 'pi' ? 'Pi session'
+      : harness === 'claude' ? 'Claude Code session' : 'agent session';
+    var arm = harness === 'codex'
+      ? [
+        '  3. Start active review delivery in the foreground and leave it running:',
+        '     node "' + cli + '" review-wait',
+      ]
+      : harness === 'pi'
+        ? ['  3. Let the Pi extension arm review delivery when this turn settles.']
+        : [
+          '  3. Arm review delivery in a background task:',
+          '     node "' + cli + '" review-wait',
+        ];
     return [
-      'Connect SpecForge spec ' + SPEC + ' to this session.',
+      'Connect SpecForge spec ' + SPEC + ' to this ' + target + '.',
       '',
       attached
         ? 'It is attached to a session that has stopped watching it, so comments submitted'
@@ -1550,17 +1601,15 @@ function sfRevealDisclosures(el) {
       '',
       '  1. Detach it from wherever it is attached:  node "' + cli + '" detach ' + SPEC,
       '  2. Attach it to this session:               node "' + cli + '" open ' + SPEC,
-      '  3. Arm review delivery for this harness:    node "' + cli + '" review-wait',
-      '     Keep it foreground in Codex; use a background task in Claude Code.',
+      ...arm,
       '',
-      'On the watcher completing, run the review-spec skill (specforge:review-spec',
-      'in Claude Code) for each pending spec and relaunch it; Pi re-arms it through its extension.',
+      'When delivery returns work, follow its reason and re-arm it in the same harness mode.',
     ].join('\n');
   }
   function copyReconnectPrompt() {
     var text = reconnectPrompt();
     var done = function () {
-      flash('Prompt copied. Paste it into the Claude session you want to own this spec.');
+      flash('Prompt copied. Paste it into the agent session you want to own this spec.');
     };
     try {
       navigator.clipboard.writeText(text).then(done, function () { flash(text); });

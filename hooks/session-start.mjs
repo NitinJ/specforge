@@ -13,19 +13,19 @@
 // Fail-safe: any error exits 0.
 
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
 import { REVIEW_WAIT_CMD } from '../lib/store-drain.mjs';
 import {
-  CODEX_HARNESS, isDirectRun, resolveHarness, resolvePluginRoot,
+  CODEX_HARNESS, PI_HARNESS, isDirectRun, resolveHarness, resolvePluginRoot,
 } from '../lib/harness-context.mjs';
-
-const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
 
 export function run(input, env = process.env) {
   const { mine } = mineFor(env, input.session_id);
-  const codex = resolveHarness(env) === CODEX_HARNESS;
+  const harness = resolveHarness(env);
+  const codex = harness === CODEX_HARNESS;
+  const pi = harness === PI_HARNESS;
   const root = resolvePluginRoot(env) || dirname(dirname(fileURLToPath(import.meta.url)));
   const context = [];
   if (codex) {
@@ -46,13 +46,18 @@ export function run(input, env = process.env) {
       `  ${REVIEW_WAIT_CMD}`,
       'It returns { ready, kind, work, reason }. Follow reason, then run it again.',
     );
+  } else if (pi) {
+    context.push(
+      `SpecForge: this session owns ${mine.length} spec(s) under browser review.`,
+      'The Pi extension owns review delivery and will arm it when this turn settles.',
+    );
   } else {
     context.push(
       `SpecForge: this session owns ${mine.length} spec(s) under browser review. The`,
       'in-session review watcher does not survive a restart — if it is not already',
       'running this session, relaunch it in the background so submitted comments are',
       'picked up while you are idle:',
-      `  node "${CLI}" review-wait`,
+      `  ${REVIEW_WAIT_CMD}`,
       `On completion it returns { ready, kind, work, reason }. Follow reason, then relaunch it.`,
     );
   }

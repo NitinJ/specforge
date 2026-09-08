@@ -14,6 +14,7 @@ import { submitBatch, reviewProgressForSpec } from '../lib/store-inbox.mjs';
 import { requestExport, exportRequestsForSession } from '../lib/store-export.mjs';
 import { requestGenerate, generateRequestsForSession } from '../lib/store-generate.mjs';
 import { pendingWorkForSession } from '../lib/store-drain.mjs';
+import { specDelivery } from '../lib/spec-signals.mjs';
 import {
   cmdBatchDone, cmdBatchWorking, cmdExportWorking, cmdReply, cmdReviewWait,
   cmdTemplateWorking,
@@ -59,7 +60,7 @@ const codexDeps = (session) => ({
   sleep: async () => {},
 });
 
-test('inspection is read-only until each skill acknowledges pickup', async () => {
+test('missing or untrusted hooks leave work recoverable until a skill acknowledges pickup', async () => {
   const review = owned('thread-1', 'Review');
   const { batch } = addBatch(review);
   const generated = owned('thread-1', 'Template');
@@ -69,6 +70,8 @@ test('inspection is read-only until each skill acknowledges pickup', async () =>
 
   const first = pendingWorkForSession('thread-1', { SPECFORGE_HARNESS: 'codex' });
   assert.equal(first.kind, 'review');
+  assert.deepEqual(pendingWorkForSession('thread-1', { SPECFORGE_HARNESS: 'codex' }), first,
+    're-reading after a missed hook returns the same unclaimed work');
   assert.equal(reviewProgressForSpec(review), null);
   assert.equal(readMeta(generated).generate.state, 'requested');
   assert.equal(readMeta(exported).export.state, 'requested');
@@ -96,6 +99,7 @@ test('review-wait delivers all browser work types with truthful foreground guida
   assert.equal(readMeta(id).export.state, 'requested', 'returning work does not claim the skill saw it');
   assert.equal(watcherAlive('thread-export'), false, 'a completed tool is not reported as connected');
   assert.equal(workerFor('thread-export'), null);
+  assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
 });
 
 test('two review submissions are delivered in sequence and duplicate replies are idempotent', async () => {
