@@ -143,7 +143,7 @@ that session's delivery record.
 | Session starts or resumes | `SessionStart` hook | `session_start` | `SessionStart` hook |
 | Prompt is about to run | `UserPromptSubmit` hook | `before_agent_start` | `UserPromptSubmit` hook |
 | Turn is settling | `Stop` hook | `agent_settled` | `Stop` hook |
-| Session ends | Process ancestry and stale lease | `session_shutdown` | Planned `SessionEnd` hook plus stale lease fallback |
+| Session ends | Registered `SessionEnd` hook plus stale lease fallback | `session_shutdown` | Registered `SessionEnd` hook plus stale lease fallback |
 | Active review wait | Background task | Extension-owned child | Foreground unified-exec child |
 
 ## Runtime and permissions
@@ -155,6 +155,10 @@ that session's delivery record.
 - Hook denial or missing store access leaves browser work pending and reports recovery guidance.
 - Hook commands may use Codex's documented `CLAUDE_PLUGIN_ROOT` compatibility alias during transition. New shared commands resolve the root from their module path or `PLUGIN_ROOT`; host identity comes from an explicit `SPECFORGE_HARNESS` value or a native session variable, never from an alias name.
 - Ordinary Codex skill commands receive identity from `CODEX_THREAD_ID` or `CODEX_SESSION_ID`. They do not assume that hook-only plugin variables are present. Installed-candidate tests must verify the exact discovered skill names before user documentation is finalized.
+- If one harness is launched inside another and both hosts' session variables are
+  inherited, set `SPECFORGE_HARNESS` and `SPECFORGE_SESSION_ID` for the inner
+  session. Native environment variables alone cannot identify which nested
+  process owns an ordinary shell command.
 
 ## Qualification matrix
 

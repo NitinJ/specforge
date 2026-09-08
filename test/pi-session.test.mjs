@@ -70,9 +70,14 @@ test('an explicit payload session id still beats every env var', () => {
 test('hooks act on SPECFORGE_SESSION_ID', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-pi');
-  const out = sessionStartRun({}, { SPECFORGE_SESSION_ID: 'sess-pi' });
+  const out = sessionStartRun({}, {
+    SPECFORGE_SESSION_ID: 'sess-pi', SPECFORGE_HARNESS: 'pi',
+  });
   assert.ok(out, 'SessionStart acts on the Pi-injected env var');
   assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
+  assert.match(out.hookSpecificOutput.additionalContext, /Pi extension owns review delivery/);
+  assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /review-wait/,
+    'Pi must not be told to start a second worker');
 });
 
 test('cli: wait-batch without any session env errors naming both vars', () => {

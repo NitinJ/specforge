@@ -1513,23 +1513,26 @@ function sfRevealDisclosures(el) {
     var attached = !!meta.attachedSession;
     var delivery = meta.delivery || null;
     var ready = delivery ? delivery.state === 'ready' : !!meta.connected;
+    var working = !!(delivery && delivery.state === 'working');
     var pausedCodex = !!(delivery && delivery.state === 'paused' && delivery.harness === 'codex');
     var activeCodex = !!(ready && delivery && delivery.mode === 'active-foreground');
     els.conn.className = 'sf-tb-conn' + (ready ? '' : ' sf-tb-conn-off');
     var who = meta.sessionLabel || ('session ' + String(meta.attachedSession).slice(0, 8));
     els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
     els.conn.appendChild(create('span', { class: 'sf-conn-label' },
-      activeCodex ? 'Listening' : ready ? 'Connected' : pausedCodex ? 'Review queued' : attached ? 'Disconnected' : 'No agent'));
+      activeCodex ? 'Listening' : ready ? 'Connected' : working ? 'Reviewing' : pausedCodex ? 'Review queued' : attached ? 'Disconnected' : 'No agent'));
     els.conn.title = activeCodex
       ? 'Listening while review mode is active in Codex. Comments you submit reach this thread.'
       : ready
         ? who + ' is watching this spec — comments you submit reach it on its own'
-        : pausedCodex
+        : working
+          ? who + ' is working on the submitted review. New comments wait for the next delivery cycle.'
+          : pausedCodex
           ? 'Review queued: continue in the owning Codex thread to receive it.'
       : attached
         ? who + ' has stopped watching. Comments you submit will sit unread until a session picks this spec up.'
         : 'No session owns this spec. Comments you submit will sit unread until one takes it.';
-    if (ready) return;
+    if (ready || working) return;
     var btn = create('button', { class: 'sf-conn-act', type: 'button' },
       pausedCodex ? 'Continue in Codex' : attached ? 'Reconnect' : 'Connect');
     btn.onclick = function (e) {

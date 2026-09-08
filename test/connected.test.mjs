@@ -91,6 +91,7 @@ test('a round in progress does not claim readiness for the next submission', () 
   const batch = submitBatch(id);
   advanceBatchProgress(id, batch.batchId, 'picked_up');   // a session surfaced it to itself
   assert.equal(specConnected(id), false, 'working this round does not prove a worker awaits the next');
+  assert.equal(specDelivery(id).state, 'working', 'the browser distinguishes work from a dead session');
 
   markBatchDone(id, batch.batchId);
   assert.equal(specConnected(id), false, 'and once the round is over, the beat has to resume');

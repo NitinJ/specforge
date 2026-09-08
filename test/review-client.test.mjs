@@ -2070,6 +2070,19 @@ test('a paused Codex thread says Review queued and copies continuation guidance'
   assert.match(copied[0], /do not take ownership silently/i);
 });
 
+test('an agent working a round is labelled Reviewing without a takeover action', async (t) => {
+  const { window } = await bootReviewLayer(t, {
+    meta: {
+      id: 'test-spec', status: 'draft', attachedSession: 'claude-session', connected: false,
+      delivery: { state: 'working', mode: null, harness: 'claude' },
+    },
+  });
+  const pill = connPill(window);
+  assert.match(pill.textContent, /Reviewing/);
+  assert.match(pill.getAttribute('title'), /working on the submitted review/i);
+  assert.equal(pill.querySelector('.sf-conn-act'), null, 'do not offer takeover mid-round');
+});
+
 test('a missing Google Docs integration surfaces its error and offers retry', async (t) => {
   const { window } = await bootReviewLayer(t, {
     meta: {
