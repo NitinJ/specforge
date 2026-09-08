@@ -17,7 +17,11 @@ function seedBatch(id) {
   mutateComments(id, (s) => createThread(s, { anchor: { block: { index: 0, tag: 'P', text: 'hi' } }, body: '@agent fix this', author: 'human' }));
   return submitBatch(id);
 }
-const fastDeps = (session) => ({ session, sleep: async () => {} });
+const fastDeps = (session) => ({
+  session,
+  sleep: async () => {},
+  env: { CLAUDE_CODE_SESSION_ID: session },
+});
 
 let home;
 let prevHome;
@@ -198,7 +202,7 @@ test('a delivery says to re-arm, with a command that can be run as written', asy
   const r = await cmdWaitBatch({ timeout: 0 }, fastDeps('sess-1'));
   assert.match(r.next, /review-spec/, 'says what to do with the batch');
   assert.match(r.next, /re-arm/, 'and that the watcher has to come back');
-  assert.match(r.next, /specforge-cli\.mjs" wait-batch/);
+  assert.match(r.next, /specforge-cli\.mjs" review-wait/);
 });
 
 test('an idle return carries no instruction — there is nothing to act on', async () => {

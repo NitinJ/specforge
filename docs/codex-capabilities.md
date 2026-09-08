@@ -102,6 +102,20 @@ Skill text and hook route text must use the same host-neutral operation. Neither
 
 Full settled-thread wake-up remains unavailable through the documented native plugin hook contract. An App Server client can own a separate thread and call `thread/resume` plus `turn/start`, but it must not take over a thread owned by another Codex client. SpecForge does not add that separate client in this implementation.
 
+The shared runtime now implements this contract through `specforge review-wait`.
+It detects review batches, template-generation requests, and exports without
+changing their state. The relevant skill acknowledges pickup with
+`batch-working`, `template-working`, or `export-working`, so a lost hook or tool
+result remains deliverable. Each running delivery process holds an opaque lease;
+late cleanup from an older process cannot clear its replacement, and separate
+Codex thread ids retain separate workers and spec ownership. The worker writes
+heartbeats only while its command is running and clears its record on normal
+return, so a finished foreground wait does not leave the browser connected.
+
+Agent replies accept an effect key. Retrying the same batch/thread effect returns
+the existing reply instead of appending it again, covering the side effect most
+likely to be duplicated when a review turn is resumed after transport loss.
+
 ## Event mapping
 
 | Shared event | Claude Code | Pi | Codex |

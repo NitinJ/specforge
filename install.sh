@@ -42,7 +42,7 @@ while [ "$#" -gt 0 ]; do
       INSTALL_ROOT="$2"
       shift 2
       ;;
-    -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 2 ;;
     *)
       # Taking the last of several would configure Cloudflare for a hostname the

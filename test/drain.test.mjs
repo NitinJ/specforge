@@ -93,12 +93,12 @@ test('pendingForSession returns the session’s submitted batches with titles', 
   assert.deepEqual(pendingForSession('other'), []);
 });
 
-test('surfacing a batch to its owner marks it picked_up; the skill verb advances it to working', async () => {
+test('inspection does not consume a batch; the skill verb advances it to working', async () => {
   const { id, batch } = specWithBatch('sess-1');
   assert.equal(reviewProgressForSpec(id), null, 'fresh batch has no progress');
 
-  pendingForSession('sess-1'); // a hook surfacing the batch
-  assert.equal(reviewProgressForSpec(id), 'picked_up');
+  pendingForSession('sess-1'); // a hook or worker inspecting the batch
+  assert.equal(reviewProgressForSpec(id), null, 'transport loss leaves it recoverable');
 
   const w = await cmdBatchWorking({ id, batchId: batch.batchId });
   assert.equal(w.ok, true);
@@ -151,14 +151,14 @@ function specWithExportRequest(session = 'sess-1') {
   return id;
 }
 
-test('Stop blocks on a queued export and routes to the export skill (surfaced once)', () => {
+test('Stop routes a queued export without consuming it before the skill starts', () => {
   const id = specWithExportRequest('sess-1');
   const out = stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
   assert.equal(out.decision, 'block');
   assert.match(out.reason, /specforge:export/);
   assert.match(out.reason, /Google Docs/);
-  assert.equal(readMeta(id).export.state, 'working', 'surfacing advances it so a re-Stop won’t repeat');
-  assert.deepEqual(exportRequestsForSession('sess-1'), []);
+  assert.equal(readMeta(id).export.state, 'requested', 'transport loss leaves it recoverable');
+  assert.equal(exportRequestsForSession('sess-1').length, 1);
 });
 
 test('a pending review batch takes priority over an export request', () => {
@@ -277,7 +277,7 @@ test('Stop refuses to settle while the session owns specs nobody watches', () =>
   const out = stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
   assert.equal(out.decision, 'block', 'settling in that state IS the bug');
   assert.ok(out.reason.includes(id), 'names the spec');
-  assert.match(out.reason, /wait-batch/, 'and the command that fixes it');
+  assert.match(out.reason, /review-wait/, 'and the command that fixes it');
 });
 
 test('Stop settles quietly once a watcher is running', () => {
@@ -298,16 +298,23 @@ test('a pending batch outranks the nag, and its own text says to re-arm', () => 
   specWithBatch('sess-1');
   const out = stopRun({ stop_hook_active: false }, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
   assert.match(out.reason, /review batch/i, 'the batch wins');
-  assert.match(out.reason, /re-arm the review watcher/, 'and still says to re-arm');
+  assert.match(out.reason, /re-arm review delivery/, 'and still says to re-arm');
 });
 
-test('armWatcherReason names every unwatched spec and the exact command', () => {
+test('armWatcherReason names every unwatched spec and the exact Claude command', () => {
   const a = owned('sess-1', 10 * 60 * 1000);
   const b = owned('sess-1', 10 * 60 * 1000);
-  const text = armWatcherReason([a, b]);
+  const text = armWatcherReason([a, b], { CLAUDE_CODE_SESSION_ID: 'cc-1' });
   assert.ok(text.includes(a) && text.includes(b));
   assert.match(text, /sit unread/, 'says what it costs');
-  assert.match(text, /specforge-cli\.mjs" wait-batch/, 'a command that can be run as written');
+  assert.match(text, /specforge-cli\.mjs" review-wait/, 'a command that can be run as written');
+});
+
+test('armWatcherReason leaves Pi delivery to its extension', () => {
+  const id = owned('sess-pi');
+  const text = armWatcherReason([id], { SPECFORGE_HARNESS: 'pi' });
+  assert.match(text, /Pi extension/);
+  assert.doesNotMatch(text, /background/);
 });
 
 test('review CLI: comments → reply (claude) → batch-done', async () => {

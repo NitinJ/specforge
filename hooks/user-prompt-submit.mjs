@@ -16,9 +16,9 @@ import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
 import { markSeen } from '../lib/attach.mjs';
 import { pendingForSession, reviewReason } from '../lib/store-drain.mjs';
-import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
+import { exportRequestsForSession, exportReason } from '../lib/store-export.mjs';
 import {
-  generateRequestsForSession, markGenerateWorking, generateReason,
+  generateRequestsForSession, generateReason,
 } from '../lib/store-generate.mjs';
 import { isDirectRun } from '../lib/harness-context.mjs';
 
@@ -34,12 +34,10 @@ export function run(input, env = process.env) {
   // watching a dialog for this one.
   const toGenerate = generateRequestsForSession(me);
   if (toGenerate.length) {
-    toGenerate.forEach((m) => markGenerateWorking(m.id));
     return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: generateReason(toGenerate, env) } };
   }
   const toExport = exportRequestsForSession(me);
   if (toExport.length) {
-    toExport.forEach((m) => markExportWorking(m.id));
     return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: exportReason(toExport, env) } };
   }
   return null;

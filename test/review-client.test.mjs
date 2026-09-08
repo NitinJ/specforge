@@ -2094,7 +2094,7 @@ test('Reconnect copies a prompt naming this spec and the takeover steps', async 
   assert.match(text, /test-spec/, 'names the spec');
   assert.match(text, /detach test-spec/, 'frees it from the session that stopped watching');
   assert.match(text, /open test-spec/, 'attaches it to the pasting session');
-  assert.match(text, /wait-batch/, 'and arms the watcher, or it would disconnect again at once');
+  assert.match(text, /review-wait/, 'and arms delivery, or it would disconnect again at once');
 });
 
 // ---------- launcher unresolved-comment pill ----------
@@ -3827,4 +3827,3 @@ test('an empty comment stays empty rather than becoming a bare mention', async (
   await new Promise((r) => window.setTimeout(r, 0));
   assert.equal(posts.filter((x) => /\/comments$/.test(x.url)).length, 0, 'nothing was created');
 });
-
