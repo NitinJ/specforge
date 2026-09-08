@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 
 import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
-import { attach } from '../lib/attach.mjs';
+import { attach, claimWorker, workerFor } from '../lib/attach.mjs';
 import { requestExport } from '../lib/store-export.mjs';
 import { run as stopRun } from '../hooks/stop.mjs';
 import { run as upsRun } from '../hooks/user-prompt-submit.mjs';
@@ -50,6 +50,18 @@ test('SessionEnd stops delivery and retains ownership for thread resume', () => 
   assert.deepEqual(sessionEndRun({ session_id: 'sess-end' }, {}), { stopped: 2 });
   assert.equal(readMeta(a).attachedSession, 'sess-end');
   assert.equal(readMeta(b).attachedSession, 'sess-end');
+});
+
+test('SessionEnd falls back from an empty payload id and preserves a live replacement lease', () => {
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-resumed');
+  claimWorker('sess-resumed', { pid: process.pid, leaseId: 'replacement' });
+  const result = sessionEndRun(
+    { session_id: '' },
+    { CLAUDE_CODE_SESSION_ID: 'sess-resumed' },
+  );
+  assert.deepEqual(result, { stopped: 1 });
+  assert.equal(workerFor('sess-resumed').leaseId, 'replacement');
 });
 
 test('hooks no-op when the session owns no specs', () => {

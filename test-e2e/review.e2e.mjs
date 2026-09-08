@@ -142,6 +142,11 @@ test('Codex active review shows truthful status and completes two browser rounds
     const delivery1 = await cmdReviewWait({ timeout: 0 }, codexDeps);
     assert.equal(delivery1.work[0].batchId, first.batchId);
     await cmdBatchWorking({ id, batchId: first.batchId });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#sf-launcher');
+    assert.match(await page.locator('.sf-conn-label').innerText(), /Reviewing/);
+    assert.equal(await page.locator('.sf-conn-act').count(), 0,
+      'an in-flight round cannot offer duplicate delivery');
     const firstThread = first.threadIds[0];
     writeSpecHtml(id, readSpecHtml(id).replace(
       '{{ What is this, and why now? The problem and its context. }}',

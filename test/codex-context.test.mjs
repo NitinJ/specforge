@@ -27,6 +27,7 @@ test('resolves Codex from its explicit marker and native variables', () => {
 test('preserves Pi and Claude harness resolution', () => {
   assert.equal(resolveHarness({ SPECFORGE_HARNESS: PI_HARNESS }), PI_HARNESS);
   assert.equal(resolveHarness({ CLAUDE_CODE_SESSION_ID: 'claude-1' }), CLAUDE_HARNESS);
+  assert.equal(resolveHarness({ CLAUDE_CODE_SESSION_ID: 'claude-1', PLUGIN_ROOT: '/unrelated' }), CLAUDE_HARNESS);
   assert.equal(resolveHarness({}), CLAUDE_HARNESS);
 });
 
