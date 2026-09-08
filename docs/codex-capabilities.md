@@ -175,3 +175,27 @@ that session's delivery record.
 | ChatGPT authentication, no API key | Required | Required |
 
 Automated tests establish package and adapter behavior. A clean-profile smoke test on each client establishes host compatibility. Full settled-thread wake-up is not claimed by this release.
+
+## Release qualification
+
+The 0.9.0 candidate was installed twice through the local marketplace on Codex
+CLI 0.153.4. Both the initial install and repeat update resolved to the same
+`0.9.0+codex.<content-hash>` version; the release builder derives the suffix from
+the complete tree.
+
+A new ephemeral Codex thread started from `/tmp`, outside the repository, loaded
+`specforge:review-spec` from the installed cache and ran the installed shared CLI.
+It reported 17 actions, both `CODEX_THREAD_ID` and `CODEX_SESSION_ID`, and no
+`OPENAI_API_KEY`. The run used the existing signed-in OpenAI provider.
+
+Automated release checks pass on the current Node runtime: 3,007 repository
+tests, the five Codex browser review journeys, package validation, installer
+update/rollback/removal fixtures, and the installed artifact smoke. The complete
+browser corpus passes except for the Mermaid loader-count assertion that also
+fails unchanged on `main`; every other browser file passes. CI now runs the
+Codex contracts on Node 20/22, a dependency-free runtime check on Node 18, and
+the serialized Playwright suite.
+
+Codex desktop, hook trust interaction on a clean desktop profile, and native
+settled-thread wake-up remain unqualified. The release is therefore advertised
+as a Codex preview rather than full cross-client parity.

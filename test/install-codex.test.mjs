@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync,
+} from 'node:fs';
 import { delimiter, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -62,6 +64,26 @@ test('Codex dry-run and removal preserve the shared SpecForge store', () => {
     assert.equal(existsSync(installRoot), false);
     assert.equal(readFileSync(sentinel, 'utf8'), 'keep');
     assert.match(readFileSync(f.log, 'utf8'), /plugin remove specforge@specforge/);
+  } finally {
+    rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test('Codex marketplace files remain removable after the Codex CLI is uninstalled', () => {
+  const f = fixture();
+  const installRoot = join(f.root, 'installed');
+  try {
+    const install = spawnSync('bash', [join(ROOT, 'install.sh'), '--harness', 'codex', '--plugin-only', '--install-root', installRoot], {
+      cwd: ROOT, env: f.env, encoding: 'utf8',
+    });
+    assert.equal(install.status, 0, install.stderr || install.stdout);
+    rmSync(join(f.root, 'bin', 'codex'));
+    symlinkSync(process.execPath, join(f.root, 'bin', 'node'));
+    const remove = spawnSync('bash', [join(ROOT, 'install.sh'), '--harness', 'codex', '--remove', '--install-root', installRoot], {
+      cwd: ROOT, env: { ...f.env, PATH: `${join(f.root, 'bin')}${delimiter}/usr/bin:/bin` }, encoding: 'utf8',
+    });
+    assert.equal(remove.status, 0, remove.stderr || remove.stdout);
+    assert.equal(existsSync(installRoot), false);
   } finally {
     rmSync(f.root, { recursive: true, force: true });
   }

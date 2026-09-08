@@ -131,7 +131,7 @@ and amending are all edit work — and go straight to step 4, the reply:
    owner had deleted. Answering a comment is where explanatory, persuading
    register creeps in: the spec is still a specification, not a reply. Watch the
    advisory `spec-language` line in the lint.
-4. **Reply inline** (append-only, attributed to claude) via the CLI — never edit
+4. **Reply inline** (append-only, attributed to the active harness) via the CLI — never edit
    `comments.json` by hand, and never use the HTTP API (it is human-only):
 
    ```
