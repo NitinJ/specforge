@@ -23,10 +23,13 @@ test('plugin.json is valid and well-formed', () => {
 
 test('marketplace.json is valid and matches plugin', () => {
   const m = readJSON('.claude-plugin/marketplace.json');
+  const p = readJSON('.claude-plugin/plugin.json');
   assert.equal(m.name, 'specforge');
   assert.ok(Array.isArray(m.plugins) && m.plugins.length >= 1);
   assert.equal(m.plugins[0].name, 'specforge');
   assert.equal(m.plugins[0].source, './');
+  assert.equal(m.metadata.version, p.version);
+  assert.equal(m.plugins[0].version, p.version);
 });
 
 test('package.json is an ES module with a test script', () => {

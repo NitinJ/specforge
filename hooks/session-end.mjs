@@ -5,7 +5,7 @@ import { isDirectRun, resolveSessionId } from '../lib/harness-context.mjs';
 import { endSession } from '../lib/attach.mjs';
 
 export function run(input, env = process.env) {
-  const sessionId = resolveSessionId(env, input.session_id);
+  const sessionId = resolveSessionId(env, input.session_id || undefined);
   if (!sessionId) return null;
   return { stopped: endSession(sessionId) };
 }

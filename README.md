@@ -2,7 +2,7 @@
 
 # SpecForge
 
-**Write specs with Claude. Review them in your browser. Comment, and the agent that owns the spec replies inline and edits the document.**
+**Write specs with Claude Code, Codex, or Pi. Review them in your browser. Comment, and the agent that owns the spec replies inline and edits the document.**
 
 [![tests](https://github.com/NitinJ/specforge/actions/workflows/test.yml/badge.svg)](https://github.com/NitinJ/specforge/actions/workflows/test.yml)
 ![node](https://img.shields.io/badge/node-%E2%89%A518-informational)
@@ -15,7 +15,7 @@
 
 ## Who it is for
 
-- **You work with Claude Code and write design docs.** Specs end up in chat scrollback or a markdown file nobody opens twice. This gives them a home and a review loop.
+- **You work with Claude Code, Codex, or Pi and write design docs.** Specs end up in chat scrollback or a markdown file nobody opens twice. This gives them a home and a review loop.
 - **You want a colleague to review, without giving them your repo.** Send a link. They comment in a browser, with no account and no install.
 - **You want review comments to become edits.** Not a summary of what should change: the actual document, changed.
 
@@ -25,24 +25,29 @@ Not for you if you want a hosted wiki or real-time co-editing. Specs are authore
 
 ```sh
 git clone https://github.com/NitinJ/specforge && cd specforge
-./install.sh
+./install.sh                                      # Claude Code
+./install.sh --harness codex --plugin-only       # Codex preview
 ```
 
-That checks prerequisites, installs the plugin, and sets up a permanent web
-address for your specs. It asks you nothing: a browser opens once so you can
-pick a domain, and your address becomes `<your-username>.<that domain>`.
+The default installs the Claude Code plugin and sets up a permanent web address.
+The Codex command installs the same runtime and canonical skills through a local
+Codex marketplace. Review the hook definitions when Codex asks you to trust
+them, then start a new thread. See [Codex support](docs/codex.md) for its active
+review mode, upgrade, recovery, and removal steps.
 
 ```sh
 ./install.sh --plugin-only   # skip the sharing setup
 ./install.sh -n              # show what it would do, change nothing
 ```
 
-You need [Claude Code](https://claude.com/claude-code), Node 18+, and, only for
-sharing, [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+You need one supported harness, Node 18+, and, only for sharing,
+[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
 The installer reports anything missing and installs none of it, because a script
 that takes root on a new machine is a poor first impression.
 
-Then restart Claude Code, or run `/reload-plugins`.
+Claude Code users then restart or run `/reload-plugins`. Codex users start a new
+thread. Pi reads the same `skills/` tree through the package entries in
+`package.json`.
 
 ## What you can do
 
@@ -122,15 +127,17 @@ A comment is a conversation between people unless it says `@agent`:
 - `why is this bounded at 40 bits?` never reaches an agent
 - `@agent widen this to 64` joins the next batch you submit
 
-Submit, and the Claude session that owns the spec wakes up even while idle. It
-replies to every thread and amends the document. Your open page reloads itself,
-once, when the round is finished rather than on every save.
+Submit, and the owning agent replies to every thread and amends the document.
+Claude Code and Pi can receive work through their host-owned background path.
+Codex preview uses an active foreground review wait or picks queued work up on
+the next turn. Your open page reloads itself once when the round is finished.
 
 The header says whether anyone is actually listening. **Connected** means a
 session is watching this spec right now, so comments you submit reach it on their
-own; **Disconnected** means they would sit unread. Reconnect copies a short
-prompt — paste it into whichever Claude window you want to own the spec, and it
-takes over from the session that went away.
+own; **Listening** is the corresponding active Codex mode; **Review queued**
+means continue in its owning Codex thread; and **Disconnected** means the work
+would sit unread. Reconnect copies a prompt for the recorded harness and requires
+an explicit ownership transfer when another session owns the spec.
 
 Adding `@agent` to a thread later hands over the **whole thread**, so the agent
 reads the discussion that led to the request. The footer counts both

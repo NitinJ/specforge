@@ -91,6 +91,8 @@ fi
 
 if command -v "$HARNESS" >/dev/null 2>&1; then
   ok "$HARNESS"
+elif [ "$REMOVE" = 1 ]; then
+  info "$HARNESS is not installed; local SpecForge registration will still be removed"
 else
   if [ "$HARNESS" = "codex" ]; then
     MISSING="$MISSING\n  codex is not installed: https://developers.openai.com/codex"
@@ -121,12 +123,17 @@ fi
 
 # --- the plugin --------------------------------------------------------------
 
-step "Installing the plugin"
+if [ "$REMOVE" = 1 ]; then
+  step "Removing the plugin"
+else
+  step "Installing the plugin"
+fi
 if [ "$HARNESS" = "codex" ]; then
   if [ "$REMOVE" = 1 ]; then
-    step "Removing the Codex plugin"
-    run codex plugin remove specforge@specforge || true
-    run codex plugin marketplace remove specforge || true
+    if command -v codex >/dev/null 2>&1; then
+      run codex plugin remove specforge@specforge || true
+      run codex plugin marketplace remove specforge || true
+    fi
     run node "$HERE/scripts/remove-codex-marketplace.mjs" "$INSTALL_ROOT"
     info "Your specs remain in ~/.specforge. Claude and Pi installations are unchanged."
     exit 0
@@ -142,7 +149,9 @@ if [ "$HARNESS" = "codex" ]; then
   info "Review and trust the SpecForge hooks when Codex prompts you."
   info "Start a new Codex thread after install or update."
 elif [ "$REMOVE" = 1 ]; then
-  run claude plugin uninstall specforge@specforge || true
+  if command -v claude >/dev/null 2>&1; then
+    run claude plugin uninstall specforge@specforge || true
+  fi
   ok "removed from Claude Code; your specs remain in ~/.specforge"
   exit 0
 # `grep -q` exits at the first match and closes the pipe, which under `pipefail`

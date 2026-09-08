@@ -114,6 +114,13 @@ test('Codex reports active review only while its leased foreground worker lives'
   releaseWorker('codex-thread', lease.leaseId);
   assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
   assert.equal(specConnected(id), false, 'the fresh final heartbeat cannot keep the badge green');
+
+  mutateComments(id, (s) => createThread(s, { anchor, body: '@agent review', author: 'human' }));
+  const batch = submitBatch(id);
+  advanceBatchProgress(id, batch.batchId, 'working');
+  assert.deepEqual(specDelivery(id), {
+    state: 'working', mode: 'next-turn', harness: 'codex',
+  }, 'an in-flight Codex round takes precedence over queued next-turn delivery');
 });
 
 test('detaching the last spec releases delivery while detaching one of many does not', () => {

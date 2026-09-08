@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 const REQUIRED = [
   '.claude-plugin/plugin.json',
+  '.claude-plugin/marketplace.json',
   '.codex-plugin/plugin.json',
   'hooks/hooks.json',
   'hooks/session-start.mjs',
@@ -42,10 +43,15 @@ export function validatePackage(root) {
 
   const pkg = readJson(join(packageRoot, 'package.json'));
   const claude = readJson(join(packageRoot, '.claude-plugin', 'plugin.json'));
+  const claudeMarketplace = readJson(join(packageRoot, '.claude-plugin', 'marketplace.json'));
   const codex = readJson(join(packageRoot, '.codex-plugin', 'plugin.json'));
   const codexBaseVersion = String(codex.version || '').split('+codex.')[0];
   if (pkg.name !== claude.name || pkg.name !== codex.name) errors.push('host manifest names must match package.json');
   if (pkg.version !== claude.version || pkg.version !== codexBaseVersion) errors.push('host manifest versions must match package.json');
+  if (claudeMarketplace.metadata?.version !== pkg.version
+      || claudeMarketplace.plugins?.[0]?.version !== pkg.version) {
+    errors.push('Claude marketplace versions must match package.json');
+  }
   if (codex.skills !== './skills/') errors.push('Codex manifest must use the shared skills directory');
   if ('hooks' in codex) errors.push('Codex manifest must use default hooks/hooks.json discovery');
 
