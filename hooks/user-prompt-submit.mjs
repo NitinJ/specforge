@@ -45,7 +45,8 @@ export function run(input, env = process.env) {
 }
 
 async function main() {
-  run(parseInput(await readStdin()));
+  const decision = run(parseInput(await readStdin()));
+  if (decision) process.stdout.write(JSON.stringify(decision));
 }
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
