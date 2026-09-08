@@ -292,7 +292,10 @@ the mechanical checks alone.
   come back here automatically.
 - **Arm the review watcher (once per session)** so comments are picked up even
   while you're idle. If it isn't already running this session, start it in the
-  **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
+  For Codex, run `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait`
+  in the foreground and leave the tool call active. For Claude Code, run
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` in the background.
+  Pi arms delivery through its extension.
   Its completion wakes the session with `{ ready, pending }` — on `ready`, run the
   review-spec flow for each `pending` spec, then relaunch it. It does not expire
   on its own: it runs until a batch arrives or this session ends. One watcher

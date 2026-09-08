@@ -65,7 +65,8 @@ Act on the choice:
 - **Open `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" open <id>`
   (attaches it to this session; fails if another live session holds it). Print the
   returned `url`. Then, if the review watcher isn't already running this session,
-  arm it in the **background** (`node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`)
+  arm delivery for the current harness (Codex: foreground `review-wait`; Claude Code:
+  background `review-wait`; Pi: extension-managed)
   so this spec's comments are picked up automatically (see create-spec for the loop).
 - **Detach `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" detach <id>`.
   Confirm it's freed.

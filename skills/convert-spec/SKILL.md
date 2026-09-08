@@ -143,7 +143,10 @@ Fix and re-run until `PASS`. **Do not finish on a failing lint.**
   left untouched (its path is recorded as the spec's `origin`).
 - **Arm the review watcher (once per session)** so comments are picked up while
   you're idle. If it isn't already running this session, start it in the
-  **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
+  In Codex, run `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait`
+  in the foreground and leave the tool call active. In Claude Code, run
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` in the background.
+  Pi arms delivery through its extension.
   On its `{ ready, pending }` return, run review-spec for each `pending` spec then
   relaunch it. It does not expire on its own: it runs until a batch arrives or
   this session ends. One watcher covers every spec here.

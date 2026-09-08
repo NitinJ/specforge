@@ -15,7 +15,7 @@ import { useTempStore } from './helpers/temp-store.mjs';
 import { seedLiveSession } from './helpers/live-session.mjs';
 import { run as runStop } from '../hooks/stop.mjs';
 import { run as runPrompt } from '../hooks/user-prompt-submit.mjs';
-import { requestGenerate, finishGenerate } from '../lib/store-generate.mjs';
+import { requestGenerate, finishGenerate, markGenerateWorking } from '../lib/store-generate.mjs';
 import { requestExport } from '../lib/store-export.mjs';
 import { readMeta } from '../lib/meta.mjs';
 import { attach } from '../lib/attach.mjs';
@@ -45,15 +45,17 @@ test('Stop blocks and names the template, the skill and the prompt', () => {
   assert.match(decision.reason, /template-postmortem/);
   assert.match(decision.reason, /generate-template/);
   assert.match(decision.reason, /what happened, impact, root cause/, 'the prompt rides along');
-  assert.equal(readMeta(specId).generate.state, 'working', 'surfacing advances it');
+  assert.equal(readMeta(specId).generate.state, 'requested', 'surfacing alone does not consume it');
 });
 
-test('a second settle does not surface it again (I5)', () => {
-  seedPending();
+test('delivery retries until the generation skill acknowledges it, then stops', () => {
+  const specId = seedPending();
   runStop({}, env);
   const second = runStop({}, env);
-  // Whatever the second settle does, it must not be another generation nudge.
-  assert.equal(/generate-template/.test((second && second.reason) || ''), false);
+  assert.equal(/generate-template/.test((second && second.reason) || ''), true);
+  markGenerateWorking(specId);
+  const acknowledged = runStop({}, env);
+  assert.equal(/generate-template/.test((acknowledged && acknowledged.reason) || ''), false);
 });
 
 test('the prompt hook surfaces it as context rather than blocking', () => {
@@ -61,7 +63,7 @@ test('the prompt hook surfaces it as context rather than blocking', () => {
   const out = runPrompt({}, env);
   assert.equal(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
   assert.match(out.hookSpecificOutput.additionalContext, /generate-template/);
-  assert.equal(readMeta(specId).generate.state, 'working');
+  assert.equal(readMeta(specId).generate.state, 'requested');
 });
 
 test('a session owning nothing is untouched', () => {

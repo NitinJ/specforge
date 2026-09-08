@@ -135,7 +135,7 @@ and amending are all edit work — and go straight to step 4, the reply:
    `comments.json` by hand, and never use the HTTP API (it is human-only):
 
    ```
-   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>"
+   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>" --effect "<batchId>:<threadId>:reply"
    ```
 
    **Answer first, then justify.** If the comment asked a question, the first
@@ -361,5 +361,10 @@ amended (on a `share` batch, say that it was a reviewer's and that you answered
 without amending, so the owner knows a promotion is theirs to make). The human
 sees your replies + edits live and resolves the threads they're satisfied with.
 
-Then **re-arm the review watcher** so the next batch wakes the session: relaunch
-`node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch` as a background task.
+Then keep delivery ready for the next browser action:
+
+- In Codex, run `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait`
+  in the foreground and leave that tool call active.
+- In Claude Code, relaunch
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` as a background task.
+- In Pi, the extension re-arms delivery when the review turn settles.

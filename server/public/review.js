@@ -1550,11 +1550,11 @@ function sfRevealDisclosures(el) {
       '',
       '  1. Detach it from wherever it is attached:  node "' + cli + '" detach ' + SPEC,
       '  2. Attach it to this session:               node "' + cli + '" open ' + SPEC,
-      '  3. Arm the review watcher in the background so submitted comments reach you',
-      '     while you are idle:                      node "' + cli + '" wait-batch',
+      '  3. Arm review delivery for this harness:    node "' + cli + '" review-wait',
+      '     Keep it foreground in Codex; use a background task in Claude Code.',
       '',
       'On the watcher completing, run the review-spec skill (specforge:review-spec',
-      'in Claude Code) for each pending spec and relaunch it; on timeout just relaunch it.',
+      'in Claude Code) for each pending spec and relaunch it; Pi re-arms it through its extension.',
     ].join('\n');
   }
   function copyReconnectPrompt() {

@@ -75,7 +75,7 @@ test('no live session answers 503 and says what to start', async () => {
   seedDeadSession();
   const r = await post('/api/types', CREATE);
   assert.equal(r.status, 503);
-  assert.match((await r.json()).error, /wait-batch/);
+  assert.match((await r.json()).error, /review-wait/);
 });
 
 test('a duplicate answers 409', async () => {

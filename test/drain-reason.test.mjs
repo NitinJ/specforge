@@ -63,6 +63,13 @@ test('an unknown action id is ignored rather than announced', () => {
   assert.equal(/@visualise/.test(out), false);
 });
 
-test('the watcher re-arm is still there', () => {
-  assert.match(reviewReason([batch()]), /wait-batch/);
+test('Claude is told to re-arm shared delivery in the background', () => {
+  assert.match(reviewReason([batch()], { CLAUDE_CODE_SESSION_ID: 'cc-1' }), /review-wait/);
+});
+
+test('Codex is told to keep review-wait active in the foreground', () => {
+  const out = reviewReason([batch()], { SPECFORGE_HARNESS: 'codex' });
+  assert.match(out, /review-wait/);
+  assert.match(out, /foreground/);
+  assert.doesNotMatch(out, /background/);
 });

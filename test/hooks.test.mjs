@@ -93,7 +93,7 @@ test('SessionStart re-arms the watcher when the (resumed) session owns specs', (
   attach(id, 'sess-1');
   const out = sessionStartRun({}, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
   assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.match(out.hookSpecificOutput.additionalContext, /wait-batch/);
+  assert.match(out.hookSpecificOutput.additionalContext, /review-wait/);
   assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
 });
 
