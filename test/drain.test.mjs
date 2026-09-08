@@ -317,7 +317,10 @@ test('review CLI: comments → reply (claude) → batch-done', async () => {
   assert.ok(c.htmlPath.endsWith('spec.html'));
   const tid = c.threads[0].id;
 
-  const r = await cmdReply({ id, tid, body: 'fixed in §2' });
+  const r = await cmdReply(
+    { id, tid, body: 'fixed in §2' },
+    { env: { SPECFORGE_HARNESS: 'claude' } },
+  );
   assert.equal(r.ok, true);
   assert.equal(r.comment.author, 'claude');
   assert.equal(loadComments(id).threads[0].state, 'replied');

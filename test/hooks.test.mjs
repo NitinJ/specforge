@@ -13,6 +13,7 @@ import { requestExport } from '../lib/store-export.mjs';
 import { run as stopRun } from '../hooks/stop.mjs';
 import { run as upsRun } from '../hooks/user-prompt-submit.mjs';
 import { run as sessionStartRun } from '../hooks/session-start.mjs';
+import { run as sessionEndRun } from '../hooks/session-end.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HOOKS = join(ROOT, 'hooks');
@@ -38,6 +39,17 @@ test('hooks no-op when there is no session id', () => {
   assert.equal(stopRun({}, {}), null);
   assert.equal(upsRun({}, {}), null);
   assert.equal(sessionStartRun({}, {}), null);
+  assert.equal(sessionEndRun({}, {}), null);
+});
+
+test('SessionEnd stops delivery and retains ownership for thread resume', () => {
+  const a = createSpec({ title: 'A' });
+  const b = createSpec({ title: 'B' });
+  attach(a, 'sess-end');
+  attach(b, 'sess-end');
+  assert.deepEqual(sessionEndRun({ session_id: 'sess-end' }, {}), { stopped: 2 });
+  assert.equal(readMeta(a).attachedSession, 'sess-end');
+  assert.equal(readMeta(b).attachedSession, 'sess-end');
 });
 
 test('hooks no-op when the session owns no specs', () => {
@@ -123,4 +135,18 @@ test('stop.mjs runs as a script and no-ops (exit 0, empty) for a non-spec sessio
   });
   assert.equal(res.status, 0);
   assert.equal(res.stdout.trim(), '');
+});
+
+test('user-prompt-submit.mjs prints its routing output as JSON', () => {
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-output');
+  requestExport(id);
+  const res = spawnSync(process.execPath, [join(HOOKS, 'user-prompt-submit.mjs')], {
+    input: JSON.stringify({ session_id: 'sess-output' }), encoding: 'utf8', timeout: 8000,
+    env: { ...process.env, SPECFORGE_HOME: home },
+  });
+  assert.equal(res.status, 0);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
+  assert.match(out.hookSpecificOutput.additionalContext, /export/i);
 });

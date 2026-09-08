@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os';
 
 import { readMeta } from '../lib/meta.mjs';
 import { attach } from '../lib/attach.mjs';
-import { mutateComments, createThread } from '../lib/store-comments.mjs';
+import { mutateComments, createThread, loadComments } from '../lib/store-comments.mjs';
 import { submitBatch } from '../lib/store-inbox.mjs';
 import {
-  cmdCreate, cmdImport, cmdOpen, cmdStart, cmdWaitBatch, cmdList, cmdListall, cmdDetach,
+  cmdCreate, cmdImport, cmdOpen, cmdStart, cmdWaitBatch, cmdList, cmdListall, cmdDetach, cmdReply,
 } from '../lib/specforge-cli.mjs';
 
 // Stamp a submitted review batch onto a spec (a human comment + submit).
@@ -53,6 +53,25 @@ test('create scaffolds a store spec, attaches it, returns its url', async () => 
 test('create without a session scaffolds unattached (graceful degrade)', async () => {
   const r = await cmdCreate({ title: 'No Session' }, deps(''));
   assert.equal(readMeta(r.id).attachedSession, null);
+});
+
+test('reply attributes new comments to the active Codex harness', async () => {
+  const created = await cmdCreate({ title: 'Codex reply' }, deps('codex-thread'));
+  let thread;
+  mutateComments(created.id, (store) => {
+    thread = createThread(store, {
+      anchor: { block: { index: 0, tag: 'P', text: 'hi' } },
+      body: '@agent answer this',
+      author: 'human',
+    });
+  });
+  await cmdReply(
+    { id: created.id, tid: thread.id, body: 'Done.' },
+    { env: { SPECFORGE_HARNESS: 'codex' } },
+  );
+  const reply = loadComments(created.id).threads[0].comments.at(-1);
+  assert.equal(reply.author, 'codex');
+  assert.equal(reply.kind, 'agent');
 });
 
 test('create files a spec into the project named on the flag', async () => {
