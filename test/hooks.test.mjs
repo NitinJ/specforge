@@ -81,6 +81,13 @@ test('hooks take the session id from the stdin payload when env lacks it', () =>
   assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
 });
 
+test('an empty native payload id falls back to the session environment', () => {
+  const id = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  attach(id, 'sess-env');
+  const out = sessionStartRun({ session_id: '' }, { CLAUDE_CODE_SESSION_ID: 'sess-env' });
+  assert.match(out.hookSpecificOutput.additionalContext, /review-wait/);
+});
+
 test('the stdin session id wins over a conflicting env var', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-stdin');

@@ -310,6 +310,13 @@ test('armWatcherReason names every unwatched spec and the exact Claude command',
   assert.match(text, /specforge-cli\.mjs" review-wait/, 'a command that can be run as written');
 });
 
+test('armWatcherReason leaves Pi delivery to its extension', () => {
+  const id = owned('sess-pi');
+  const text = armWatcherReason([id], { SPECFORGE_HARNESS: 'pi' });
+  assert.match(text, /Pi extension/);
+  assert.doesNotMatch(text, /background/);
+});
+
 test('review CLI: comments → reply (claude) → batch-done', async () => {
   const { id, batch } = specWithBatch('sess-1');
   const c = await cmdComments({ id });

@@ -48,11 +48,12 @@ test('Stop blocks and names the template, the skill and the prompt', () => {
   assert.equal(readMeta(specId).generate.state, 'requested', 'surfacing alone does not consume it');
 });
 
-test('delivery retries until the generation skill acknowledges it, then stops', () => {
+test('a guarded continuation settles, then the next prompt retries until acknowledged', () => {
   const specId = seedPending();
   runStop({}, env);
-  const second = runStop({}, env);
-  assert.equal(/generate-template/.test((second && second.reason) || ''), true);
+  assert.equal(runStop({ stop_hook_active: true }, env), null);
+  const retry = runPrompt({}, env);
+  assert.match(retry.hookSpecificOutput.additionalContext, /generate-template/);
   markGenerateWorking(specId);
   const acknowledged = runStop({}, env);
   assert.equal(/generate-template/.test((acknowledged && acknowledged.reason) || ''), false);

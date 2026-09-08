@@ -91,7 +91,7 @@ test('review-wait delivers all browser work types with truthful foreground guida
   const result = await cmdReviewWait({ timeout: 0 }, codexDeps('thread-export'));
   assert.equal(result.ready, true);
   assert.equal(result.kind, 'export');
-  assert.deepEqual(result.work, [{ specId: id, requestId: '2026-09-08T00:00:00.000Z' }]);
+  assert.deepEqual(result.work, [{ specId: id, requestedAt: '2026-09-08T00:00:00.000Z' }]);
   assert.match(result.reason, /export-working/);
   assert.equal(readMeta(id).export.state, 'requested', 'returning work does not claim the skill saw it');
   assert.equal(watcherAlive('thread-export'), false, 'a completed tool is not reported as connected');

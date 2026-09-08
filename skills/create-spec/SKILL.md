@@ -285,18 +285,15 @@ The lint still exists and the gate is a superset of it; run
 `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>` only when you want
 the mechanical checks alone.
 
-## 5. Hand off + arm the review watcher
+## 5. Hand off + arm review delivery
 
 - Print the spec `url` (open it to review). Edits to `htmlPath` live-reload.
 - The spec is attached to this session; review comments submitted in the browser
   come back here automatically.
-- **Arm the review watcher (once per session)** so comments are picked up even
-  while you're idle. If it isn't already running this session, start it in the
-  For Codex, run `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait`
-  in the foreground and leave the tool call active. For Claude Code, run
-  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` in the background.
-  Pi arms delivery through its extension.
-  Its completion wakes the session with `{ ready, pending }` — on `ready`, run the
-  review-spec flow for each `pending` spec, then relaunch it. It does not expire
-  on its own: it runs until a batch arrives or this session ends. One watcher
-  covers every spec attached here.
+- **Arm review delivery once for this session.** In Codex, run
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` in the foreground
+  and leave the tool call active. In Claude Code, run the same command in a
+  background task. Pi owns the command through its extension.
+- Delivery returns `{ ready, kind, work, reason }`. When `ready` is true, follow
+  `reason`, then re-arm it in the same harness mode. It runs until work arrives or
+  the session ends, and one worker covers every spec attached here.
