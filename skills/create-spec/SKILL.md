@@ -20,7 +20,9 @@ Generate a new SpecForge spec in the global store (`~/.specforge/specs/<id>/`),
 honoring house rules, and lint it before declaring done. The daemon serves it and
 injects the review layer at serve time.
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory (the SpecForge repo root).
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command.
 
 ## 1. Understand the request + pick the type
 

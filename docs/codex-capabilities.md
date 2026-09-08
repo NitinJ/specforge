@@ -36,10 +36,37 @@ prefer an explicit CLI or hook value, then `SPECFORGE_SESSION_ID`, then these
 Codex variables, then `CLAUDE_CODE_SESSION_ID`. Skill commands therefore do not
 depend on plugin-root variables for identity.
 
-Hook payload capture, installed skill-name discovery, hook trust, and the
-desktop app checks require an installed candidate. They are Stage 5 release
-gates rather than verified Stage 0 facts. Until those checks pass, desktop
-support and the exact installed invocation names remain unresolved gates.
+Desktop hook payload capture, hook trust, and desktop app behavior remain Stage
+5 release gates. Until those checks pass, desktop support remains unresolved.
+
+The Stage 2 installed-candidate probe resolved two CLI questions:
+
+```text
+$ ./install.sh --harness codex --plugin-only
+Installed plugin root: ~/.codex/plugins/cache/specforge/specforge/0.8.0+codex.<content-hash>
+
+$ ./install.sh --harness codex --plugin-only
+Added plugin specforge from marketplace specforge at the new content-hash version
+
+$ codex exec ... '$specforge:review-spec ...'
+Loaded skill: specforge:review-spec
+PLUGIN_ROOT: unset in ordinary skill shell commands
+CLAUDE_PLUGIN_ROOT: unset in ordinary skill shell commands
+CODEX_THREAD_ID: set
+CODEX_SESSION_ID: set
+```
+
+The `SessionStart` adapter therefore supplies the exact installed runtime root
+as developer context. One canonical skill tree keeps the compatibility token in
+its examples; Codex substitutes the supplied path. A clean-thread probe used
+that path to run the shared `specforge-cli.mjs actions` command from `/tmp` and
+returned all 17 actions. The probe used the signed-in Codex provider and did not
+set or request an OpenAI API key.
+
+The same installer command succeeded twice against Codex 0.153.4. `plugin add`
+installed the second content-hash version in place. The installer retains the
+previous validated marketplace and restores it automatically if a later
+`plugin add` fails.
 
 ## Verified host contracts
 

@@ -86,13 +86,13 @@ test('each hook runs as a fail-safe no-op (exit 0, no output)', (t) => {
   // assertion fails for a reason that has nothing to do with the hook.
   const home = mkdtempSync(join(tmpdir(), 'sf-scaffold-'));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  const hooks = ['stop', 'session-start', 'user-prompt-submit'];
+  const hooks = ['stop', 'session-start', 'session-end', 'user-prompt-submit'];
   for (const name of hooks) {
     const res = spawnSync(process.execPath, [join(ROOT, 'hooks', `${name}.mjs`)], {
       input: JSON.stringify({ hook_event_name: 'Test', cwd: ROOT }),
       encoding: 'utf8',
       timeout: 8000,
-      env: { ...process.env, SPECFORGE_HOME: home },
+      env: { ...process.env, SPECFORGE_HOME: home, SPECFORGE_HARNESS: 'claude' },
     });
     assert.ifError(res.error); // distinguishes a failed/timed-out spawn from a non-zero exit
     assert.equal(res.status, 0, `${name}.mjs exits 0 (stderr: ${res.stderr})`);

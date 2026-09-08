@@ -17,7 +17,9 @@ spec already exists at `~/.specforge/specs/template-<slug>/spec.html`, holding
 the bundled shell for its family. **Your job is to replace that shell's sections
 with the ones the prompt describes**, keeping everything the shell owns.
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory.
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command.
 
 **Someone is waiting on a dialog with a stated ETA.** Do this now, in one pass,
 and report back. A template that is roughly right and arrives is worth more than

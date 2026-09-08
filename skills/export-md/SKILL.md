@@ -13,8 +13,9 @@ allowed-tools: Read, Bash, Glob
 
 # export-md
 
-Render a store spec as markdown. `${CLAUDE_PLUGIN_ROOT}` is the installed plugin
-directory.
+Render a store spec as markdown. `${CLAUDE_PLUGIN_ROOT}` below denotes the
+installed plugin directory. Claude and Pi export it; Codex provides the exact
+value in SpecForge SessionStart context. Substitute it in every shell command.
 
 ## 1. Pick the spec
 

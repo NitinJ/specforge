@@ -23,6 +23,7 @@ import { exportRequestsForSession, markExportWorking, exportReason } from '../li
 import {
   generateRequestsForSession, markGenerateWorking, generateReason,
 } from '../lib/store-generate.mjs';
+import { isDirectRun } from '../lib/harness-context.mjs';
 
 export function run(input, env = process.env) {
   // Loop guard: if this stop already followed a stop-hook continuation, settle.
@@ -71,5 +72,4 @@ async function main() {
   if (decision) process.stdout.write(JSON.stringify(decision));
 }
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) main().then(() => process.exit(0)).catch(() => process.exit(0));
+if (isDirectRun(import.meta.url)) main().then(() => process.exit(0)).catch(() => process.exit(0));
