@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { createDaemon, renderIndex } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
-import { attach, STALE_MS } from '../lib/attach.mjs';
+import { attach, claimWorker, STALE_MS } from '../lib/attach.mjs';
 import { writeGlobalPrefs } from '../lib/global-prefs.mjs';
 import { loadIndex, tick } from './helpers/index-dom.mjs';
 
@@ -69,9 +69,10 @@ test('specs render grouped under collection headers (+ Uncollected)', () => {
   assert.match(html, /<h2>Uncollected <span class="gcount">1<\/span>/);
 });
 
-test('rows show live / disconnected from the owning session heartbeat', () => {
+test('rows show live / disconnected from worker and heartbeat state', () => {
   const live = createSpec({ title: 'Live one', html: '<h1>L</h1>' });
-  attach(live, 'sess-live'); // fresh heartbeat → live
+  attach(live, 'sess-live');
+  claimWorker('sess-live'); // live worker + fresh heartbeat → live
   const dead = createSpec({ title: 'Dead one', html: '<h1>D</h1>' });
   attach(dead, 'sess-dead');
   const m = readMeta(dead); m.heartbeat = Date.now() - STALE_MS - 1000; writeMeta(dead, m); // stale → disconnected

@@ -116,6 +116,26 @@ Agent replies accept an effect key. Retrying the same batch/thread effect return
 the existing reply instead of appending it again, covering the side effect most
 likely to be duplicated when a review turn is resumed after transport loss.
 
+## Browser and recovery behavior
+
+The browser derives its connection badge from the owning session's live worker
+and fresh heartbeat. An active Codex foreground wait reads **Listening**. Once
+that wait returns, the same attached spec reads **Review queued** and offers a
+continuation prompt for the owning Codex thread. It never presents a completed
+foreground process as a background connection.
+
+Replies retain their actual harness author, including `codex`, while all three
+harnesses use the same stored comment and spec formats. Shared-origin rounds
+remain reply-only for Codex under the same ownership rule used by Claude and Pi.
+Reconnect guidance targets the recorded harness and requires an explicit detach
+before another thread takes ownership.
+
+Inspection does not claim review, generation, or export work. If hooks are
+untrusted, a hook result is lost, the daemon stops, or the optional export
+integration is unavailable, the request and browser draft remain available for
+retry. Worker leases discard stale cleanup, and detaching the final spec clears
+that session's delivery record.
+
 ## Event mapping
 
 | Shared event | Claude Code | Pi | Codex |
