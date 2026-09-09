@@ -1513,56 +1513,29 @@ function sfRevealDisclosures(el) {
     var attached = !!meta.attachedSession;
     var delivery = meta.delivery || null;
     var codex = !!(delivery && delivery.harness === 'codex');
-    var ready = !codex && (delivery ? delivery.state === 'ready' : !!meta.connected);
+    var ready = (delivery ? delivery.state === 'ready' : !!meta.connected)
+      && (!codex || delivery.mode === 'codex-queue');
     var working = !!(delivery && delivery.state === 'working');
-    var pausedCodex = !!(codex && (delivery.state === 'paused' || delivery.state === 'ready'));
     els.conn.className = 'sf-tb-conn' + (ready ? '' : ' sf-tb-conn-off');
     var who = meta.sessionLabel || ('session ' + String(meta.attachedSession).slice(0, 8));
     els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
     els.conn.appendChild(create('span', { class: 'sf-conn-label' },
-      ready ? 'Connected' : working ? 'Reviewing' : pausedCodex ? 'Review queued' : attached ? 'Disconnected' : 'No agent'));
+      ready ? 'Connected' : working ? 'Reviewing' : attached ? 'Disconnected' : 'No agent'));
     els.conn.title = ready
         ? who + ' is watching this spec — comments you submit reach it on its own'
         : working
           ? who + ' is working on the submitted review. New comments wait for the next delivery cycle.'
-          : pausedCodex
-          ? 'Review queued: continue in the owning Codex thread to receive it.'
       : attached
         ? who + ' has stopped watching. Comments you submit will sit unread until a session picks this spec up.'
         : 'No session owns this spec. Comments you submit will sit unread until one takes it.';
     if (ready || working) return;
     var btn = create('button', { class: 'sf-conn-act', type: 'button' },
-      pausedCodex ? 'Continue in Codex' : attached ? 'Reconnect' : 'Connect');
+      attached ? 'Reconnect' : 'Connect');
     btn.onclick = function (e) {
       e.stopPropagation();
-      if (pausedCodex) copyCodexContinuePrompt();
-      else copyReconnectPrompt();
+      copyReconnectPrompt();
     };
     els.conn.appendChild(btn);
-  }
-
-  function codexContinuePrompt() {
-    var cli = (window.SPECFORGE || {}).cli;
-    return [
-      'Continue SpecForge review for spec ' + SPEC + ' in its owning Codex thread.',
-      '',
-      'Check queued review work once:',
-      '  node "' + cli + '" review-wait',
-      '',
-      'If ready is true, follow reason. When there is no work, finish the turn; hooks deliver later comments on the next turn.',
-      'Do not start a watcher or poll while idle.',
-      'If this is a different thread, do not take ownership silently; detach and open the spec explicitly first.',
-    ].join('\n');
-  }
-
-  function copyCodexContinuePrompt() {
-    var text = codexContinuePrompt();
-    var done = function () { flash('Prompt copied. Paste it into the owning Codex thread.'); };
-    try {
-      navigator.clipboard.writeText(text).then(done, function () { flash(text); });
-    } catch (e) {
-      flash(text);
-    }
   }
 
   /**
@@ -1583,7 +1556,7 @@ function sfRevealDisclosures(el) {
       ? [
         '  3. Check queued work once, process it, and finish the turn:',
         '     node "' + cli + '" review-wait',
-        '     Hooks deliver later comments on the next turn. Do not start a watcher.',
+        '     The lifecycle hooks start a background watcher that delivers later comments automatically. Do not wait for it in a tool call.',
       ]
       : harness === 'pi'
         ? ['  3. Let the Pi extension arm review delivery when this turn settles.']

@@ -17,6 +17,7 @@ import { dirname } from 'node:path';
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
 import { REVIEW_WAIT_CMD } from '../lib/store-drain.mjs';
+import { startCodexWatcher } from '../lib/codex-watcher.mjs';
 import {
   CODEX_HARNESS, PI_HARNESS, isDirectRun, resolveHarness, resolvePluginRoot,
 } from '../lib/harness-context.mjs';
@@ -41,8 +42,8 @@ export function run(input, env = process.env) {
   if (codex) {
     context.push(
       `SpecForge: this thread owns ${mine.length} spec(s) under browser review.`,
-      'Queued browser work is delivered by hooks on the next turn.',
-      'Do not start a watcher or keep the turn open waiting for comments.',
+      'SpecForge owns a background watcher that delivers submitted browser work automatically.',
+      'Finish your turn normally. Do not start a watcher or wait for comments in a tool call.',
     );
   } else if (pi) {
     context.push(
@@ -63,7 +64,9 @@ export function run(input, env = process.env) {
 }
 
 async function main() {
-  const decision = run(parseInput(await readStdin()));
+  const input = parseInput(await readStdin());
+  startCodexWatcher(input);
+  const decision = run(input);
   if (decision) process.stdout.write(JSON.stringify(decision));
 }
 

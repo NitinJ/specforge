@@ -97,10 +97,10 @@ test('a round in progress does not claim readiness for the next submission', () 
   assert.equal(specConnected(id), false, 'and once the round is over, the beat has to resume');
 });
 
-test('Codex ignores legacy worker PIDs and reports next-turn delivery', () => {
+test('Codex ignores legacy tool workers when reporting connectivity', () => {
   const id = attached(0, 'codex-thread');
   setSessionHarness('codex-thread', 'codex');
-  assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
+  assert.deepEqual(specDelivery(id), { state: 'disconnected', mode: null, harness: 'codex' });
   const lease = claimWorker('codex-thread', {
     pid: process.pid,
     harness: 'codex',
@@ -109,18 +109,18 @@ test('Codex ignores legacy worker PIDs and reports next-turn delivery', () => {
   });
   heartbeat('codex-thread');
   assert.deepEqual(specDelivery(id), {
-    state: 'paused', mode: 'next-turn', harness: 'codex',
+    state: 'disconnected', mode: null, harness: 'codex',
   });
   releaseWorker('codex-thread', lease.leaseId);
-  assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
+  assert.deepEqual(specDelivery(id), { state: 'disconnected', mode: null, harness: 'codex' });
   assert.equal(specConnected(id), false, 'the fresh final heartbeat cannot keep the badge green');
 
   mutateComments(id, (s) => createThread(s, { anchor, body: '@agent review', author: 'human' }));
   const batch = submitBatch(id);
   advanceBatchProgress(id, batch.batchId, 'working');
   assert.deepEqual(specDelivery(id), {
-    state: 'working', mode: 'next-turn', harness: 'codex',
-  }, 'an in-flight Codex round takes precedence over queued next-turn delivery');
+    state: 'working', mode: null, harness: 'codex',
+  }, 'an in-flight Codex round is shown while its worker is absent');
 });
 
 test('detaching the last spec releases delivery while detaching one of many does not', () => {

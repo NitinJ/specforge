@@ -18,6 +18,7 @@
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
 import { markSeen } from '../lib/attach.mjs';
+import { startCodexWatcher } from '../lib/codex-watcher.mjs';
 import { pendingForSession, reviewReason, watcherBeating, armWatcherReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, exportReason } from '../lib/store-export.mjs';
 import {
@@ -53,8 +54,7 @@ export function run(input, env = process.env) {
     return { decision: 'block', reason: exportReason(toExport, env) };
   }
 
-  // Codex has next-turn delivery. An idle spec must not hold the turn open or
-  // trigger another polling terminal. Pending work above still gets delivered.
+  // The Codex host hook owns the watcher; never ask the agent to wait on it.
   if (resolveHarness(env) === CODEX_HARNESS) return null;
 
   // Last: don't settle owning specs nobody is listening to. Blocking rather than
@@ -70,7 +70,9 @@ export function run(input, env = process.env) {
 }
 
 async function main() {
-  const decision = run(parseInput(await readStdin()));
+  const input = parseInput(await readStdin());
+  startCodexWatcher(input);
+  const decision = run(input);
   if (decision) process.stdout.write(JSON.stringify(decision));
 }
 

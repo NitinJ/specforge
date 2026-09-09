@@ -52,7 +52,7 @@ test('idle Codex can settle repeatedly without a watcher instruction', () => {
   assert.equal(stop({}, env), null);
   assert.equal(stop({}, env), null);
   const guidance = start({}, env).hookSpecificOutput.additionalContext;
-  assert.match(guidance, /next turn/i);
+  assert.match(guidance, /background watcher.*automatically/i);
   assert.doesNotMatch(guidance, /foreground|leave.*active|run it again/i);
 });
 
@@ -91,5 +91,5 @@ test('a Codex check ignores a legacy same-PID lease and never sleeps or beats', 
   heartbeat(session);
   assert.equal(watcherAlive(session, () => assert.fail('a Codex PID must not be probed')), false);
   assert.equal(specConnected(id), false);
-  assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
+  assert.deepEqual(specDelivery(id), { state: 'disconnected', mode: null, harness: 'codex' });
 });

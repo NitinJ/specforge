@@ -288,8 +288,9 @@ the mechanical checks alone.
 ## 5. Hand off + arm review delivery
 
 - Print the spec `url` (open it to review). Edits to `htmlPath` live-reload.
-- The spec is attached to this session. In Codex, finish the turn: hooks deliver
-  browser comments on the next turn. Do not start a watcher or poll while idle.
+- The spec is attached to this session. In Codex, finish the turn: lifecycle hooks
+  own the background watcher and deliver browser comments automatically. Do not
+  start a watcher or wait for comments in a tool call.
 - For an explicit Codex pickup, run
   `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` once. It checks
   queued work and returns immediately. Follow `reason` when `ready` is true;

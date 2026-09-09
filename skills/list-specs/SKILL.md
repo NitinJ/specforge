@@ -64,8 +64,8 @@ Act on the choice:
 
 - **Open `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" open <id>`
   (attaches it to this session; fails if another live session holds it). Print the
-  returned `url`. In Codex, finish the turn; hooks pick up browser comments on the
-  next turn. Do not start a watcher. In Claude Code, arm one background
+  returned `url`. In Codex, finish the turn; the host-owned watcher delivers browser
+  comments automatically. Do not start a watcher. In Claude Code, arm one background
   `review-wait` if none is running; Pi delivery is extension-managed.
 - **Detach `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" detach <id>`.
   Confirm it's freed.

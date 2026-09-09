@@ -140,7 +140,7 @@ Fix and re-run until `PASS`. **Do not finish on a failing lint.**
 
 - Print the spec `url`. The spec is attached to this session. Mention the original file is
   left untouched (its path is recorded as the spec's `origin`).
-- In Codex, finish the turn: hooks deliver browser comments on the next turn.
+- In Codex, finish the turn: the host-owned watcher delivers browser comments automatically.
   Do not start a watcher or poll while idle. For explicit pickup, run
   `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` once and follow
   `reason` when `ready` is true. A `next-turn` result means finish without re-arming.
