@@ -14,6 +14,7 @@ import { specConnected } from '../lib/spec-signals.mjs';
 import { watchCodex, startCodexWatcher, stopCodexWatcher } from '../lib/codex-watcher.mjs';
 import { requestExport } from '../lib/store-export.mjs';
 import { requestGenerate } from '../lib/store-generate.mjs';
+import { sessionPath } from '../lib/store-paths.mjs';
 import { run as stopHook } from '../hooks/stop.mjs';
 import { run as promptHook } from '../hooks/user-prompt-submit.mjs';
 
@@ -63,6 +64,21 @@ for (const kind of ['generate', 'export']) {
 }
 
 for (const kind of ['review', 'generate', 'export']) {
+  test(`${kind} delivery recognizes an earlier persisted sent record`, async () => {
+    if (kind === 'review') submit('already queued');
+    else if (kind === 'generate') requestGenerate(id, 'Template');
+    else requestExport(id);
+    const work = pendingWorkForSession(session);
+    writeFileSync(`${sessionPath(session)}.codex-sent`, JSON.stringify(
+      work.items.map((item) => JSON.stringify([work.kind, item])),
+    ));
+    await watchCodex(session, {
+      deliver: async () => assert.fail('an earlier queued request was delivered again'),
+      onError: (error) => { throw error; },
+      sleep: async () => { stopCodexWatcher(session); },
+    });
+  });
+
   test(`${kind} has one Codex delivery path, even when a hook runs with pending work`, () => {
     if (kind === 'review') submit('one delivery only');
     else if (kind === 'generate') requestGenerate(id, 'Template');
