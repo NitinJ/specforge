@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validatePackage } from './validate-package.mjs';
+import { assertOwnedMarketplace, OWNERSHIP_MARKER } from './codex-marketplace-ownership.mjs';
 
 const CONTENT = [
   '.claude-plugin', '.codex-plugin', 'commands', 'components', 'hooks', 'lib',
@@ -35,8 +36,10 @@ export function buildCodexMarketplace(sourceArg, destinationArg) {
   const previous = `${destination}.previous`;
   const plugin = join(staging, 'plugins', 'specforge');
 
+  for (const path of [destination, staging, previous]) assertOwnedMarketplace(path);
   rmSync(staging, { recursive: true, force: true });
   mkdirSync(plugin, { recursive: true });
+  writeFileSync(join(staging, '.specforge-owned'), OWNERSHIP_MARKER);
   for (const name of CONTENT) cpSync(join(source, name), join(plugin, name), { recursive: true });
 
   const manifestPath = join(plugin, '.codex-plugin', 'plugin.json');
@@ -56,7 +59,6 @@ export function buildCodexMarketplace(sourceArg, destinationArg) {
   };
   mkdirSync(join(staging, '.agents', 'plugins'), { recursive: true });
   writeFileSync(join(staging, '.agents', 'plugins', 'marketplace.json'), `${JSON.stringify(marketplace, null, 2)}\n`);
-  writeFileSync(join(staging, '.specforge-owned'), 'SpecForge Codex marketplace\n');
 
   const errors = validatePackage(plugin);
   if (errors.length) throw new Error(errors.join('\n'));

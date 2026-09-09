@@ -1,20 +1,23 @@
 #!/usr/bin/env node
 
-import { existsSync, renameSync, rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { renameSync, rmSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { assertOwnedMarketplace } from './codex-marketplace-ownership.mjs';
 
 const root = resolve(process.argv[2] || '');
 if (!process.argv[2]) throw new Error('usage: restore-codex-marketplace.mjs <destination>');
-if (!existsSync(join(root, '.specforge-owned'))) {
+if (!assertOwnedMarketplace(root)) {
   throw new Error(`refusing to replace an unowned directory: ${root}`);
 }
 
 const previous = `${root}.previous`;
-if (!existsSync(previous)) {
+const rejected = `${root}.rejected`;
+const hasPrevious = assertOwnedMarketplace(previous);
+assertOwnedMarketplace(rejected);
+if (!hasPrevious) {
   rmSync(root, { recursive: true, force: true });
   process.stdout.write('removed rejected first install\n');
 } else {
-  const rejected = `${root}.rejected`;
   rmSync(rejected, { recursive: true, force: true });
   renameSync(root, rejected);
   renameSync(previous, root);

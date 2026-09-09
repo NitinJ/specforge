@@ -115,7 +115,7 @@ test('comment round-trip: hover block → click → compose → submit persists 
   });
 });
 
-test('Codex active review shows truthful status and completes two browser rounds', needsChrome, async () => {
+test('Codex next-turn review ignores legacy watchers and completes two browser rounds', needsChrome, async () => {
   await withSpec({ permissions: ['clipboard-read', 'clipboard-write'] }, async ({ page, id }) => {
     attach(id, CODEX);
     setSessionHarness(CODEX, 'codex');
@@ -129,7 +129,7 @@ test('Codex active review shows truthful status and completes two browser rounds
     heartbeat(CODEX);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#sf-launcher');
-    assert.match(await page.locator('.sf-conn-label').innerText(), /Listening/);
+    assert.match(await page.locator('.sf-conn-label').innerText(), /Review queued/);
 
     releaseWorker(CODEX, live.leaseId);
     await page.reload({ waitUntil: 'domcontentloaded' });
