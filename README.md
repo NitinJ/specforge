@@ -129,12 +129,13 @@ A comment is a conversation between people unless it says `@agent`:
 
 Submit, and the owning agent replies to every thread and amends the document.
 Claude Code and Pi can receive work through their host-owned background path.
-Codex preview uses an active foreground review wait or picks queued work up on
-the next turn. Your open page reloads itself once when the round is finished.
+Codex preview picks queued work up on the next turn. Its `review-wait` command
+checks once and returns, without a polling terminal. Your open page reloads
+itself once when the round is finished.
 
 The header says whether anyone is actually listening. **Connected** means a
 session is watching this spec right now, so comments you submit reach it on their
-own; **Listening** is the corresponding active Codex mode; **Review queued**
+own; **Review queued**
 means continue in its owning Codex thread; and **Disconnected** means the work
 would sit unread. Reconnect copies a prompt for the recorded harness and requires
 an explicit ownership transfer when another session owns the spec.

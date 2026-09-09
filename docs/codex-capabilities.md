@@ -89,16 +89,16 @@ previous validated marketplace and restores it automatically if a later
 
 Codex background hooks cannot start a turn after the thread becomes idle. Their output waits for the next user turn. A long-running shell command can remain part of an active turn, but that is an active review mode, not settled-thread delivery.
 
-Therefore the first Codex release supports two native paths:
+Codex delivery uses the following native paths:
 
 1. Pending browser work is injected on the next user prompt or before the current turn settles.
-2. The discovered review skill can keep its current turn active while it waits for the next browser batch. The wait is cancellable and does not issue repeated model requests while idle.
+2. An explicit `review-wait` checks queued work once and returns immediately. It does not keep the turn open or start a watcher.
 
-The browser must report the actual mode. It must not show settled native Codex sessions as connected after the active wait ends.
+The browser reports Codex as **Review queued** while idle and **Reviewing** during an acknowledged round.
 
-Canonical skills will call one harness-neutral `specforge review-wait` operation. The shared runtime selects the host behavior: Pi keeps its extension-owned child, Claude keeps its supported background-task flow, and Codex keeps the shell command open inside the current tool call. The Codex agent waits on that running command before ending its turn. This is the foreground transport; it requires no separate API request and produces no model traffic until the command returns.
+Canonical skills use one harness-neutral `specforge review-wait` operation. Pi keeps its extension-owned child, Claude keeps its background-task flow, and Codex performs a one-shot check. An idle Codex result is `{ ready: false, pending: [], reason: 'next-turn' }`. The agent finishes its turn without re-arming. Stop hooks still route submitted work, but never block an idle Codex turn just to request a watcher.
 
-Skill text and hook route text must use the same host-neutral operation. Neither may tell Codex to launch the old background watcher. The runtime must never turn a detached Codex watcher heartbeat into a connected browser badge. This remains one shared skill and one shared route generator with runtime capability wording, not a Codex copy.
+Skill text, hook routes, and browser recovery prompts must agree on this behavior. None may tell Codex to launch a foreground or background watcher. Tool sandboxes can each report PID 2, so the runtime ignores legacy Codex PID records when calculating browser readiness. This removes Codex's reliance on process IDs across namespaces.
 
 Full settled-thread wake-up remains unavailable through the documented native plugin hook contract. An App Server client can own a separate thread and call `thread/resume` plus `turn/start`, but it must not take over a thread owned by another Codex client. SpecForge does not add that separate client in this implementation.
 
@@ -106,11 +106,10 @@ The shared runtime now implements this contract through `specforge review-wait`.
 It detects review batches, template-generation requests, and exports without
 changing their state. The relevant skill acknowledges pickup with
 `batch-working`, `template-working`, or `export-working`, so a lost hook or tool
-result remains deliverable. Each running delivery process holds an opaque lease;
-late cleanup from an older process cannot clear its replacement, and separate
-Codex thread ids retain separate workers and spec ownership. The worker writes
-heartbeats only while its command is running and clears its record on normal
-return, so a finished foreground wait does not leave the browser connected.
+result remains deliverable. Claude and Pi delivery workers retain opaque leases;
+late cleanup from an older process cannot clear its replacement. Codex checks
+neither acquire a lease nor write a heartbeat. Spec ownership remains keyed by
+the native thread id.
 
 Agent replies accept an effect key. Retrying the same batch/thread effect returns
 the existing reply instead of appending it again, covering the side effect most
@@ -118,11 +117,10 @@ likely to be duplicated when a review turn is resumed after transport loss.
 
 ## Browser and recovery behavior
 
-The browser derives its connection badge from the owning session's live worker
-and fresh heartbeat. An active Codex foreground wait reads **Listening**. Once
-that wait returns, the same attached spec reads **Review queued** and offers a
-continuation prompt for the owning Codex thread. It never presents a completed
-foreground process as a background connection.
+The browser derives Claude and Pi connectivity from a live worker and fresh
+heartbeat. Codex uses next-turn delivery and reads **Review queued**, with a
+one-shot continuation prompt for the owning thread. An acknowledged review
+reads **Reviewing**. A legacy Codex heartbeat cannot advertise a live listener.
 
 Replies retain their actual harness author, including `codex`, while all three
 harnesses use the same stored comment and spec formats. Shared-origin rounds

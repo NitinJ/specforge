@@ -288,12 +288,11 @@ the mechanical checks alone.
 ## 5. Hand off + arm review delivery
 
 - Print the spec `url` (open it to review). Edits to `htmlPath` live-reload.
-- The spec is attached to this session; review comments submitted in the browser
-  come back here automatically.
-- **Arm review delivery once for this session.** In Codex, run
-  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` in the foreground
-  and leave the tool call active. In Claude Code, run the same command in a
-  background task. Pi owns the command through its extension.
-- Delivery returns `{ ready, kind, work, reason }`. When `ready` is true, follow
-  `reason`, then re-arm it in the same harness mode. It runs until work arrives or
-  the session ends, and one worker covers every spec attached here.
+- The spec is attached to this session. In Codex, finish the turn: hooks deliver
+  browser comments on the next turn. Do not start a watcher or poll while idle.
+- For an explicit Codex pickup, run
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` once. It checks
+  queued work and returns immediately. Follow `reason` when `ready` is true;
+  when `reason` is `next-turn`, finish without re-arming.
+- In Claude Code, run that command as one background task per session and
+  re-arm it after handling delivered work. Pi owns delivery through its extension.

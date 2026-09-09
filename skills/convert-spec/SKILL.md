@@ -138,13 +138,11 @@ Fix and re-run until `PASS`. **Do not finish on a failing lint.**
 
 ## 4. Hand off + arm review delivery
 
-- Print the spec `url`. The spec is attached to this session; browser review
-  comments are delivered back here automatically. Mention the original file is
+- Print the spec `url`. The spec is attached to this session. Mention the original file is
   left untouched (its path is recorded as the spec's `origin`).
-- **Arm review delivery once for this session.** In Codex, run
-  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` in the foreground
-  and leave the tool call active. In Claude Code, run the same command in a
-  background task. Pi owns the command through its extension.
-- Delivery returns `{ ready, kind, work, reason }`. When `ready` is true, follow
-  `reason`, then re-arm it in the same harness mode. It runs until work arrives or
-  the session ends, and one worker covers every spec attached here.
+- In Codex, finish the turn: hooks deliver browser comments on the next turn.
+  Do not start a watcher or poll while idle. For explicit pickup, run
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` once and follow
+  `reason` when `ready` is true. A `next-turn` result means finish without re-arming.
+- In Claude Code, run that command as one background task per session and
+  re-arm it after handling delivered work. Pi owns delivery through its extension.

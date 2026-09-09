@@ -41,10 +41,8 @@ export function run(input, env = process.env) {
   if (codex) {
     context.push(
       `SpecForge: this thread owns ${mine.length} spec(s) under browser review.`,
-      'To receive browser work during this turn, start active delivery in the foreground',
-      'and leave its tool call active:',
-      `  ${REVIEW_WAIT_CMD}`,
-      'It returns { ready, kind, work, reason }. Follow reason, then run it again.',
+      'Queued browser work is delivered by hooks on the next turn.',
+      'Do not start a watcher or keep the turn open waiting for comments.',
     );
   } else if (pi) {
     context.push(

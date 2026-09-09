@@ -97,7 +97,7 @@ test('a round in progress does not claim readiness for the next submission', () 
   assert.equal(specConnected(id), false, 'and once the round is over, the beat has to resume');
 });
 
-test('Codex reports active review only while its leased foreground worker lives', () => {
+test('Codex ignores legacy worker PIDs and reports next-turn delivery', () => {
   const id = attached(0, 'codex-thread');
   setSessionHarness('codex-thread', 'codex');
   assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
@@ -109,7 +109,7 @@ test('Codex reports active review only while its leased foreground worker lives'
   });
   heartbeat('codex-thread');
   assert.deepEqual(specDelivery(id), {
-    state: 'ready', mode: 'active-foreground', harness: 'codex',
+    state: 'paused', mode: 'next-turn', harness: 'codex',
   });
   releaseWorker('codex-thread', lease.leaseId);
   assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
@@ -124,15 +124,15 @@ test('Codex reports active review only while its leased foreground worker lives'
 });
 
 test('detaching the last spec releases delivery while detaching one of many does not', () => {
-  const first = attached(0, 'codex-thread');
-  const second = attached(0, 'codex-thread');
-  const lease = claimWorker('codex-thread', {
-    pid: process.pid, harness: 'codex', mode: 'active-foreground', leaseId: 'detach-live',
+  const first = attached(0, 'claude-thread');
+  const second = attached(0, 'claude-thread');
+  const lease = claimWorker('claude-thread', {
+    pid: process.pid, harness: 'claude', mode: 'background', leaseId: 'detach-live',
   });
   detach(first);
   assert.equal(specConnected(second), true, 'the remaining owned spec keeps delivery');
   detach(second);
-  assert.equal(releaseWorker('codex-thread', lease.leaseId), false,
+  assert.equal(releaseWorker('claude-thread', lease.leaseId), false,
     'the last detach already released the lease');
 });
 

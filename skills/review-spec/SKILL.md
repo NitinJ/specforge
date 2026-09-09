@@ -363,8 +363,9 @@ sees your replies + edits live and resolves the threads they're satisfied with.
 
 Then keep delivery ready for the next browser action:
 
-- In Codex, run `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait`
-  in the foreground and leave that tool call active.
+- In Codex, finish the turn. Hooks deliver later browser work on the next turn.
+  Do not start a watcher or poll while idle. An explicit `review-wait` command
+  checks once and returns; a `next-turn` result does not require re-arming.
 - In Claude Code, relaunch
   `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` as a background task.
 - In Pi, the extension re-arms delivery when the review turn settles.

@@ -88,7 +88,7 @@ test('missing or untrusted hooks leave work recoverable until a skill acknowledg
   assert.equal(pendingWorkForSession('thread-1'), null);
 });
 
-test('review-wait delivers all browser work types with truthful foreground guidance', async () => {
+test('review-wait checks browser work without a Codex worker', async () => {
   const id = owned('thread-export');
   requestExport(id, '2026-09-08T00:00:00.000Z');
   const result = await cmdReviewWait({ timeout: 0 }, codexDeps('thread-export'));
@@ -141,10 +141,10 @@ test('worker leases isolate sessions and stale cleanup cannot clear a replacemen
   assert.equal(workerFor('thread-b').leaseId, b1.leaseId, 'another Codex thread is untouched');
 });
 
-test('timed-out foreground delivery clears its worker and connected state', async () => {
+test('idle Codex delivery returns next-turn without a worker', async () => {
   owned('thread-idle');
   const result = await cmdReviewWait({ timeout: 0 }, codexDeps('thread-idle'));
-  assert.deepEqual(result, { ready: false, pending: [], reason: 'timeout' });
+  assert.deepEqual(result, { ready: false, pending: [], reason: 'next-turn' });
   assert.equal(workerFor('thread-idle'), null);
   assert.equal(watcherAlive('thread-idle'), false);
 });

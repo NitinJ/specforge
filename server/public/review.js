@@ -1512,18 +1512,16 @@ function sfRevealDisclosures(el) {
     els.conn.innerHTML = '';
     var attached = !!meta.attachedSession;
     var delivery = meta.delivery || null;
-    var ready = delivery ? delivery.state === 'ready' : !!meta.connected;
+    var codex = !!(delivery && delivery.harness === 'codex');
+    var ready = !codex && (delivery ? delivery.state === 'ready' : !!meta.connected);
     var working = !!(delivery && delivery.state === 'working');
-    var pausedCodex = !!(delivery && delivery.state === 'paused' && delivery.harness === 'codex');
-    var activeCodex = !!(ready && delivery && delivery.mode === 'active-foreground');
+    var pausedCodex = !!(codex && (delivery.state === 'paused' || delivery.state === 'ready'));
     els.conn.className = 'sf-tb-conn' + (ready ? '' : ' sf-tb-conn-off');
     var who = meta.sessionLabel || ('session ' + String(meta.attachedSession).slice(0, 8));
     els.conn.appendChild(create('span', { class: 'sf-conn-dot', 'aria-hidden': 'true' }));
     els.conn.appendChild(create('span', { class: 'sf-conn-label' },
-      activeCodex ? 'Listening' : ready ? 'Connected' : working ? 'Reviewing' : pausedCodex ? 'Review queued' : attached ? 'Disconnected' : 'No agent'));
-    els.conn.title = activeCodex
-      ? 'Listening while review mode is active in Codex. Comments you submit reach this thread.'
-      : ready
+      ready ? 'Connected' : working ? 'Reviewing' : pausedCodex ? 'Review queued' : attached ? 'Disconnected' : 'No agent'));
+    els.conn.title = ready
         ? who + ' is watching this spec — comments you submit reach it on its own'
         : working
           ? who + ' is working on the submitted review. New comments wait for the next delivery cycle.'
@@ -1548,10 +1546,11 @@ function sfRevealDisclosures(el) {
     return [
       'Continue SpecForge review for spec ' + SPEC + ' in its owning Codex thread.',
       '',
-      'Run active review delivery in the foreground and leave the tool call active:',
+      'Check queued review work once:',
       '  node "' + cli + '" review-wait',
       '',
-      'When it returns { ready, kind, work, reason }, follow reason and run it again.',
+      'If ready is true, follow reason. When there is no work, finish the turn; hooks deliver later comments on the next turn.',
+      'Do not start a watcher or poll while idle.',
       'If this is a different thread, do not take ownership silently; detach and open the spec explicitly first.',
     ].join('\n');
   }
@@ -1582,8 +1581,9 @@ function sfRevealDisclosures(el) {
       : harness === 'claude' ? 'Claude Code session' : 'agent session';
     var arm = harness === 'codex'
       ? [
-        '  3. Start active review delivery in the foreground and leave it running:',
+        '  3. Check queued work once, process it, and finish the turn:',
         '     node "' + cli + '" review-wait',
+        '     Hooks deliver later comments on the next turn. Do not start a watcher.',
       ]
       : harness === 'pi'
         ? ['  3. Let the Pi extension arm review delivery when this turn settles.']
@@ -1603,7 +1603,9 @@ function sfRevealDisclosures(el) {
       '  2. Attach it to this session:               node "' + cli + '" open ' + SPEC,
       ...arm,
       '',
-      'When delivery returns work, follow its reason and re-arm it in the same harness mode.',
+      harness === 'codex'
+        ? 'If the check returns work, follow its reason. Otherwise finish the turn.'
+        : 'When delivery returns work, follow its reason and re-arm it in the same harness mode.',
     ].join('\n');
   }
   function copyReconnectPrompt() {

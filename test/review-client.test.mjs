@@ -2034,7 +2034,7 @@ test('a connected spec says so, quietly, with nothing to do', async (t) => {
   assert.equal(pill.querySelector('.sf-conn-act'), null, 'nothing to fix');
 });
 
-test('an active Codex foreground worker is labelled Listening', async (t) => {
+test('a legacy Codex foreground worker is shown as next-turn delivery', async (t) => {
   const { window } = await bootReviewLayer(t, {
     meta: {
       id: 'test-spec', status: 'draft', attachedSession: 'codex-thread', connected: true,
@@ -2042,9 +2042,9 @@ test('an active Codex foreground worker is labelled Listening', async (t) => {
     },
   });
   const pill = connPill(window);
-  assert.match(pill.textContent, /Listening/);
-  assert.match(pill.getAttribute('title'), /review mode is active/i);
-  assert.equal(pill.querySelector('.sf-conn-act'), null);
+  assert.match(pill.textContent, /Review queued/);
+  assert.doesNotMatch(pill.textContent, /Listening|Connected/);
+  assert.match(pill.querySelector('.sf-conn-act').textContent, /Continue in Codex/);
 });
 
 test('a paused Codex thread says Review queued and copies continuation guidance', async (t) => {
@@ -2065,7 +2065,9 @@ test('a paused Codex thread says Review queued and copies continuation guidance'
   assert.match(pill.textContent, /Review queued/);
   assert.match(pill.querySelector('.sf-conn-act').textContent, /Continue in Codex/);
   pill.querySelector('.sf-conn-act').click();
-  assert.match(copied[0], /foreground/);
+  assert.match(copied[0], /once/);
+  assert.match(copied[0], /next turn/);
+  assert.doesNotMatch(copied[0], /foreground|leave.*active|run it again/);
   assert.match(copied[0], /review-wait/);
   assert.match(copied[0], /do not take ownership silently/i);
 });
@@ -2175,7 +2177,7 @@ test('Reconnect copies a prompt naming this spec and the takeover steps', async 
   assert.match(text, /review-wait/, 'and arms delivery, or it would disconnect again at once');
 });
 
-test('Reconnect targets Codex and keeps its delivery command in the foreground', async (t) => {
+test('Reconnect targets Codex with a one-shot check instead of re-arming', async (t) => {
   const copied = [];
   const { window } = await bootReviewLayer(t, {
     meta: {
@@ -2191,7 +2193,9 @@ test('Reconnect targets Codex and keeps its delivery command in the foreground',
   });
   connPill(window).querySelector('.sf-conn-act').click();
   assert.match(copied[0], /Codex thread/);
-  assert.match(copied[0], /foreground/);
+  assert.match(copied[0], /once/);
+  assert.match(copied[0], /next turn/);
+  assert.doesNotMatch(copied[0], /foreground|re-arm|leave.*running/);
   assert.doesNotMatch(copied[0], /background/);
   assert.match(copied[0], /detach test-spec/, 'a different owner still requires explicit transfer');
 });

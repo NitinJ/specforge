@@ -23,7 +23,7 @@ import { exportRequestsForSession, exportReason } from '../lib/store-export.mjs'
 import {
   generateRequestsForSession, generateReason,
 } from '../lib/store-generate.mjs';
-import { isDirectRun } from '../lib/harness-context.mjs';
+import { CODEX_HARNESS, isDirectRun, resolveHarness } from '../lib/harness-context.mjs';
 
 export function run(input, env = process.env) {
   // Loop guard: if this stop already followed a stop-hook continuation, settle.
@@ -52,6 +52,10 @@ export function run(input, env = process.env) {
   if (toExport.length) {
     return { decision: 'block', reason: exportReason(toExport, env) };
   }
+
+  // Codex has next-turn delivery. An idle spec must not hold the turn open or
+  // trigger another polling terminal. Pending work above still gets delivered.
+  if (resolveHarness(env) === CODEX_HARNESS) return null;
 
   // Last: don't settle owning specs nobody is listening to. Blocking rather than
   // mentioning, because settling in that state IS the bug — a spec that takes

@@ -64,10 +64,9 @@ Act on the choice:
 
 - **Open `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" open <id>`
   (attaches it to this session; fails if another live session holds it). Print the
-  returned `url`. Then, if the review watcher isn't already running this session,
-  arm delivery for the current harness (Codex: foreground `review-wait`; Claude Code:
-  background `review-wait`; Pi: extension-managed)
-  so this spec's comments are picked up automatically (see create-spec for the loop).
+  returned `url`. In Codex, finish the turn; hooks pick up browser comments on the
+  next turn. Do not start a watcher. In Claude Code, arm one background
+  `review-wait` if none is running; Pi delivery is extension-managed.
 - **Detach `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" detach <id>`.
   Confirm it's freed.
 - **Other `<id>`** → open it if free, detach it if it's attached here, else say it's
