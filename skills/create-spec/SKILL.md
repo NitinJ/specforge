@@ -20,7 +20,9 @@ Generate a new SpecForge spec in the global store (`~/.specforge/specs/<id>/`),
 honoring house rules, and lint it before declaring done. The daemon serves it and
 injects the review layer at serve time.
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory (the SpecForge repo root).
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command.
 
 ## 1. Understand the request + pick the type
 
@@ -283,15 +285,14 @@ The lint still exists and the gate is a superset of it; run
 `node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>` only when you want
 the mechanical checks alone.
 
-## 5. Hand off + arm the review watcher
+## 5. Hand off + arm review delivery
 
 - Print the spec `url` (open it to review). Edits to `htmlPath` live-reload.
-- The spec is attached to this session; review comments submitted in the browser
-  come back here automatically.
-- **Arm the review watcher (once per session)** so comments are picked up even
-  while you're idle. If it isn't already running this session, start it in the
-  **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
-  Its completion wakes the session with `{ ready, pending }` — on `ready`, run the
-  review-spec flow for each `pending` spec, then relaunch it. It does not expire
-  on its own: it runs until a batch arrives or this session ends. One watcher
-  covers every spec attached here.
+- The spec is attached to this session. In Codex, finish the turn: hooks deliver
+  browser comments on the next turn. Do not start a watcher or poll while idle.
+- For an explicit Codex pickup, run
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` once. It checks
+  queued work and returns immediately. Follow `reason` when `ready` is true;
+  when `reason` is `next-turn`, finish without re-arming.
+- In Claude Code, run that command as one background task per session and
+  re-arm it after handling delivered work. Pi owns delivery through its extension.

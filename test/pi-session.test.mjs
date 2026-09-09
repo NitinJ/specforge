@@ -1,7 +1,7 @@
 // Pi-port session identity: SPECFORGE_SESSION_ID is the harness-neutral env var
 // the Pi extension injects into Bash subprocesses (Pi has no
 // CLAUDE_CODE_SESSION_ID). These tests pin the resolution order:
-// explicit payload/deps > SPECFORGE_SESSION_ID > CLAUDE_CODE_SESSION_ID.
+// explicit payload/deps > SPECFORGE_SESSION_ID > Codex ids > CLAUDE_CODE_SESSION_ID.
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -54,6 +54,11 @@ test('CLAUDE_CODE_SESSION_ID still resolves when the neutral var is absent', () 
   assert.equal(me, 'sess-claude');
 });
 
+test('Codex thread id resolves when the neutral var is absent', () => {
+  const { me } = mineFor({ CODEX_THREAD_ID: 'thread-codex' });
+  assert.equal(me, 'thread-codex');
+});
+
 test('an explicit payload session id still beats every env var', () => {
   const { me } = mineFor(
     { SPECFORGE_SESSION_ID: 'sess-pi', CLAUDE_CODE_SESSION_ID: 'sess-claude' },
@@ -65,15 +70,22 @@ test('an explicit payload session id still beats every env var', () => {
 test('hooks act on SPECFORGE_SESSION_ID', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-pi');
-  const out = sessionStartRun({}, { SPECFORGE_SESSION_ID: 'sess-pi' });
+  const out = sessionStartRun({}, {
+    SPECFORGE_SESSION_ID: 'sess-pi', SPECFORGE_HARNESS: 'pi',
+  });
   assert.ok(out, 'SessionStart acts on the Pi-injected env var');
   assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
+  assert.match(out.hookSpecificOutput.additionalContext, /Pi extension owns review delivery/);
+  assert.doesNotMatch(out.hookSpecificOutput.additionalContext, /review-wait/,
+    'Pi must not be told to start a second worker');
 });
 
 test('cli: wait-batch without any session env errors naming both vars', () => {
   const env = { ...process.env, SPECFORGE_HOME: home };
   delete env.SPECFORGE_SESSION_ID;
   delete env.CLAUDE_CODE_SESSION_ID;
+  delete env.CODEX_THREAD_ID;
+  delete env.CODEX_SESSION_ID;
   const r = spawnSync('node', [join(ROOT, 'lib', 'specforge-cli.mjs'), 'wait-batch'], {
     env,
     encoding: 'utf8',

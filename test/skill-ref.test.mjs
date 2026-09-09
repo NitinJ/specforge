@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { skillRef, PI_HARNESS } from '../lib/skill-ref.mjs';
+import { skillRef, PI_HARNESS, CODEX_HARNESS } from '../lib/skill-ref.mjs';
 
 test('namespaces the skill for Claude Code', () => {
   assert.equal(skillRef('review-spec', { CLAUDE_CODE_SESSION_ID: 'cc-1' }), 'specforge:review-spec');
@@ -21,6 +21,10 @@ test('default (no marker) keeps the Claude form', () => {
 
 test('the bare name where Pi is the harness', () => {
   assert.equal(skillRef('review-spec', { SPECFORGE_HARNESS: PI_HARNESS }), 'review-spec');
+});
+
+test('Codex uses the plugin-qualified skill name', () => {
+  assert.equal(skillRef('review-spec', { SPECFORGE_HARNESS: CODEX_HARNESS }), 'specforge:review-spec');
 });
 
 test('a session-id override is not a harness signal', () => {

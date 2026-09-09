@@ -15,7 +15,9 @@ Process one or more **pending review batches** for specs in the global store:
 reply inline to each comment thread and amend the spec per the comments. The
 browser updates live (the spec file change triggers an SSE reload).
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Specs live in the
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command. Specs live in the
 store at `~/.specforge/specs/<id>/spec.html`; you address them by spec **id**
 (the hook message lists each batch's `specId` + `batchId`).
 
@@ -129,11 +131,11 @@ and amending are all edit work — and go straight to step 4, the reply:
    owner had deleted. Answering a comment is where explanatory, persuading
    register creeps in: the spec is still a specification, not a reply. Watch the
    advisory `spec-language` line in the lint.
-4. **Reply inline** (append-only, attributed to claude) via the CLI — never edit
+4. **Reply inline** (append-only, attributed to the active harness) via the CLI — never edit
    `comments.json` by hand, and never use the HTTP API (it is human-only):
 
    ```
-   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>"
+   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>" --effect "<batchId>:<threadId>:reply"
    ```
 
    **Answer first, then justify.** If the comment asked a question, the first
@@ -359,5 +361,11 @@ amended (on a `share` batch, say that it was a reviewer's and that you answered
 without amending, so the owner knows a promotion is theirs to make). The human
 sees your replies + edits live and resolves the threads they're satisfied with.
 
-Then **re-arm the review watcher** so the next batch wakes the session: relaunch
-`node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch` as a background task.
+Then keep delivery ready for the next browser action:
+
+- In Codex, finish the turn. Hooks deliver later browser work on the next turn.
+  Do not start a watcher or poll while idle. An explicit `review-wait` command
+  checks once and returns; a `next-turn` result does not require re-arming.
+- In Claude Code, relaunch
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` as a background task.
+- In Pi, the extension re-arms delivery when the review turn settles.

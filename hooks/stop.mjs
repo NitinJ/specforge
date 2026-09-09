@@ -19,10 +19,11 @@ import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
 import { markSeen } from '../lib/attach.mjs';
 import { pendingForSession, reviewReason, watcherBeating, armWatcherReason } from '../lib/store-drain.mjs';
-import { exportRequestsForSession, markExportWorking, exportReason } from '../lib/store-export.mjs';
+import { exportRequestsForSession, exportReason } from '../lib/store-export.mjs';
 import {
-  generateRequestsForSession, markGenerateWorking, generateReason,
+  generateRequestsForSession, generateReason,
 } from '../lib/store-generate.mjs';
+import { CODEX_HARNESS, isDirectRun, resolveHarness } from '../lib/harness-context.mjs';
 
 export function run(input, env = process.env) {
   // Loop guard: if this stop already followed a stop-hook continuation, settle.
@@ -43,16 +44,18 @@ export function run(input, env = process.env) {
   // front of a dialog that named an ETA.
   const toGenerate = generateRequestsForSession(me);
   if (toGenerate.length) {
-    toGenerate.forEach((m) => markGenerateWorking(m.id));
     return { decision: 'block', reason: generateReason(toGenerate, env) };
   }
 
   // Human clicked "Export to Google Docs" — route to the export skill once.
   const toExport = exportRequestsForSession(me);
   if (toExport.length) {
-    toExport.forEach((m) => markExportWorking(m.id));
     return { decision: 'block', reason: exportReason(toExport, env) };
   }
+
+  // Codex has next-turn delivery. An idle spec must not hold the turn open or
+  // trigger another polling terminal. Pending work above still gets delivered.
+  if (resolveHarness(env) === CODEX_HARNESS) return null;
 
   // Last: don't settle owning specs nobody is listening to. Blocking rather than
   // mentioning, because settling in that state IS the bug — a spec that takes
@@ -71,5 +74,4 @@ async function main() {
   if (decision) process.stdout.write(JSON.stringify(decision));
 }
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) main().then(() => process.exit(0)).catch(() => process.exit(0));
+if (isDirectRun(import.meta.url)) main().then(() => process.exit(0)).catch(() => process.exit(0));

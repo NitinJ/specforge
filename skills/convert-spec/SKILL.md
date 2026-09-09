@@ -13,8 +13,10 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 
 # convert-spec
 
-Bring an existing file into the SpecForge store. `${CLAUDE_PLUGIN_ROOT}` is the
-installed plugin directory.
+Bring an existing file into the SpecForge store. `${CLAUDE_PLUGIN_ROOT}` below
+denotes the installed plugin directory. Claude and Pi export it; Codex provides
+the exact value in SpecForge SessionStart context. Substitute it in every path
+and shell command.
 
 ## 1. Inspect the source
 
@@ -134,14 +136,13 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/lint-spec.mjs" <htmlPath>
 
 Fix and re-run until `PASS`. **Do not finish on a failing lint.**
 
-## 4. Hand off + arm the review watcher
+## 4. Hand off + arm review delivery
 
-- Print the spec `url`. The spec is attached to this session; browser review
-  comments are delivered back here automatically. Mention the original file is
+- Print the spec `url`. The spec is attached to this session. Mention the original file is
   left untouched (its path is recorded as the spec's `origin`).
-- **Arm the review watcher (once per session)** so comments are picked up while
-  you're idle. If it isn't already running this session, start it in the
-  **background**: `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`.
-  On its `{ ready, pending }` return, run review-spec for each `pending` spec then
-  relaunch it. It does not expire on its own: it runs until a batch arrives or
-  this session ends. One watcher covers every spec here.
+- In Codex, finish the turn: hooks deliver browser comments on the next turn.
+  Do not start a watcher or poll while idle. For explicit pickup, run
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" review-wait` once and follow
+  `reason` when `ready` is true. A `next-turn` result means finish without re-arming.
+- In Claude Code, run that command as one background task per session and
+  re-arm it after handling delivered work. Pi owns delivery through its extension.

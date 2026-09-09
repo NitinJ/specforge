@@ -8,11 +8,12 @@ import { spawnSync } from 'node:child_process';
 
 import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
-import { attach } from '../lib/attach.mjs';
+import { attach, claimWorker, workerFor } from '../lib/attach.mjs';
 import { requestExport } from '../lib/store-export.mjs';
 import { run as stopRun } from '../hooks/stop.mjs';
 import { run as upsRun } from '../hooks/user-prompt-submit.mjs';
 import { run as sessionStartRun } from '../hooks/session-start.mjs';
+import { run as sessionEndRun } from '../hooks/session-end.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HOOKS = join(ROOT, 'hooks');
@@ -38,6 +39,29 @@ test('hooks no-op when there is no session id', () => {
   assert.equal(stopRun({}, {}), null);
   assert.equal(upsRun({}, {}), null);
   assert.equal(sessionStartRun({}, {}), null);
+  assert.equal(sessionEndRun({}, {}), null);
+});
+
+test('SessionEnd stops delivery and retains ownership for thread resume', () => {
+  const a = createSpec({ title: 'A' });
+  const b = createSpec({ title: 'B' });
+  attach(a, 'sess-end');
+  attach(b, 'sess-end');
+  assert.deepEqual(sessionEndRun({ session_id: 'sess-end' }, {}), { stopped: 2 });
+  assert.equal(readMeta(a).attachedSession, 'sess-end');
+  assert.equal(readMeta(b).attachedSession, 'sess-end');
+});
+
+test('SessionEnd falls back from an empty payload id and preserves a live replacement lease', () => {
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-resumed');
+  claimWorker('sess-resumed', { pid: process.pid, leaseId: 'replacement' });
+  const result = sessionEndRun(
+    { session_id: '' },
+    { CLAUDE_CODE_SESSION_ID: 'sess-resumed' },
+  );
+  assert.deepEqual(result, { stopped: 1 });
+  assert.equal(workerFor('sess-resumed').leaseId, 'replacement');
 });
 
 test('hooks no-op when the session owns no specs', () => {
@@ -45,6 +69,16 @@ test('hooks no-op when the session owns no specs', () => {
   assert.equal(stopRun({}, env), null);
   assert.equal(upsRun({}, env), null);
   assert.equal(sessionStartRun({}, env), null);
+});
+
+test('a fresh Codex session receives the installed runtime root', () => {
+  const out = sessionStartRun(
+    { session_id: 'codex-fresh' },
+    { SPECFORGE_HARNESS: 'codex', PLUGIN_ROOT: '/installed path/specforge' },
+  );
+  assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart');
+  assert.match(out.hookSpecificOutput.additionalContext, /\/installed path\/specforge/);
+  assert.match(out.hookSpecificOutput.additionalContext, /CLAUDE_PLUGIN_ROOT/);
 });
 
 test('hooks take the session id from the stdin payload when env lacks it', () => {
@@ -59,6 +93,13 @@ test('hooks take the session id from the stdin payload when env lacks it', () =>
   assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
 });
 
+test('an empty native payload id falls back to the session environment', () => {
+  const id = createSpec({ title: 'A', html: '<h1>A</h1>' });
+  attach(id, 'sess-env');
+  const out = sessionStartRun({ session_id: '' }, { CLAUDE_CODE_SESSION_ID: 'sess-env' });
+  assert.match(out.hookSpecificOutput.additionalContext, /review-wait/);
+});
+
 test('the stdin session id wins over a conflicting env var', () => {
   const id = createSpec({ title: 'A' });
   attach(id, 'sess-stdin');
@@ -71,7 +112,7 @@ test('SessionStart re-arms the watcher when the (resumed) session owns specs', (
   attach(id, 'sess-1');
   const out = sessionStartRun({}, { CLAUDE_CODE_SESSION_ID: 'sess-1' });
   assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart');
-  assert.match(out.hookSpecificOutput.additionalContext, /wait-batch/);
+  assert.match(out.hookSpecificOutput.additionalContext, /review-wait/);
   assert.match(out.hookSpecificOutput.additionalContext, /1 spec/);
 });
 
@@ -123,4 +164,18 @@ test('stop.mjs runs as a script and no-ops (exit 0, empty) for a non-spec sessio
   });
   assert.equal(res.status, 0);
   assert.equal(res.stdout.trim(), '');
+});
+
+test('user-prompt-submit.mjs prints its routing output as JSON', () => {
+  const id = createSpec({ title: 'A' });
+  attach(id, 'sess-output');
+  requestExport(id);
+  const res = spawnSync(process.execPath, [join(HOOKS, 'user-prompt-submit.mjs')], {
+    input: JSON.stringify({ session_id: 'sess-output' }), encoding: 'utf8', timeout: 8000,
+    env: { ...process.env, SPECFORGE_HOME: home },
+  });
+  assert.equal(res.status, 0);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
+  assert.match(out.hookSpecificOutput.additionalContext, /export/i);
 });

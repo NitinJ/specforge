@@ -15,7 +15,9 @@ allowed-tools: Read, Write, Bash, Grep
 Migration is never automatic (design D5). It runs on one spec, because a person
 asked for that spec.
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Specs live at
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command. Specs live at
 `~/.specforge/specs/<id>/spec.html`; you address them by **id**.
 
 **Never paste what the user typed into a command.** A store id is 10 hex

@@ -11,7 +11,9 @@ allowed-tools: Read, Bash, AskUserQuestion
 
 # list-specs
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory.
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command.
 
 ## Run the CLI
 
@@ -62,9 +64,9 @@ Act on the choice:
 
 - **Open `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" open <id>`
   (attaches it to this session; fails if another live session holds it). Print the
-  returned `url`. Then, if the review watcher isn't already running this session,
-  arm it in the **background** (`node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" wait-batch`)
-  so this spec's comments are picked up automatically (see create-spec for the loop).
+  returned `url`. In Codex, finish the turn; hooks pick up browser comments on the
+  next turn. Do not start a watcher. In Claude Code, arm one background
+  `review-wait` if none is running; Pi delivery is extension-managed.
 - **Detach `<id>`** → `node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" detach <id>`.
   Confirm it's freed.
 - **Other `<id>`** → open it if free, detach it if it's attached here, else say it's

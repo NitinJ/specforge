@@ -86,7 +86,7 @@ export const needsChrome = { skip: CHROME ? false : 'no cached chromium' };
  *   `['clipboard-read', 'clipboard-write']`. Without them a clipboard read is
  *   refused and the copy control can only be tested by its own label, which is
  *   the component asserting its own success.
- * @param {(ctx:{page:object, base:string, id:string, downloads:string|null}) => Promise<any>} fn
+ * @param {(ctx:{page:object, base:string, id:string, downloads:string|null, stopDaemon:Function}) => Promise<any>} fn
  */
 export async function withSpec(opts, fn) {
   const {
@@ -117,7 +117,15 @@ export async function withSpec(opts, fn) {
     // completes, so the network is never idle on a served spec.
     await page.goto(`${base}/spec/${id}`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector(wait);
-    return await fn({ page, base, id, downloads });
+    const stopDaemon = async () => {
+      if (!server) return;
+      const running = server;
+      server = null;
+      const closed = new Promise((resolveClose) => running.close(resolveClose));
+      if (typeof running.closeAllConnections === 'function') running.closeAllConnections();
+      await closed;
+    };
+    return await fn({ page, base, id, downloads, stopDaemon });
   } finally {
     if (browser) await browser.close();
     if (server) await new Promise((r) => server.close(r));

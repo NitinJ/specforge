@@ -1,0 +1,29 @@
+{
+  "name": "specforge",
+  "version": "0.9.0",
+  "description": "Spec authoring, browser review, and agent collaboration for Codex, Claude Code, and Pi.",
+  "author": {
+    "name": "Nitin Jaglan",
+    "email": "nitin.jaglan@gmail.com",
+    "url": "https://github.com/NitinJ"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/NitinJ/specforge",
+  "repository": "https://github.com/NitinJ/specforge",
+  "keywords": ["spec", "design-docs", "review", "comments", "codex", "hooks"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "SpecForge",
+    "shortDescription": "Author and review specs",
+    "longDescription": "Author structured specifications, review them in a local browser surface, and route comments back to the owning Codex, Claude Code, or Pi session.",
+    "developerName": "Nitin Jaglan",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/NitinJ/specforge",
+    "defaultPrompt": [
+      "Create a specification for this project and open it in SpecForge for review.",
+      "List my SpecForge specifications and open the one I choose.",
+      "Convert this document into a SpecForge specification."
+    ]
+  }
+}

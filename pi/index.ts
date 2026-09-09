@@ -40,7 +40,7 @@ export default function (pi: ExtensionAPI) {
   // Mirrors `stop_hook_active`: true for the settle immediately following the
   // continuation we injected, so the stop logic caps its own loop.
   let afterInjection = false;
-  // The extension-managed review watcher: a wait-batch child the extension owns.
+  // The extension-managed review watcher: a review-wait child the extension owns.
   // In Claude Code the in-session watcher is a background Task whose completion
   // notification wakes an idle session. Pi has no such channel for a nohup'd
   // process, so the extension runs the watcher itself and routes its result:
@@ -71,7 +71,7 @@ export default function (pi: ExtensionAPI) {
     if (watcher || !sessionId) return;
     let child: ChildProcess;
     try {
-      child = spawn(process.execPath, [join(ROOT, "lib", "specforge-cli.mjs"), "wait-batch"], {
+      child = spawn(process.execPath, [join(ROOT, "lib", "specforge-cli.mjs"), "review-wait"], {
         env: sfEnv(),
         stdio: "ignore",
       });

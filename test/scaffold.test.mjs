@@ -23,10 +23,13 @@ test('plugin.json is valid and well-formed', () => {
 
 test('marketplace.json is valid and matches plugin', () => {
   const m = readJSON('.claude-plugin/marketplace.json');
+  const p = readJSON('.claude-plugin/plugin.json');
   assert.equal(m.name, 'specforge');
   assert.ok(Array.isArray(m.plugins) && m.plugins.length >= 1);
   assert.equal(m.plugins[0].name, 'specforge');
   assert.equal(m.plugins[0].source, './');
+  assert.equal(m.metadata.version, p.version);
+  assert.equal(m.plugins[0].version, p.version);
 });
 
 test('package.json is an ES module with a test script', () => {
@@ -86,13 +89,13 @@ test('each hook runs as a fail-safe no-op (exit 0, no output)', (t) => {
   // assertion fails for a reason that has nothing to do with the hook.
   const home = mkdtempSync(join(tmpdir(), 'sf-scaffold-'));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  const hooks = ['stop', 'session-start', 'user-prompt-submit'];
+  const hooks = ['stop', 'session-start', 'session-end', 'user-prompt-submit'];
   for (const name of hooks) {
     const res = spawnSync(process.execPath, [join(ROOT, 'hooks', `${name}.mjs`)], {
       input: JSON.stringify({ hook_event_name: 'Test', cwd: ROOT }),
       encoding: 'utf8',
       timeout: 8000,
-      env: { ...process.env, SPECFORGE_HOME: home },
+      env: { ...process.env, SPECFORGE_HOME: home, SPECFORGE_HARNESS: 'claude' },
     });
     assert.ifError(res.error); // distinguishes a failed/timed-out spawn from a non-zero exit
     assert.equal(res.status, 0, `${name}.mjs exits 0 (stderr: ${res.stderr})`);

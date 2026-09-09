@@ -13,27 +13,53 @@
 // Fail-safe: any error exits 0.
 
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
-import { skillRef } from '../lib/skill-ref.mjs';
-
-const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'specforge-cli.mjs');
+import { REVIEW_WAIT_CMD } from '../lib/store-drain.mjs';
+import {
+  CODEX_HARNESS, PI_HARNESS, isDirectRun, resolveHarness, resolvePluginRoot,
+} from '../lib/harness-context.mjs';
 
 export function run(input, env = process.env) {
   const { mine } = mineFor(env, input.session_id);
-  if (!mine.length) return null; // ← idle no-op (the common fresh-session case)
-  const context = [
-    `SpecForge: this session owns ${mine.length} spec(s) under browser review. The`,
-    'in-session review watcher does not survive a restart — if it is not already',
-    'running this session, relaunch it in the background so submitted comments are',
-    'picked up while you are idle:',
-    `  node "${CLI}" wait-batch`,
-    `On completion it returns { ready, pending } — on ready, run ${skillRef('review-spec', env)}`,
-    'for each pending spec then relaunch it. It does not expire on its own — it',
-    'runs until a batch arrives or this session ends.',
-  ].join('\n');
-  return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
+  const harness = resolveHarness(env);
+  const codex = harness === CODEX_HARNESS;
+  const pi = harness === PI_HARNESS;
+  const root = resolvePluginRoot(env) || dirname(dirname(fileURLToPath(import.meta.url)));
+  const context = [];
+  if (codex) {
+    context.push(
+      `SpecForge runtime root: ${root}`,
+      'When a canonical SpecForge skill shows ${CLAUDE_PLUGIN_ROOT}, substitute the runtime root above in every file path and shell command.',
+    );
+  }
+  if (!mine.length) {
+    if (!context.length) return null;
+    return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context.join('\n') } };
+  }
+  if (codex) {
+    context.push(
+      `SpecForge: this thread owns ${mine.length} spec(s) under browser review.`,
+      'Queued browser work is delivered by hooks on the next turn.',
+      'Do not start a watcher or keep the turn open waiting for comments.',
+    );
+  } else if (pi) {
+    context.push(
+      `SpecForge: this session owns ${mine.length} spec(s) under browser review.`,
+      'The Pi extension owns review delivery and will arm it when this turn settles.',
+    );
+  } else {
+    context.push(
+      `SpecForge: this session owns ${mine.length} spec(s) under browser review. The`,
+      'in-session review watcher does not survive a restart — if it is not already',
+      'running this session, relaunch it in the background so submitted comments are',
+      'picked up while you are idle:',
+      `  ${REVIEW_WAIT_CMD}`,
+      `On completion it returns { ready, kind, work, reason }. Follow reason, then relaunch it.`,
+    );
+  }
+  return { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context.join('\n') } };
 }
 
 async function main() {
@@ -41,5 +67,4 @@ async function main() {
   if (decision) process.stdout.write(JSON.stringify(decision));
 }
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) main().then(() => process.exit(0)).catch(() => process.exit(0));
+if (isDirectRun(import.meta.url)) main().then(() => process.exit(0)).catch(() => process.exit(0));

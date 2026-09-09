@@ -28,3 +28,22 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Run tests
         run: npm test
+      - name: Run Codex contract tests serially
+        run: >-
+          node --test --test-concurrency=1
+          test/codex-context.test.mjs
+          test/codex-package.test.mjs
+          test/install-codex.test.mjs
+          test/codex-delivery.test.mjs
+
+  node-18-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Validate the dependency-free runtime on Node 18
+        run: |
+          node scripts/validate-package.mjs .
+          node --test --test-concurrency=1 test/codex-context.test.mjs test/codex-package.test.mjs test/codex-delivery.test.mjs

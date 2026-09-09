@@ -2,17 +2,17 @@
   "name": "specforge",
   "owner": { "name": "Nitin Jaglan" },
   "metadata": {
-    "description": "Spec authoring, review & agent collaboration for Claude Code.",
-    "version": "0.4.0"
+    "description": "Spec authoring, browser review, and agent collaboration for Claude Code, Codex, and Pi.",
+    "version": "0.9.0"
   },
   "plugins": [
     {
       "name": "specforge",
       "source": "./",
-      "description": "House-style HTML specs, a browser review server with Google-Docs-style comments, and hook-based implementation enforcement.",
-      "version": "0.4.0",
+      "description": "Author structured specs, review them in a browser, and route comments to the owning agent session.",
+      "version": "0.9.0",
       "author": { "name": "Nitin Jaglan" },
-      "keywords": ["spec", "design-docs", "review", "comments", "claude-code", "hooks"],
+      "keywords": ["spec", "design-docs", "review", "comments", "claude-code", "codex", "pi", "hooks"],
       "category": "workflow"
     }
   ]

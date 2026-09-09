@@ -6,6 +6,8 @@
 #   ./install.sh docs.example.com    # ...but pick the address yourself
 #   ./install.sh -n                  # show what would happen, change nothing
 #   ./install.sh --plugin-only       # skip the sharing setup
+#   ./install.sh --harness codex --plugin-only
+#   ./install.sh --harness codex --remove
 #
 # The address defaults to <your-username>.<the domain you authorise>, so a
 # teammate needs to know nothing beyond which domain to click in the browser.
@@ -22,25 +24,47 @@ set -euo pipefail
 HOSTNAME_ARG=""
 DRY_RUN=0
 PLUGIN_ONLY=0
-for arg in "$@"; do
-  case "$arg" in
-    -n|--dry-run) DRY_RUN=1 ;;
-    --plugin-only) PLUGIN_ONLY=1 ;;
-    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    -*) echo "unknown option: $arg" >&2; exit 2 ;;
+HARNESS="claude"
+INSTALL_ROOT=""
+REMOVE=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -n|--dry-run) DRY_RUN=1; shift ;;
+    --plugin-only) PLUGIN_ONLY=1; shift ;;
+    --remove) REMOVE=1; shift ;;
+    --harness)
+      [ "$#" -ge 2 ] || { echo "--harness requires claude or codex" >&2; exit 2; }
+      HARNESS="$2"
+      shift 2
+      ;;
+    --install-root)
+      [ "$#" -ge 2 ] || { echo "--install-root requires a path" >&2; exit 2; }
+      INSTALL_ROOT="$2"
+      shift 2
+      ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "unknown option: $1" >&2; exit 2 ;;
     *)
       # Taking the last of several would configure Cloudflare for a hostname the
       # person did not mean, and they would find out from a link that 404s.
       if [ -n "$HOSTNAME_ARG" ]; then
-        echo "only one hostname, got '$HOSTNAME_ARG' and '$arg'" >&2
+        echo "only one hostname, got '$HOSTNAME_ARG' and '$1'" >&2
         exit 2
       fi
-      HOSTNAME_ARG="$arg"
+      HOSTNAME_ARG="$1"
+      shift
       ;;
   esac
 done
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -z "$INSTALL_ROOT" ]; then
+  INSTALL_ROOT="$HOME/.specforge/codex-marketplace"
+fi
+case "$HARNESS" in
+  claude|codex) ;;
+  *) echo "unsupported harness: $HARNESS (expected claude or codex)" >&2; exit 2 ;;
+esac
 step()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 ok()    { printf '  ok    %s\n' "$*"; }
 info()  { printf '        %s\n' "$*"; }
@@ -65,17 +89,23 @@ else
   MISSING="$MISSING\n  node is not installed: https://nodejs.org"
 fi
 
-if command -v claude >/dev/null 2>&1; then
-  ok "claude code"
+if command -v "$HARNESS" >/dev/null 2>&1; then
+  ok "$HARNESS"
+elif [ "$REMOVE" = 1 ]; then
+  info "$HARNESS is not installed; local SpecForge registration will still be removed"
 else
-  MISSING="$MISSING\n  claude code is not installed: https://claude.com/claude-code"
+  if [ "$HARNESS" = "codex" ]; then
+    MISSING="$MISSING\n  codex is not installed: https://developers.openai.com/codex"
+  else
+    MISSING="$MISSING\n  claude code is not installed: https://claude.com/claude-code"
+  fi
 fi
 
 # cloudflared is only needed to share. Installing it takes root, so this reports
 # the command rather than running it.
 if command -v cloudflared >/dev/null 2>&1; then
   ok "cloudflared"
-elif [ "$PLUGIN_ONLY" = 1 ]; then
+elif [ "$PLUGIN_ONLY" = 1 ] || [ "$REMOVE" = 1 ]; then
   info "cloudflared not found; you will need it to share a spec"
 else
   case "$(uname -s)" in
@@ -93,12 +123,42 @@ fi
 
 # --- the plugin --------------------------------------------------------------
 
-step "Installing the plugin"
+if [ "$REMOVE" = 1 ]; then
+  step "Removing the plugin"
+else
+  step "Installing the plugin"
+fi
+if [ "$HARNESS" = "codex" ]; then
+  if [ "$REMOVE" = 1 ]; then
+    if command -v codex >/dev/null 2>&1; then
+      run codex plugin remove specforge@specforge || true
+      run codex plugin marketplace remove specforge || true
+    fi
+    run node "$HERE/scripts/remove-codex-marketplace.mjs" "$INSTALL_ROOT"
+    info "Your specs remain in ~/.specforge. Claude and Pi installations are unchanged."
+    exit 0
+  fi
+
+  run node "$HERE/scripts/build-codex-marketplace.mjs" "$HERE" "$INSTALL_ROOT"
+  run codex plugin marketplace add "$INSTALL_ROOT" || true
+  if ! run codex plugin add specforge@specforge; then
+    node "$HERE/scripts/restore-codex-marketplace.mjs" "$INSTALL_ROOT"
+    die "Codex rejected the update; restored the previous validated marketplace."
+  fi
+  ok "installed for Codex"
+  info "Review and trust the SpecForge hooks when Codex prompts you."
+  info "Start a new Codex thread after install or update."
+elif [ "$REMOVE" = 1 ]; then
+  if command -v claude >/dev/null 2>&1; then
+    run claude plugin uninstall specforge@specforge || true
+  fi
+  ok "removed from Claude Code; your specs remain in ~/.specforge"
+  exit 0
 # `grep -q` exits at the first match and closes the pipe, which under `pipefail`
 # can surface as a SIGPIPE failure from the command feeding it and send an
 # installed plugin down the fresh-install path. Reading the whole stream costs
 # nothing here and has no such race.
-if claude plugin list 2>/dev/null | grep 'specforge' >/dev/null; then
+elif claude plugin list 2>/dev/null | grep 'specforge' >/dev/null; then
   ok "already installed; updating"
   run claude plugin marketplace update specforge
   run claude plugin uninstall specforge@specforge
@@ -109,7 +169,9 @@ else
   run claude plugin install specforge@specforge
   ok "installed"
 fi
-info "run /reload-plugins in Claude Code, or restart it"
+if [ "$HARNESS" = "claude" ]; then
+  info "run /reload-plugins in Claude Code, or restart it"
+fi
 
 # --- sharing (optional) ------------------------------------------------------
 
@@ -134,4 +196,8 @@ CONFIG="$HOME/.cloudflared/config.yml"
 step "One step left, and it needs root"
 printf '  sudo cloudflared --config %s service install\n' "$CONFIG"
 info "that is what keeps the tunnel running across a reboot"
-printf '\nThen restart Claude Code and share a spec. The address is printed above.\n\n'
+if [ "$HARNESS" = "codex" ]; then
+  printf '\nThen start a new Codex thread and share a spec. The address is printed above.\n\n'
+else
+  printf '\nThen restart Claude Code and share a spec. The address is printed above.\n\n'
+fi

@@ -16,7 +16,9 @@ Export one or more specs from the store to **Google Docs**. The browser can't ca
 the Drive MCP — only this session can — so the UI queues a request and the hook
 routes here. The hook message lists each queued spec **id** and title.
 
-`${CLAUDE_PLUGIN_ROOT}` is the installed plugin directory. Specs live at
+`${CLAUDE_PLUGIN_ROOT}` below denotes the installed plugin directory. Claude and
+Pi export it; Codex provides the exact value in SpecForge SessionStart context.
+Substitute that value in every path and shell command. Specs live at
 `~/.specforge/specs/<id>/spec.html`.
 
 ## 1. Locate the spec file

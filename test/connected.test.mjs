@@ -16,9 +16,10 @@ import { tmpdir } from 'node:os';
 import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
 import {
-  attach, heartbeat, markSeen, isConnected, isStale, CONNECTED_MS, STALE_MS, HEARTBEAT_MS,
+  attach, detach, heartbeat, markSeen, isConnected, isStale, setWatcher, clearWatcher,
+  claimWorker, releaseWorker, setSessionHarness, CONNECTED_MS, STALE_MS, HEARTBEAT_MS,
 } from '../lib/attach.mjs';
-import { specConnected } from '../lib/spec-signals.mjs';
+import { specConnected, specDelivery } from '../lib/spec-signals.mjs';
 import { mutateComments, createThread } from '../lib/store-comments.mjs';
 import { submitBatch, markBatchDone, advanceBatchProgress } from '../lib/store-inbox.mjs';
 import { cmdWaitBatch } from '../lib/specforge-cli.mjs';
@@ -73,24 +74,66 @@ test('a spec that has not beaten for 20 minutes is disconnected but still locked
 test('the watcher beat is what makes a spec connected', () => {
   const id = attached(60 * 60 * 1000);
   assert.equal(specConnected(id), false);
+  setWatcher('sess-1', process.pid);
   heartbeat('sess-1');                       // one poll of `specforge wait-batch`
   assert.equal(specConnected(id), true);
+  clearWatcher('sess-1');
 });
 
 // The watcher stops the moment it hands a batch over, so a strict beat test
 // would report "disconnected" for the whole time an agent is answering the
 // comments you just submitted.
-test('a round a session has taken counts as connected even though nothing is beating', () => {
+test('a round in progress does not claim readiness for the next submission', () => {
   // Beyond two missed beats, but only minutes: the watcher stopped because it
   // handed this batch over, which is what being answered looks like.
   const id = attached(5 * 60 * 1000);
   mutateComments(id, (s) => createThread(s, { anchor, body: '@agent why?', author: 'human' }));
   const batch = submitBatch(id);
   advanceBatchProgress(id, batch.batchId, 'picked_up');   // a session surfaced it to itself
-  assert.equal(specConnected(id), true, 'something took the comments — that is the proof');
+  assert.equal(specConnected(id), false, 'working this round does not prove a worker awaits the next');
+  assert.equal(specDelivery(id).state, 'working', 'the browser distinguishes work from a dead session');
 
   markBatchDone(id, batch.batchId);
   assert.equal(specConnected(id), false, 'and once the round is over, the beat has to resume');
+});
+
+test('Codex ignores legacy worker PIDs and reports next-turn delivery', () => {
+  const id = attached(0, 'codex-thread');
+  setSessionHarness('codex-thread', 'codex');
+  assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
+  const lease = claimWorker('codex-thread', {
+    pid: process.pid,
+    harness: 'codex',
+    mode: 'active-foreground',
+    leaseId: 'codex-live',
+  });
+  heartbeat('codex-thread');
+  assert.deepEqual(specDelivery(id), {
+    state: 'paused', mode: 'next-turn', harness: 'codex',
+  });
+  releaseWorker('codex-thread', lease.leaseId);
+  assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
+  assert.equal(specConnected(id), false, 'the fresh final heartbeat cannot keep the badge green');
+
+  mutateComments(id, (s) => createThread(s, { anchor, body: '@agent review', author: 'human' }));
+  const batch = submitBatch(id);
+  advanceBatchProgress(id, batch.batchId, 'working');
+  assert.deepEqual(specDelivery(id), {
+    state: 'working', mode: 'next-turn', harness: 'codex',
+  }, 'an in-flight Codex round takes precedence over queued next-turn delivery');
+});
+
+test('detaching the last spec releases delivery while detaching one of many does not', () => {
+  const first = attached(0, 'claude-thread');
+  const second = attached(0, 'claude-thread');
+  const lease = claimWorker('claude-thread', {
+    pid: process.pid, harness: 'claude', mode: 'background', leaseId: 'detach-live',
+  });
+  detach(first);
+  assert.equal(specConnected(second), true, 'the remaining owned spec keeps delivery');
+  detach(second);
+  assert.equal(releaseWorker('claude-thread', lease.leaseId), false,
+    'the last detach already released the lease');
 });
 
 // The false positive this whole change exists to remove, re-entering by the back
@@ -171,7 +214,8 @@ test('a watcher cannot be told to poll slower than the connection window', async
     // Jump past the deadline so the loop runs exactly one full cycle.
     sleep: async (ms) => { slept.push(ms); t += 61 * 1000; },
   });
-  assert.equal(specConnected(id), true, 'it beat on the way in');
+  assert.equal(isConnected(readMeta(id)), true, 'it beat on the way in');
+  assert.equal(specConnected(id), false, 'the completed worker is no longer ready');
   assert.equal(slept.length, 1, 'it did sleep once, so the interval was actually used');
   assert.ok(slept[0] <= HEARTBEAT_MS,
     `asked for 600s, must be capped to ${HEARTBEAT_MS}ms — got ${slept[0]}ms`);
@@ -180,7 +224,9 @@ test('a watcher cannot be told to poll slower than the connection window', async
 test('beating touches only the beating session\'s specs', () => {
   const mine = attached(60 * 60 * 1000, 'sess-1');
   const theirs = attached(60 * 60 * 1000, 'sess-2');
+  setWatcher('sess-1', process.pid);
   heartbeat('sess-1');
   assert.equal(specConnected(mine), true);
   assert.equal(specConnected(theirs), false);
+  clearWatcher('sess-1');
 });

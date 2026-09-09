@@ -74,7 +74,7 @@ test('with no live session nothing is created at all (I3)', () => {
   const out = handleTypeCreate(CREATE);
   assert.equal(out.status, 503);
   assert.match(out.body.error, /session/i);
-  assert.match(out.body.error, /wait-batch|Claude Code/i, 'and says what to start');
+  assert.match(out.body.error, /review-wait|Claude Code/i, 'and says what to start');
   assertNoTrace('postmortem');
 });
 
