@@ -89,27 +89,27 @@ previous validated marketplace and restores it automatically if a later
 
 Codex background hooks cannot start a turn after the thread becomes idle. Their output waits for the next user turn. A long-running shell command can remain part of an active turn, but that is an active review mode, not settled-thread delivery.
 
-Codex delivery uses the following native paths:
+Codex delivery uses a host-owned watcher and the native queue command:
 
-1. Pending browser work is injected on the next user prompt or before the current turn settles.
-2. An explicit `review-wait` checks queued work once and returns immediately. It does not keep the turn open or start a watcher.
+1. SessionStart, UserPromptSubmit, and Stop hook entry points start or reuse a detached `lib/codex-watcher.mjs` child and return immediately. Codex hooks never inject pending work themselves; the watcher is the sole delivery path.
+2. The child holds an exclusive session lock and a `codex-queue` worker lease. It polls `pendingWorkForSession` every 15 seconds and calls `codex queue --thread <id> --message <reason>` when work arrives.
+3. Successful queue submissions are recorded separately from SpecForge pickup acknowledgements. The shared reader excludes delivered request identities before it builds instructions, so a new batch never requeues an older pending batch. Failed commands leave work pending and are retried; they do not renew the heartbeat.
+4. SessionEnd releases the worker lease. The child exits at its next poll. An explicit `review-wait` in an agent tool remains a one-shot inspection and never becomes a foreground wait.
 
-The browser reports Codex as **Review queued** while idle and **Reviewing** during an acknowledged round.
+The browser uses the same Connected and Disconnected meanings for all harnesses. Only the host-owned Codex worker can advertise readiness; old sandbox PID records cannot.
 
-Canonical skills use one harness-neutral `specforge review-wait` operation. Pi keeps its extension-owned child, Claude keeps its background-task flow, and Codex performs a one-shot check. An idle Codex result is `{ ready: false, pending: [], reason: 'next-turn' }`. The agent finishes its turn without re-arming. Stop hooks still route submitted work, but never block an idle Codex turn just to request a watcher.
+Claude keeps its background-task flow and Pi keeps its extension-owned child. Their launch and delivery paths are unchanged. Codex skills finish the turn normally and leave delivery to the host hook.
 
-Skill text, hook routes, and browser recovery prompts must agree on this behavior. None may tell Codex to launch a foreground or background watcher. Tool sandboxes can each report PID 2, so the runtime ignores legacy Codex PID records when calculating browser readiness. This removes Codex's reliance on process IDs across namespaces.
+The adapter contract is `startCodexWatcher(input, env)` for nonblocking hook startup, `watchCodex(session, deps)` for the background loop, `queueCodex(session, reason, env)` for native delivery, and `stopCodexWatcher(session)` for shutdown. There is no custom App Server client or new review workflow.
 
-Full settled-thread wake-up remains unavailable through the documented native plugin hook contract. An App Server client can own a separate thread and call `thread/resume` plus `turn/start`, but it must not take over a thread owned by another Codex client. SpecForge does not add that separate client in this implementation.
+The installed CLI 0.153.4 exposes `codex queue`. The [native queue implementation](https://github.com/openai/codex/blob/main/codex-rs/ext/queue/src/service.rs) watches external SQLite queue revisions and dispatches loaded idle threads. `node tools/probe-codex-idle.mjs` verified the full path with a real Chromium submission, the detached watcher, and the installed Codex binary. The owning thread was idle before submission and completed another turn without manual input; the Stop hook returned in 42 ms. The probe uses an isolated Codex home and a local mock model, with no account or API key. It establishes delivery, not model review quality. The user's normal Codex database is read-only from agent tools, so the normal-profile probe and desktop compatibility remain unverified.
 
-The shared runtime now implements this contract through `specforge review-wait`.
-It detects review batches, template-generation requests, and exports without
-changing their state. The relevant skill acknowledges pickup with
-`batch-working`, `template-working`, or `export-working`, so a lost hook or tool
-result remains deliverable. Claude and Pi delivery workers retain opaque leases;
-late cleanup from an older process cannot clear its replacement. Codex checks
-neither acquire a lease nor write a heartbeat. Spec ownership remains keyed by
-the native thread id.
+The shared work reader detects review batches, template-generation requests,
+and exports without changing their state. The relevant skill acknowledges
+pickup with `batch-working`, `template-working`, or `export-working`. Spec
+ownership remains keyed by the native thread id. A crash between native queue
+acceptance and recording delivery can repeat a notification; existing reply
+effect keys remain the protection against duplicated reply effects.
 
 Agent replies accept an effect key. Retrying the same batch/thread effect returns
 the existing reply instead of appending it again, covering the side effect most
@@ -117,10 +117,9 @@ likely to be duplicated when a review turn is resumed after transport loss.
 
 ## Browser and recovery behavior
 
-The browser derives Claude and Pi connectivity from a live worker and fresh
-heartbeat. Codex uses next-turn delivery and reads **Review queued**, with a
-one-shot continuation prompt for the owning thread. An acknowledged review
-reads **Reviewing**. A legacy Codex heartbeat cannot advertise a live listener.
+The browser derives connectivity from a live delivery worker and a fresh
+heartbeat. An acknowledged review with no ready worker reads Reviewing. A
+legacy Codex heartbeat cannot advertise a live listener.
 
 Replies retain their actual harness author, including `codex`, while all three
 harnesses use the same stored comment and spec formats. Shared-origin rounds
@@ -142,7 +141,7 @@ that session's delivery record.
 | Prompt is about to run | `UserPromptSubmit` hook | `before_agent_start` | `UserPromptSubmit` hook |
 | Turn is settling | `Stop` hook | `agent_settled` | `Stop` hook |
 | Session ends | Registered `SessionEnd` hook plus stale lease fallback | `session_shutdown` | Registered `SessionEnd` hook plus stale lease fallback |
-| Active review wait | Background task | Extension-owned child | Foreground unified-exec child |
+| Background review delivery | Background task | Extension-owned child | Hook-owned child plus `codex queue` |
 
 ## Runtime and permissions
 
@@ -165,14 +164,14 @@ that session's delivery record.
 | Plugin installation and skill discovery | Required | Required |
 | Hook trust and event payloads | Required | Required |
 | Create/open/convert from installed cache | Required | Required |
-| Next-turn pending-work pickup | Required | Required |
-| Active review wait, two batches | Required | Required |
+| Automatic idle-thread pending-work pickup | Required | Required |
+| Background review delivery, two batches | Required | Required |
 | Resume without duplicate ownership | Required | Required |
 | Conversation close and restart clears or expires ownership | Required | Required |
-| Settled session does not report a detached watcher as connected | Required | Required |
+| Idle agent remains usable while the watcher runs | Required | Required |
 | ChatGPT authentication, no API key | Required | Required |
 
-Automated tests establish package and adapter behavior. A clean-profile smoke test on each client establishes host compatibility. Full settled-thread wake-up is not claimed by this release.
+Automated tests establish package and adapter behavior. A host smoke test on each client must establish idle-thread wake-up without a manual prompt before that client is qualified.
 
 ## Release qualification
 

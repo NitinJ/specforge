@@ -52,12 +52,12 @@ test('idle Codex can settle repeatedly without a watcher instruction', () => {
   assert.equal(stop({}, env), null);
   assert.equal(stop({}, env), null);
   const guidance = start({}, env).hookSpecificOutput.additionalContext;
-  assert.match(guidance, /next turn/i);
+  assert.match(guidance, /background watcher.*automatically/i);
   assert.doesNotMatch(guidance, /foreground|leave.*active|run it again/i);
 });
 
 for (const kind of ['review', 'generate', 'export']) {
-  test(`Codex hooks deliver later ${kind} work without a watcher`, () => {
+  test(`Codex hooks leave ${kind} delivery to the host-owned watcher`, async () => {
     assert.equal(stop({}, env), null);
     if (kind === 'review') {
       mutateComments(id, (comments) => createThread(comments, {
@@ -67,13 +67,12 @@ for (const kind of ['review', 'generate', 'export']) {
       submitBatch(id);
     } else if (kind === 'generate') requestGenerate(id, 'A test template');
     else requestExport(id);
-    const first = prompt({}, env).hookSpecificOutput.additionalContext;
+    const first = (await cmdReviewWait({}, { session, harness: 'codex', env })).reason;
     assert.match(first, new RegExp(kind));
-    assert.equal(prompt({}, env).hookSpecificOutput.additionalContext, first,
+    assert.equal((await cmdReviewWait({}, { session, harness: 'codex', env })).reason, first,
       'missed delivery is recoverable until the skill acknowledges it');
-    const stopped = stop({}, env);
-    assert.equal(stopped.decision, 'block');
-    assert.equal(stopped.reason, first);
+    assert.equal(prompt({}, env), null);
+    assert.equal(stop({}, env), null);
     assert.doesNotMatch(first, /foreground|leave.*active|run it again/i);
   });
 }
@@ -91,5 +90,5 @@ test('a Codex check ignores a legacy same-PID lease and never sleeps or beats', 
   heartbeat(session);
   assert.equal(watcherAlive(session, () => assert.fail('a Codex PID must not be probed')), false);
   assert.equal(specConnected(id), false);
-  assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
+  assert.deepEqual(specDelivery(id), { state: 'disconnected', mode: null, harness: 'codex' });
 });

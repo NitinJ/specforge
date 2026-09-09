@@ -2034,7 +2034,7 @@ test('a connected spec says so, quietly, with nothing to do', async (t) => {
   assert.equal(pill.querySelector('.sf-conn-act'), null, 'nothing to fix');
 });
 
-test('a legacy Codex foreground worker is shown as next-turn delivery', async (t) => {
+test('a legacy Codex foreground worker is not shown as connected', async (t) => {
   const { window } = await bootReviewLayer(t, {
     meta: {
       id: 'test-spec', status: 'draft', attachedSession: 'codex-thread', connected: true,
@@ -2042,12 +2042,12 @@ test('a legacy Codex foreground worker is shown as next-turn delivery', async (t
     },
   });
   const pill = connPill(window);
-  assert.match(pill.textContent, /Review queued/);
+  assert.match(pill.textContent, /Disconnected/);
   assert.doesNotMatch(pill.textContent, /Listening|Connected/);
-  assert.match(pill.querySelector('.sf-conn-act').textContent, /Continue in Codex/);
+  assert.match(pill.querySelector('.sf-conn-act').textContent, /Reconnect/);
 });
 
-test('a paused Codex thread says Review queued and copies continuation guidance', async (t) => {
+test('a legacy paused Codex thread offers reconnect to automatic delivery', async (t) => {
   const copied = [];
   const { window } = await bootReviewLayer(t, {
     meta: {
@@ -2062,14 +2062,14 @@ test('a paused Codex thread says Review queued and copies continuation guidance'
     },
   });
   const pill = connPill(window);
-  assert.match(pill.textContent, /Review queued/);
-  assert.match(pill.querySelector('.sf-conn-act').textContent, /Continue in Codex/);
+  assert.match(pill.textContent, /Disconnected/);
+  assert.match(pill.querySelector('.sf-conn-act').textContent, /Reconnect/);
   pill.querySelector('.sf-conn-act').click();
   assert.match(copied[0], /once/);
-  assert.match(copied[0], /next turn/);
+  assert.match(copied[0], /background watcher.*automatically/);
   assert.doesNotMatch(copied[0], /foreground|leave.*active|run it again/);
   assert.match(copied[0], /review-wait/);
-  assert.match(copied[0], /do not take ownership silently/i);
+  assert.match(copied[0], /detach test-spec/);
 });
 
 test('an agent working a round is labelled Reviewing without a takeover action', async (t) => {
@@ -2194,9 +2194,8 @@ test('Reconnect targets Codex with a one-shot check instead of re-arming', async
   connPill(window).querySelector('.sf-conn-act').click();
   assert.match(copied[0], /Codex thread/);
   assert.match(copied[0], /once/);
-  assert.match(copied[0], /next turn/);
+  assert.match(copied[0], /background watcher.*automatically/);
   assert.doesNotMatch(copied[0], /foreground|re-arm|leave.*running/);
-  assert.doesNotMatch(copied[0], /background/);
   assert.match(copied[0], /detach test-spec/, 'a different owner still requires explicit transfer');
 });
 

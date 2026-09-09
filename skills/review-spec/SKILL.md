@@ -363,7 +363,7 @@ sees your replies + edits live and resolves the threads they're satisfied with.
 
 Then keep delivery ready for the next browser action:
 
-- In Codex, finish the turn. Hooks deliver later browser work on the next turn.
+- In Codex, finish the turn. The host-owned watcher delivers later browser work automatically.
   Do not start a watcher or poll while idle. An explicit `review-wait` command
   checks once and returns; a `next-turn` result does not require re-arming.
 - In Claude Code, relaunch

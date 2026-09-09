@@ -18,6 +18,7 @@
 import { readStdin, parseInput } from './lib/io.mjs';
 import { mineFor } from './lib/session.mjs';
 import { markSeen } from '../lib/attach.mjs';
+import { startCodexWatcher } from '../lib/codex-watcher.mjs';
 import { pendingForSession, reviewReason, watcherBeating, armWatcherReason } from '../lib/store-drain.mjs';
 import { exportRequestsForSession, exportReason } from '../lib/store-export.mjs';
 import {
@@ -33,6 +34,9 @@ export function run(input, env = process.env) {
   if (!mine.length) return null; // ← idle no-op
 
   markSeen(me);
+  // Codex has one delivery path: the host-owned watcher queues work after this
+  // turn settles. Injecting it here too would create duplicate review turns.
+  if (resolveHarness(env) === CODEX_HARNESS) return null;
 
   // Pending review batches take priority — route to review-spec before settling.
   const batches = pendingForSession(me);
@@ -53,10 +57,6 @@ export function run(input, env = process.env) {
     return { decision: 'block', reason: exportReason(toExport, env) };
   }
 
-  // Codex has next-turn delivery. An idle spec must not hold the turn open or
-  // trigger another polling terminal. Pending work above still gets delivered.
-  if (resolveHarness(env) === CODEX_HARNESS) return null;
-
   // Last: don't settle owning specs nobody is listening to. Blocking rather than
   // mentioning, because settling in that state IS the bug — a spec that takes
   // comments and delivers none of them, with the page saying Disconnected and the
@@ -70,7 +70,9 @@ export function run(input, env = process.env) {
 }
 
 async function main() {
-  const decision = run(parseInput(await readStdin()));
+  const input = parseInput(await readStdin());
+  startCodexWatcher(input);
+  const decision = run(input);
   if (decision) process.stdout.write(JSON.stringify(decision));
 }
 

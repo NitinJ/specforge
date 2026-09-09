@@ -99,7 +99,7 @@ test('review-wait checks browser work without a Codex worker', async () => {
   assert.equal(readMeta(id).export.state, 'requested', 'returning work does not claim the skill saw it');
   assert.equal(watcherAlive('thread-export'), false, 'a completed tool is not reported as connected');
   assert.equal(workerFor('thread-export'), null);
-  assert.deepEqual(specDelivery(id), { state: 'paused', mode: 'next-turn', harness: 'codex' });
+  assert.deepEqual(specDelivery(id), { state: 'disconnected', mode: null, harness: 'codex' });
 });
 
 test('two review submissions are delivered in sequence and duplicate replies are idempotent', async () => {

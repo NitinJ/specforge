@@ -67,8 +67,8 @@ test('Claude is told to re-arm shared delivery in the background', () => {
   assert.match(reviewReason([batch()], { CLAUDE_CODE_SESSION_ID: 'cc-1' }), /review-wait/);
 });
 
-test('Codex is told to finish after review and use next-turn delivery', () => {
+test('Codex finishes while its host-owned watcher handles later delivery', () => {
   const out = reviewReason([batch()], { SPECFORGE_HARNESS: 'codex' });
-  assert.match(out, /next turn/);
-  assert.doesNotMatch(out, /review-wait|foreground|background/);
+  assert.match(out, /background watcher.*automatically/);
+  assert.doesNotMatch(out, /review-wait|foreground/);
 });

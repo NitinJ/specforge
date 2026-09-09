@@ -115,7 +115,7 @@ test('comment round-trip: hover block → click → compose → submit persists 
   });
 });
 
-test('Codex next-turn review ignores legacy watchers and completes two browser rounds', needsChrome, async () => {
+test('Codex background delivery shows the shared connection state through two review rounds', needsChrome, async () => {
   await withSpec({ permissions: ['clipboard-read', 'clipboard-write'] }, async ({ page, id }) => {
     attach(id, CODEX);
     setSessionHarness(CODEX, 'codex');
@@ -123,19 +123,19 @@ test('Codex next-turn review ignores legacy watchers and completes two browser r
     const live = claimWorker(CODEX, {
       pid: process.pid,
       harness: 'codex',
-      mode: 'active-foreground',
+      mode: 'codex-queue',
       leaseId: 'e2e-live',
     });
     heartbeat(CODEX);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#sf-launcher');
-    assert.match(await page.locator('.sf-conn-label').innerText(), /Review queued/);
+    assert.match(await page.locator('.sf-conn-label').innerText(), /Connected/);
 
     releaseWorker(CODEX, live.leaseId);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#sf-launcher');
-    assert.match(await page.locator('.sf-conn-label').innerText(), /Review queued/);
-    assert.match(await page.locator('.sf-conn-act').innerText(), /Continue in Codex/);
+    assert.match(await page.locator('.sf-conn-label').innerText(), /Disconnected/);
+    assert.match(await page.locator('.sf-conn-act').innerText(), /Reconnect/);
 
     await commentAndSubmit(page, '#overview p', 'clarify the first round');
     const first = await waitForBatch(id);

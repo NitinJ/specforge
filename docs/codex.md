@@ -9,13 +9,15 @@ authoring or review workflow and does not call the OpenAI API.
 
 | Client | Install and skills | Authoring and browser review | Delivery after the turn settles |
 | --- | --- | --- | --- |
-| Codex CLI 0.153.4 | Qualified | Qualified | Next turn through hooks |
+| Codex CLI 0.153.4 | Qualified | Qualified | Browser-to-idle-thread delivery verified with the native CLI and a mock model |
 | Codex desktop | Packaged from the same plugin | Automated contracts pass | Manual qualification pending |
 
-The release is labeled preview because native Codex plugin hooks cannot start a
-new turn after an owning thread is idle. `review-wait` checks queued work once
-and returns immediately in Codex. Do not keep a terminal or tool call waiting
-for comments. Full settled-thread wake-up is not claimed.
+Lifecycle hooks start or reuse one detached watcher for the attached thread.
+The watcher polls the shared SpecForge queue and calls `codex queue` when work
+arrives. The Codex queue service wakes the idle owning thread. This requires a
+Codex version with that command and host access to its queue database.
+`review-wait` remains a one-shot inspection command in agent tools. Do not keep
+a terminal or tool call waiting for comments.
 
 ## Install
 
@@ -62,8 +64,7 @@ $specforge:export-md
 
 Once a spec is open, the browser connection badge reports the actual transport:
 
-- **Review queued**: work is durable and will be delivered on the next turn;
-  **Continue in Codex** copies a one-shot pickup instruction.
+- **Connected**: the background delivery worker is running and renewing its heartbeat.
 - **Reviewing**: the agent is processing the submitted round. A second thread
   cannot take ownership through this state.
 - **Disconnected**: no attached delivery session is present; **Reconnect** copies
@@ -76,11 +77,18 @@ and aside actions through the common store format. New replies are displayed as
 ## Recovery and permissions
 
 Browser work is inspected without being claimed. A denied hook, closed tool
-call, daemon restart, or interrupted turn leaves the request queued. Continue in
-the owning thread or use the reconnect prompt. Duplicate reply effects are
-ignored. Codex does not acquire a watcher lease or use a sandbox-local PID to
-advertise readiness. Legacy Codex worker records do not make the browser report
-a live listener. Claude Code and Pi retain their background delivery workers.
+call, daemon restart, or interrupted turn leaves the request queued. The watcher
+retries failed queue commands. Successful deliveries are recorded separately
+from pickup acknowledgements to avoid repeated messages while a batch waits.
+Duplicate reply effects are ignored. Only the host-owned `codex-queue` worker
+can advertise readiness; legacy tool-sandbox PID records cannot. Claude Code
+and Pi retain their existing background delivery workers.
+
+The worker log is `~/.specforge/sessions/<session-key>.json.codex-log`.
+If delivery fails, its heartbeat expires and the browser reports Disconnected.
+SessionEnd releases the worker; it exits on its next poll. The next SessionStart,
+UserPromptSubmit, or Stop hook starts a replacement. Hooks return without waiting
+for the worker and do not inject work independently of the queue adapter.
 
 The plugin cache is treated as read-only. Specs and delivery records live in
 `SPECFORGE_HOME` or `~/.specforge`, and the daemon listens on loopback. Public
