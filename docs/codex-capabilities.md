@@ -91,9 +91,9 @@ Codex background hooks cannot start a turn after the thread becomes idle. Their 
 
 Codex delivery uses a host-owned watcher and the native queue command:
 
-1. SessionStart and Stop hook entry points start or reuse a detached `lib/codex-watcher.mjs` child and return immediately.
+1. SessionStart, UserPromptSubmit, and Stop hook entry points start or reuse a detached `lib/codex-watcher.mjs` child and return immediately. Codex hooks never inject pending work themselves; the watcher is the sole delivery path.
 2. The child holds an exclusive session lock and a `codex-queue` worker lease. It polls `pendingWorkForSession` every 15 seconds and calls `codex queue --thread <id> --message <reason>` when work arrives.
-3. Successful queue submissions are recorded separately from SpecForge pickup acknowledgements. Failed commands leave work pending and are retried; they do not renew the heartbeat.
+3. Successful queue submissions are recorded separately from SpecForge pickup acknowledgements. The shared reader excludes delivered request identities before it builds instructions, so a new batch never requeues an older pending batch. Failed commands leave work pending and are retried; they do not renew the heartbeat.
 4. SessionEnd releases the worker lease. The child exits at its next poll. An explicit `review-wait` in an agent tool remains a one-shot inspection and never becomes a foreground wait.
 
 The browser uses the same Connected and Disconnected meanings for all harnesses. Only the host-owned Codex worker can advertise readiness; old sandbox PID records cannot.

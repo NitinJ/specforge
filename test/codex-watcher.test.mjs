@@ -14,6 +14,8 @@ import { specConnected } from '../lib/spec-signals.mjs';
 import { watchCodex, startCodexWatcher, stopCodexWatcher } from '../lib/codex-watcher.mjs';
 import { requestExport } from '../lib/store-export.mjs';
 import { requestGenerate } from '../lib/store-generate.mjs';
+import { run as stopHook } from '../hooks/stop.mjs';
+import { run as promptHook } from '../hooks/user-prompt-submit.mjs';
 
 let home, previous, id;
 const session = 'codex-watcher-test';
@@ -59,6 +61,37 @@ for (const kind of ['generate', 'export']) {
     assert.equal(pendingWorkForSession(session).kind, kind, 'delivery never claims the request');
   });
 }
+
+for (const kind of ['review', 'generate', 'export']) {
+  test(`${kind} has one Codex delivery path, even when a hook runs with pending work`, () => {
+    if (kind === 'review') submit('one delivery only');
+    else if (kind === 'generate') requestGenerate(id, 'Template');
+    else requestExport(id);
+    const env = { SPECFORGE_HARNESS: 'codex', CODEX_THREAD_ID: session };
+    assert.equal(stopHook({}, env), null);
+    assert.equal(promptHook({}, env), null);
+    assert.equal(pendingWorkForSession(session).kind, kind);
+  });
+}
+
+test('a new batch does not requeue an older batch that is still working', async () => {
+  submit('round A');
+  const first = pendingWorkForSession(session).items[0].batchId;
+  const messages = [];
+  let ticks = 0;
+  await watchCodex(session, {
+    deliver: async (_sid, reason) => { messages.push(reason); },
+    sleep: async () => {
+      if (++ticks === 1) {
+        advanceBatchProgress(id, first, 'working');
+        submit('round B');
+      } else stopCodexWatcher(session);
+    },
+  });
+  assert.equal(messages.length, 2);
+  assert.ok(messages[0].includes(first));
+  assert.ok(!messages[1].includes(first), 'a later submission must not repeat round A');
+});
 
 test('an idle watcher delivers two rounds automatically without consuming pending work', async () => {
   let ticks = 0;

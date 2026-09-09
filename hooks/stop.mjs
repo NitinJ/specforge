@@ -34,6 +34,9 @@ export function run(input, env = process.env) {
   if (!mine.length) return null; // ← idle no-op
 
   markSeen(me);
+  // Codex has one delivery path: the host-owned watcher queues work after this
+  // turn settles. Injecting it here too would create duplicate review turns.
+  if (resolveHarness(env) === CODEX_HARNESS) return null;
 
   // Pending review batches take priority — route to review-spec before settling.
   const batches = pendingForSession(me);
@@ -53,9 +56,6 @@ export function run(input, env = process.env) {
   if (toExport.length) {
     return { decision: 'block', reason: exportReason(toExport, env) };
   }
-
-  // The Codex host hook owns the watcher; never ask the agent to wait on it.
-  if (resolveHarness(env) === CODEX_HARNESS) return null;
 
   // Last: don't settle owning specs nobody is listening to. Blocking rather than
   // mentioning, because settling in that state IS the bug — a spec that takes

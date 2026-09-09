@@ -86,8 +86,9 @@ and Pi retain their existing background delivery workers.
 
 The worker log is `~/.specforge/sessions/<session-key>.json.codex-log`.
 If delivery fails, its heartbeat expires and the browser reports Disconnected.
-SessionEnd releases the worker; it exits on its next poll. The next SessionStart
-or Stop hook starts a replacement. Hooks return without waiting for the worker.
+SessionEnd releases the worker; it exits on its next poll. The next SessionStart,
+UserPromptSubmit, or Stop hook starts a replacement. Hooks return without waiting
+for the worker and do not inject work independently of the queue adapter.
 
 The plugin cache is treated as read-only. Specs and delivery records live in
 `SPECFORGE_HOME` or `~/.specforge`, and the daemon listens on loopback. Public

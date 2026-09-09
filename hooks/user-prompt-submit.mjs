@@ -20,12 +20,15 @@ import { exportRequestsForSession, exportReason } from '../lib/store-export.mjs'
 import {
   generateRequestsForSession, generateReason,
 } from '../lib/store-generate.mjs';
-import { isDirectRun } from '../lib/harness-context.mjs';
+import { CODEX_HARNESS, isDirectRun, resolveHarness } from '../lib/harness-context.mjs';
+import { startCodexWatcher } from '../lib/codex-watcher.mjs';
 
 export function run(input, env = process.env) {
   const { me, mine } = mineFor(env, input.session_id);
   if (!mine.length) return null; // ← idle no-op
   markSeen(me);
+  // The Codex queue already carries its review instructions into the turn.
+  if (resolveHarness(env) === CODEX_HARNESS) return null;
   const batches = pendingForSession(me);
   if (batches.length) {
     return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: reviewReason(batches, env) } };
@@ -44,7 +47,9 @@ export function run(input, env = process.env) {
 }
 
 async function main() {
-  const decision = run(parseInput(await readStdin()));
+  const input = parseInput(await readStdin());
+  startCodexWatcher(input);
+  const decision = run(input);
   if (decision) process.stdout.write(JSON.stringify(decision));
 }
 
