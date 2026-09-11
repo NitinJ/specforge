@@ -13,6 +13,7 @@ import { listContributions } from '../lib/store-project-shares.mjs';
 import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { groupByCollection, UNCOLLECTED } from '../lib/collections.mjs';
 import { projectCollaborators } from '../lib/collaborators.mjs';
+import { groupByRoot, layoutTree, treeMarks } from '../lib/spec-rows.mjs';
 import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
 
 function esc(s) {
@@ -51,13 +52,21 @@ export function renderProjectPage(name, token) {
   // then the signals in fixed-width slots so they line up as columns down the
   // list. The controls that ride on the owner's row (select, tags, actions) are
   // not here, because a reviewer has none of them.
-  const localRow = (m) => `
-    <li class="row">
-      <span class="main"><a class="title" href="/p/${token}/spec/${m.id}">${esc(m.title || 'Untitled')}</a></span>
+  //
+  // Drawn as the same tree, too: a child directly under its parent, one level
+  // in, with the parent's count and the child's parent name (lib/spec-rows.mjs).
+  const localRow = ({ meta: m, depth, nested, kids, parentTitle }) => {
+    // spec-tree-ok: this row's own parent, carried on the row like the home page's
+    const parentId = m.parent || '';
+    return `
+    <li class="row${depth ? ' kid' : ''}${nested ? ' nested' : ''}" data-id="${esc(m.id)}" data-depth="${depth}" data-parent="${esc(parentId)}">
+      <span class="main"><a class="title" href="/p/${token}/spec/${m.id}">${esc(m.title || 'Untitled')}</a>${treeMarks(kids, parentTitle)}</span>
       <span class="badge t">${esc(m.type || '')}</span>
       <span class="badge s s-${esc(m.status || 'draft')}"><span class="sdot"></span>${esc(m.status || 'draft')}</span>
       <span class="upd">${esc(relativeTime(m.updated))}</span>
     </li>`;
+  };
+  const rowsOf = (list) => layoutTree(list).map(localRow).join('');
 
   // Grouped under collection headings rather than labelled per row, which is
   // what the owner sees for the same project on their own home page. A label on
@@ -68,15 +77,18 @@ export function renderProjectPage(name, token) {
   // A project with no collections at all gets no headings: one heading over
   // every row names nothing, and the store has such projects (specforge holds 23
   // specs and 0 collections).
-  const specs = projectSpecs(name);
+  //
+  // A child is grouped by its root's collection, not its own, so it lands in
+  // the section its parent is drawn in (lib/spec-rows.mjs, groupByRoot).
+  const specs = groupByRoot(projectSpecs(name));
   const { order, named } = groupByCollection(specs, readGlobalPrefs().collectionOrder);
   const local = named.length
     ? order.map(({ key, specs: list }) => `
   <section class="grp">
     <h2>${key === '' ? UNCOLLECTED : esc(key)} <span class="gcount">${list.length}</span></h2>
-    <div class="card"><ul class="rows">${list.map(localRow).join('')}</ul></div>
+    <div class="card"><ul class="rows">${rowsOf(list)}</ul></div>
   </section>`).join('')
-    : (specs.length ? `<div class="card"><ul class="rows">${specs.map(localRow).join('')}</ul></div>` : '');
+    : (specs.length ? `<div class="card"><ul class="rows">${rowsOf(specs)}</ul></div>` : '');
 
   // Contributed rows link OFF this origin, to the machine that owns the spec.
   // Nothing about them is served from here: the title and owner are the
