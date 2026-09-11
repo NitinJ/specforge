@@ -107,5 +107,39 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
      Part of the shared block rather than each page's own, which is how the
      shared page ended up with a rule for a class its rows no longer had: at
      420px every column stayed and the title was squeezed to 73px. */
+  /* Child rows (lib/spec-rows.mjs). A guide line runs down from the parent
+     through its children and turns into each one, so the relation reads as a
+     tree rather than as whitespace. The line hangs off the row, not the title,
+     so consecutive children join into one line; the last child's stops at its
+     own elbow (a browser without :has() runs it to the row's foot instead,
+     which is the whole cost). --tree-x sits 6px in from where the parent's
+     title starts, under its first letter; where the title starts is each
+     page's row furniture (16px here). 19px is the middle of a row's first
+     line. */
+  .rows{--tree-x:22px}
+  .row.kid .main{padding-left:26px}
+  .row.kid::before,.row.kid::after{content:"";position:absolute;left:var(--tree-x);
+    border:0 solid var(--line2);pointer-events:none}
+  .row.kid::before{top:0;bottom:0;border-left-width:1.5px}
+  .row.kid:not(:has(+ .row.kid))::before{bottom:calc(100% - 19px)}
+  .row.kid::after{top:19px;width:12px;border-top-width:1.5px}
+  .row.kid .title{font-weight:480}
+  /* How many specs belong to this one. A count, not a disclosure: they are
+     already on screen, immediately below, so it wears the guide's elbow rather
+     than a chevron that promises to fold them away. */
+  .kids{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;font-size:11px;
+    color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 7px 0 6px;
+    font-variant-numeric:tabular-nums}
+  .kids::before{content:"";width:5px;height:5px;margin-top:-3px;opacity:.75;
+    border-left:1.5px solid currentColor;border-bottom:1.5px solid currentColor;
+    border-bottom-left-radius:2px}
+  /* Which spec a row belongs to, where the indent cannot say it: a grandchild
+     sits at its parent's indent, so without this it reads as a sibling. */
+  /* Capped rather than shrinkable, so on a narrow row it ellipsises and the
+     title keeps the rest: the title is what the row is scanned by. As a shrink
+     weight it still left the title a sub-pixel share, which is an ellipsis. */
+  .under{display:none;flex:0 0 auto;max-width:40%;font-size:11px;color:var(--faint);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row.nested .under{display:inline}
   @media(max-width:1180px){.badge.t{display:none}}
   @media(max-width:900px){.upd{display:none}}`;

@@ -135,7 +135,8 @@ test('contributed specs are their own group, after the collections', () => {
 test('the row itself no longer repeats the collection name', () => {
   seed('Object model', 'Data models');
   const html = renderProjectPage('Atelier', TOK);
-  const row = (html.match(/<li class="row">[\s\S]*?<\/li>/) || [''])[0];
+  const row = (html.match(/<li class="row"[^>]*>[\s\S]*?<\/li>/) || [''])[0];
+  assert.match(row, /Object model/, 'the regex found the row');
   assert.doesNotMatch(row, /Data models/,
     'the heading says it once; on the row it would say it per spec');
 });

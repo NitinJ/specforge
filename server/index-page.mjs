@@ -22,6 +22,7 @@ import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
 import { STATUSES } from '../lib/lifecycle.mjs';
 import { readSubscriptions } from '../lib/store-subscriptions.mjs';
 import { groupByCollection } from '../lib/collections.mjs';
+import { groupByRoot, layoutTree, treeMarks } from '../lib/spec-rows.mjs';
 import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
 
 function esc(s) {
@@ -136,134 +137,19 @@ function shareHtml(sig) {
   return `<a class="pub" href="${esc(sig.shareUrl)}" target="_blank" rel="noopener" title="Shared · ${esc(host)}">${ICON_SHARE}</a>`;
 }
 
-/** One working-spec row. */
 /**
- * Draw a group's specs as a tree: parents at the top level, children under them.
+ * One group's rows, as a tree (lib/spec-rows.mjs, shared with the project page).
  *
- * A child does not get a row of its own at the top level. The whole point of
- * splitting a spec up is to reduce what a reviewer has to hold in their head,
- * and a list that grows a row per child would be longer than it was before the
- * feature existed.
- *
- * One level of indentation, and only one. A grandchild is drawn under its own
- * parent, which is itself indented once: deeper nesting is the panel's job, and
- * a list indented four times is a list nobody can scan.
- *
- * A child is drawn beside its parent even when the two carry different
- * collections. The alternative puts it under a parent that is not on screen.
- * A child whose parent is not in this store at all is drawn at the top level,
- * which is where an orphan from an interrupted delete belongs.
- */
-function orderWithChildren(list, childrenByParent) {
-  const present = new Set(list.map((m) => m.id));
-  const out = [];
-  const seen = new Set();
-
-  // Depth first, so a spec is always directly below the one it belongs to. The
-  // INDENT is capped at one; the ORDER is not. That is what "a grandchild
-  // renders under its own parent" means on a page that only draws one level:
-  // it sits immediately after its parent, at the same indent as it.
-  const walk = (meta, depth) => {
-    if (seen.has(meta.id)) return;   // a hand-written cycle must not loop here
-    seen.add(meta.id);
-    out.push({ meta, depth: Math.min(depth, 1) });
-    for (const kid of childrenByParent.get(meta.id) || []) walk(kid, depth + 1);
-  };
-
-  for (const m of list) {
-    // spec-tree-ok: reads this row's own field to decide whether it is a root here
-    const parent = m.parent || null;
-    // A child whose parent is not in this store is an orphan from an interrupted
-    // delete, and it belongs at the top level rather than nowhere.
-    if (parent && present.has(parent)) continue;
-    walk(m, 0);
-  }
-
-  // Anything left is inside a cycle, so no walk reached it. Drawn at the top
-  // level rather than dropped: a spec missing from the page is worse than one
-  // drawn in the wrong place, and the page is how you would notice.
-  for (const m of list) if (!seen.has(m.id)) walk(m, 0);
-
-  return out;
-}
-
-/**
- * Every spec, with its tree root's project and collection for grouping.
- *
- * Returns copies. The stored fields are untouched: this decides which section a
- * row is drawn in, and nothing else. A spec whose parent is missing, or that
- * sits in a cycle, keeps its own address, which is what puts an orphan at the
- * top level of the section it was filed in.
- */
-function groupByRoot(list) {
-  const byId = new Map(list.map((m) => [m.id, m]));
-  const rootOf = (m) => {
-    const seen = new Set([m.id]);
-    let cur = m;
-    for (;;) {
-      // spec-tree-ok: walks the rows this page already has, not the store
-      const parent = cur.parent && byId.get(cur.parent);
-      if (!parent) return cur;
-      // A ring has no root. Whichever member the walk happens to stop on is not
-      // this one, and taking its address would file two specs in each other's
-      // sections. Everything in a cycle keeps its own.
-      if (seen.has(parent.id)) return m;
-      seen.add(parent.id);
-      cur = parent;
-    }
-  };
-  return list.map((m) => {
-    const root = rootOf(m);
-    if (root === m) return m;
-    // `filed` is what the spec says it is; project and collection are where the
-    // row is DRAWN. The two differ only for a child moved away from its parent,
-    // and the difference matters because the move controls read a row's address
-    // off the row and write it back: a child reporting its parent's collection
-    // would offer to move it out of one it was never in.
-    return {
-      ...m,
-      project: root.project || null,
-      collection: root.collection || null,
-      filed: { project: m.project || null, collection: m.collection || null },
-    };
-  });
-}
-
-/** parent id → its children among `list`, in the order the list gives them. */
-function indexChildren(list) {
-  const byParent = new Map();
-  for (const m of list) {
-    // spec-tree-ok: groups rows by the field they carry; does not walk it
-    const parent = m.parent || null;
-    if (!parent) continue;
-    if (!byParent.has(parent)) byParent.set(parent, []);
-    byParent.get(parent).push(m);
-  }
-  return byParent;
-}
-
-/**
- * One group's rows, as a tree.
- *
- * Every spec in `list` gets exactly one row; the tree decides where. The counts
- * come from this group, so a parent shows the children drawn beneath it rather
- * than a number the reader cannot reconcile with what is on screen.
+ * Every spec in `list` gets exactly one row; the tree decides where.
  */
 function renderRows(list, sigOf) {
-  const byParent = indexChildren(list);
-  const titles = new Map(list.map((m) => [m.id, m.title || 'Untitled']));
-  return orderWithChildren(list, byParent).map(({ meta, depth }) => rowHtml(meta, sigOf(meta), {
-    depth,
-    kids: (byParent.get(meta.id) || []).length,
-    // Carried on every child row and shown only in the flat views, where the
-    // row is out of its tree. "Testing strategy" with no idea what it is the
-    // testing strategy for is a row that has lost what made it worth reading.
-    // spec-tree-ok: names this row's own parent, does not walk the edge
-    parentTitle: depth ? titles.get(meta.parent) || '' : '',
+  return layoutTree(list).map(({ meta, depth, nested, kids, parentTitle }) => rowHtml(meta, sigOf(meta), {
+    depth, nested, kids, parentTitle,
   })).join('\n');
 }
 
-function rowHtml(m, sig, { depth = 0, kids = 0, parentTitle = '' } = {}) {
+/** One working-spec row. */
+function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = '' } = {}) {
   const id = esc(m.id);
   const titleRaw = m.title || 'Untitled';
   const title = esc(titleRaw);
@@ -297,20 +183,16 @@ function rowHtml(m, sig, { depth = 0, kids = 0, parentTitle = '' } = {}) {
   const edge = m.attachedSession ? (isLive ? ' edge-live' : ' edge-off') : '';
   // spec-tree-ok: this row's own parent, for the flat views that name it
   const parentId = m.parent || '';
-  // Only in the views that render flat. There the child is out of its tree, and
-  // "Testing strategy" with no idea what it is the testing strategy for is a row
-  // that has lost the thing that made it worth reading.
-  const under = parentTitle
-    ? `<span class="under" title="Child of ${esc(parentTitle)}">in ${esc(parentTitle)}</span>` : '';
-  // A count, not a disclosure: the children are already on screen, indented
-  // below. This says how many, so a collapsed-looking gap is never a surprise.
-  const kidCount = kids
-    ? `<span class="kids" title="${kids} child spec${kids === 1 ? '' : 's'}">${kids}</span>` : '';
+  // The child count, and the parent's name. The name shows in the views that
+  // render flat, where the child is out of its tree, and on a nested row, whose
+  // indent cannot say it: "Testing strategy" with no idea what it is the
+  // testing strategy for is a row that has lost what made it worth reading.
+  const marks = treeMarks(kids, parentTitle);
 
-  return `<li class="row${edge}${depth ? ' kid' : ''}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-gc="${esc(drawnColl)}" data-gp="${esc(drawnProj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}" data-depth="${depth}" data-parent="${esc(parentId)}">
+  return `<li class="row${edge}${depth ? ' kid' : ''}${nested ? ' nested' : ''}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-gc="${esc(drawnColl)}" data-gp="${esc(drawnProj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}" data-depth="${depth}" data-parent="${esc(parentId)}">
   <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
-    <a class="title" href="/spec/${id}" title="${title}">${title}</a>${kidCount}${under}
+    <a class="title" href="/spec/${id}" title="${title}">${title}</a>${marks}
     <span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span>
     <span class="id" title="Spec id">${id}</span>
     <span class="att" hidden>${att}</span>
@@ -807,20 +689,17 @@ ${LIST_CSS}
      one of them is kept: it is the title that a list is scanned by, and the
      column below a signal repeats it anyway. The slots go auto-width on their
      own line, where a fixed width buys alignment nobody is reading across. */
-  /* Child rows. One level of indent, drawn with a rule rather than whitespace
-     so the relationship survives a narrow window, where padding alone reads as
-     a rendering accident. */
-  .row.kid .main{padding-left:18px;border-left:2px solid var(--line);margin-left:2px}
-  /* How many specs belong to this one. A count, not a disclosure: they are
-     already on screen, immediately below. */
-  .kids{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;
-    padding:0 6px;margin-left:6px;flex:0 0 auto}
-  .kids::before{content:"⌄ ";opacity:.7}
-  /* Which spec a child belongs to. Only in the flat views, where the row is out
-     of its tree and the indent above is gone. */
-  .under{display:none;font-size:11px;color:var(--muted);margin-left:6px}
+  /* Child rows are styled by the shared list block. Here: where the guide line
+     sits, 6px into the parent's title, which starts past the checkbox this
+     page's rows lead with (14px padding + 2px edge + 14px box + 10px gap =
+     40px); and the flat
+     views, where the row is out of its tree, so the guide goes and the parent
+     is named on every child instead. */
+  .rows{--tree-x:46px}
   body[data-view="attn"] .row.kid .main,
-  body[data-view="live"] .row.kid .main{padding-left:0;border-left:0;margin-left:0}
+  body[data-view="live"] .row.kid .main{padding-left:0}
+  body[data-view="attn"] .row.kid::before,body[data-view="attn"] .row.kid::after,
+  body[data-view="live"] .row.kid::before,body[data-view="live"] .row.kid::after{display:none}
   body[data-view="attn"] .under,
   body[data-view="live"] .under{display:inline}
   @media(max-width:600px){
@@ -834,6 +713,13 @@ ${LIST_CSS}
     /* Back to the right edge, where a touch target belongs and where it sat
        when the row was one line. */
     .acts{margin-left:auto}
+    /* A child's signals line starts past the guide, under the child's own
+       title (40px + 26px, less the 16px the row already pads), rather than
+       with the line struck through its status. Not in the flat views, which
+       have no guide. */
+    .row.kid .meta{padding-left:50px}
+    body[data-view="attn"] .row.kid .meta,
+    body[data-view="live"] .row.kid .meta{padding-left:0}
 
     /* The header ran off the screen for the same reason: a 280px search box and
        a share link up to 260px on a no-wrap row. It wraps, and the search takes
