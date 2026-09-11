@@ -109,3 +109,12 @@ test('a child row links to its own spec under the project token', () => {
   const link = byId(dom())[child].querySelector('a.title');
   assert.equal(link.getAttribute('href'), `/p/${TOK}/spec/${child}`);
 });
+
+test('a parent title is escaped where a child row names it', () => {
+  const root = inP({ title: '<img src=x onerror=alert(1)>' });
+  inP({ title: 'Child', parent: root });
+  const html = renderProjectPage(P, TOK);
+  assert.doesNotMatch(html, /<img src=x/, 'the tag never reaches the page raw');
+  assert.match(html, /title="Child of &lt;img src=x/);
+  assert.match(html, />in &lt;img src=x/);
+});

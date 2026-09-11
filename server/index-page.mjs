@@ -690,8 +690,9 @@ ${LIST_CSS}
      column below a signal repeats it anyway. The slots go auto-width on their
      own line, where a fixed width buys alignment nobody is reading across. */
   /* Child rows are styled by the shared list block. Here: where the guide line
-     sits, which is under the title, past the checkbox this page's rows lead
-     with (14px padding + 2px edge + 14px box + 10px gap = 40px); and the flat
+     sits, 6px into the parent's title, which starts past the checkbox this
+     page's rows lead with (14px padding + 2px edge + 14px box + 10px gap =
+     40px); and the flat
      views, where the row is out of its tree, so the guide goes and the parent
      is named on every child instead. */
   .rows{--tree-x:46px}

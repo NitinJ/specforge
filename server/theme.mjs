@@ -111,8 +111,11 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
      through its children and turns into each one, so the relation reads as a
      tree rather than as whitespace. The line hangs off the row, not the title,
      so consecutive children join into one line; the last child's stops at its
-     own elbow. --tree-x is where the parent's title starts, which each page's
-     row furniture decides. 19px is the middle of the first line of a row. */
+     own elbow (a browser without :has() runs it to the row's foot instead,
+     which is the whole cost). --tree-x sits 6px in from where the parent's
+     title starts, under its first letter; where the title starts is each
+     page's row furniture (16px here). 19px is the middle of a row's first
+     line. */
   .rows{--tree-x:22px}
   .row.kid .main{padding-left:26px}
   .row.kid::before,.row.kid::after{content:"";position:absolute;left:var(--tree-x);
