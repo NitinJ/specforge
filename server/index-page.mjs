@@ -23,6 +23,7 @@ import { STATUSES } from '../lib/lifecycle.mjs';
 import { readSubscriptions } from '../lib/store-subscriptions.mjs';
 import { groupByCollection } from '../lib/collections.mjs';
 import { groupByRoot, layoutTree, treeMarks } from '../lib/spec-rows.mjs';
+import { treeFoldScript } from './tree-fold.mjs';
 import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
 
 function esc(s) {
@@ -1539,14 +1540,21 @@ ${strip}
     applyView();
     var q=(search&&search.value.trim().toLowerCase())||'';
     var ty=(ftype&&ftype.value)||'';
+    var filtered=!!q||fstatus!=='all'||!!ty||fview!=='all'||fcoll!==null||fproj!==null;
     var shown=0;
     rows.forEach(function(r){
       var hit=base(r,q,ty)&&(fstatus==='all'||r.getAttribute('data-s')===fstatus);
       r.style.display=hit?'':'none';
       if(hit)shown++;
     });
+    // Folds hide rows with [hidden] (server/tree-fold.mjs), a mechanism apart
+    // from the display this pass sets, so the two compose. A narrowed list
+    // answers a question that cuts across the tree, and a search hit must not
+    // stay buried under a parent the reader folded, so the folds wait while
+    // anything narrows and take the whole list back when it is whole again.
+    sfFoldsApply(filtered?[]:sfFoldsRead());
     grps.forEach(function(g){
-      var vis=[].slice.call(g.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
+      var vis=[].slice.call(g.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none'&&!r.hidden;}).length;
       var gc=g.querySelector('.gcount'); if(gc) gc.textContent=vis;
       g.style.display=vis?'':'none';
     });
@@ -1554,7 +1562,7 @@ ${strip}
     pgrps.forEach(function(pg){
       var vis=[].slice.call(pg.querySelectorAll('.grp')).filter(function(g){return g.style.display!=='none';}).length;
       var gc=pg.querySelector('.ph .gcount');
-      if(gc) gc.textContent=[].slice.call(pg.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
+      if(gc) gc.textContent=[].slice.call(pg.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none'&&!r.hidden;}).length;
       pg.style.display=vis?'':'none';
     });
     markLead();
@@ -1584,7 +1592,6 @@ ${strip}
       var fc=ch.querySelector('.fc'); if(fc) fc.textContent=c;
       ch.classList.toggle('zero',f!=='all'&&!c);
     });
-    var filtered=!!q||fstatus!=='all'||!!ty||fview!=='all'||fcoll!==null||fproj!==null;
     if(count) count.textContent=filtered?(shown+' of '+total):(total+' spec'+(total===1?'':'s'));
     if(nohits) nohits.style.display=shown?'none':'block';
     // Inside a project the page header names it, so the project headings in the
@@ -1857,6 +1864,14 @@ ${strip}
       try{localStorage.setItem(CKEY,JSON.stringify(next));}catch(e){}
     };
   });
+
+  // --- folding the child rows under a parent ---
+  // The pill on a parent row is the toggle (server/tree-fold.mjs). A fold only
+  // takes a row that the filter pass above is showing, so it has to be applied
+  // where the filter is applied, and a toggle has to hand back to it: the
+  // group counts read the rows that are left on screen.
+  ${treeFoldScript('sf-index-folds')}
+  sfFoldsAfter=applyFilters;
 
   // --- selection + bulk collection moves ---
   var bulk=document.getElementById('bulk'), bn=document.getElementById('bn');

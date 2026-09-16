@@ -83,6 +83,10 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
   .row{position:relative;display:flex;align-items:center;gap:10px;padding:0 14px;min-height:38px;
     border-bottom:1px solid var(--line);border-left:2px solid transparent;transition:background .12s}
   .row:last-child{border-bottom:none}
+  /* A fold (server/tree-fold.mjs) hides with the attribute, so it composes with
+     the filters' inline display instead of overwriting it. .row{display:flex}
+     above outranks the UA's own [hidden] rule, so it is said again here. */
+  .row[hidden]{display:none}
   .row:hover{background:color-mix(in srgb,var(--ink) 3%,transparent)}
   .main{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
   .title{font-weight:540;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -121,18 +125,25 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
   .row.kid::before,.row.kid::after{content:"";position:absolute;left:var(--tree-x);
     border:0 solid var(--line2);pointer-events:none}
   .row.kid::before{top:0;bottom:0;border-left-width:1.5px}
-  .row.kid:not(:has(+ .row.kid))::before{bottom:calc(100% - 19px)}
+  /* The elbow belongs to the last child still on screen, so the guide stops
+     with the subtree rather than running off the folded end of it. :has() sees
+     the hidden attribute a fold sets (server/tree-fold.mjs); it cannot see a
+     display. */
+  .row.kid:not(:has(+ .row.kid:not([hidden])))::before{bottom:calc(100% - 19px)}
   .row.kid::after{top:19px;width:12px;border-top-width:1.5px}
   .row.kid .title{font-weight:480}
-  /* How many specs belong to this one. A count, not a disclosure: they are
-     already on screen, immediately below, so it wears the guide's elbow rather
-     than a chevron that promises to fold them away. */
-  .kids{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;font-size:11px;
-    color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 7px 0 6px;
+  /* How many specs belong to this one, and whether they are on screen: the pill
+     is the fold toggle (server/tree-fold.mjs), so it is a real button carrying
+     a chevron that turns when the children under it are folded away. */
+  .kids{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;font:inherit;
+    font-size:11px;color:var(--muted);background:none;cursor:pointer;
+    border:1px solid var(--line);border-radius:999px;padding:0 7px 0 6px;
     font-variant-numeric:tabular-nums}
+  .kids:hover{color:var(--ink);border-color:var(--line2)}
   .kids::before{content:"";width:5px;height:5px;margin-top:-3px;opacity:.75;
     border-left:1.5px solid currentColor;border-bottom:1.5px solid currentColor;
-    border-bottom-left-radius:2px}
+    border-bottom-left-radius:2px;transition:transform .14s}
+  .kids[aria-expanded="false"]::before{transform:rotate(-90deg)}
   /* Which spec a row belongs to, where the indent cannot say it: a grandchild
      sits at its parent's indent, so without this it reads as a sibling. */
   /* Capped rather than shrinkable, so on a narrow row it ellipsises and the
