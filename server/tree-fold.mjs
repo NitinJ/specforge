@@ -64,7 +64,12 @@ export function treeFoldScript(key) {
       var b=r.querySelector('button.kids');
       // The attribute is the state, not the click: a fold applied from storage
       // on load has no click to speak of.
-      if(b) b.setAttribute('aria-expanded',folded.indexOf(r.getAttribute('data-id'))===-1?'true':'false');
+      var shut=folded.indexOf(r.getAttribute('data-id'))!==-1;
+      r.classList.toggle('folded',shut);
+      if(!b) return;
+      var n=b.getAttribute('data-n'), s=n==='1'?'':'s';
+      b.setAttribute('aria-expanded',shut?'false':'true');
+      b.title=(shut?'Show ':'Fold ')+n+' child spec'+s;
     });
   }
   document.addEventListener('click',function(e){

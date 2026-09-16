@@ -115,6 +115,24 @@ test('a fold is remembered for the page kind, and a load applies it', async (t) 
   assert.equal(rowFor(doc, root).querySelector('.kids').getAttribute('aria-expanded'), 'false');
 });
 
+test('a fold holds on a page opened on a project', async (t) => {
+  // The page opens on the last project picked. A project keeps whole trees
+  // together, so it must not suspend the folds the way a search does.
+  const root = inP({ title: 'Root' });
+  const child = inP({ title: 'Child', parent: root });
+  const { window } = loadIndex(t, { project: P });
+  const doc = window.document;
+
+  const pill = rowFor(doc, root).querySelector('.kids');
+  pill.click();
+  await tick(window);
+
+  assert.equal(off(rowFor(doc, child)), true, 'the fold was undone by the project filter');
+  assert.equal(pill.getAttribute('aria-expanded'), 'false');
+  assert.equal(pill.title, 'Show 1 child spec');
+  assert.ok(rowFor(doc, root).classList.contains('folded'), 'a folded parent is not marked');
+});
+
 test('a search hit is not buried under a folded parent', async (t) => {
   const root = seedSpec({ title: 'Design system' });
   const child = seedSpec({ title: 'Testing strategy', parent: root });

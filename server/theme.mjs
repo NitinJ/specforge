@@ -133,17 +133,24 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
   .row.kid::after{top:19px;width:12px;border-top-width:1.5px}
   .row.kid .title{font-weight:480}
   /* How many specs belong to this one, and whether they are on screen: the pill
-     is the fold toggle (server/tree-fold.mjs), so it is a real button carrying
-     a chevron that turns when the children under it are folded away. */
-  .kids{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;font:inherit;
-    font-size:11px;color:var(--muted);background:none;cursor:pointer;
-    border:1px solid var(--line);border-radius:999px;padding:0 7px 0 6px;
-    font-variant-numeric:tabular-nums}
-  .kids:hover{color:var(--ink);border-color:var(--line2)}
-  .kids::before{content:"";width:5px;height:5px;margin-top:-3px;opacity:.75;
-    border-left:1.5px solid currentColor;border-bottom:1.5px solid currentColor;
-    border-bottom-left-radius:2px;transition:transform .14s}
-  .kids[aria-expanded="false"]::before{transform:rotate(-90deg)}
+     is the fold toggle (server/tree-fold.mjs). Open, it is a quiet count with a
+     down chevron. Folded, it turns accent, points right and says "hidden", and
+     the parent row carries a doubled bottom rule, so a folded tree reads as a
+     stack with more under it rather than as a spec with no children. */
+  .kids{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;font:inherit;
+    font-size:11px;line-height:18px;color:var(--muted);background:none;cursor:pointer;
+    border:1px solid var(--line);border-radius:999px;padding:0 8px 0 7px;
+    font-variant-numeric:tabular-nums;transition:color .12s,background .12s,border-color .12s}
+  .kids:hover{color:var(--ink);border-color:var(--line2);background:color-mix(in srgb,var(--ink) 5%,transparent)}
+  .kids:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .kids-chev{width:5px;height:5px;margin-top:-3px;border-right:1.5px solid currentColor;
+    border-bottom:1.5px solid currentColor;transform:rotate(45deg);transition:transform .15s}
+  .kids-hid{display:none}
+  .kids[aria-expanded="false"]{color:var(--accent);background:var(--accent-soft);
+    border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
+  .kids[aria-expanded="false"] .kids-chev{transform:rotate(-45deg);margin-top:0;margin-left:-2px}
+  .kids[aria-expanded="false"] .kids-hid{display:inline}
+  .row.folded{box-shadow:inset 0 -3px 0 -2px var(--line2),0 3px 0 -2px var(--line2)}
   /* Which spec a row belongs to, where the indent cannot say it: a grandchild
      sits at its parent's indent, so without this it reads as a sibling. */
   /* Capped rather than shrinkable, so on a narrow row it ellipsises and the

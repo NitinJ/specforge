@@ -1552,9 +1552,13 @@ ${strip}
     // answers a question that cuts across the tree, and a search hit must not
     // stay buried under a parent the reader folded, so the folds wait while
     // anything narrows and take the whole list back when it is whole again.
-    sfFoldsApply(filtered?[]:sfFoldsRead());
+    // Only what cuts across a tree suspends the folds. The project and the
+    // collection do not: a child is drawn in its root's section, so a whole tree
+    // is in or out together, and the page opens on the last project picked.
+    var acrossTree=!!q||fstatus!=='all'||!!ty||fview!=='all';
+    sfFoldsApply(acrossTree?[]:sfFoldsRead());
     grps.forEach(function(g){
-      var vis=[].slice.call(g.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none'&&!r.hidden;}).length;
+      var vis=[].slice.call(g.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
       var gc=g.querySelector('.gcount'); if(gc) gc.textContent=vis;
       g.style.display=vis?'':'none';
     });
@@ -1562,7 +1566,7 @@ ${strip}
     pgrps.forEach(function(pg){
       var vis=[].slice.call(pg.querySelectorAll('.grp')).filter(function(g){return g.style.display!=='none';}).length;
       var gc=pg.querySelector('.ph .gcount');
-      if(gc) gc.textContent=[].slice.call(pg.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none'&&!r.hidden;}).length;
+      if(gc) gc.textContent=[].slice.call(pg.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
       pg.style.display=vis?'':'none';
     });
     markLead();
