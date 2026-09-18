@@ -14,6 +14,7 @@ import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { groupByCollection, UNCOLLECTED } from '../lib/collections.mjs';
 import { projectCollaborators } from '../lib/collaborators.mjs';
 import { groupByRoot, layoutTree, treeMarks } from '../lib/spec-rows.mjs';
+import { treeFoldScript } from './tree-fold.mjs';
 import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
 
 function esc(s) {
@@ -272,6 +273,14 @@ ${collaborators}
       else if(mq.addListener) mq.addListener(paint);
     }catch(e){}
   }
+
+  // Folding the tree. The pill on a parent row is the toggle, and the fold
+  // state is the reader's, in their own localStorage, like the theme above.
+  // No filters here, so the fold is applied on load and on every toggle.
+  (function(){
+    ${treeFoldScript('sf-project-folds')}
+    sfFoldsApply(sfFoldsRead());
+  })();
 
   // The server serves this through a tunnel and does not know the origin the
   // reader arrived on, so the command is completed here, from the address bar.

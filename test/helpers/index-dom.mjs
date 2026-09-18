@@ -26,6 +26,8 @@ const UI_JS = readFileSync(join(ROOT, 'server', 'public', 'ui.js'), 'utf8');
  * @param {(req:{method:string,url:string,body:any}) => any} [hostOpts.respond]
  *   override the JSON a stubbed fetch resolves with; defaults to echoing the
  *   request body back, which is what the page's optimistic updates expect
+ * @param {(window:Window) => void} [hostOpts.beforeParse] runs before the
+ *   page's scripts, with the window — for state a page reads at parse time
  * @returns {{window: Window, calls: Array, reloads: {n:number}}}
  */
 export function loadIndex(t, opts, hostOpts = {}) {
@@ -50,6 +52,7 @@ export function loadIndex(t, opts, hostOpts = {}) {
   // would read as a missing feature.
   const calls = [];
   const stub = (window) => {
+    if (hostOpts.beforeParse) hostOpts.beforeParse(window);
     window.fetch = (url, init) => {
       const method = (init && init.method) || 'GET';
       const body = init && init.body ? JSON.parse(init.body) : undefined;
