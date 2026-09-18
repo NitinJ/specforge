@@ -114,8 +114,18 @@ pointing.
 ## 2. Scaffold into the store
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type> [--project <name>] [--parent <id>]
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type <type> --model <your model id> [--project <name>] [--parent <id>]
 ```
+
+**`--model` is your own model id**, exactly as your harness names it (for
+example `claude-fable-5-1`, `gpt-6-astra`, `glm-5.3-flash`). The harness is
+detected. Together they credit you as the spec's author, shown on the home page
+row and in the spec's header as "✎ Claude · claude-fable-5-1". Leave it out
+and the credit names only the harness.
+
+If you are asked to **review** a spec rather than write one, this is the wrong
+skill: `write-review` files the review as a child spec of the one you reviewed
+and credits you as its reviewer.
 
 Prints `{ id, htmlPath, url, status, type, project, parent, parentTitle, language, skeleton, prompts }`.
 It has started/reused the daemon, copied the type's shell to `htmlPath`, and

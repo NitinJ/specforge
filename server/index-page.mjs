@@ -24,6 +24,7 @@ import { readSubscriptions } from '../lib/store-subscriptions.mjs';
 import { groupByCollection } from '../lib/collections.mjs';
 import { groupByRoot, layoutTree, treeMarks } from '../lib/spec-rows.mjs';
 import { treeFoldScript } from './tree-fold.mjs';
+import { creditLabel, harnessKey, harnessMark } from '../lib/credits.mjs';
 import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
 
 function esc(s) {
@@ -149,6 +150,34 @@ function renderRows(list, sigOf) {
   })).join('\n');
 }
 
+/**
+ * The agent that wrote the spec and the agents that reviewed it, as chips.
+ *
+ * Absent on specs written before credits existed, which is most of the store,
+ * so nothing renders for them rather than an "unknown" on every row.
+ */
+function creditChip(agent, role) {
+  const label = creditLabel(agent);
+  const title = `${role === 'author' ? 'Written' : 'Reviewed'} by ${label}`;
+  return `<span class="by by-${role} h-${harnessKey(agent.harness)}" title="${esc(title)}">`
+    + `<span class="by-role">${role === 'author' ? '✎' : '✓'}</span>`
+    + `<span class="by-mark"><b>${esc(harnessMark(agent.harness))}</b></span>${esc(label)}</span>`;
+}
+
+function creditChips(m) {
+  const out = [];
+  if (m.author && m.author.harness) out.push(creditChip(m.author, 'author'));
+  const revs = (Array.isArray(m.reviewers) ? m.reviewers : []).filter((r) => r && r.harness);
+  // Two reviewers fit a row; past that the count carries it and the tooltip
+  // names the rest.
+  for (const r of revs.slice(0, 2)) out.push(creditChip(r, 'reviewer'));
+  if (revs.length > 2) {
+    const rest = revs.slice(2).map(creditLabel).join(', ');
+    out.push(`<span class="by by-more" title="Also reviewed by ${esc(rest)}">+${revs.length - 2}</span>`);
+  }
+  return out.length ? `<span class="credits">${out.join('')}</span>` : '';
+}
+
 /** One working-spec row. */
 function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = '' } = {}) {
   const id = esc(m.id);
@@ -193,7 +222,7 @@ function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = ''
   return `<li class="row${edge}${depth ? ' kid' : ''}${nested ? ' nested' : ''}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-gc="${esc(drawnColl)}" data-gp="${esc(drawnProj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}" data-depth="${depth}" data-parent="${esc(parentId)}">
   <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
-    <a class="title" href="/spec/${id}" title="${title}">${title}</a>${marks}
+    <a class="title" href="/spec/${id}" title="${title}">${title}</a>${marks}${creditChips(m)}
     <span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span>
     <span class="id" title="Spec id">${id}</span>
     <span class="att" hidden>${att}</span>
@@ -563,6 +592,22 @@ ${LIST_CSS}
   .sel{flex:none;width:14px;height:14px;margin:0;accent-color:var(--accent);cursor:pointer;opacity:0;transition:opacity .12s}
   .row:hover .sel,.sel:checked,.sel:focus-visible,body.picking .sel{opacity:1}
   .tags{display:inline-flex;gap:4px;align-items:center;min-width:0;overflow:hidden}
+  /* Who wrote and reviewed the spec. Each harness wears its own colour and
+     glyph, so a row reads as "Claude wrote it, Codex reviewed it" at a glance.
+     The author chip is filled and the reviewers are dashed, so the two roles
+     separate without reading the icons. */
+  /* The harness colour is the chip's text colour, and everything else derives
+     from currentColor, so no page-level token is added: the shared project page
+     must declare every token this page does (page-theme-parity). */
+  .credits{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:2px}
+  .by{display:inline-flex;align-items:center;gap:4px;height:19px;box-sizing:border-box;font-size:11px;font-weight:600;padding:0 8px 0 4px;border-radius:999px;white-space:nowrap;max-width:30ch;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+  .by-author{background:color-mix(in srgb,currentColor 13%,transparent);border:1px solid color-mix(in srgb,currentColor 32%,transparent)}
+  .by-reviewer{border:1px dashed color-mix(in srgb,currentColor 60%,transparent)}
+  .by-role{font-size:10px;opacity:.8}
+  .by-mark{flex:none;display:inline-grid;place-items:center;width:13px;height:13px;border-radius:50%;background:currentColor}
+  .by-mark b{color:#fff;font-size:8.5px;font-weight:600;line-height:1}
+  .by-more{padding:0 7px;border:1px dashed var(--line2);color:var(--muted)}
+  .h-claude{color:#d97757} .h-codex{color:#10a37f} .h-pi{color:#8b5cf6}
   .chip{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;background:var(--surface2);color:var(--muted);border-radius:999px;padding:0 7px;white-space:nowrap}
   .chip .x{background:none;border:none;color:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0}
   .chip:hover .x{color:var(--muted)}

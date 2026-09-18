@@ -134,9 +134,20 @@ function sfRevealDisclosures(el) {
   //
   // The server values are still read once, as the starting point for a browser
   // that has none. Nothing writes them back.
-  var GLOBAL_PREF_KEYS = { theme: 1, font: 1, mono: 1 };
-  var GLOBAL_STORE_KEY = 'sf-prefs';          // theme + font + mono: every spec
+  // childW is the child panel's width: a reading preference like the font, so
+  // it follows the reader to every spec rather than being set per parent.
+  var GLOBAL_PREF_KEYS = { theme: 1, font: 1, mono: 1, childW: 1 };
+  var GLOBAL_STORE_KEY = 'sf-prefs';          // theme + font + mono + childW: every spec
   var SPEC_STORE_KEY = 'sf-prefs:' + SPEC;    // width, fit, toc, filter: this spec
+
+  // The child panel's width limits, in px (see wireChildResize). Up here rather
+  // than beside that code because boot builds the panel, and applies the saved
+  // width, before execution gets that far down the file.
+  var CHILD_W_MIN = 360;       // narrowest a child spec stays readable at
+  var CHILD_W_GAP = 120;       // strip of the parent always left visible
+  var CHILD_W_STEP = 24;       // one arrow-key press
+  var CHILD_W_BIG_STEP = 80;   // Shift + arrow
+  var CHILD_NARROW = 900;      // at or under this the panel is full-screen
 
   function readLocal(key) {
     try {
@@ -375,7 +386,12 @@ function sfRevealDisclosures(el) {
     // Apply the persisted view on load too. Without this a saved width only took
     // effect when the menu first built its width row, so every spec auto-reload
     // reset the page to its default width until you clicked the SpecForge icon.
-    if (PREFS.fit) {
+    // An embedded child always fits its frame. The frame is the child panel,
+    // whose width the reader sets by dragging its edge, so a reading width
+    // saved for this spec in its own tab would only leave empty margins inside
+    // it. Applied, never saved: the same spec opened in its own tab keeps the
+    // width it had.
+    if (PREFS.fit || (window.SPECFORGE || {}).embed) {
       applyFit(true);
     } else {
       var savedW = parseInt(PREFS.width, 10);
@@ -404,6 +420,11 @@ function sfRevealDisclosures(el) {
     //
     // syncBlocks is deliberately not called: it is the write.
     if ((window.SPECFORGE || {}).embed) {
+      // Marks the page as embedded so the stylesheet can drop the spec's own
+      // contents column and centred layout: the contents rail that normally
+      // replaces them is chrome, and chrome is not built here. The content then
+      // fills the frame, and the panel's own edge sets how wide that is.
+      document.documentElement.setAttribute('data-sf-embed', '');
       // The flag the print path waits on. Mermaid renders asynchronously, so
       // this document's `load` event fires while the diagrams are still source:
       // an opener that printed on `load` produced a PDF of code blocks. The
@@ -1425,6 +1446,10 @@ function sfRevealDisclosures(el) {
     // told, because handlePublicMeta does not carry the field.
     els.project = create('a', { class: 'sf-tb-proj', hidden: 'hidden' });
     els.titlebar.appendChild(els.project);
+    // Which agent wrote this spec and which reviewed it. Text, not a link:
+    // there is nowhere to go from a model name.
+    els.credit = create('span', { class: 'sf-tb-credit', hidden: 'hidden' });
+    els.titlebar.appendChild(els.credit);
     var home = create('button', { class: 'sf-tb-home', type: 'button', title: 'Back to top' });
     els.titlebarLabel = create('span', { class: 'sf-tb-title' });
     home.appendChild(els.titlebarLabel);
@@ -1498,6 +1523,69 @@ function sfRevealDisclosures(el) {
     els.project.textContent = name;
     els.project.setAttribute('title', 'Open ' + name + ' on the home page');
     els.project.setAttribute('href', '/?project=' + encodeURIComponent(name));
+  }
+
+  /**
+   * The credit chip: the agent that wrote this spec and the agents that
+   * reviewed it, each as harness and model ("Claude · claude-fable-5-1").
+   *
+   * Hidden when meta records neither, which is every spec written before
+   * credits existed, and on a published copy, whose meta subset carries no
+   * credit. Set as text, because a model id is whatever the agent reported.
+   */
+  function creditName(a) {
+    if (!a || !a.harness) return '';
+    var h = String(a.harness);
+    h = h.charAt(0).toUpperCase() + h.slice(1);
+    return a.model ? h + ' · ' + a.model : h;
+  }
+
+  // The glyph each harness wears, matching the home page's credit chips
+  // (lib/credits.mjs MARKS). A client copy because this file loads no modules;
+  // an unknown harness gets a dot and the neutral colour, so drift only costs
+  // a glyph.
+  var CREDIT_MARKS = { claude: '✳', codex: '◆', pi: 'π' };
+
+  function creditChip(agent, role) {
+    var key = Object.prototype.hasOwnProperty.call(CREDIT_MARKS, agent.harness) ? agent.harness : 'other';
+    var name = creditName(agent);
+    var chip = create('span', {
+      class: 'sf-by sf-by-' + role + ' sf-h-' + key,
+      title: (role === 'author' ? 'Written by ' : 'Reviewed by ') + name,
+    });
+    var icon = create('span', { class: 'sf-by-role' });
+    icon.textContent = role === 'author' ? '✎' : '✓';
+    var mark = create('span', { class: 'sf-by-mark' });
+    mark.textContent = CREDIT_MARKS[key] || '•';
+    var label = create('span', { class: 'sf-by-name' });
+    label.textContent = name;
+    chip.appendChild(icon);
+    chip.appendChild(mark);
+    chip.appendChild(label);
+    return chip;
+  }
+
+  function renderCredit() {
+    if (!els.credit) return;
+    var m = state.meta || {};
+    var author = m.author && m.author.harness ? m.author : null;
+    var revs = (Array.isArray(m.reviewers) ? m.reviewers : []).filter(function (r) { return r && r.harness; });
+    while (els.credit.firstChild) els.credit.removeChild(els.credit.firstChild);
+    if ((!author && !revs.length) || isPublishedCopy()) {
+      els.credit.setAttribute('hidden', 'hidden');
+      return;
+    }
+    els.credit.removeAttribute('hidden');
+    if (author) els.credit.appendChild(creditChip(author, 'author'));
+    revs.slice(0, 2).forEach(function (r) { els.credit.appendChild(creditChip(r, 'reviewer')); });
+    if (revs.length > 2) {
+      var more = create('span', {
+        class: 'sf-by sf-by-more',
+        title: 'Also reviewed by ' + revs.slice(2).map(creditName).join(', '),
+      });
+      more.textContent = '+' + (revs.length - 2);
+      els.credit.appendChild(more);
+    }
   }
 
   function renderConn() {
@@ -1960,7 +2048,12 @@ function sfRevealDisclosures(el) {
   function buildChildPanel() {
     els.childPanel = create('div', { id: 'sf-child-panel' });
     els.childPanel.innerHTML =
-      '<div class="sf-child-head">'
+      // The panel's left edge, as a handle: drag it, use the arrow keys on it,
+      // or double-click it to go back to the default width.
+      '<div class="sf-child-resize" role="separator" aria-orientation="vertical"'
+      + ' aria-label="Resize child spec" tabindex="0"'
+      + ' title="Drag to resize · double-click to reset"></div>'
+      + '<div class="sf-child-head">'
       + '<div class="sf-child-crumbs"></div>'
       + '<button class="sf-child-down" type="button" hidden>Children</button>'
       + '<a class="sf-child-newtab" target="_blank" rel="noopener noreferrer"></a>'
@@ -1995,6 +2088,102 @@ function sfRevealDisclosures(el) {
     els.childTab = els.childPanel.querySelector('.sf-child-newtab');
     els.childDown = els.childPanel.querySelector('.sf-child-down');
     els.childPanel.querySelector('.sf-child-close').onclick = closeChildPanel;
+    wireChildResize();
+  }
+
+  // ---------- child panel width ----------
+  // The reader sets how wide a child spec reads, by dragging the panel's left
+  // edge. The width is clamped so the panel never gets too narrow to read
+  // (CHILD_W_MIN) and never covers the whole parent: CHILD_W_GAP pixels of the
+  // parent stay visible on the left, which is also where a reader clicks to get
+  // back to it. Under 900px the stylesheet makes the panel full-screen and no
+  // width is applied, because a remembered desktop width would fight it.
+  // The limits (CHILD_W_MIN and the rest) are declared near the top, beside the
+  // other prefs. Boot builds this panel before execution reaches this point, so
+  // a var declared here would still be undefined when the saved width is first
+  // applied.
+  function childNarrow() {
+    return (window.innerWidth || 0) <= CHILD_NARROW;
+  }
+
+  function clampChildW(w) {
+    var max = Math.max(CHILD_W_MIN, (window.innerWidth || 1280) - CHILD_W_GAP);
+    return Math.round(Math.min(max, Math.max(CHILD_W_MIN, w)));
+  }
+
+  /** Apply a width in px, or clear it back to the stylesheet's default. */
+  function applyChildW(w) {
+    if (!els.childPanel) return;
+    if (typeof w === 'number' && isFinite(w) && !childNarrow()) {
+      els.childPanel.style.width = clampChildW(w) + 'px';
+    } else {
+      els.childPanel.style.removeProperty('width');
+    }
+  }
+
+  /** The width in force: the applied one, else what the panel measures. */
+  function currentChildW() {
+    var set = parseFloat(els.childPanel.style.width);
+    if (set) return set;
+    return els.childPanel.getBoundingClientRect().width || CHILD_W_MIN;
+  }
+
+  function saveChildW(w) {
+    putPref({ childW: typeof w === 'number' ? w : null });
+  }
+
+  function wireChildResize() {
+    var handle = els.childPanel.querySelector('.sf-child-resize');
+    if (!handle) return;
+    applyChildW(PREFS.childW);
+
+    // A window resized narrower re-clamps the saved width, so the parent's
+    // strip on the left never disappears.
+    window.addEventListener('resize', function () { applyChildW(PREFS.childW); });
+
+    var drag = null;
+    function onMove(e) {
+      if (!drag) return;
+      // The panel is anchored to the right, so moving left widens it.
+      drag.w = clampChildW(drag.startW + (drag.startX - e.clientX));
+      els.childPanel.style.width = drag.w + 'px';
+    }
+    function onUp() {
+      if (!drag) return;
+      var w = drag.w;
+      drag = null;
+      document.body.classList.remove('sf-child-resizing');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      if (typeof w === 'number') saveChildW(w);
+    }
+    handle.addEventListener('pointerdown', function (e) {
+      if (childNarrow() || (e.button !== undefined && e.button !== 0)) return;
+      e.preventDefault();
+      drag = { startX: e.clientX, startW: currentChildW(), w: null };
+      // The frame would swallow the pointer the moment it crosses into the
+      // child document; the stylesheet turns its pointer events off while this
+      // class is on.
+      document.body.classList.add('sf-child-resizing');
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      // An interrupted gesture ends the same way, or the frame stays unclickable.
+      window.addEventListener('pointercancel', onUp);
+    });
+    handle.addEventListener('dblclick', function () {
+      applyChildW(null);
+      saveChildW(null);
+    });
+    handle.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (childNarrow()) return;
+      e.preventDefault();
+      var step = e.shiftKey ? CHILD_W_BIG_STEP : CHILD_W_STEP;
+      var w = clampChildW(currentChildW() + (e.key === 'ArrowLeft' ? step : -step));
+      els.childPanel.style.width = w + 'px';
+      saveChildW(w);
+    });
   }
 
   function buildChildDrawer() {
@@ -3630,7 +3819,7 @@ function sfRevealDisclosures(el) {
   // ---------- render ----------
   function render() {
     renderSidebar(); renderHighlights(); renderRail(); renderSlideCounts();
-    renderLauncher(); renderAction(); renderShared(); renderConn(); renderProject(); syncTitle();
+    renderLauncher(); renderAction(); renderShared(); renderConn(); renderProject(); renderCredit(); syncTitle();
     // Once, on the first pass that has a meta: the arrival dialog names the kind
     // this template is for, and that is only knowable after the meta lands.
     if (pendingCreated && state.meta) { pendingCreated = false; openCreated(); }

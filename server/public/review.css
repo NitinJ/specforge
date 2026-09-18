@@ -622,6 +622,26 @@
   box-shadow: -18px 0 44px rgba(0, 0, 0, .24);
 }
 #sf-child-panel.open { display: flex; }
+/* The panel's left edge is a resize handle: an 8px strip straddling the
+   border, with a grip that shows on hover, on focus and while dragging. */
+.sf-child-resize {
+  position: absolute; top: 0; left: -4px; width: 8px; height: 100%; z-index: 2;
+  cursor: col-resize; touch-action: none; outline: none;
+}
+.sf-child-resize::after {
+  content: ""; position: absolute; top: 50%; left: 2px; width: 4px; height: 44px; margin-top: -22px;
+  border-radius: 4px; background: var(--sf-line); opacity: 0;
+  transition: opacity var(--sf-dur-fast) var(--sf-ease), background var(--sf-dur-fast) var(--sf-ease);
+}
+.sf-child-resize:hover::after,
+.sf-child-resize:focus-visible::after,
+body.sf-child-resizing .sf-child-resize::after { opacity: 1; background: var(--sf-accent); }
+/* While dragging, the whole page shows the resize cursor, text does not get
+   selected, and the child frame ignores the pointer so the drag keeps going
+   when it crosses into the child document. */
+body.sf-child-resizing { cursor: col-resize; user-select: none; }
+body.sf-child-resizing #sf-child-frame { pointer-events: none; }
+@media (max-width: 900px) { .sf-child-resize { display: none; } }
 .sf-child-head {
   display: flex; align-items: center; gap: 8px; padding: 10px 12px;
   border-bottom: 1px solid var(--sf-line); background: var(--sf-panel);
@@ -934,6 +954,37 @@ body.sf-side-open #sf-top { right: calc(var(--sf-side-w) + 18px); }
 .sf-tb-proj:hover { color: var(--sf-accent); border-color: color-mix(in srgb, var(--sf-accent) 45%, transparent); }
 .sf-tb-proj:focus-visible { outline: none; box-shadow: var(--sf-ring); }
 .sf-tb-proj[hidden] { display: none; }
+
+/* Which agent wrote the spec and which reviewed it: one chip each, in the
+   harness's colour with its glyph, the same chips the home page rows carry.
+   Filled for the author, dashed for a reviewer, so the roles separate at a
+   glance. Labels, not links: there is nowhere to go from a model name. */
+.sf-tb-credit {
+  flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 5px; overflow: hidden;
+}
+.sf-tb-credit[hidden] { display: none; }
+.sf-by {
+  --hc: var(--sf-muted, #5f6873);
+  flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 5px;
+  height: 22px; box-sizing: border-box; padding: 0 9px 0 5px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: .1px; white-space: nowrap;
+  color: var(--hc);
+}
+.sf-by-author {
+  background: color-mix(in srgb, var(--hc) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hc) 32%, transparent);
+}
+.sf-by-reviewer { border: 1px dashed color-mix(in srgb, var(--hc) 60%, transparent); }
+.sf-by-more { padding: 0 8px; border: 1px dashed var(--sf-line, #e4e0d7); }
+.sf-by-role { font-size: 10.5px; opacity: .8; }
+.sf-by-mark {
+  flex: none; display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%;
+  background: var(--hc); color: #fff; font-size: 9.5px; line-height: 1;
+}
+.sf-by-name { overflow: hidden; text-overflow: ellipsis; max-width: 26ch; }
+.sf-h-claude { --hc: #d97757; }
+.sf-h-codex { --hc: #10a37f; }
+.sf-h-pi { --hc: #8b5cf6; }
 
 /* A live publication has no expiry, so it has to be visible without running a
    command. Sits next to the CTA, quiet but permanent while the share is up. */
@@ -1664,6 +1715,15 @@ a.sf-doc-link:hover { color: var(--sf-accent); }
 html[data-sf-docs] nav.toc, html[data-sf-docs] .side-toc { display: none !important; }
 html[data-sf-docs] .layout { display: block !important; max-width: var(--maxw, 820px); margin: 0 auto; }
 html[data-sf-docs] main, html[data-sf-docs] article { margin-left: auto; margin-right: auto; }
+
+/* The embed view: a child spec inside its parent's panel. No contents rail is
+   built there, so data-sf-docs is never set; this does the same job for the
+   frame. The spec's own contents column goes, and the layout becomes one
+   column as wide as the frame, so the reader sets the width by dragging the
+   panel's edge rather than by a reading width saved for the spec. */
+html[data-sf-embed] nav.toc, html[data-sf-embed] .side-toc { display: none !important; }
+html[data-sf-embed] .layout { display: block !important; max-width: none !important; margin: 0 !important; }
+html[data-sf-embed] main, html[data-sf-embed] article { max-width: none !important; margin-left: 0 !important; margin-right: 0 !important; }
 
 /* the floating "Contents" TOC — a light rail pinned to the left, shown by default
    so on wide screens it sits in the whitespace beside the centered content. On

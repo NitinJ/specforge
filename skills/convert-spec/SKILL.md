@@ -39,7 +39,7 @@ and shell command.
 ## 2A. Ingest an existing HTML spec
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import "<file>" --title "<title>" --type <type>
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import "<file>" --title "<title>" --type <type> --model <your model id>
 ```
 
 Prints `{ id, htmlPath, url, status, type, language }` — the file is copied into
@@ -59,8 +59,11 @@ maps its headings onto sections, rebuilds any plan into the `data-sf-*` markup,
 inlines the images that sit beside it, and produces a lint-passing spec:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import-md "<file>" [--title "<title>"] [--type <type>]
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" import-md "<file>" --model <your model id> [--title "<title>"] [--type <type>]
 ```
+
+`--model` is your own model id; the harness is detected. It credits you as the
+converted spec's author, the same way `create` does.
 
 It prints `{ id, htmlPath, url, type, status, language, report }`. **Then edit
 `htmlPath`** — the deterministic pass gives you a valid document to improve,
@@ -121,7 +124,7 @@ malformed one attached, so a later edit or handoff could pick up either. The
 **Arriving from step 1** with a freeform HTML doc and no spec yet, scaffold one:
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type "<type>"
+node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create --title "<title>" --type "<type>" --model <your model id>
 ```
 
 It prints `{ id, htmlPath, url, type, language }`. **Author into `htmlPath`**,
