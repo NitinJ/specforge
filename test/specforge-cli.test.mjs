@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { readMeta } from '../lib/meta.mjs';
+import { sessionPath } from '../lib/store-paths.mjs';
 import { attach } from '../lib/attach.mjs';
 import { mutateComments, createThread, loadComments } from '../lib/store-comments.mjs';
 import { submitBatch } from '../lib/store-inbox.mjs';
@@ -180,7 +181,15 @@ test('open fails, and leaves the spec alone, when no session can be resolved', a
   assert.equal(readMeta(created.id).attachedSession, null);
 });
 
-test('the open command passes --session and --harness through', async () => {
+test('open records the harness it was given on the session', async () => {
+  const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
+  await cmdDetach({ id: created.id }, deps());
+  await cmdOpen({ id: created.id }, { ...deps('sess-2'), harness: 'pi', env: {} });
+  assert.equal(readMeta(created.id).attachedSession, 'sess-2');
+  assert.equal(JSON.parse(readFileSync(sessionPath('sess-2'), 'utf8')).harness, 'pi');
+});
+
+test('the open command passes --session through', async () => {
   const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
   // Held by a live session, so reaching attach proves the flag arrived, without a daemon.
   // The host's own session vars are cleared so only the flag can supply an id.
