@@ -10,6 +10,7 @@ import { mutateComments, createThread, loadComments } from '../lib/store-comment
 import { submitBatch } from '../lib/store-inbox.mjs';
 import {
   cmdCreate, cmdImport, cmdOpen, cmdStart, cmdWaitBatch, cmdList, cmdListall, cmdDetach, cmdReply,
+  COMMANDS,
 } from '../lib/specforge-cli.mjs';
 
 // Stamp a submitted review batch onto a spec (a human comment + submit).
@@ -165,6 +166,35 @@ test('open attaches a spec to this session and returns its url', async () => {
 test('open fails when another live session holds the spec', async () => {
   const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
   await assert.rejects(() => cmdOpen({ id: created.id }, deps('sess-2')), /another session/);
+});
+
+test('open fails, and leaves the spec alone, when no session can be resolved', async () => {
+  // A host that injects its session id only into its shell tool (Pi) runs the
+  // CLI with no id from any other tool. Reporting success there orphans the spec.
+  const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
+  await cmdDetach({ id: created.id }, deps());
+  await assert.rejects(
+    () => cmdOpen({ id: created.id }, { ...deps(''), env: {} }),
+    /no session id.*--session/s,
+  );
+  assert.equal(readMeta(created.id).attachedSession, null);
+});
+
+test('the open command passes --session and --harness through', async () => {
+  const created = await cmdCreate({ title: 'A' }, deps('sess-1'));
+  // Held by a live session, so reaching attach proves the flag arrived, without a daemon.
+  // The host's own session vars are cleared so only the flag can supply an id.
+  const vars = ['SPECFORGE_SESSION_ID', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CLAUDE_CODE_SESSION_ID'];
+  const saved = Object.fromEntries(vars.map((k) => [k, process.env[k]]));
+  vars.forEach((k) => delete process.env[k]);
+  try {
+    await assert.rejects(
+      () => COMMANDS.open([created.id], { session: 'sess-2', harness: 'pi' }),
+      /another session/,
+    );
+  } finally {
+    vars.forEach((k) => { if (saved[k] !== undefined) process.env[k] = saved[k]; });
+  }
 });
 
 test('open rejects an unknown spec', async () => {
