@@ -84,6 +84,30 @@ test('the author answering its own comments stays the author, not a reviewer', a
   assert.equal(readMeta(r.id).reviewers, undefined);
 });
 
+test('an unknown harness flag is refused, never recorded as a different harness', async () => {
+  assert.throws(() => agentIdentity({ harness: 'gemini', model: 'x' }, CLAUDE), /unknown harness "gemini"/);
+  const r = await cmdCreate({ title: 'Flagged' }, deps(CLAUDE));
+  await assert.rejects(
+    () => cmdCredit({ id: r.id, role: 'reviewer', harness: 'gemini', model: 'x' }, deps(CLAUDE)),
+    /unknown harness/,
+  );
+  assert.equal(readMeta(r.id).reviewers, undefined);
+});
+
+test('an author credited without a model, replying with one, stays the author', async () => {
+  const r = await cmdCreate({ title: 'Vague author' }, deps(CLAUDE));
+  const tid = openThread(r.id);
+  await cmdReply({ id: r.id, tid, body: 'done', model: 'claude-fable-5-1' }, deps(CLAUDE));
+  assert.equal(readMeta(r.id).reviewers, undefined);
+});
+
+test('an author reviewing its own spec files the review but is not credited as a reviewer', async () => {
+  const r = await cmdCreate({ title: 'Self', model: 'claude-fable-5-1' }, deps(CLAUDE));
+  const out = await cmdReview({ id: r.id, model: 'claude-fable-5-1' }, deps(CLAUDE));
+  assert.equal(readMeta(out.id).parent, r.id, 'the review is still filed');
+  assert.equal(readMeta(r.id).reviewers, undefined);
+});
+
 test('a reply from a different agent credits it as a reviewer, once', async () => {
   const r = await cmdCreate({ title: 'Cross review', model: 'claude-fable-5-1' }, deps(CLAUDE));
   const tid = openThread(r.id);
