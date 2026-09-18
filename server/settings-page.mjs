@@ -12,8 +12,56 @@
 // Spec 094abd0b9d §6.
 
 import { listSpecs } from '../lib/meta.mjs';
-import { ensureTemplates } from '../lib/store-templates.mjs';
-import { customTypes } from '../lib/spec-types.mjs';
+import { ensureTemplates, templateOutline } from '../lib/store-templates.mjs';
+import { customTypes, specType } from '../lib/spec-types.mjs';
+import { readSpecHtml } from '../lib/store.mjs';
+
+/** Words a reader reads: prose only, with style, script, nav and comments gone. */
+function proseWords(html) {
+  const text = String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ');
+  return (text.match(/\S+/g) || []).length;
+}
+
+/** Words per printed page, for the length estimate on a template card. */
+const WORDS_PER_PAGE = 500;
+
+/**
+ * How long specs of each type actually turn out: median words and how many.
+ *
+ * Measured from the specs already in the store rather than from the template,
+ * because a template is placeholders and says nothing about what gets written
+ * into it. Read on each render of the Templates tab only, which is rare.
+ *
+ * @returns {Map<string, {count:number, median:number}>}
+ */
+function lengthsByType() {
+  const byType = new Map();
+  for (const m of listSpecs()) {
+    if (m.template || !m.type) continue;
+    let html;
+    try { html = readSpecHtml(m.id); } catch { continue; }
+    if (!html) continue;
+    if (!byType.has(m.type)) byType.set(m.type, []);
+    byType.get(m.type).push(proseWords(html));
+  }
+  const out = new Map();
+  for (const [type, list] of byType) {
+    list.sort((a, b) => a - b);
+    out.set(type, { count: list.length, median: list[Math.floor(list.length / 2)] });
+  }
+  return out;
+}
+
+/** A section heading without its display ordinal: "3 · Design" reads as "Design". */
+function bareHeading(h) {
+  return String(h || '').replace(/^\s*[\dA-Za-z]{1,3}\s*·\s*/, '').trim();
+}
 
 /**
  * The tabs, in order. The first four are prompt classes; Templates is the
@@ -44,14 +92,34 @@ function esc(s) {
  * it rather than inside it, because a button inside a link is a click target
  * that does two things.
  */
-function tplCard(m, custom) {
+function tplCard(m, custom, lengths) {
   const remove = custom ? `
       <button class="tdel" type="button" data-slug="${esc(m.type || '')}"
         title="Remove this kind" aria-label="Remove the ${esc(m.type || '')} kind">✕</button>` : '';
+  const kind = specType(m.type) || {};
+  let outline = [];
+  try { outline = templateOutline(m.type) || []; } catch { outline = []; }
+  const names = outline.map((s) => bareHeading(s.heading)).filter(Boolean);
+  // A heading that is still a placeholder (the deck's slide titles) names
+  // nothing yet, so it counts as a section but is left out of the preview.
+  const named = names.filter((n) => !n.includes('{{'));
+  const shown = named.slice(0, 8);
+  const more = named.length - shown.length;
+  const len = lengths.get(m.type);
+  const pages = len ? Math.max(1, Math.round(len.median / WORDS_PER_PAGE)) : null;
+  const lengthText = len
+    ? `<b>~${pages} page${pages === 1 ? '' : 's'}</b> <span class="tdim">(median ${len.median.toLocaleString('en-US')} words over ${len.count} spec${len.count === 1 ? '' : 's'})</span>`
+    : '<span class="tdim">no specs written yet</span>';
   return `<div class="tcardwrap${custom ? ' custom' : ''}">
       <a class="tcard" href="/spec/${esc(m.id)}" data-id="${esc(m.id)}">
-        <span class="tname">${esc(m.type || m.id)}</span>
-        <span class="tsub">${custom ? 'yours' : 'template'}</span>
+        <span class="thead">
+          <span class="tname">${esc(kind.label || m.type || m.id)}</span>
+          <span class="tsub">${custom ? 'yours' : 'built in'}</span>
+          <span class="tshell">${kind.shell === 'impl' ? 'with build plan' : 'document'}</span>
+        </span>
+        <span class="twhen">${esc(kind.whenToUse || '')}</span>
+        <span class="tmeta"><b>${names.length}</b> section${names.length === 1 ? '' : 's'} · ${lengthText}</span>
+        ${shown.length ? `<span class="tsecs">${shown.map(esc).join(' · ')}${more > 0 ? ` · +${more} more` : ''}</span>` : ''}
       </a>${remove}
     </div>`;
 }
@@ -189,12 +257,14 @@ export function renderSettings(opts = {}) {
   // list of links, nothing on it is fetched or written, and a tab that needs
   // no request should not start with "Loading…".
   const panel = active === 'templates'
-    ? `<p class="lede">What every new spec of a type starts from. Click one to open and edit it as a spec.</p>
-    <div class="tstrip">${templates.map((m) => tplCard(m, mine.has(m.type))).join('')}
+    ? `<p class="lede">What every new spec of a type starts from. Click one to open and edit it as a spec.
+      Length is the median of specs already written with that type, at ${WORDS_PER_PAGE} words a page.</p>
+    <div class="tstrip">
       <button class="tcard addcard" id="sf-add-type" type="button">
         <span class="tname">+ Add a template</span>
         <span class="tsub">a new kind of spec</span>
       </button>
+      ${(() => { const lengths = lengthsByType(); return templates.map((m) => tplCard(m, mine.has(m.type), lengths)).join(''); })()}
     </div>
     ${addForm()}
     ${waitDialog()}
@@ -349,12 +419,29 @@ if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)
   .count{color:var(--muted);font-size:12px;margin-left:auto}
   .count.over{color:var(--red);font-weight:600}
 
-  .tstrip{display:flex;gap:10px;flex-wrap:wrap}
-  .tcard{flex:0 0 auto;min-width:110px;padding:11px 14px;border:1px solid var(--line);
-    border-radius:9px;background:var(--panel);text-decoration:none;color:var(--ink)}
+  /* One template per row: a card wide enough to say what the type is for,
+     how big its specs get and what sections it scaffolds. */
+  .tstrip{display:flex;flex-direction:column;gap:10px;max-width:880px}
+  .tcard{display:block;flex:1 1 auto;min-width:0;padding:13px 44px 13px 16px;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel);text-decoration:none;color:var(--ink)}
   .tcard:hover{border-color:var(--accent)}
-  .tname{display:block;font-weight:600;font-size:13.5px}
-  .tsub{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .thead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .tname{display:block;font-weight:600;font-size:14.5px}
+  .tsub,.tshell{display:inline-block;color:var(--muted);font-size:11.5px;padding:1px 7px;
+    border:1px solid var(--line);border-radius:999px}
+  .tcardwrap.custom .tsub{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+  .twhen{display:block;color:var(--muted);font-size:13px;line-height:1.5;margin-top:6px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .tmeta{display:block;font-size:12.5px;margin-top:8px}
+  .tmeta b{font-weight:600}
+  .tdim{color:var(--muted)}
+  .tsecs{display:block;color:var(--muted);font-size:12px;margin-top:4px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .addcard{padding:12px 16px;width:100%;box-sizing:border-box}
+  .tstrip>.tcardwrap{width:100%;min-width:0}
+  .addcard .tname{display:inline}
+  .addcard .tsub{border:none;padding:0;margin-left:8px}
+  .tcardwrap .tdel{top:12px;right:12px}
   /* The Add card is a button among links, so it says so with a dashed edge
      rather than by looking identical to the six things it is not. */
   .addcard{border-style:dashed;cursor:pointer;text-align:left;font-family:inherit}

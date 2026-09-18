@@ -135,8 +135,15 @@ and amending are all edit work — and go straight to step 4, the reply:
    `comments.json` by hand, and never use the HTTP API (it is human-only):
 
    ```
-   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>" --effect "<batchId>:<threadId>:reply"
+   node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" reply <id> <threadId> --body "<concise reply, name the section you changed>" --effect "<batchId>:<threadId>:reply" --model <your model id>
    ```
+
+   `--model` is your own model id; the harness is detected. When you are not
+   the agent credited as the spec's author, the reply also credits you as one of
+   its reviewers, shown on the home page and in the spec's header. The author
+   answering its own comments stays the author. To review a spec rather than
+   answer its comments, use the `write-review` skill: it files the review as a
+   child spec and credits you.
 
    **Answer first, then justify.** If the comment asked a question, the first
    sentence is the answer — not preamble, not a restatement of the question, not
@@ -316,7 +323,7 @@ When a thread asks for one, on a `daemon` batch:
 
    ```
    node "${CLAUDE_PLUGIN_ROOT}/lib/specforge-cli.mjs" create \
-     --title '<title>' --type <type> --parent <parentSpecId>
+     --title '<title>' --type <type> --parent <parentSpecId> --model <your model id>
    ```
 
    **The title is yours to write, not the reviewer's to supply.** A comment is

@@ -16,6 +16,9 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedSpec } from './helpers/spec-tree-fixtures.mjs';
@@ -202,6 +205,52 @@ test('a right-click in an embedded page opens no context menu', async (t) => {
   await new Promise((r) => window.setTimeout(r, 0));
   assert.equal(window.document.querySelector('#sf-ctx'), null);
   assert.equal(ev.defaultPrevented, false, "the browser's own menu should be left alone");
+});
+
+// ── width ───────────────────────────────────────────────────────────────────
+
+const REVIEW_CSS = readFileSync(
+  join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'server', 'public', 'review.css'),
+  'utf8',
+);
+
+test('an embedded page fits its frame, whatever width was saved for it', async (t) => {
+  // The frame is the child panel, and the reader sets its width by dragging
+  // the panel's edge. A reading width saved for this spec in its own tab would
+  // only leave empty margins inside it.
+  const { window } = await bootReviewLayer(t, { embed: true, prefs: { width: 900 } });
+  const root = window.document.documentElement;
+  assert.ok(root.hasAttribute('data-sf-fit'), 'the embedded child kept a reading width');
+  assert.equal(root.style.getPropertyValue('--maxw'), '100%');
+});
+
+test('the same saved width still applies when the spec is opened on its own', async (t) => {
+  const { window } = await bootReviewLayer(t, { prefs: { width: 900 } });
+  const root = window.document.documentElement;
+  assert.equal(root.hasAttribute('data-sf-fit'), false);
+  assert.equal(root.style.getPropertyValue('--maxw'), '900px');
+});
+
+test('fitting the frame is applied, never saved', async (t) => {
+  const { window } = await bootReviewLayer(t, { embed: true });
+  const saved = window.localStorage.getItem('sf-prefs:test-spec');
+  assert.ok(!saved || !JSON.parse(saved).fit, 'embedding changed how the spec reads in its own tab');
+});
+
+test('an embedded page is marked, so its own contents column can be dropped', async (t) => {
+  const { window } = await bootReviewLayer(t, { embed: true });
+  assert.ok(window.document.documentElement.hasAttribute('data-sf-embed'));
+});
+
+test('the page opened on its own is not marked as embedded', async (t) => {
+  const { window } = await bootReviewLayer(t, {});
+  assert.equal(window.document.documentElement.hasAttribute('data-sf-embed'), false);
+});
+
+test('the stylesheet drops the spec\'s own contents column and width cap when embedded', () => {
+  assert.match(REVIEW_CSS, /html\[data-sf-embed\] nav\.toc/);
+  assert.match(REVIEW_CSS, /html\[data-sf-embed\] \.layout\s*\{[^}]*display:\s*block[^}]*max-width:\s*none/);
+  assert.match(REVIEW_CSS, /html\[data-sf-embed\] main[^{]*\{[^}]*max-width:\s*none/);
 });
 
 test('an existing target is recognised only as an attribute of its own', () => {
