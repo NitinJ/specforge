@@ -4,7 +4,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { readMeta } from '../lib/meta.mjs';
+import { spawn } from 'node:child_process';
+
+import { readMeta, listSpecs } from '../lib/meta.mjs';
 import { mutateComments, createThread } from '../lib/store-comments.mjs';
 import { cmdCreate, cmdCredit, cmdReply, cmdReview } from '../lib/specforge-cli.mjs';
 import { agentIdentity, creditLabel, recordCredit } from '../lib/credits.mjs';
@@ -92,6 +94,31 @@ test('an unknown harness flag is refused, never recorded as a different harness'
     /unknown harness/,
   );
   assert.equal(readMeta(r.id).reviewers, undefined);
+});
+
+test('create refuses an unknown harness flag before it writes anything', async () => {
+  await assert.rejects(
+    () => cmdCreate({ title: 'Nope', harness: 'gemini', model: 'x' }, deps(CLAUDE)),
+    /unknown harness "gemini"/,
+  );
+  assert.deepEqual(listSpecs(), []);
+});
+
+test('two processes crediting one spec at once keep every credit', async () => {
+  const r = await cmdCreate({ title: 'Busy' }, deps(CLAUDE));
+  const lib = new URL('../lib/credits.mjs', import.meta.url).href;
+  const script = (tag) => `
+    const { recordCredit } = await import(${JSON.stringify(lib)});
+    for (let i = 0; i < 25; i++) recordCredit(${JSON.stringify(r.id)}, 'reviewer', { harness: 'pi', model: '${tag}-' + i });
+  `;
+  const run = (tag) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script(tag)], {
+      env: { ...process.env, SPECFORGE_HOME: home }, stdio: 'inherit',
+    });
+    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`exit ${code}`))));
+  });
+  await Promise.all([run('a'), run('b')]);
+  assert.equal(readMeta(r.id).reviewers.length, 50);
 });
 
 test('an author credited without a model, replying with one, stays the author', async () => {

@@ -2155,6 +2155,7 @@ function sfRevealDisclosures(el) {
       document.body.classList.remove('sf-child-resizing');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
       if (typeof w === 'number') saveChildW(w);
     }
     handle.addEventListener('pointerdown', function (e) {
@@ -2167,6 +2168,8 @@ function sfRevealDisclosures(el) {
       document.body.classList.add('sf-child-resizing');
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
+      // An interrupted gesture ends the same way, or the frame stays unclickable.
+      window.addEventListener('pointercancel', onUp);
     });
     handle.addEventListener('dblclick', function () {
       applyChildW(null);

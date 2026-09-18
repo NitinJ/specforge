@@ -123,3 +123,16 @@ test('on a narrow window the panel stays full-screen and the handle does nothing
   key(window, 'ArrowLeft');
   assert.equal(panel(window).style.width, '');
 });
+
+test('a cancelled drag ends the resize, so the page does not stay locked', async (t) => {
+  const { window } = await bootReviewLayer(t, { children: ROWS });
+  await openChild(window);
+  drag(window, 700, 500, { release: false });
+  assert.ok(window.document.body.classList.contains('sf-child-resizing'));
+  const width = panel(window).style.width;
+  window.dispatchEvent(new window.MouseEvent('pointercancel', { bubbles: true }));
+  assert.ok(!window.document.body.classList.contains('sf-child-resizing'),
+    'the frame keeps its pointer events off and text stays unselectable');
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 900 }));
+  assert.equal(panel(window).style.width, width, 'moves after the cancel do nothing');
+});
