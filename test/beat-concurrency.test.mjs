@@ -107,6 +107,12 @@ test('every read-modify-write of meta.json goes through the lock', () => {
       // earlier read to lose. Creating a spec and seeding a template both build
       // from `defaultMeta`, and the seed spreads it over a couple of lines.
       if (/defaultMeta\(/.test(line) || /defaultMeta\(/.test(lines[i + 1] || '')) return;
+      // The same thing, a few lines apart: `const meta = defaultMeta(...)`,
+      // fields set on it, then the write. Exempt only when the name being
+      // written is one this file built that way, so a name that came from
+      // readMeta still reports.
+      const named = /\bwriteMeta\(\s*[^,]+,\s*([A-Za-z_$][\w$]*)\s*\)/.exec(line);
+      if (named && new RegExp(`\\b${named[1]}\\s*=\\s*defaultMeta\\(`).test(src)) return;
       offenders.push(`${file}:${i + 1}  ${line.trim().slice(0, 90)}`);
     });
   }
