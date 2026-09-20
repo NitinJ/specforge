@@ -594,7 +594,9 @@ ${LIST_CSS}
   /* ── one-line row: the owner's additions to the shared row ────────── */
   .row.edge-live{border-left-color:var(--live)}
   .row.edge-off{border-left-color:var(--line2)}
-  .row.picked{background:var(--accent-soft)}
+  /* background-COLOR, for the same reason .row:hover is: the shorthand drops
+     the guide line a child row paints as a background image. */
+  .row.picked{background-color:var(--accent-soft)}
   /* Two-line row: title on line 1, parent, credits, tags and id on line 2.
      The tree elbow moves to the middle of line 1 (6px pad + half of 20px),
      which is what --tree-y is set to below. */
@@ -1619,6 +1621,8 @@ ${strip}
     // is in or out together, and the page opens on the last project picked.
     var acrossTree=!!q||fstatus!=='all'||!!ty||fview!=='all';
     sfFoldsApply(acrossTree?[]:sfFoldsRead());
+    // After the folds, so the pass sees the rows both mechanisms left standing.
+    repaintSpines();
     grps.forEach(function(g){
       var vis=[].slice.call(g.querySelectorAll('.row[data-id]')).filter(function(r){return r.style.display!=='none';}).length;
       var gc=g.querySelector('.gcount'); if(gc) gc.textContent=vis;
@@ -1843,6 +1847,41 @@ ${strip}
       })(roots);
       // Anything a cycle kept out of the walk still has to be on the page.
       list.forEach(function(li){if(!seen[li.getAttribute('data-id')])ul.appendChild(li);});
+    });
+    repaintSpines();
+  }
+
+  /**
+   * Re-derive each row's guide lines from the rows actually on screen.
+   *
+   * The server works these out from the order it renders (lib/spec-rows.mjs),
+   * and that order is not the final word. Sorting reorders siblings, so a
+   * different child is last. Filtering hides rows anywhere in a subtree, and it
+   * hides with a display, which no CSS sibling rule can see. Left at the
+   * server's answer, a line runs past the last visible child or stops short of
+   * one, and the tree on screen is not the tree the rows describe.
+   *
+   * Same rule as spinesOf: level L crosses this row if a later visible row sits
+   * at level L before any row shallower than L closes the group.
+   */
+  function repaintSpines(){
+    grps.forEach(function(g){
+      var ul=g.querySelector('.rows'); if(!ul) return;
+      var vis=[].slice.call(ul.children).filter(function(r){
+        return r.style.display!=='none'&&!r.hidden;
+      });
+      var d=vis.map(function(r){return +(r.getAttribute('data-depth')||0);});
+      vis.forEach(function(r,i){
+        var out=[];
+        for(var lvl=1;lvl<=d[i];lvl++){
+          for(var j=i+1;j<vis.length;j++){
+            if(d[j]<lvl) break;
+            if(d[j]===lvl){ out.push(lvl); break; }
+          }
+        }
+        if(out.length) r.setAttribute('data-spines',out.join(' '));
+        else r.removeAttribute('data-spines');
+      });
     });
   }
   function paintNav(){
