@@ -1,9 +1,9 @@
 // Folding the child rows under a parent, on both list pages.
 //
 // The child-count pill on a parent row is the toggle (server/tree-fold.mjs).
-// A fold takes every spec below the parent off the page — grandchildren are
-// drawn at depth 1, so the drawn tree cannot answer and data-parent is what is
-// walked. The state is the reader's, per spec id, one localStorage key per page
+// A fold takes every spec below the parent off the page — the drawn indent
+// stops at two steps, so it cannot answer how deep a row really is and
+// data-parent is what is walked. The state is the reader's, per spec id, one localStorage key per page
 // kind, and the default is the tree unfolded, which is what the page showed
 // before a fold existed.
 //
@@ -211,10 +211,33 @@ test('the fold walk follows data-parent, and a cycle must not hang it', (t) => {
 
 // ---- the CSS composes with a fold -------------------------------------------
 
-test('the guide line reads a fold: the elbow goes to the last visible child', () => {
+test('a fold cannot strand the guide line, because the line is not drawn from a sibling', () => {
   const html = renderIndex({});
   assert.match(html, /\.row\[hidden\]\{display:none\}/,
     'a fold hides nothing without an author rule');
-  assert.match(html, /\.row\.kid:not\(:has\(\+ \.row\.kid:not\(\[hidden\]\)\)\)::before/,
-    'the elbow still counts a hidden sibling as the last child');
+  // Each row carries the levels whose line crosses it, worked out from the
+  // drawn order in lib/spec-rows.mjs. A hidden row is not drawn, so the rows
+  // that remain carry the same answer and the line still ends where the group
+  // does. The rule this replaces asked whether the NEXT row was a visible
+  // child, which a grandchild sitting between two children already answered
+  // wrongly.
+  assert.match(html, /\.row\[data-spines="1"\]\{background-image:var\(--tree-line\)/,
+    'the line has no per-row continuation to survive a fold with');
+  assert.doesNotMatch(html, /:has\(\+ \.row\.kid/,
+    'the line still depends on which sibling happens to follow');
+});
+
+test('a folded subtree leaves its parent line running to the next sibling', () => {
+  // Root ─┬─ A ─── A1   Folding A hides A1. A is still not the last child, so
+  //       └─ B         its line must carry on down to B.
+  const root = inP({ title: 'Root', updated: 4000 });
+  const a = inP({ title: 'A', parent: root, updated: 3000 });
+  const a1 = inP({ title: 'A1', parent: a, updated: 2000 });
+  const b = inP({ title: 'B', parent: root, updated: 1000 });
+
+  const doc = new JSDOM(renderIndex({})).window.document;
+  assert.equal(rowFor(doc, a1).getAttribute('data-depth'), '2');
+  assert.equal(rowFor(doc, a).getAttribute('data-spines'), '1');
+  assert.equal(rowFor(doc, b).getAttribute('data-spines'), null,
+    'the last child must end the line on its own elbow');
 });

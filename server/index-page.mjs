@@ -24,7 +24,7 @@ import { readSubscriptions } from '../lib/store-subscriptions.mjs';
 import { groupByCollection } from '../lib/collections.mjs';
 import { groupByRoot, layoutTree, treeMarks } from '../lib/spec-rows.mjs';
 import { treeFoldScript } from './tree-fold.mjs';
-import { creditLabel, harnessKey, harnessMark } from '../lib/credits.mjs';
+import { creditLabel, harnessKey, harnessLabel, harnessMark } from '../lib/credits.mjs';
 import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
 
 function esc(s) {
@@ -145,8 +145,8 @@ function shareHtml(sig) {
  * Every spec in `list` gets exactly one row; the tree decides where.
  */
 function renderRows(list, sigOf) {
-  return layoutTree(list).map(({ meta, depth, nested, kids, parentTitle }) => rowHtml(meta, sigOf(meta), {
-    depth, nested, kids, parentTitle,
+  return layoutTree(list).map(({ meta, depth, nested, kids, parentTitle, spines }) => rowHtml(meta, sigOf(meta), {
+    depth, nested, kids, parentTitle, spines,
   })).join('\n');
 }
 
@@ -161,7 +161,7 @@ function creditChip(agent, role) {
   const title = `${role === 'author' ? 'Written' : 'Reviewed'} by ${label}`;
   return `<span class="by by-${role} h-${harnessKey(agent.harness)}" title="${esc(title)}">`
     + `<span class="by-role">${role === 'author' ? '✎' : '✓'}</span>`
-    + `<span class="by-mark"><b>${esc(harnessMark(agent.harness))}</b></span>${esc(label)}</span>`;
+    + `<span class="by-mark"><b>${esc(harnessMark(agent.harness))}</b></span>${esc(harnessLabel(agent.harness))}</span>`;
 }
 
 function creditChips(m) {
@@ -179,7 +179,7 @@ function creditChips(m) {
 }
 
 /** One working-spec row. */
-function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = '' } = {}) {
+function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = '', spines = [] } = {}) {
   const id = esc(m.id);
   const titleRaw = m.title || 'Untitled';
   const title = esc(titleRaw);
@@ -217,20 +217,26 @@ function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = ''
   // render flat, where the child is out of its tree, and on a nested row, whose
   // indent cannot say it: "Testing strategy" with no idea what it is the
   // testing strategy for is a row that has lost what made it worth reading.
-  const marks = treeMarks(kids, parentTitle);
+  // Two lines: the title and its fold toggle on top, and what the spec belongs
+  // to, who wrote it and its tags underneath, so none of them squeeze the title.
+  const count = treeMarks(kids, '');
+  const under = treeMarks(0, parentTitle);
+  // Which guide lines cross this row (lib/spec-rows.mjs). Absent on a row that
+  // carries none, so a store with no relations renders no tree attributes.
+  const sp = spines.length ? ` data-spines="${spines.join(' ')}"` : '';
 
-  return `<li class="row${edge}${depth ? ' kid' : ''}${nested ? ' nested' : ''}" data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-gc="${esc(drawnColl)}" data-gp="${esc(drawnProj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}" data-depth="${depth}" data-parent="${esc(parentId)}">
+  return `<li class="row${edge}${depth ? ' kid' : ''}${nested ? ' nested' : ''}"${sp} data-k="${key}" data-id="${id}" data-s="${esc(rawStatus)}" data-t="${esc(rawType)}" data-u="${m.updated || 0}" data-c="${esc(coll)}" data-p="${esc(proj)}" data-gc="${esc(drawnColl)}" data-gp="${esc(drawnProj)}" data-rv="${esc(sig.review)}" data-lv="${isLive ? 1 : 0}" data-pb="${sig.shareLive ? 1 : 0}" data-depth="${depth}" data-parent="${esc(parentId)}">
   <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
-    <a class="title" href="/spec/${id}" title="${title}">${title}</a>${marks}${creditChips(m)}
-    <span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span>
+    <div class="l1"><a class="title" href="/spec/${id}" title="${title}">${title}</a>${count}</div>
+    <div class="l2">${under}${creditChips(m)}<span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span>
     <span class="id" title="Spec id">${id}</span>
-    <span class="att" hidden>${att}</span>
+    <span class="att" hidden>${att}</span></div>
   </div>
   <div class="meta">
     <span class="sig">${reviewHtml(sig)}${shareHtml(sig)}</span>
     <span class="lv">${live}</span>
-    <span class="badge t">${esc(rawType)}</span>
+    <span class="badge t" title="${esc(rawType)}">${esc(rawType)}</span>
     <span class="badge s s-${esc(rawStatus)}"><span class="sdot"></span>${esc(rawStatus)}</span>
     <span class="upd">${esc(relativeTime(m.updated))}</span>
     <span class="acts">${kebabHtml(`Actions for ${title}`)}</span>
@@ -494,7 +500,7 @@ ${THEME_CSS}
   /* ── sticky top: search + toolbar ─────────────────────────────────── */
   .top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);
        backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-  .topin{max-width:1180px;margin:0 auto;padding:0 28px}
+  .topin{max-width:${CONTENT_WIDTH};margin:0 auto;padding:0 28px}
   @media(max-width:960px){.topin{padding:0 18px}}
   header{display:flex;align-items:center;gap:16px;height:56px}
   .htitle{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -542,7 +548,7 @@ ${THEME_CSS}
   .tsel:focus{outline:none;border-color:var(--accent)}
   .count{margin-left:auto;color:var(--faint);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
 
-  .wrap{max-width:1180px;margin:0 auto;padding:0 28px 96px}
+  .wrap{max-width:${CONTENT_WIDTH};margin:0 auto;padding:0 28px 96px}
   @media(max-width:960px){.wrap{padding:0 18px 96px}}
 
   /* ── project + collection groups ──────────────────────────────────── */
@@ -589,6 +595,15 @@ ${LIST_CSS}
   .row.edge-live{border-left-color:var(--live)}
   .row.edge-off{border-left-color:var(--line2)}
   .row.picked{background:var(--accent-soft)}
+  /* Two-line row: title on line 1, parent, credits, tags and id on line 2.
+     The tree elbow moves to the middle of line 1 (6px pad + half of 20px),
+     which is what --tree-y is set to below. */
+  .row{padding-top:6px;padding-bottom:6px}
+  .main{flex-direction:column;align-items:stretch;gap:3px}
+  .l1,.l2{display:flex;align-items:center;gap:8px;min-width:0}
+  .l1{min-height:20px}
+  .l2{min-height:19px}
+  .l2 .under{max-width:45%}
   .sel{flex:none;width:14px;height:14px;margin:0;accent-color:var(--accent);cursor:pointer;opacity:0;transition:opacity .12s}
   .row:hover .sel,.sel:checked,.sel:focus-visible,body.picking .sel{opacity:1}
   .tags{display:inline-flex;gap:4px;align-items:center;min-width:0;overflow:hidden}
@@ -612,13 +627,11 @@ ${LIST_CSS}
   .chip .x{background:none;border:none;color:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0}
   .chip:hover .x{color:var(--muted)}
   .chip .x:hover{color:var(--red)}
-  .addtag{font-size:11px;color:var(--muted);background:none;border:1px dashed var(--line2);border-radius:999px;padding:0 7px;cursor:pointer;opacity:0;transition:opacity .12s;white-space:nowrap}
-  .row:hover .addtag,.addtag:focus-visible{opacity:1}
+  .addtag{font-size:11px;color:var(--muted);background:none;border:1px dashed var(--line2);border-radius:999px;padding:0 7px;cursor:pointer;white-space:nowrap}
   .addtag:hover{color:var(--accent);border-color:var(--accent)}
   .addtag-in{font-size:12px;padding:1px 8px;border:1px solid var(--accent);border-radius:999px;background:var(--bg);color:var(--ink);width:110px}
   .addtag-in:focus{outline:none}
-  .id{font:11px ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--faint);opacity:0;transition:opacity .12s;flex:none}
-  .row:hover .id{opacity:1}
+  .id{font:11px ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--faint);flex:none}
 
   /* Fixed-width slots, so the signals read as columns down the list rather than
      as a ragged right edge. Empty slots still hold their place. */
@@ -724,7 +737,8 @@ ${LIST_CSS}
   }
 
   /* ── phone: the row becomes two lines ─────────────────────────────── */
-  /* The shared ladder in theme.mjs sheds the type badge at 1180 and the stamp
+  /* The shared ladder in theme.mjs sheds the type badge at the content width
+     (server/theme.mjs, CONTENT_WIDTH) and the stamp
      at 900, and that is as far as one line goes. What is left here does not
      shrink: the checkbox, the signal slot, the connection slot, the status
      badge and the kebab are ~260px of fixed width, and with the gaps and the
@@ -741,11 +755,13 @@ ${LIST_CSS}
      40px); and the flat
      views, where the row is out of its tree, so the guide goes and the parent
      is named on every child instead. */
-  .rows{--tree-x:46px}
+  .rows{--tree-x:46px;--tree-y:16px}
   body[data-view="attn"] .row.kid .main,
   body[data-view="live"] .row.kid .main{padding-left:0}
   body[data-view="attn"] .row.kid::before,body[data-view="attn"] .row.kid::after,
   body[data-view="live"] .row.kid::before,body[data-view="live"] .row.kid::after{display:none}
+  body[data-view="attn"] .row[data-spines],
+  body[data-view="live"] .row[data-spines]{background-image:none}
   body[data-view="attn"] .under,
   body[data-view="live"] .under{display:inline}
   @media(max-width:600px){
@@ -764,6 +780,7 @@ ${LIST_CSS}
        with the line struck through its status. Not in the flat views, which
        have no guide. */
     .row.kid .meta{padding-left:50px}
+    .row.kid[data-depth="2"] .meta{padding-left:76px}
     body[data-view="attn"] .row.kid .meta,
     body[data-view="live"] .row.kid .meta{padding-left:0}
 

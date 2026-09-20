@@ -54,13 +54,14 @@ export function renderProjectPage(name, token) {
   // list. The controls that ride on the owner's row (select, tags, actions) are
   // not here, because a reviewer has none of them.
   //
-  // Drawn as the same tree, too: a child directly under its parent, one level
+  // Drawn as the same tree, too: a child directly under its parent, one step
   // in, with the parent's count and the child's parent name (lib/spec-rows.mjs).
-  const localRow = ({ meta: m, depth, nested, kids, parentTitle }) => {
+  const localRow = ({ meta: m, depth, nested, kids, parentTitle, spines }) => {
     // spec-tree-ok: this row's own parent, carried on the row like the home page's
     const parentId = m.parent || '';
+    const sp = spines.length ? ` data-spines="${spines.join(' ')}"` : '';
     return `
-    <li class="row${depth ? ' kid' : ''}${nested ? ' nested' : ''}" data-id="${esc(m.id)}" data-depth="${depth}" data-parent="${esc(parentId)}">
+    <li class="row${depth ? ' kid' : ''}${nested ? ' nested' : ''}"${sp} data-id="${esc(m.id)}" data-depth="${depth}" data-parent="${esc(parentId)}">
       <span class="main"><a class="title" href="/p/${token}/spec/${m.id}">${esc(m.title || 'Untitled')}</a>${treeMarks(kids, parentTitle)}</span>
       <span class="badge t">${esc(m.type || '')}</span>
       <span class="badge s s-${esc(m.status || 'draft')}"><span class="sdot"></span>${esc(m.status || 'draft')}</span>

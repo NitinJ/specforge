@@ -54,14 +54,38 @@ test('a child row is marked as one level in', () => {
   assert.equal(depthOf(byId[child]), 1);
 });
 
-test('a grandchild renders under its own parent, not two levels deep', () => {
+test('the indent stops at two steps however deep the chain runs', () => {
   const { ids } = buildShape('chain5');
   const doc = dom();
   const byId = Object.fromEntries(rows(doc).map((r) => [r.getAttribute('data-id'), r]));
 
-  // The home page shows one level of indentation. Deeper is the panel's job.
+  // Two steps, so a grandchild is not drawn on its own parent's guide line.
+  // Past that the indent stops and the row names its parent instead: a list
+  // indented five times is a list nobody can scan.
   assert.equal(depthOf(byId[ids[0]]), 0);
-  for (const id of ids.slice(1)) assert.equal(depthOf(byId[id]), 1);
+  assert.equal(depthOf(byId[ids[1]]), 1);
+  for (const id of ids.slice(2)) assert.equal(depthOf(byId[id]), 2);
+  assert.ok(!byId[ids[2]].classList.contains('nested'), 'a grandchild has its own step');
+  assert.ok(byId[ids[3]].classList.contains('nested'), 'past two steps the row names its parent');
+});
+
+test('a guide line runs to the last row in its group and no further', () => {
+  // Root ─┬─ A ─── A1        A carries level 1 (B is below it) and A1 carries
+  //       └─ B              level 1 too, so Root's line survives the A subtree.
+  //                         A1 is alone at level 2 and B is last at level 1, so
+  //                         neither carries a line and both end on their elbow.
+  // Sorted newest first, so A has to be the newer sibling to be drawn above B.
+  const root = seedSpec({ title: 'Root', updated: 4000 });
+  const a = seedSpec({ title: 'A', parent: root, updated: 3000 });
+  const a1 = seedSpec({ title: 'A1', parent: a, updated: 2000 });
+  const b = seedSpec({ title: 'B', parent: root, updated: 1000 });
+
+  const doc = dom();
+  const spines = (id) => doc.querySelector(`li.row[data-id="${id}"]`).getAttribute('data-spines');
+  assert.equal(spines(root), null, 'a root sits on no line');
+  assert.equal(spines(a), '1', 'A is not the last child, so its line carries on');
+  assert.equal(spines(a1), '1', "the grandchild must not break its grandparent's line");
+  assert.equal(spines(b), null, 'the last child ends the line on its own elbow');
 });
 
 test('a parent row says how many children it has', () => {

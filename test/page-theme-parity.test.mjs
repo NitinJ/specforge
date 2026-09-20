@@ -131,11 +131,12 @@ test('the row sheds its columns at the same widths on both pages', () => {
   // The ladder is in the shared block, so the two pages cannot disagree about
   // when a column goes. Asserted on the source because a media query needs a
   // viewport, and the widths themselves were checked in a browser.
-  assert.match(LIST_CSS, /@media\(max-width:1180px\)\{\.badge\.t\{display:none\}\}/);
+  const typeRule = `@media(max-width:${CONTENT_WIDTH}){.badge.t{display:none}}`;
+  assert.ok(LIST_CSS.includes(typeRule), 'the type column goes with the content column');
   assert.match(LIST_CSS, /@media\(max-width:900px\)\{\.upd\{display:none\}\}/);
   const { index, shared } = pages();
   for (const [name, html] of [['home', index], ['shared', shared]]) {
-    assert.ok(html.includes('@media(max-width:1180px){.badge.t{display:none}}'),
+    assert.ok(html.includes(typeRule),
       `${name} page has no type-column rule`);
   }
 });
