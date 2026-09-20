@@ -57,7 +57,7 @@ export const BODY_FONT = '14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",R
   + '"Helvetica Neue",sans-serif';
 
 /** The reading column. Both pages hold their content to this. */
-export const CONTENT_WIDTH = '1180px';
+export const CONTENT_WIDTH = '1480px';
 
 /**
  * The list: a collection heading, a card, and the rows in it.
@@ -87,7 +87,9 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
      the filters' inline display instead of overwriting it. .row{display:flex}
      above outranks the UA's own [hidden] rule, so it is said again here. */
   .row[hidden]{display:none}
-  .row:hover{background:color-mix(in srgb,var(--ink) 3%,transparent)}
+  /* background-COLOR, not the shorthand: the shorthand would drop the guide
+     line a child row paints as a background image. */
+  .row:hover{background-color:color-mix(in srgb,var(--ink) 3%,transparent)}
   .main{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
   .title{font-weight:540;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     flex:0 1 auto;min-width:0}
@@ -97,7 +99,8 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
   .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}
   .badge.t{font-size:10.5px;font-weight:550;text-transform:uppercase;letter-spacing:.05em;
     background:var(--surface2);padding:1px 6px;border-radius:5px;color:var(--faint);width:84px;
-    justify-content:center}
+    justify-content:center;display:inline-block;box-sizing:border-box;text-align:center;
+    overflow:hidden;text-overflow:ellipsis}
   .badge.s{font-size:11.5px;width:92px}
   .badge.s .sdot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
   .s-draft .sdot{background:var(--s-draft)}
@@ -113,24 +116,35 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
      420px every column stayed and the title was squeezed to 73px. */
   /* Child rows (lib/spec-rows.mjs). A guide line runs down from the parent
      through its children and turns into each one, so the relation reads as a
-     tree rather than as whitespace. The line hangs off the row, not the title,
-     so consecutive children join into one line; the last child's stops at its
-     own elbow (a browser without :has() runs it to the row's foot instead,
-     which is the whole cost). --tree-x sits 6px in from where the parent's
-     title starts, under its first letter; where the title starts is each
-     page's row furniture (16px here). 19px is the middle of a row's first
-     line. */
-  .rows{--tree-x:22px}
-  .row.kid .main{padding-left:26px}
-  .row.kid::before,.row.kid::after{content:"";position:absolute;left:var(--tree-x);
+     tree rather than as whitespace. Two indent steps: a grandchild is one step
+     in from its own parent, so it no longer reads as that parent's sibling.
+     --tree-x sits 6px in from where the parent's title starts, under its first
+     letter; where the title starts is each page's row furniture (16px here).
+     --tree-y is the middle of a row's first line, which each page also sets. */
+  .rows{--tree-x:22px;--tree-step:26px;--tree-y:19px;
+    --tree-line:linear-gradient(var(--line2),var(--line2))}
+  .row.kid{--tx:var(--tree-x)}
+  .row.kid[data-depth="2"]{--tx:calc(var(--tree-x) + var(--tree-step))}
+  .row.kid .main{padding-left:var(--tree-step)}
+  .row.kid[data-depth="2"] .main{padding-left:calc(var(--tree-step) * 2)}
+  /* The part of the guide that carries on past this row, drawn as a background
+     rather than a pseudo-element because a row can carry two of them: its own
+     level's line and its grandparent's, running either side of it. Which lines
+     a row carries is decided in lib/spec-rows.mjs, where the drawn order is
+     known; a CSS sibling rule cannot see past the next root. */
+  .row[data-spines]{background-repeat:no-repeat;background-size:1.5px 100%}
+  .row[data-spines="1"]{background-image:var(--tree-line);background-position:var(--tree-x) 0}
+  .row[data-spines="2"]{background-image:var(--tree-line);
+    background-position:calc(var(--tree-x) + var(--tree-step)) 0}
+  .row[data-spines="1 2"]{background-image:var(--tree-line),var(--tree-line);
+    background-position:var(--tree-x) 0,calc(var(--tree-x) + var(--tree-step)) 0}
+  /* The row's own turn-in: a stub down from its top to the elbow, and the elbow.
+     Every child has these. What is below the elbow is the spine's job, so the
+     last child in a group simply has no spine and the line ends on it. */
+  .row.kid::before,.row.kid::after{content:"";position:absolute;left:var(--tx);
     border:0 solid var(--line2);pointer-events:none}
-  .row.kid::before{top:0;bottom:0;border-left-width:1.5px}
-  /* The elbow belongs to the last child still on screen, so the guide stops
-     with the subtree rather than running off the folded end of it. :has() sees
-     the hidden attribute a fold sets (server/tree-fold.mjs); it cannot see a
-     display. */
-  .row.kid:not(:has(+ .row.kid:not([hidden])))::before{bottom:calc(100% - 19px)}
-  .row.kid::after{top:19px;width:12px;border-top-width:1.5px}
+  .row.kid::before{top:0;bottom:calc(100% - var(--tree-y));border-left-width:1.5px}
+  .row.kid::after{top:var(--tree-y);width:12px;border-top-width:1.5px}
   .row.kid .title{font-weight:480}
   /* How many specs belong to this one, and whether they are on screen: the pill
      is the fold toggle (server/tree-fold.mjs). Open, it is a quiet count with a
@@ -159,5 +173,5 @@ export const LIST_CSS = `  .grp{margin:24px 0 0}
   .under{display:none;flex:0 0 auto;max-width:40%;font-size:11px;color:var(--faint);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .row.nested .under{display:inline}
-  @media(max-width:1180px){.badge.t{display:none}}
+  @media(max-width:${CONTENT_WIDTH}){.badge.t{display:none}}
   @media(max-width:900px){.upd{display:none}}`;

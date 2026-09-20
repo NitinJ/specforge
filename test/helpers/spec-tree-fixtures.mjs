@@ -45,18 +45,21 @@ function docFor(title, extraCss = '') {
  * @param {number} [opts.created] creation timestamp. Worth setting whenever a
  *   test asserts on order: two specs seeded in the same millisecond tie, and the
  *   tie is broken by id, which is effectively random.
+ * @param {number} [opts.updated] update timestamp, for the same reason: the home
+ *   page sorts on this one.
  * @returns {string} the spec id
  */
 export function seedSpec({
   id = newSpecId(), title = 'Spec', type = 'general', status = 'draft',
   parent = null, project = null, collection = null, html, css = '', legacy = false,
-  created,
+  created, updated,
 } = {}) {
   mkdirSync(specDir(id), { recursive: true });
   writeFileSync(specHtmlPath(id), html ?? docFor(title, css));
 
   const meta = { ...defaultMeta({ id, title, type }), status, project, collection };
   if (created !== undefined) meta.created = created;
+  if (updated !== undefined) meta.updated = updated;
   if (legacy) delete meta.parent;
   else meta.parent = parent;
 

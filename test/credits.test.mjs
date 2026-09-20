@@ -179,7 +179,7 @@ test('the home page row carries the author and the reviewers as chips', async ()
   assert.match(html, /class="by by-author h-claude" title="Written by Claude · claude-fable-5-1">/);
   assert.match(html, /class="by by-reviewer h-codex" title="Reviewed by Codex · gpt-6-astra">/);
   assert.match(html, /class="by by-reviewer h-pi" title="Reviewed by Pi · glm-5.3-flash">/);
-  assert.match(html, /<span class="by-mark"><b>✳<\/b><\/span>Claude · claude-fable-5-1/, 'each chip wears its harness glyph');
+  assert.match(html, /<span class="by-mark"><b>✳<\/b><\/span>Claude<\/span>/, 'each chip wears its harness glyph and name; the model is in the tooltip');
 });
 
 test('a spec with no credit renders no credit chip', async () => {

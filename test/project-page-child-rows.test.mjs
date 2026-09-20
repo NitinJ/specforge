@@ -55,20 +55,31 @@ test('a parent row says how many children it has', () => {
   assert.match(count.getAttribute('title'), /2 child specs/);
 });
 
-test('a grandchild sits under its own parent and names it', () => {
+test('a grandchild sits one step in from its own parent', () => {
   const root = inP({ title: 'Root' });
   const child = inP({ title: 'Testing strategy', parent: root });
   const grand = inP({ title: 'Fixture inventory', parent: child });
   const doc = dom();
   const order = rows(doc).map((r) => r.getAttribute('data-id'));
   assert.equal(order[order.indexOf(child) + 1], grand);
-  // One level of indent, so the indent alone reads it as the child's sibling.
-  // The row names its parent instead.
+  // Two steps of indent. At one step the grandchild sat on its own parent's
+  // guide line and read as that parent's sibling.
   const row = byId(doc)[grand];
-  assert.equal(depthOf(row), 1);
-  assert.ok(row.classList.contains('nested'));
-  assert.match(row.querySelector('.under').textContent, /Testing strategy/);
+  assert.equal(depthOf(row), 2);
+  assert.ok(!row.classList.contains('nested'), 'a grandchild has a step of its own');
   assert.ok(!byId(doc)[child].classList.contains('nested'), 'a direct child is not nested');
+});
+
+test('a great-grandchild stops at the last step and names its parent', () => {
+  const root = inP({ title: 'Root' });
+  const child = inP({ title: 'Testing strategy', parent: root });
+  const grand = inP({ title: 'Fixture inventory', parent: child });
+  const great = inP({ title: 'Seed data', parent: grand });
+  const doc = dom();
+  const row = byId(doc)[great];
+  assert.equal(depthOf(row), 2, 'the indent runs deeper than two steps');
+  assert.ok(row.classList.contains('nested'));
+  assert.match(row.querySelector('.under').textContent, /Fixture inventory/);
 });
 
 test('a child filed in another collection is drawn with its parent', () => {
