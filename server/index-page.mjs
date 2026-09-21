@@ -2068,10 +2068,15 @@ ${strip}
     var toTitle=to?to.querySelector('.title').textContent:'';
     api(id,'/organize','PATCH',{parent:value||null}).then(function(x){
       if(x&&x.ok){ location.reload(); return; }
-      if(x&&x.status===409) showMsg('Cannot move "'+title+'" under "'+toTitle+'": that spec is already inside it.');
-      else if(x&&x.status===404) showMsg('That spec no longer exists.');
-      else showMsg('Could not move that spec.');
-    },function(){ showMsg('Could not move that spec.'); });
+      if(x&&x.status===404){ showMsg('That spec no longer exists.'); return; }
+      if(!x||x.status!==409){ showMsg('Could not move that spec.'); return; }
+      // 409 has two causes: a loop, or a delete of this spec or its new parent
+      // that is still in progress. Only the body says which.
+      return x.json().catch(function(){return null;}).then(function(b){
+        if(b&&b.error==='cycle') showMsg('Cannot move "'+title+'" under "'+toTitle+'": that spec is already inside it.');
+        else showMsg('That spec is being deleted. Reload the page and try again.');
+      });
+    }).catch(function(){ showMsg('Could not move that spec.'); });
   }
   function fanOut(list,patch,what){
     if(!list.length){ location.reload(); return; }

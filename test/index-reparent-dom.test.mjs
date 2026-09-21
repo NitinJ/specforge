@@ -230,7 +230,7 @@ test('a refused move names both specs, does not reload, and leaves the row alone
   const b = seedSpec({ title: 'Beta' });
   const { window, reloads } = loadIndex(t, {}, {
     reply: (call) => (/\/organize$/.test(call.url)
-      ? { status: 409, json: { error: 'that would make a cycle', chain: [a, b, a] } }
+      ? { status: 409, json: { error: 'cycle', ancestry: [b] } }
       : null),
   });
   const doc = window.document;
@@ -238,12 +238,36 @@ test('a refused move names both specs, does not reload, and leaves the row alone
   openSpecPicker(doc, a);
   doc.querySelector(`#plist .pitem[data-v="${b}"]`).click();
   await tick(window);
+  await tick(window);
 
   const said = snackText(doc);
   assert.match(said, /Alpha/);
   assert.match(said, /Beta/);
   assert.equal(reloads.n, 0, 'reloading over the message hides the only explanation there is');
   assert.equal(rowFor(doc, a).getAttribute('data-parent'), '');
+});
+
+test('a 409 from a delete in progress is not reported as a loop', async (t) => {
+  // The organize route answers 409 for two reasons: a cycle, and a spec or its
+  // new parent being deleted right now. Only the first is a loop.
+  const root = seedSpec({ title: 'Root' });
+  const kid = seedSpec({ title: 'Kid', parent: root });
+  const { window, reloads } = loadIndex(t, {}, {
+    reply: (call) => (/\/organize$/.test(call.url)
+      ? { status: 409, json: { error: 'spec is being deleted' } }
+      : null),
+  });
+  const doc = window.document;
+
+  openRowMenu(doc, kid);
+  clickMenu(doc, 'Detach from parent');
+  await tick(window);
+  await tick(window);
+
+  const said = snackText(doc);
+  assert.match(said, /being deleted/i);
+  assert.doesNotMatch(said, /already inside/i);
+  assert.equal(reloads.n, 0);
 });
 
 test('a destination that has been deleted says so', async (t) => {
