@@ -857,7 +857,9 @@ ${strip}
 </div>
 
 <!-- One menu, one picker, two dialogs — reused by every row and every collection,
-     so there is exactly one of each interaction to learn and to maintain. -->
+     so there is exactly one of each interaction to learn and to maintain. The
+     picker names three kinds of destination: a collection, a project, or a spec
+     to move under. -->
 <div class="pop menu" id="menu" role="menu" hidden></div>
 <div class="pop pick" id="cpick" role="dialog" aria-label="Move to collection" hidden>
   <input class="pfilter" id="pfilter" type="text" autocomplete="off" placeholder="Filter or new name…" aria-label="Filter collections, or type a new name">
@@ -990,36 +992,64 @@ ${strip}
       });
   }
   /**
+   * The specs a given spec may be moved under, read off the ROWS.
+   *
+   * Every spec in the store has a row, so no request is needed and the list is
+   * complete whatever the rail is filtered to. Two things are left out: the spec
+   * itself, and everything below it, because a spec cannot be its own ancestor.
+   *
+   * This is a filter, not the guard. The server's cycle check is what actually
+   * refuses a loop; this only keeps a choice nobody could want off the list, and
+   * a page left open while the tree changed elsewhere will offer a stale one.
+   */
+  function specChoices(id){
+    var out={}; out[id]=1;
+    descendantIds(id).forEach(function(k){out[k]=1;});
+    return rows.filter(function(r){return !out[r.getAttribute('data-id')];})
+      .map(function(r){
+        return {value:r.getAttribute('data-id'),name:r.querySelector('.title').textContent,count:null};
+      });
+  }
+  /**
    * @param anchor the button it hangs off
    * @param current the group the target is in now ('' = none)
-   * @param onPick called with the chosen name ('' to take it out of everything)
-   * @param kind 'collection' (default) or 'project' — the same popover either
-   *   way, so there is one thing to learn about naming a destination
+   * @param onPick called with the chosen value ('' to take it out of everything)
+   * @param kind 'collection' (default), 'project', or 'spec' — the same popover
+   *   every way, so there is one thing to learn about naming a destination
+   * @param forId when kind is 'spec', the id of the spec being moved, so the
+   *   list can leave it and its descendants out
+   *
+   * A collection and a project are named by the value they carry, so their items
+   * use one string for both. A spec is named by its title and carried by its id,
+   * which is why an entry has a 'value' separate from its 'name' and the two
+   * older kinds default the first to the second.
    */
-  function openPicker(anchor,current,onPick,kind){
+  function openPicker(anchor,current,onPick,kind,forId){
     var pick=document.getElementById('cpick'), list=document.getElementById('plist');
     var filter=document.getElementById('pfilter'), create=document.getElementById('pnew');
-    var isProj=kind==='project';
-    var all=isProj?projects():collections();
-    var noneLabel=isProj?NO_PROJECT:'Uncollected';
-    var emptyText=isProj?'No project matches':'No collection matches';
-    pick.setAttribute('aria-label',isProj?'Move to project':'Move to collection');
-    filter.placeholder=isProj?'Filter or new project…':'Filter or new name…';
+    var isProj=kind==='project', isSpec=kind==='spec';
+    var all=isSpec?specChoices(forId):(isProj?projects():collections());
+    var noneLabel=isSpec?'No parent (top level)':(isProj?NO_PROJECT:'Uncollected');
+    var emptyText=isSpec?'No spec matches':(isProj?'No project matches':'No collection matches');
+    pick.setAttribute('aria-label',isSpec?'Move under spec':(isProj?'Move to project':'Move to collection'));
+    filter.placeholder=isSpec?'Filter specs…':(isProj?'Filter or new project…':'Filter or new name…');
     filter.value='';
     function paint(){
       var q=filter.value.trim(), lq=q.toLowerCase();
       list.innerHTML='';
       var hits=all.filter(function(c){return !lq||c.name.toLowerCase().indexOf(lq)!==-1;});
-      hits.forEach(function(c){list.appendChild(pickItem(c.name,c.name,c.count,current));});
-      // Uncollected / No project is a destination, not a group: it never matches
-      // a filter and never carries a count, it is just "take this out of
-      // wherever it is".
+      hits.forEach(function(c){list.appendChild(pickItem(c.value===undefined?c.name:c.value,c.name,c.count,current));});
+      // Uncollected / No project / No parent is a destination, not a group: it
+      // never matches a filter and never carries a count, it is just "take this
+      // out of wherever it is".
       if(!q) list.appendChild(pickItem('',noneLabel,null,current));
       else if(!hits.length){var e=document.createElement('div'); e.className='pempty'; e.textContent=emptyText; list.appendChild(e);}
       // Offered only when what you typed is not already a collection — otherwise
-      // "Create" beside the identically named thing invites a duplicate.
+      // "Create" beside the identically named thing invites a duplicate. Never
+      // for a spec: a parent is one that exists, and a spec scaffolded from a
+      // destination field would have no brief.
       var exact=all.some(function(c){return c.name.toLowerCase()===lq;});
-      create.hidden=!q||exact;
+      create.hidden=isSpec||!q||exact;
       create.textContent='';
       var plus=document.createElement('span'); plus.className='mic'; plus.textContent='+'; plus.setAttribute('aria-hidden','true');
       var lbl=document.createElement('span'); lbl.textContent='Create "'+q+'"';
@@ -1089,7 +1119,8 @@ ${strip}
 
   function rowMenu(btn,row){
     var id=row.getAttribute('data-id'), title=row.querySelector('.title').textContent;
-    openMenu(btn,[
+    var hasParent=!!row.getAttribute('data-parent');
+    var items=[
       {icon:'\\u270e',label:'Rename\\u2026',run:function(){
         askName({title:'Rename spec',label:'Name',value:title,onOk:function(v){
           api(id,'/rename','POST',{title:v}).then(function(x){return x.ok?x.json():null;}).then(function(d){
@@ -1102,6 +1133,12 @@ ${strip}
       }},
       {icon:'\\u25f1',label:'Move to project\\u2026',run:function(){
         openPicker(btn,row.getAttribute('data-p'),function(v){setProj([row],v);},'project');
+      }},
+      // Filing a spec under another spec is a third destination and not a
+      // fourth kind of project: where a row is DRAWN follows the parent, what it
+      // is filed as does not. The picker below carries ids and shows titles.
+      {icon:'\\u21b3',label:'Move under spec\\u2026',run:function(){
+        openPicker(btn,row.getAttribute('data-parent'),function(v){setParent(row,v);},'spec',id);
       }},
       // Deliberately its own action rather than another destination in the
       // picker above. Filing a spec locally and listing it in someone else's
@@ -1139,7 +1176,14 @@ ${strip}
           }).catch(function(){});
         }});
       }},
-    ]);
+    ];
+    // Only on a spec that has a parent: on a root it would send a change that
+    // changes nothing. Spliced in beside the move rather than appended, so the
+    // two parent actions sit together and Delete stays last.
+    if(hasParent) items.splice(4,0,{icon:'\\u2934',label:'Detach from parent',run:function(){
+      setParent(row,'');
+    }});
+    openMenu(btn,items);
   }
 
   /**
@@ -2005,6 +2049,30 @@ ${strip}
   /** The same fan-out one level up. Only the project key is sent, so the
    *  collection each spec is in travels with it. */
   function setProj(list,value,what){ return fanOut(list,{project:value},what); }
+  /**
+   * Change one spec's parent.
+   *
+   * Deliberately not fanOut. A reparent is always exactly one row, and the only
+   * interesting answer is a refusal: the server returns 409 when the chosen
+   * parent already sits below the spec being moved, which fanOut would report as
+   * "0 of 1 specs moved" and then reload over. The message is the only account
+   * of what happened, so nothing is reloaded unless the store actually changed.
+   *
+   * Only the parent key is sent. A body carrying collection or project as well would
+   * refile the spec silently: those two do not follow the parent relation, by
+   * the rule stated at lib/store.mjs.
+   */
+  function setParent(row,value){
+    var id=row.getAttribute('data-id'), title=row.querySelector('.title').textContent;
+    var to=value?document.querySelector('li.row[data-id="'+value+'"]'):null;
+    var toTitle=to?to.querySelector('.title').textContent:'';
+    api(id,'/organize','PATCH',{parent:value||null}).then(function(x){
+      if(x&&x.ok){ location.reload(); return; }
+      if(x&&x.status===409) showMsg('Cannot move "'+title+'" under "'+toTitle+'": that spec is already inside it.');
+      else if(x&&x.status===404) showMsg('That spec no longer exists.');
+      else showMsg('Could not move that spec.');
+    },function(){ showMsg('Could not move that spec.'); });
+  }
   function fanOut(list,patch,what){
     if(!list.length){ location.reload(); return; }
     Promise.all(list.map(function(r){
