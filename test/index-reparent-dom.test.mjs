@@ -47,7 +47,6 @@ const pickValues = (doc) => [...doc.querySelectorAll('#plist .pitem')].map((b) =
 function openSpecPicker(doc, id) {
   openRowMenu(doc, id);
   clickMenu(doc, 'Move under spec…');
-  return doc.getElementById('cpick');
 }
 
 const snackText = (doc) => [...doc.querySelectorAll('.sfui-snack-msg')].map((s) => s.textContent).join(' | ');
@@ -81,6 +80,16 @@ test('the reparent rows sit between the project move and the shared project acti
 
   assert.ok(labels.indexOf('Move under spec…') > labels.indexOf('Move to project…'));
   assert.ok(labels.indexOf('Move under spec…') < labels.indexOf('Add to a shared project…'));
+  assert.equal(labels[labels.length - 1], 'Delete spec…', 'delete must stay last');
+});
+
+test('on a child, "Detach from parent" follows "Move under spec…" directly', async (t) => {
+  const root = seedSpec({ title: 'Root' });
+  const kid = seedSpec({ title: 'Kid', parent: root });
+  const { window } = loadIndex(t, {});
+  const labels = openRowMenu(window.document, kid);
+
+  assert.equal(labels.indexOf('Detach from parent'), labels.indexOf('Move under spec…') + 1);
   assert.equal(labels[labels.length - 1], 'Delete spec…', 'delete must stay last');
 });
 

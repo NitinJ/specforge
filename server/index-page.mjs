@@ -1033,6 +1033,7 @@ ${strip}
     var emptyText=isSpec?'No spec matches':(isProj?'No project matches':'No collection matches');
     pick.setAttribute('aria-label',isSpec?'Move under spec':(isProj?'Move to project':'Move to collection'));
     filter.placeholder=isSpec?'Filter specs…':(isProj?'Filter or new project…':'Filter or new name…');
+    filter.setAttribute('aria-label',isSpec?'Filter specs':(isProj?'Filter projects, or type a new name':'Filter collections, or type a new name'));
     filter.value='';
     function paint(){
       var q=filter.value.trim(), lq=q.toLowerCase();
@@ -1140,6 +1141,11 @@ ${strip}
       {icon:'\\u21b3',label:'Move under spec\\u2026',run:function(){
         openPicker(btn,row.getAttribute('data-parent'),function(v){setParent(row,v);},'spec',id);
       }},
+      // Only on a spec that has a parent: on a root it would send a change that
+      // changes nothing. Null here and dropped below.
+      hasParent?{icon:'\\u2934',label:'Detach from parent',run:function(){
+        setParent(row,'');
+      }}:null,
       // Deliberately its own action rather than another destination in the
       // picker above. Filing a spec locally and listing it in someone else's
       // project are different operations: the first is exclusive and changes
@@ -1176,13 +1182,7 @@ ${strip}
           }).catch(function(){});
         }});
       }},
-    ];
-    // Only on a spec that has a parent: on a root it would send a change that
-    // changes nothing. Spliced in beside the move rather than appended, so the
-    // two parent actions sit together and Delete stays last.
-    if(hasParent) items.splice(4,0,{icon:'\\u2934',label:'Detach from parent',run:function(){
-      setParent(row,'');
-    }});
+    ].filter(Boolean);
     openMenu(btn,items);
   }
 
