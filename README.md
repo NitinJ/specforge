@@ -95,10 +95,16 @@ it a child is one field, and what that buys you:
 - sharing the parent shares the whole tree, so a reader is never handed a
   document with holes in it;
 - deleting the parent takes the children with it, and offers an undo. To keep
-  one, take it out of the tree first with
-  `specforge reparent <id> --detach`;
+  one, take it out of the tree first: **Detach from parent** in its ⋯ menu on
+  the home page, or `specforge reparent <id> --detach`;
 - exporting to markdown gives you the tree as a zip; printing or exporting to
   Google Docs gives you one flattened document.
+
+A spec that already exists can be moved into a tree later. On the home page,
+open its ⋯ menu and pick **Move under spec…**, then type part of the other
+spec's title. The spec keeps its own project and collection; only its parent
+changes. The same move from a terminal is
+`specforge reparent <id> --to <parentId>`.
 
 ### Review it in the browser
 

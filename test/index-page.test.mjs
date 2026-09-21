@@ -187,7 +187,7 @@ function act(document, row, label) {
   it.click();
 }
 
-test('the row menu offers exactly rename, both moves, contribute, and delete', (t) => {
+test('the row menu offers exactly rename, all three moves, contribute, and delete', (t) => {
   createSpec({ title: 'X', html: '<h1>X</h1>' });
   const { window } = loadIndex(t);
   const { document } = window;
@@ -196,11 +196,17 @@ test('the row menu offers exactly rename, both moves, contribute, and delete', (
   document.querySelector('.row[data-id] .kebab').click();
   assert.equal(menu.hidden, false, 'the menu opens under the button');
   // A spec's address has two halves and either can be set on its own, so there
-  // are two move items rather than one that asks which you meant. Adding it to
-  // a shared project is a third thing again: those two file it on this machine,
-  // this one publishes it onto someone else's.
+  // are two move items rather than one that asks which you meant. Moving it
+  // under another spec is a third: that is the parent relation, which decides
+  // where the row is drawn and what a delete takes, not where the spec is filed.
+  // Adding it to a shared project is different again: the first three file it on
+  // this machine, this one publishes it onto someone else's.
+  //
+  // No 'Detach from parent' here: this spec is a root, and the row is drawn only
+  // on a spec that has a parent. index-reparent-dom.test.mjs covers both cases.
   assert.deepEqual(labels(document), [
-    'Rename…', 'Move to collection…', 'Move to project…', 'Add to a shared project…', 'Delete spec…',
+    'Rename…', 'Move to collection…', 'Move to project…', 'Move under spec…',
+    'Add to a shared project…', 'Delete spec…',
   ]);
   assert.equal(document.querySelector('.row .kebab').getAttribute('aria-expanded'), 'true');
 });

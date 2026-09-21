@@ -26,6 +26,11 @@ const UI_JS = readFileSync(join(ROOT, 'server', 'public', 'ui.js'), 'utf8');
  * @param {(req:{method:string,url:string,body:any}) => any} [hostOpts.respond]
  *   override the JSON a stubbed fetch resolves with; defaults to echoing the
  *   request body back, which is what the page's optimistic updates expect
+ * @param {(req:{method:string,url:string,body:any}) => {ok?:boolean,status?:number,json?:any}|null} [hostOpts.reply]
+ *   full control of the response, for the cases the page decides on the status
+ *   rather than on the body. Returning null falls through to `respond`, so one
+ *   test can refuse a single request and let the rest succeed. A thrown value
+ *   rejects the fetch, which is how a network failure is driven.
  * @param {(window:Window) => void} [hostOpts.beforeParse] runs before the
  *   page's scripts, with the window — for state a page reads at parse time
  * @returns {{window: Window, calls: Array, reloads: {n:number}}}
@@ -58,8 +63,25 @@ export function loadIndex(t, opts, hostOpts = {}) {
       const body = init && init.body ? JSON.parse(init.body) : undefined;
       const call = { method, url, body };
       calls.push(call);
+      // `reply` first, so a test that cares about the status is not also forced
+      // to describe the body. Returning null means "not this one", which keeps a
+      // refusal of one request from having to re-implement the default for the
+      // others.
+      let reply = null;
+      try {
+        reply = hostOpts.reply ? hostOpts.reply(call) : null;
+      } catch (e) {
+        return Promise.reject(e);
+      }
+      if (reply) {
+        return Promise.resolve({
+          ok: reply.ok !== undefined ? reply.ok : (reply.status || 200) < 400,
+          status: reply.status || 200,
+          json: () => Promise.resolve(reply.json === undefined ? {} : reply.json),
+        });
+      }
       const json = hostOpts.respond ? hostOpts.respond(call) : Object.assign({ ok: true }, body || {});
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(json) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(json) });
     };
   };
   const dom = new JSDOM(html, {
