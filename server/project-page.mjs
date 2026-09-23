@@ -84,19 +84,22 @@ export function renderProjectPage(name, token) {
   // A child is grouped by its root's collection, not its own, so it lands in
   // the section its parent is drawn in (lib/spec-rows.mjs, groupByRoot).
   const specs = groupByRoot(projectSpecs(name));
-  // One read of every comment store this render needs, shared by the name rank
+  // One read of the comment stores this render needs, shared by the name rank
   // and the collaborator list below. A name ranks by its freshest member
   // ANYWHERE in the store (lib/collections.mjs) — the owner's home page ranks
-  // names store-wide and this page must not disagree with it — so the reads
-  // cover every spec drawn under a name, plus everything this page draws.
+  // names store-wide and this page must not disagree with it — so the rank
+  // reads every member of the names this page shows, wherever that member is
+  // filed, plus everything drawn here for the collaborators. Nothing else is
+  // touched: a public request scales with its own project, not with the store.
   // Read per request, like every other number on this page: a thread that
   // moved an hour ago is the project being alive, and a cached stamp would be
   // worse than none.
   const localIds = new Set(specs.map((m) => m.id));
+  const names = new Set(specs.map((m) => m.collection || '').filter(Boolean));
   const drawn = groupByRoot(listSpecs().filter((m) => !m.template));
   const reads = new Map();
   for (const m of drawn) {
-    if (m.collection || localIds.has(m.id)) reads.set(m.id, loadComments(m.id).threads);
+    if (names.has(m.collection || '') || localIds.has(m.id)) reads.set(m.id, loadComments(m.id).threads);
   }
   const commented = new Map([...reads].map(([id, ts]) => [id, newestCommentAt(ts)]));
   const { order, named } = groupByCollection(specs, collectionRecency(drawn, commented));
