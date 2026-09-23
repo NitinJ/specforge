@@ -1,19 +1,21 @@
-// Collection grouping and order (lib/collections.mjs) — the rule the home page
-// and the shared project page must not disagree about.
+// Collection grouping and rank (lib/collections.mjs) — the rule the home page
+// rail, its project sections and the public project page must not disagree
+// about.
 //
-// Collections come out by recency: a group is as recent as its most recently
-// active member, where activity is the newest of `created`, `updated` and the
-// newest comment on the spec. Ties fall to A–Z and Uncollected is always last.
-// Nothing here reads the store — the comment times ride in as data — so every
-// timestamp is pinned rather than hoped for.
+// A name ranks by its most recently active member anywhere in the store: the
+// newest of `created`, `updated` and the newest comment on a spec carrying it.
+// Ties fall to A–Z and Uncollected is always last. Nothing here reads the
+// store — the comment times ride in as data — so every timestamp is pinned
+// rather than hoped for.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { groupByCollection } from '../lib/collections.mjs';
+import { groupByCollection, collectionRecency } from '../lib/collections.mjs';
 
 const spec = (id, collection, at) => ({ id, collection, created: at, updated: at });
-const keys = (specs, commented) => groupByCollection(specs, commented).order.map((g) => g.key);
+const keys = (specs, recency = collectionRecency(specs)) =>
+  groupByCollection(specs, recency).order.map((g) => g.key);
 
 test('named collections come out most recently active first', () => {
   const a = spec('a', 'Alpha', 1000);
@@ -21,11 +23,11 @@ test('named collections come out most recently active first', () => {
   assert.deepEqual(keys([a, b]), ['Beta', 'Alpha']);
 });
 
-test('a collection is as recent as its most recently active member', () => {
+test('a name is as recent as its most recently active member', () => {
   const a1 = spec('a1', 'Alpha', 1);
   const a2 = spec('a2', 'Alpha', 2);
   const b = spec('b', 'Beta', 3);
-  assert.deepEqual(keys([a1, a2, b]), ['Beta', 'Alpha'], 'the older members do not drag the group down');
+  assert.deepEqual(keys([a1, a2, b]), ['Beta', 'Alpha'], 'the older members do not drag the name down');
   assert.deepEqual(keys([a1, a2, b, spec('a3', 'Alpha', 4)]), ['Alpha', 'Beta'], 'one fresh member lifts it');
 });
 
@@ -41,8 +43,22 @@ test('a new comment counts as activity', () => {
   const a = spec('a', 'Alpha', 1000);
   const b = spec('b', 'Beta', 2000);
   assert.deepEqual(keys([a, b]), ['Beta', 'Alpha']);
-  assert.deepEqual(keys([a, b], new Map([['a', 3000]])), ['Alpha', 'Beta'],
-    'the commented spec lifts its collection');
+  const commented = new Map([['a', 3000]]);
+  assert.deepEqual(keys([a, b], collectionRecency([a, b], commented)), ['Alpha', 'Beta'],
+    'the commented spec lifts its name');
+});
+
+test('a name ranks by its freshest member anywhere — even outside the grouped scope', () => {
+  // The rail and the project bodies group different scopes. A name shared
+  // across projects must keep one rank in all of them, or the navigation and
+  // the sections it shows read in different orders.
+  const here = [spec('a', 'Alpha', 1000), spec('b', 'Beta', 2000)];
+  const elsewhere = spec('x', 'Alpha', 3000); // filed in another project
+  const store = [...here, elsewhere];
+  const recency = collectionRecency(store);
+  assert.deepEqual(keys(here, recency), ['Alpha', 'Beta'],
+    'Alpha leads here on activity this scope does not even show');
+  assert.deepEqual(keys(store, recency), ['Alpha', 'Beta'], 'and leads everywhere else too');
 });
 
 test('a tie falls back to alphabetical', () => {
@@ -51,12 +67,13 @@ test('a tie falls back to alphabetical', () => {
   assert.deepEqual(keys([z, a]), ['Alpha', 'Zulu']);
 });
 
-test('Uncollected is last, only when something is in it, and never named', () => {
+test('Uncollected is last, only when something is in it, and never ranked', () => {
   const loose = spec('l', '', 99999);
   const a = spec('a', 'Alpha', 1);
   assert.deepEqual(keys([loose, a]), ['Alpha', ''], 'not even the freshest spec can lift it');
   assert.deepEqual(keys([a]), ['Alpha'], 'absent when nothing is in it');
   assert.deepEqual(groupByCollection([loose, a]).named, ['Alpha'], 'it is not a name anyone can place');
+  assert.equal(collectionRecency([loose, a]).has(''), false, 'and it has no rank to place');
 });
 
 test('the grouping reorders groups, never the specs inside one', () => {

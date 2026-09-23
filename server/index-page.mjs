@@ -21,7 +21,7 @@ import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
 import { STATUSES } from '../lib/lifecycle.mjs';
 import { readSubscriptions } from '../lib/store-subscriptions.mjs';
-import { groupByCollection } from '../lib/collections.mjs';
+import { groupByCollection, collectionRecency } from '../lib/collections.mjs';
 import { groupByRoot, layoutTree, treeMarks } from '../lib/spec-rows.mjs';
 import { treeFoldScript } from './tree-fold.mjs';
 import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
@@ -305,6 +305,12 @@ export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   // every comment store this render.
   const commented = new Map(specs.map((m) => [m.id, sigOf(m).commented]));
 
+  // A name's rank is its freshest member anywhere in the store, and the same
+  // rank serves the rail and the groups below: the rail is one row per name
+  // across every project, so whichever project is selected, the navigation and
+  // the sections it shows must read in the same order (lib/collections.mjs).
+  const recency = collectionRecency(specs, commented);
+
   const projOrder = groupByProject(specs, prefs.projects).order;
   // A selection naming a project that no longer exists is not an error worth
   // reporting: it happens whenever a project is deleted with the page open
@@ -314,10 +320,10 @@ export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   const asked = typeof project === 'string' ? project : prefs.project;
   const selected = typeof asked === 'string' && known.has(asked) ? asked : null;
   // The collections rail is one row per distinct name across the whole store,
-  // not one per (project, collection) pair. The order is recency across the
-  // whole store, so a name has one row wherever it is used; the client hides
-  // the rows the selected project has no members of.
-  const { order, named } = groupByCollection(specs, commented);
+  // not one per (project, collection) pair. The order is the store-wide name
+  // ranking, so a name has one row and one place wherever it is used; the
+  // client hides the rows the selected project has no members of.
+  const { order, named } = groupByCollection(specs, recency);
   const inView = selected === null ? specs : specs.filter((m) => (m.project || '') === selected);
 
   const counts = Object.fromEntries(STATUSES.map((s) => [s, specs.filter((m) => (m.status || 'draft') === s).length]));
@@ -374,7 +380,7 @@ export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   // first paint.
   let leadProject = true;
   const groups = projOrder.filter(({ specs: list }) => list.length).map(({ key: pk, specs: plist }) => {
-    const inner = groupByCollection(plist, commented).order.map(({ key, specs: list }, i) => `<section class="grp${i === 0 ? ' lead' : ''}" data-p="${esc(pk)}" data-coll="${esc(key)}">
+    const inner = groupByCollection(plist, recency).order.map(({ key, specs: list }, i) => `<section class="grp${i === 0 ? ' lead' : ''}" data-p="${esc(pk)}" data-coll="${esc(key)}">
   <h2>${key === '' ? 'Uncollected' : esc(key)} <span class="gcount">${list.length}</span></h2>
   <div class="card"><ul class="rows">${renderRows(list, sigOf)}</ul></div>
 </section>`).join('\n');

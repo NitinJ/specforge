@@ -106,6 +106,23 @@ test('the collections rail lists each distinct name once, across every project',
   assert.deepEqual(railCollections(renderIndex()).map(([n]) => n), ['Engineering', 'Product', 'UI']);
 });
 
+test('a name shared across projects ranks the same in the rail and every body', () => {
+  writeGlobalPrefs({ projects: ['figur', 'specforge'] });
+  const store = seedProjects({ figur: { UI: 1, Product: 1 }, specforge: { UI: 1 } });
+  // figur's UI is old and Product middling; specforge's UI is the freshest
+  // thing in the store. UI is one name — its rank cannot change with the
+  // project a reader selects, or the rail and the groups disagree.
+  for (const id of store.at('figur', 'UI')) stamp(id, 1000);
+  for (const id of store.at('figur', 'Product')) stamp(id, 2000);
+  for (const id of store.at('specforge', 'UI')) stamp(id, 3000);
+
+  const html = renderIndex();
+  assert.deepEqual(railCollections(html).map(([n]) => n), ['UI', 'Product']);
+  const figur = groupTree(html).find(([p]) => p === 'figur');
+  assert.deepEqual(figur[1], ['UI', 'Product'],
+    'figur\u2019s groups rank names the way the rail does, not by figur\u2019s own clocks');
+});
+
 test('Uncollected joins the collections rail only when something is uncollected', () => {
   seedProjects({ figur: { UI: 1 } });
   assert.deepEqual(railCollections(renderIndex()).map(([n]) => n), ['UI']);
