@@ -884,9 +884,9 @@ ${strip}
       b.appendChild(ic); b.appendChild(lb);
       b.onclick=function(){
         // Focus goes back to the button that opened the menu before the action
-        // runs — so Move up leaves you on the collection you moved, wherever it
-        // landed — and an action that opens a dialog or the picker takes it from
-        // there, since it focuses its own field synchronously.
+        // runs — so a Move leaves you on the row you moved, wherever it landed —
+        // and an action that opens a dialog or the picker takes it from there,
+        // since it focuses its own field synchronously.
         var owner=popOwner;
         closePop();
         if(owner&&owner.focus) owner.focus();

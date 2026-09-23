@@ -691,15 +691,21 @@ test('an order that fails to save says so, and the rename it carried still happe
   seedProjects({ figur: { UI: 1 } });
   const { window } = loadIndex(t);
   const { document } = window;
-  window.fetch = (url) => (/\/api\/prefs$/.test(url)
-    ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
-    : Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+  const moved = [];
+  window.fetch = (url, init) => {
+    if (init && init.body && /\/organize$/.test(url)) moved.push(JSON.parse(init.body));
+    return /\/api\/prefs$/.test(url)
+      ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+      : Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
   clickMenuItem(window, document.querySelector('.prow[data-p="figur"] .kebab'), 'Rename');
   answerPrompt(document, 'Release');
   await tick(window);
   const toast = document.querySelector('.sfui-snack');
   assert.ok(toast, 'a failed order write is not swallowed');
   assert.match(toast.textContent, /order could not be saved/);
+  assert.deepEqual(moved.map((b) => b.project), ['Release'],
+    'the rename it carried still happens — refusing it over a cosmetic write would be worse');
 });
 
 // Dragging is the primary way to reorder; the menu's Move up / Move down is the

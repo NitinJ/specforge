@@ -70,7 +70,7 @@ test('sanitize drops a projects value that is not an array', () => {
   assert.equal('projects' in sanitizeGlobalPrefs({ projects: 'figur' }), false);
 });
 
-test('the project list is capped at 200 names, like the collection order', () => {
+test('the project list is capped at 200 names', () => {
   const many = Array.from({ length: 250 }, (_, i) => `p${i}`);
   assert.equal(sanitizeGlobalPrefs({ projects: many }).projects.length, 200);
 });
