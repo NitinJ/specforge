@@ -268,24 +268,12 @@ test('reordering projects moves the spacing to the one that becomes first', asyn
   assert.deepEqual(lead(), ['specforge']);
 });
 
-test('reordering collections moves the spacing inside the project', async (t) => {
-  writeGlobalPrefs({ projects: ['figur'], collectionOrder: ['Product', 'UI'] });
-  seedProjects({ figur: { Product: 1, UI: 1 } });
-  const { window } = loadIndex(t);
-  const { document } = window;
-  const lead = () => [].slice.call(document.querySelectorAll('.grp.lead')).map((g) => g.getAttribute('data-coll'));
-
-  assert.deepEqual(lead(), ['Product']);
-
-  clickMenuItem(window, collRow(document, 'UI').querySelector('.kebab'), 'Move up');
-  await tick(window);
-
-  assert.deepEqual(lead(), ['UI']);
-});
-
 test('the same holds for the first shown collection inside a project', (t) => {
   writeGlobalPrefs({ projects: ['figur'] });
-  seedProjects({ figur: { Product: ['Garment model'], UI: ['Wardrobe grid'] } });
+  // UI seeded first on purpose: the groups come out by recency, and Product
+  // then leads whether or not the two land on the same millisecond (a tie falls
+  // to A–Z, which names Product first as well).
+  seedProjects({ figur: { UI: ['Wardrobe grid'], Product: ['Garment model'] } });
   const { window } = loadIndex(t);
   const { document } = window;
   const lead = () => [].slice.call(document.querySelectorAll('.grp.lead')).map((g) => g.getAttribute('data-coll'));
@@ -488,16 +476,24 @@ test('deleting a project unfiles its specs and never deletes one', async (t) => 
 test('a project moves up and down the rail, and the move is stored', async (t) => {
   writeGlobalPrefs({ projects: ['figur', 'specforge'] });
   seedProjects({ figur: { UI: 1 }, specforge: { Engineering: 1 } });
-  const { window, calls } = loadIndex(t);
+  const { window, calls, reloads } = loadIndex(t);
   const { document } = window;
 
-  clickMenuItem(window, document.querySelector('.prow[data-p="specforge"] .kebab'), 'Move up');
+  // The menu's Move down moves the row below, so the clicked row's node stays
+  // put and keeps its focus — which is what "you keep your place after a move"
+  // means (makeRail.move).
+  const kebab = document.querySelector('.prow[data-p="figur"] .kebab');
+  clickMenuItem(window, kebab, 'Move down');
   await tick(window);
 
   const order = [].slice.call(document.querySelectorAll('.prow[data-p]'))
     .map((r) => r.getAttribute('data-p')).filter((p) => p !== '');
   assert.deepEqual(order, ['specforge', 'figur']);
+  const sections = [].slice.call(document.querySelectorAll('.pgrp')).map((p) => p.getAttribute('data-p'));
+  assert.deepEqual(sections, ['specforge', 'figur'], 'and the project sections moved with it');
   assert.deepEqual(prefPuts(calls).at(-1).body.projects, ['specforge', 'figur']);
+  assert.equal(reloads.n, 0, 'a move is a DOM move, not a reload');
+  assert.equal(document.activeElement, kebab, 'focus is back on the button of the row you moved');
 });
 
 test('All projects and No project are not draggable and carry no menu', (t) => {
@@ -535,18 +531,18 @@ test('renaming a collection inside a project leaves the same name elsewhere alon
 
 test('a collection cannot be renamed or deleted from All projects', (t) => {
   writeGlobalPrefs({ projects: ['figur', 'specforge'] });
-  // Two collections, so there is a Move item to still be offered.
   seedProjects({ figur: { UI: 1, Product: 1 }, specforge: { UI: 1 } });
   const { window } = loadIndex(t);
   const { document } = window;
 
   // From here "UI" names two collections with two memberships, and nothing says
-  // which is meant. Reordering is still offered: the order is one flat list of
-  // names shared across projects by design.
+  // which is meant. There is no action left that could not hit the wrong one,
+  // so the menu says why instead of acting.
   const labels = menuItems(window, collRow(document, 'UI').querySelector('.kebab')).map((i) => i.label);
   assert.equal(labels.some((l) => l.startsWith('Rename')), false);
   assert.equal(labels.some((l) => l.startsWith('Delete')), false);
-  assert.ok(labels.some((l) => l.startsWith('Move')), 'reordering is still offered');
+  assert.equal(labels.length, 1, 'one line of explanation, not an action');
+  assert.match(labels[0], /several projects/);
 
   // And inside a project it is unambiguous again.
   projNav(document, 'figur').click();
@@ -581,34 +577,208 @@ test('a collection used by only one project can be renamed from All projects', (
   assert.ok(labels.some((l) => l.startsWith('Delete')));
 });
 
-test('renaming a shared collection name keeps the old one ranked for the others', async (t) => {
-  writeGlobalPrefs({ projects: ['figur', 'specforge'], collectionOrder: ['UI', 'Product'] });
-  seedProjects({ figur: { UI: 1, Product: 1 }, specforge: { UI: 1 } });
-  const { window, calls } = loadIndex(t);
+// ---- the rail's write machinery ----
+// makeRail is the projects rail's alone now — collections come out by recency
+// and have no rank to move — so its failure handling is driven here. The
+// machine itself is unchanged: one write in flight, moves coalesced into the
+// next, and a rollback to the last order the store is known to hold.
+
+const railOrder = (doc) => [].slice.call(doc.querySelectorAll('.prow[data-p]'))
+  .map((r) => r.getAttribute('data-p')).filter((p) => p !== '');
+
+// A reorder has nothing else to do, so a failed write leaves the page showing an
+// order the store does not hold — until a reload silently undoes it. Undo it now
+// instead, and say why.
+test('a reorder that fails to save puts the rail back', async (t) => {
+  writeGlobalPrefs({ projects: ['Alpha', 'Beta'] });
+  seedProjects({ Alpha: { UI: 1 }, Beta: { UI: 1 } });
+  const { window, reloads } = loadIndex(t);
   const { document } = window;
-
-  projNav(document, 'figur').click();
-  clickMenuItem(window, collRow(document, 'UI').querySelector('.kebab'), 'Rename');
-  answerPrompt(document, 'Interface');
+  window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+  assert.deepEqual(railOrder(document), ['Alpha', 'Beta']);
+  clickMenuItem(window, document.querySelector('.prow[data-p="Beta"] .kebab'), 'Move up');
   await tick(window);
-
-  // specforge still has a collection called UI, so dropping the name from the
-  // order would cost that one its rank. The new name is inserted beside it.
-  const put = prefPuts(calls).find((c) => Array.isArray(c.body.collectionOrder));
-  assert.deepEqual(put.body.collectionOrder, ['UI', 'Interface', 'Product']);
+  assert.deepEqual(railOrder(document), ['Alpha', 'Beta'], 'the move is undone');
+  const sections = [].slice.call(document.querySelectorAll('.pgrp')).map((p) => p.getAttribute('data-p'));
+  assert.deepEqual(sections, ['Alpha', 'Beta'], 'and so is the list');
+  const toast = document.querySelector('.sfui-snack');
+  assert.match(toast.textContent, /order could not be saved/);
+  assert.equal(window.sessionStorage.getItem('sf-index-msg'), null,
+    'nothing reloads here, so the message is not carried into the next load');
+  assert.equal(reloads.n, 0);
 });
 
-test('renaming a collection nothing else uses replaces it in the order', async (t) => {
-  writeGlobalPrefs({ projects: ['figur'], collectionOrder: ['UI', 'Product'] });
-  seedProjects({ figur: { UI: 1, Product: 1 } });
+// Two moves in quick succession used to be two writes in flight. If the first
+// failed and the second landed, the first's rollback restored its own stale
+// snapshot over an order that had actually saved. One write at a time, and the
+// move made during it coalesced into a single write after it.
+test('a second move during a save does not race it', async (t) => {
+  writeGlobalPrefs({ projects: ['Alpha', 'Beta', 'Gamma'] });
+  seedProjects({ Alpha: { UI: 1 }, Beta: { UI: 1 }, Gamma: { UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const sent = [];
+  let release;
+  const held = new Promise((r) => { release = r; });
+  window.fetch = (url, init) => {
+    sent.push(JSON.parse(init.body).projects);
+    return held.then(() => ({ ok: true, json: () => Promise.resolve({}) }));
+  };
+  const up = (name) => clickMenuItem(window, document.querySelector(`.prow[data-p="${name}"] .kebab`), 'Move up');
+
+  up('Gamma'); // Alpha, Gamma, Beta — the write for this is in flight
+  up('Gamma'); // Gamma, Alpha, Beta — must not start a second write yet
+  assert.equal(sent.length, 1, 'only one write in flight');
+  assert.deepEqual(sent[0], ['Alpha', 'Gamma', 'Beta']);
+
+  release();
+  await tick(window);
+  await tick(window);
+  assert.equal(sent.length, 2, 'the move made during the write follows it');
+  assert.deepEqual(sent[1], ['Gamma', 'Alpha', 'Beta'], 'and sends the rail as it now stands');
+  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta'], 'which is what is on screen');
+});
+
+// The rollback must not run before the coalesced write has taken the rail: it
+// would wipe the newer move off the screen and then store the wipe.
+test('a move made during a failing write survives it', async (t) => {
+  writeGlobalPrefs({ projects: ['Alpha', 'Beta', 'Gamma'] });
+  seedProjects({ Alpha: { UI: 1 }, Beta: { UI: 1 }, Gamma: { UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const sent = [];
+  let settle;
+  const held = new Promise((r) => { settle = r; });
+  let first = true;
+  window.fetch = (url, init) => {
+    sent.push(JSON.parse(init.body).projects);
+    if (first) { first = false; return held.then(() => ({ ok: false, status: 500, json: () => Promise.resolve({}) })); }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  const up = (name) => clickMenuItem(window, document.querySelector(`.prow[data-p="${name}"] .kebab`), 'Move up');
+
+  up('Gamma'); // in flight, and it will fail
+  up('Gamma'); // made during it — this is the newer intent
+  settle();
+  await tick(window);
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta'], 'the newer move is still on screen');
+  assert.deepEqual(sent[sent.length - 1], ['Gamma', 'Alpha', 'Beta'], 'and is what got stored');
+  assert.equal(document.querySelector('.sfui-snack'), null, 'a failure the retry recovered from is not reported');
+});
+
+test('a rollback goes to the last order that saved, not to where the move began', async (t) => {
+  writeGlobalPrefs({ projects: ['Alpha', 'Beta'] });
+  seedProjects({ Alpha: { UI: 1 }, Beta: { UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  let ok = true;
+  window.fetch = () => Promise.resolve({ ok, status: ok ? 200 : 500, json: () => Promise.resolve({}) });
+  const up = (name) => clickMenuItem(window, document.querySelector(`.prow[data-p="${name}"] .kebab`), 'Move up');
+
+  up('Beta');
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Beta', 'Alpha'], 'saved');
+
+  ok = false;
+  up('Alpha');
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Beta', 'Alpha'], 'back to the saved order, not the original');
+});
+
+test('an order that fails to save says so, and the rename it carried still happens', async (t) => {
+  writeGlobalPrefs({ projects: ['figur'] });
+  seedProjects({ figur: { UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  const moved = [];
+  window.fetch = (url, init) => {
+    if (init && init.body && /\/organize$/.test(url)) moved.push(JSON.parse(init.body));
+    return /\/api\/prefs$/.test(url)
+      ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+      : Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  };
+  clickMenuItem(window, document.querySelector('.prow[data-p="figur"] .kebab'), 'Rename');
+  answerPrompt(document, 'Release');
+  await tick(window);
+  const toast = document.querySelector('.sfui-snack');
+  assert.ok(toast, 'a failed order write is not swallowed');
+  assert.match(toast.textContent, /order could not be saved/);
+  assert.deepEqual(moved.map((b) => b.project), ['Release'],
+    'the rename it carried still happens — refusing it over a cosmetic write would be worse');
+});
+
+// Dragging is the primary way to reorder; the menu's Move up / Move down is the
+// same thing for a keyboard. jsdom has no drag machinery, but the handlers only
+// read target/clientY, so a MouseEvent under the drag event's name drives them.
+function drag(window, row, onto, { after = false } = {}) {
+  const fire = (name, el, extra) => el.dispatchEvent(
+    new window.MouseEvent(name, { bubbles: true, cancelable: true, ...extra }),
+  );
+  fire('dragstart', row);
+  // getBoundingClientRect is all zeros in jsdom, so clientY > 0 reads as the
+  // bottom half of the row and clientY <= 0 as the top half.
+  fire('dragover', onto.querySelector('.pnav'), { clientY: after ? 1 : 0 });
+  fire('dragend', window.document.querySelector('.prow.dragging') || row);
+}
+
+test('dragging a project past another reorders the rail and the list, and saves', async (t) => {
+  writeGlobalPrefs({ projects: ['Alpha', 'Beta', 'Gamma'] });
+  seedProjects({ Alpha: { UI: 1 }, Beta: { UI: 1 }, Gamma: { UI: 1 } });
+  const { window, calls, reloads } = loadIndex(t);
+  const { document } = window;
+  const row = (n) => document.querySelector(`.prow[data-p="${n}"]`);
+  assert.equal(row('Alpha').getAttribute('draggable'), 'true');
+  assert.equal(row('').getAttribute('draggable'), null, 'No project is not draggable');
+
+  drag(window, row('Gamma'), row('Alpha'));
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta'], 'dropped above Alpha');
+  const sections = [].slice.call(document.querySelectorAll('.pgrp')).map((p) => p.getAttribute('data-p'));
+  assert.deepEqual(sections, ['Gamma', 'Alpha', 'Beta'], 'the list follows');
+  assert.deepEqual(prefPuts(calls).at(-1).body.projects, ['Gamma', 'Alpha', 'Beta']);
+  assert.equal(reloads.n, 0);
+
+  drag(window, row('Gamma'), row('Beta'), { after: true });
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Alpha', 'Beta', 'Gamma'], 'and below when dropped low');
+});
+
+test('a drag leaves the rail clean, and one that changes nothing writes nothing', async (t) => {
+  writeGlobalPrefs({ projects: ['Alpha', 'Beta'] });
+  seedProjects({ Alpha: { UI: 1 }, Beta: { UI: 1 } });
   const { window, calls } = loadIndex(t);
   const { document } = window;
-
-  projNav(document, 'figur').click();
-  clickMenuItem(window, collRow(document, 'UI').querySelector('.kebab'), 'Rename');
-  answerPrompt(document, 'Interface');
+  const alpha = document.querySelector('.prow[data-p="Alpha"]');
+  alpha.dispatchEvent(new window.MouseEvent('dragstart', { bubbles: true }));
+  assert.ok(alpha.classList.contains('dragging'), 'the row being carried is marked');
+  assert.ok(document.getElementById('projs').classList.contains('rearranging'));
+  alpha.dispatchEvent(new window.MouseEvent('dragend', { bubbles: true }));
+  assert.ok(!alpha.classList.contains('dragging'), 'and unmarked when it lands');
+  assert.ok(!document.getElementById('projs').classList.contains('rearranging'));
   await tick(window);
+  assert.equal(prefPuts(calls).length, 0, 'a drag that ends where it started is not a change');
+});
 
-  const put = prefPuts(calls).find((c) => Array.isArray(c.body.collectionOrder));
-  assert.deepEqual(put.body.collectionOrder, ['Interface', 'Product'], 'in place, keeping its rank');
+test('No project cannot be dragged past, and stays last', async (t) => {
+  writeGlobalPrefs({ projects: ['Alpha'] });
+  seedProjects({ Alpha: { UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  drag(window, document.querySelector('.prow[data-p="Alpha"]'), document.querySelector('.prow[data-p=""]'), { after: true });
+  await tick(window);
+  const rows = [].slice.call(document.querySelectorAll('.prow[data-p]')).map((r) => r.getAttribute('data-p'));
+  assert.deepEqual(rows, ['Alpha', ''], 'nothing moved past it');
+});
+
+test('a drag that fails to save puts the rail back', async (t) => {
+  writeGlobalPrefs({ projects: ['Alpha', 'Beta'] });
+  seedProjects({ Alpha: { UI: 1 }, Beta: { UI: 1 } });
+  const { window } = loadIndex(t);
+  const { document } = window;
+  window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+  drag(window, document.querySelector('.prow[data-p="Beta"]'), document.querySelector('.prow[data-p="Alpha"]'));
+  await tick(window);
+  assert.deepEqual(railOrder(document), ['Alpha', 'Beta'], 'undone');
+  assert.match(document.querySelector('.sfui-snack').textContent, /order could not be saved/);
 });

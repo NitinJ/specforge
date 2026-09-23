@@ -12,7 +12,7 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -34,8 +34,9 @@ afterEach(() => {
 const { renderProjectPage } = await import('../server/project-page.mjs');
 const { createSpec } = await import('../lib/store.mjs');
 const { readMeta, writeMeta } = await import('../lib/meta.mjs');
+const { specDir } = await import('../lib/store-paths.mjs');
+const { mutateComments, createThread } = await import('../lib/store-comments.mjs');
 const { writeProjectShare, addContribution } = await import('../lib/store-project-shares.mjs');
-const { writeGlobalPrefs } = await import('../lib/global-prefs.mjs');
 
 const TOK = 'c'.repeat(32);
 
@@ -46,6 +47,12 @@ function seed(title, collection = null, project = 'Atelier') {
   m.collection = collection;
   writeMeta(id, m);
   return id;
+}
+
+/** Pin a spec's created/updated stamps: writeMeta bumps `updated` to now. */
+function stamp(id, at) {
+  const m = readMeta(id);
+  writeFileSync(join(specDir(id), 'meta.json'), JSON.stringify({ ...m, created: at, updated: at }));
 }
 
 /** The heading text of each section, in the order they appear. */
@@ -98,14 +105,31 @@ test('a project with no collections at all gets no headings', () => {
   assert.match(html, /Beta/);
 });
 
-test('group order follows the owner’s arrangement, then alphabetical', () => {
-  writeGlobalPrefs({ collectionOrder: ['Zulu'] });
-  seed('z', 'Zulu');
-  seed('a', 'Alpha');
-  seed('m', 'Mike');
-  // Zulu is ranked, so it leads despite sorting last alphabetically; the rest
-  // follow A-Z. Same rule as the home page (lib/collections.mjs).
+test('group order follows recency, then alphabetical', () => {
+  const z = seed('z', 'Zulu');
+  const a = seed('a', 'Alpha');
+  const m = seed('m', 'Mike');
+  for (const id of [z, a, m]) stamp(id, 1000);
+  // All three tied — the fallback a store where nothing has happened reads by.
+  assert.deepEqual(headings(renderProjectPage('Atelier', TOK)), ['Alpha', 'Mike', 'Zulu']);
+  stamp(z, 2000);
+  // Zulu is the most recently active now, despite sorting last by name. Same
+  // rule as the home page (lib/collections.mjs).
   assert.deepEqual(headings(renderProjectPage('Atelier', TOK)), ['Zulu', 'Alpha', 'Mike']);
+});
+
+test('a fresh comment lifts the commented spec’s collection', () => {
+  const a = seed('a', 'Alpha');
+  const z = seed('z', 'Zulu');
+  stamp(a, 1000);
+  stamp(z, 2000);
+  assert.deepEqual(headings(renderProjectPage('Atelier', TOK)), ['Zulu', 'Alpha']);
+  mutateComments(a, (store) => createThread(store, {
+    anchor: { block: { text: 'a' } },
+    body: 'please tighten this',
+  }));
+  assert.deepEqual(headings(renderProjectPage('Atelier', TOK)), ['Alpha', 'Zulu'],
+    'a thread that moved is the project being alive');
 });
 
 test('a collection name is escaped, not injected', () => {

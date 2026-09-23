@@ -4,13 +4,15 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { createDaemon, renderIndex } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
 import { readMeta, writeMeta } from '../lib/meta.mjs';
+import { specDir } from '../lib/store-paths.mjs';
+import { mutateComments, createThread } from '../lib/store-comments.mjs';
 import { attach, claimWorker, STALE_MS } from '../lib/attach.mjs';
 import { writeGlobalPrefs } from '../lib/global-prefs.mjs';
 import { loadIndex, tick } from './helpers/index-dom.mjs';
@@ -621,59 +623,49 @@ test('a named collection carries an actions menu; Uncollected does not', (t) => 
   assert.deepEqual(labels(document), ['Rename…', 'Delete collection…']);
 });
 
+
 // ---- collection order ----
+// Collections come out by recency (lib/collections.mjs): the most recently
+// active member's newest stamp — created, updated, or the newest comment on it
+// — leads, ties fall to A–Z, and Uncollected is always last. There is no
+// arrangement by hand and no rank to move.
 
-const railOrder = (document) => [].slice.call(document.querySelectorAll('.crow'))
-  .map((c) => c.getAttribute('data-c'));
-const groupOrder = (document) => [].slice.call(document.querySelectorAll('.grp'))
-  .map((g) => g.getAttribute('data-coll'));
+const crowOrder = (html) => (html.match(/<div class="crow" data-c="([^"]*)"/g) || [])
+  .map((s) => s.split('"')[3]);
 
-test('collections read A–Z until someone arranges them, then in the stored order', () => {
+/** Pin a spec's created/updated stamps: writeMeta bumps `updated` to now. */
+function stamp(id, at) {
+  writeFileSync(join(specDir(id), 'meta.json'),
+    JSON.stringify({ ...readMeta(id), created: at, updated: at }));
+}
+
+test('collections read by recency, then A–Z, with Uncollected last', () => {
   const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
   const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
-  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
+  const loose = createSpec({ title: 'Loose', html: '<h1>L</h1>' });
   setCollection(a, 'Alpha');
   setCollection(b, 'Beta');
-  setCollection(c, 'Gamma');
-  assert.deepEqual(
-    renderIndex().match(/<div class="crow" data-c="([^"]*)"/g).map((s) => s.split('"')[3]),
-    ['Alpha', 'Beta', 'Gamma', ''],
-    'alphabetical by default, Uncollected last',
-  );
-  writeGlobalPrefs({ collectionOrder: ['Gamma', 'Alpha'] });
-  assert.deepEqual(
-    renderIndex().match(/<div class="crow" data-c="([^"]*)"/g).map((s) => s.split('"')[3]),
-    ['Gamma', 'Alpha', 'Beta', ''],
-    'arranged first, then whatever was never placed, then Uncollected',
-  );
+  stamp(a, 1000); stamp(b, 1000); stamp(loose, 1000);
+  assert.deepEqual(crowOrder(renderIndex()), ['Alpha', 'Beta', ''],
+    'tied: alphabetical by name, Uncollected last');
+  stamp(b, 2000);
+  assert.deepEqual(crowOrder(renderIndex()), ['Beta', 'Alpha', ''],
+    'the collection touched most recently leads');
 });
 
-test('Move up and Move down reorder the rail and the list together, and persist', async (t) => {
+test('a fresh comment lifts the commented spec’s collection', () => {
   const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
   const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
-  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
   setCollection(a, 'Alpha');
   setCollection(b, 'Beta');
-  setCollection(c, 'Gamma');
-  const { window, calls, reloads } = loadIndex(t);
-  const { document } = window;
-  assert.deepEqual(railOrder(document), ['Alpha', 'Beta', 'Gamma', '']);
-
-  document.querySelector('.crow[data-c="Gamma"] .kebab').click();
-  item(document, 'Move up').click();
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Alpha', 'Gamma', 'Beta', ''], 'the rail moved');
-  assert.deepEqual(groupOrder(document), ['Alpha', 'Gamma', 'Beta', ''], 'and the list moved with it');
-  const put = calls.filter((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT').pop();
-  assert.deepEqual(put.body.collectionOrder, ['Alpha', 'Gamma', 'Beta'], 'the new order is stored');
-  assert.equal(reloads.n, 0, 'no reload — the scroll position and filters survive');
-
-  document.querySelector('.crow[data-c="Alpha"] .kebab').click();
-  item(document, 'Move down').click();
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta', '']);
+  stamp(a, 1000); stamp(b, 2000);
+  assert.deepEqual(crowOrder(renderIndex()), ['Beta', 'Alpha']);
+  mutateComments(a, (store) => createThread(store, {
+    anchor: { block: { text: 'A' } },
+    body: 'please tighten this',
+  }));
+  assert.deepEqual(crowOrder(renderIndex()), ['Alpha', 'Beta'],
+    'a thread that moved is the collection being alive');
 });
 
 // role="menu" is a promise of arrow keys; a menu that only takes a mouse should
@@ -703,294 +695,16 @@ test('the menu takes arrow keys, and hands focus back to the button that opened 
   key('End');
   assert.equal(document.activeElement, all[all.length - 1]);
   kebab.click(); // the same button closes it again
-
-  // Move down: focus lands back on the button, which has moved with its row.
-  kebab.click();
-  item(document, 'Move down').click();
-  assert.equal(document.activeElement, kebab, 'you keep your place after a move');
-  assert.equal(railOrder(document)[1], 'Alpha', 'and the row really moved');
 });
 
-// A reorder has nothing else to do, so a failed write leaves the page showing an
-// order the store does not hold — until a reload silently undoes it. Undo it now
-// instead, and say why.
-test('a reorder that fails to save puts the rail back', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  const { window, reloads } = loadIndex(t);
-  const { document } = window;
-  window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
-  assert.deepEqual(railOrder(document), ['Alpha', 'Beta']);
-  document.querySelector('.crow[data-c="Beta"] .kebab').click();
-  item(document, 'Move up').click();
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Alpha', 'Beta'], 'the move is undone');
-  assert.deepEqual(groupOrder(document), ['Alpha', 'Beta'], 'and so is the list');
-  const toast = document.querySelector('.sfui-snack');
-  assert.match(toast.textContent, /order could not be saved/);
-  assert.equal(window.sessionStorage.getItem('sf-index-msg'), null,
-    'nothing reloads here, so the message is not carried into the next load');
-  assert.equal(reloads.n, 0);
-});
-
-// Two moves in quick succession used to be two writes in flight. If the first
-// failed and the second landed, the first's rollback restored its own stale
-// snapshot over an order that had actually saved. One write at a time, and the
-// move made during it coalesced into a single write after it.
-test('a second move during a save does not race it', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  setCollection(c, 'Gamma');
-  const { window, calls } = loadIndex(t);
-  const { document } = window;
-  const sent = [];
-  let release;
-  const held = new Promise((r) => { release = r; });
-  window.fetch = (url, init) => {
-    sent.push(JSON.parse(init.body).collectionOrder);
-    calls.push({ method: init.method, url, body: JSON.parse(init.body) });
-    return held.then(() => ({ ok: true, json: () => Promise.resolve({}) }));
-  };
-
-  const up = (name) => {
-    document.querySelector(`.crow[data-c="${name}"] .kebab`).click();
-    item(document, 'Move up').click();
-  };
-  up('Gamma'); // Alpha, Gamma, Beta — the write for this is in flight
-  up('Gamma'); // Gamma, Alpha, Beta — must not start a second write yet
-  assert.equal(sent.length, 1, 'only one write in flight');
-  assert.deepEqual(sent[0], ['Alpha', 'Gamma', 'Beta']);
-
-  release();
-  await tick(window);
-  await tick(window);
-  assert.equal(sent.length, 2, 'the move made during the write follows it');
-  assert.deepEqual(sent[1], ['Gamma', 'Alpha', 'Beta'], 'and sends the rail as it now stands');
-  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta'], 'which is what is on screen');
-});
-
-// The rollback must not run before the coalesced write has taken the rail: it
-// would wipe the newer move off the screen and then store the wipe.
-test('a move made during a failing write survives it', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  setCollection(c, 'Gamma');
-  const { window } = loadIndex(t);
-  const { document } = window;
-  const sent = [];
-  let settle;
-  const held = new Promise((r) => { settle = r; });
-  let first = true;
-  window.fetch = (url, init) => {
-    sent.push(JSON.parse(init.body).collectionOrder);
-    if (first) { first = false; return held.then(() => ({ ok: false, status: 500, json: () => Promise.resolve({}) })); }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  };
-
-  const up = (name) => {
-    document.querySelector(`.crow[data-c="${name}"] .kebab`).click();
-    item(document, 'Move up').click();
-  };
-  up('Gamma'); // in flight, and it will fail
-  up('Gamma'); // made during it — this is the newer intent
-  settle();
-  await tick(window);
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta'], 'the newer move is still on screen');
-  assert.deepEqual(sent[sent.length - 1], ['Gamma', 'Alpha', 'Beta'], 'and is what got stored');
-  assert.equal(document.querySelector('.sfui-snack'), null, 'a failure the retry recovered from is not reported');
-});
-
-test('a rollback goes to the last order that saved, not to where the move began', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  const { window } = loadIndex(t);
-  const { document } = window;
-  let ok = true;
-  window.fetch = () => Promise.resolve({ ok, status: ok ? 200 : 500, json: () => Promise.resolve({}) });
-
-  const up = (name) => {
-    document.querySelector(`.crow[data-c="${name}"] .kebab`).click();
-    item(document, 'Move up').click();
-  };
-  up('Beta');
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Beta', 'Alpha'], 'saved');
-
-  ok = false;
-  up('Alpha');
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Beta', 'Alpha'], 'back to the saved order, not the original');
-});
-
-test('an order that fails to save says so, and the rename it carried still happens', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  setCollection(a, 'Alpha');
-  const { window } = loadIndex(t);
-  const { document } = window;
-  window.fetch = (url) => (/\/api\/prefs$/.test(url)
-    ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
-    : Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
-  document.querySelector('.crow[data-c="Alpha"] .kebab').click();
-  item(document, 'Rename').click();
-  document.getElementById('sf-dp-input').value = 'Release';
-  document.getElementById('sf-dp-ok').click();
-  await tick(window);
-  const toast = document.querySelector('.sfui-snack');
-  assert.ok(toast, 'a failed order write is not swallowed');
-  assert.match(toast.textContent, /order could not be saved/);
-});
-
-// Dragging is the primary way to reorder; the menu's Move up / Move down is the
-// same thing for a keyboard. jsdom has no drag machinery, but the handlers only
-// read target/clientY, so a MouseEvent under the drag event's name drives them.
-function drag(window, row, onto, { after = false } = {}) {
-  const { document } = window;
-  const fire = (name, el, extra) => el.dispatchEvent(
-    new window.MouseEvent(name, { bubbles: true, cancelable: true, ...extra }),
-  );
-  fire('dragstart', row);
-  // getBoundingClientRect is all zeros in jsdom, so clientY > 0 reads as the
-  // bottom half of the row and clientY <= 0 as the top half.
-  fire('dragover', onto.querySelector('.cnav'), { clientY: after ? 1 : 0 });
-  fire('dragend', document.querySelector('.crow.dragging') || row);
-}
-
-test('dragging a collection past another reorders the rail and the list, and saves', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  const c = createSpec({ title: 'C', html: '<h1>C</h1>' });
-  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  setCollection(c, 'Gamma');
-  const { window, calls, reloads } = loadIndex(t);
-  const { document } = window;
-  const row = (n) => document.querySelector(`.crow[data-c="${n}"]`);
-  assert.equal(row('Alpha').getAttribute('draggable'), 'true');
-  assert.equal(row('').getAttribute('draggable'), null, 'Uncollected is not draggable');
-
-  drag(window, row('Gamma'), row('Alpha'));
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Gamma', 'Alpha', 'Beta', ''], 'dropped above Alpha');
-  assert.deepEqual(groupOrder(document), ['Gamma', 'Alpha', 'Beta', ''], 'the list follows');
-  const put = calls.filter((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT').pop();
-  assert.deepEqual(put.body.collectionOrder, ['Gamma', 'Alpha', 'Beta']);
-  assert.equal(reloads.n, 0);
-
-  drag(window, row('Gamma'), row('Beta'), { after: true });
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Alpha', 'Beta', 'Gamma', ''], 'and below when dropped low');
-});
-
-test('a drag leaves the rail clean, and one that changes nothing writes nothing', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  const { window, calls } = loadIndex(t);
-  const { document } = window;
-  const alpha = document.querySelector('.crow[data-c="Alpha"]');
-  alpha.dispatchEvent(new window.MouseEvent('dragstart', { bubbles: true }));
-  assert.ok(alpha.classList.contains('dragging'), 'the row being carried is marked');
-  assert.ok(document.getElementById('colls').classList.contains('rearranging'));
-  alpha.dispatchEvent(new window.MouseEvent('dragend', { bubbles: true }));
-  assert.ok(!alpha.classList.contains('dragging'), 'and unmarked when it lands');
-  assert.ok(!document.getElementById('colls').classList.contains('rearranging'));
-  await tick(window);
-  assert.equal(calls.filter((x) => /\/api\/prefs$/.test(x.url)).length, 0,
-    'a drag that ends where it started is not a change');
-});
-
-test('Uncollected cannot be dragged past, and stays last', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
-  setCollection(a, 'Alpha');
-  const { window } = loadIndex(t);
-  const { document } = window;
-  drag(window, document.querySelector('.crow[data-c="Alpha"]'), document.querySelector('.crow[data-c=""]'), { after: true });
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Alpha', ''], 'nothing moved past it');
-});
-
-test('a drag that fails to save puts the rail back', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  const { window } = loadIndex(t);
-  const { document } = window;
-  window.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
-  drag(window, document.querySelector('.crow[data-c="Beta"]'), document.querySelector('.crow[data-c="Alpha"]'));
-  await tick(window);
-  assert.deepEqual(railOrder(document), ['Alpha', 'Beta'], 'undone');
-  assert.match(document.querySelector('.sfui-snack').textContent, /order could not be saved/);
-});
-
-test('the ends of the list offer no move past them, and Uncollected never moves', (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  createSpec({ title: 'Loose', html: '<h1>L</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  const { window } = loadIndex(t);
-  const { document } = window;
-  document.querySelector('.crow[data-c="Alpha"] .kebab').click();
-  assert.deepEqual(labels(document), ['Move down', 'Rename…', 'Delete collection…'], 'the first cannot go up');
-  document.querySelector('.crow[data-c="Beta"] .kebab').click();
-  assert.deepEqual(labels(document), ['Move up', 'Rename…', 'Delete collection…'],
-    'the last cannot go down — Uncollected sits below it but is not a place');
-});
-
-test('renaming a collection carries its place in the order', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  writeGlobalPrefs({ collectionOrder: ['Beta', 'Alpha'] });
-  const { window, calls } = loadIndex(t);
-  const { document } = window;
-  document.querySelector('.crow[data-c="Beta"] .kebab').click();
-  item(document, 'Rename').click();
-  document.getElementById('sf-dp-input').value = 'Release';
-  document.getElementById('sf-dp-ok').click();
-  await tick(window);
-  const put = calls.find((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT');
-  assert.deepEqual(put.body.collectionOrder, ['Release', 'Alpha'], 'renamed in place, not appended');
-  assert.ok(calls.some((x) => /\/organize$/.test(x.url)), 'and the members still move');
-});
-
-test('deleting a collection drops it from the order', async (t) => {
-  const a = createSpec({ title: 'A', html: '<h1>A</h1>' });
-  const b = createSpec({ title: 'B', html: '<h1>B</h1>' });
-  setCollection(a, 'Alpha');
-  setCollection(b, 'Beta');
-  writeGlobalPrefs({ collectionOrder: ['Beta', 'Alpha'] });
-  const { window, calls } = loadIndex(t);
-  const { document } = window;
-  document.querySelector('.crow[data-c="Beta"] .kebab').click();
-  item(document, 'Delete collection').click();
-  document.getElementById('sf-dc-ok').click();
-  await tick(window);
-  const put = calls.find((x) => /\/api\/prefs$/.test(x.url) && x.method === 'PUT');
-  assert.deepEqual(put.body.collectionOrder, ['Alpha']);
-});
-
-test('the stored order is validated, and a spec page is never told about it', async () => {
-  writeGlobalPrefs({ theme: 'dark', collectionOrder: ['  Keep  ', '', 'Keep', 42, 'Other'] });
+test('the stored layout is validated, and a spec page is never told about it', async () => {
+  // Projects are the only order left to store; collections order themselves by
+  // recency and have no rank. A collectionOrder in an older ui.json is dropped.
+  writeGlobalPrefs({ theme: 'dark', projects: ['  Keep  ', '', 'Keep', 42, 'Other'], collectionOrder: ['Keep'] });
   const { readGlobalPrefs } = await import('../lib/global-prefs.mjs');
-  assert.deepEqual(readGlobalPrefs().collectionOrder, ['Keep', 'Other'],
+  assert.deepEqual(readGlobalPrefs().projects, ['Keep', 'Other'],
     'trimmed, deduped, non-strings dropped');
+  assert.equal(readGlobalPrefs().collectionOrder, undefined);
 
   // The review layer is served to published readers too, so it takes theme and
   // font by name rather than spreading whatever ui.json happens to hold.

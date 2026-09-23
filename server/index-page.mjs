@@ -21,10 +21,9 @@ import { readGlobalPrefs } from '../lib/global-prefs.mjs';
 import { specSignals, REVIEW_TITLE } from '../lib/spec-signals.mjs';
 import { STATUSES } from '../lib/lifecycle.mjs';
 import { readSubscriptions } from '../lib/store-subscriptions.mjs';
-import { groupByCollection } from '../lib/collections.mjs';
+import { groupByCollection, collectionRecency } from '../lib/collections.mjs';
 import { groupByRoot, layoutTree, treeMarks } from '../lib/spec-rows.mjs';
 import { treeFoldScript } from './tree-fold.mjs';
-import { creditLabel, harnessKey, harnessLabel, harnessMark } from '../lib/credits.mjs';
 import { THEME_CSS, BODY_FONT, CONTENT_WIDTH, LIST_CSS } from './theme.mjs';
 
 function esc(s) {
@@ -61,22 +60,15 @@ function relativeTime(ms, now = Date.now()) {
 }
 
 /**
- * Working specs grouped: named collections, then Uncollected.
- *
- * `ranked` is the order the user arranged (Move up / Move down). Anything it does
- * not name — a collection created since, or one never moved — falls in after,
- * alphabetically, so a fresh store reads A-Z and stays predictable until someone
- * takes a position on it. Uncollected is always last: it is the absence of a
- * collection, not one you can place.
- */
-/**
  * Working specs grouped by project: named projects, then No project.
  *
- * The ranking rule is groupByCollection's, one level up. The difference is that
- * a name in `ranked` with no specs is still a group: a project is created before
- * anything is filed into it, and one you cannot see is one you cannot drop a
- * spec into. A collection has no such moment — it comes into being by having a
- * member — so groupByCollection has nothing to add.
+ * `ranked` is the order the user arranged (Move up / Move down); anything it
+ * does not name falls in after, alphabetically. (The collections one level down
+ * order by recency instead — lib/collections.mjs — so no move is offered
+ * there.) A name in `ranked` with no specs is still a group: a project is
+ * created before anything is filed into it, and one you cannot see is one you
+ * cannot drop a spec into. A collection has no such moment — it comes into
+ * being by having a member — so groupByCollection has nothing to add.
  *
  * No project is always last and always present, even at zero, because it is
  * where a spec goes when it is taken out of everything else.
@@ -150,34 +142,6 @@ function renderRows(list, sigOf) {
   })).join('\n');
 }
 
-/**
- * The agent that wrote the spec and the agents that reviewed it, as chips.
- *
- * Absent on specs written before credits existed, which is most of the store,
- * so nothing renders for them rather than an "unknown" on every row.
- */
-function creditChip(agent, role) {
-  const label = creditLabel(agent);
-  const title = `${role === 'author' ? 'Written' : 'Reviewed'} by ${label}`;
-  return `<span class="by by-${role} h-${harnessKey(agent.harness)}" title="${esc(title)}">`
-    + `<span class="by-role">${role === 'author' ? '✎' : '✓'}</span>`
-    + `<span class="by-mark"><b>${esc(harnessMark(agent.harness))}</b></span>${esc(harnessLabel(agent.harness))}</span>`;
-}
-
-function creditChips(m) {
-  const out = [];
-  if (m.author && m.author.harness) out.push(creditChip(m.author, 'author'));
-  const revs = (Array.isArray(m.reviewers) ? m.reviewers : []).filter((r) => r && r.harness);
-  // Two reviewers fit a row; past that the count carries it and the tooltip
-  // names the rest.
-  for (const r of revs.slice(0, 2)) out.push(creditChip(r, 'reviewer'));
-  if (revs.length > 2) {
-    const rest = revs.slice(2).map(creditLabel).join(', ');
-    out.push(`<span class="by by-more" title="Also reviewed by ${esc(rest)}">+${revs.length - 2}</span>`);
-  }
-  return out.length ? `<span class="credits">${out.join('')}</span>` : '';
-}
-
 /** One working-spec row. */
 function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = '', spines = [] } = {}) {
   const id = esc(m.id);
@@ -218,7 +182,7 @@ function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = ''
   // indent cannot say it: "Testing strategy" with no idea what it is the
   // testing strategy for is a row that has lost what made it worth reading.
   // Two lines: the title and its fold toggle on top, and what the spec belongs
-  // to, who wrote it and its tags underneath, so none of them squeeze the title.
+  // to and its tags underneath, so none of them squeeze the title.
   const count = treeMarks(kids, '');
   const under = treeMarks(0, parentTitle);
   // Which guide lines cross this row (lib/spec-rows.mjs). Absent on a row that
@@ -229,7 +193,7 @@ function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = ''
   <input class="sel" type="checkbox" aria-label="Select ${title}">
   <div class="main">
     <div class="l1"><a class="title" href="/spec/${id}" title="${title}">${title}</a>${count}</div>
-    <div class="l2">${under}${creditChips(m)}<span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span>
+    <div class="l2">${under}<span class="tags">${chips}<button class="addtag" type="button" title="Add tag">+ tag</button><input class="addtag-in" type="text" placeholder="tag…" aria-label="Add tag" hidden></span>
     <span class="id" title="Spec id">${id}</span>
     <span class="att" hidden>${att}</span></div>
   </div>
@@ -247,16 +211,14 @@ function rowHtml(m, sig, { depth = 0, nested = false, kids = 0, parentTitle = ''
 /**
  * One collection in the rail: the filter button, plus the actions menu.
  *
- * Named collections are draggable — dragging is how you reorder them, and the
- * menu's Move up / Move down is the same thing for a keyboard. Uncollected is
- * neither draggable nor menued: it is not a collection anyone named, so there is
- * nothing to rename, nothing to delete, and nowhere to put it but last.
+ * Collections come out by recency and there is nothing to arrange — no drag and
+ * no Move up / Move down. Uncollected is not menued at all: it is not a
+ * collection anyone named, so there is nothing to rename and nothing to delete.
  */
 function collRowHtml(key, count) {
   const name = key === '' ? 'Uncollected' : esc(key);
   const acts = key === '' ? '' : kebabHtml(`Actions for ${key}`);
-  const drag = key === '' ? '' : ' draggable="true"';
-  return `<div class="crow" data-c="${esc(key)}"${drag}>
+  return `<div class="crow" data-c="${esc(key)}">
     <button class="cnav" type="button" data-c="${esc(key)}"><span class="cname">${name}</span><span class="nc">${count}</span></button>
     ${acts}
   </div>`;
@@ -337,6 +299,17 @@ export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   const n = specs.length;
   const sigs = new Map(specs.map((m) => [m.id, specSignals(m.id, shareInfo, m)]));
   const sigOf = (m) => sigs.get(m.id);
+  // When each spec was last commented, for the collection order below: the
+  // groups come out by recency (lib/collections.mjs) and a thread that moved is
+  // activity as much as an edit is. Off the signals, which have already read
+  // every comment store this render.
+  const commented = new Map(specs.map((m) => [m.id, sigOf(m).commented]));
+
+  // A name's rank is its freshest member anywhere in the store, and the same
+  // rank serves the rail and the groups below: the rail is one row per name
+  // across every project, so whichever project is selected, the navigation and
+  // the sections it shows must read in the same order (lib/collections.mjs).
+  const recency = collectionRecency(specs, commented);
 
   const projOrder = groupByProject(specs, prefs.projects).order;
   // A selection naming a project that no longer exists is not an error worth
@@ -347,10 +320,10 @@ export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   const asked = typeof project === 'string' ? project : prefs.project;
   const selected = typeof asked === 'string' && known.has(asked) ? asked : null;
   // The collections rail is one row per distinct name across the whole store,
-  // not one per (project, collection) pair. The order is a flat list of names
-  // shared across projects, so a name has one row and one rank wherever it is
-  // used; the client hides the rows the selected project has no members of.
-  const { order, named } = groupByCollection(specs, prefs.collectionOrder);
+  // not one per (project, collection) pair. The order is the store-wide name
+  // ranking, so a name has one row and one place wherever it is used; the
+  // client hides the rows the selected project has no members of.
+  const { order, named } = groupByCollection(specs, recency);
   const inView = selected === null ? specs : specs.filter((m) => (m.project || '') === selected);
 
   const counts = Object.fromEntries(STATUSES.map((s) => [s, specs.filter((m) => (m.status || 'draft') === s).length]));
@@ -407,7 +380,7 @@ export function renderIndex({ shareInfo, projectShareInfo, project } = {}) {
   // first paint.
   let leadProject = true;
   const groups = projOrder.filter(({ specs: list }) => list.length).map(({ key: pk, specs: plist }) => {
-    const inner = groupByCollection(plist, prefs.collectionOrder).order.map(({ key, specs: list }, i) => `<section class="grp${i === 0 ? ' lead' : ''}" data-p="${esc(pk)}" data-coll="${esc(key)}">
+    const inner = groupByCollection(plist, recency).order.map(({ key, specs: list }, i) => `<section class="grp${i === 0 ? ' lead' : ''}" data-p="${esc(pk)}" data-coll="${esc(key)}">
   <h2>${key === '' ? 'Uncollected' : esc(key)} <span class="gcount">${list.length}</span></h2>
   <div class="card"><ul class="rows">${renderRows(list, sigOf)}</ul></div>
 </section>`).join('\n');
@@ -470,12 +443,12 @@ ${THEME_CSS}
 
   .crow,.prow{display:flex;align-items:center;gap:2px;border-radius:7px}
   .crow .cnav,.prow .pnav{min-width:0}
-  .crow[draggable="true"],.prow[draggable="true"]{cursor:grab}
-  .crow.dragging,.prow.dragging{opacity:.4;cursor:grabbing}
+  .prow[draggable="true"]{cursor:grab}
+  .prow.dragging{opacity:.4;cursor:grabbing}
   /* While a drag is in flight the rail is a list you are rearranging, not a set
      of filters — the hover highlight would read as "click me". */
-  .colls.rearranging .cnav:hover,.projs.rearranging .pnav:hover{background:none;color:var(--muted)}
-  .colls.rearranging .crow:not(.dragging),.projs.rearranging .prow:not(.dragging){box-shadow:inset 0 0 0 1px transparent}
+  .projs.rearranging .pnav:hover{background:none;color:var(--muted)}
+  .projs.rearranging .prow:not(.dragging){box-shadow:inset 0 0 0 1px transparent}
   /* A collection the selected project has no members of is not a filter that
      leads anywhere, so it leaves the rail rather than sitting there at zero. */
   .crow[hidden]{display:none}
@@ -597,7 +570,7 @@ ${LIST_CSS}
   /* background-COLOR, for the same reason .row:hover is: the shorthand drops
      the guide line a child row paints as a background image. */
   .row.picked{background-color:var(--accent-soft)}
-  /* Two-line row: title on line 1, parent, credits, tags and id on line 2.
+  /* Two-line row: title on line 1, parent, tags and id on line 2.
      The tree elbow moves to the middle of line 1 (6px pad + half of 20px),
      which is what --tree-y is set to below. */
   .row{padding-top:6px;padding-bottom:6px}
@@ -609,22 +582,7 @@ ${LIST_CSS}
   .sel{flex:none;width:14px;height:14px;margin:0;accent-color:var(--accent);cursor:pointer;opacity:0;transition:opacity .12s}
   .row:hover .sel,.sel:checked,.sel:focus-visible,body.picking .sel{opacity:1}
   .tags{display:inline-flex;gap:4px;align-items:center;min-width:0;overflow:hidden}
-  /* Who wrote and reviewed the spec. Each harness wears its own colour and
-     glyph, so a row reads as "Claude wrote it, Codex reviewed it" at a glance.
-     The author chip is filled and the reviewers are dashed, so the two roles
-     separate without reading the icons. */
-  /* The harness colour is the chip's text colour, and everything else derives
-     from currentColor, so no page-level token is added: the shared project page
-     must declare every token this page does (page-theme-parity). */
-  .credits{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:2px}
-  .by{display:inline-flex;align-items:center;gap:4px;height:19px;box-sizing:border-box;font-size:11px;font-weight:600;padding:0 8px 0 4px;border-radius:999px;white-space:nowrap;max-width:30ch;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
-  .by-author{background:color-mix(in srgb,currentColor 13%,transparent);border:1px solid color-mix(in srgb,currentColor 32%,transparent)}
-  .by-reviewer{border:1px dashed color-mix(in srgb,currentColor 60%,transparent)}
-  .by-role{font-size:10px;opacity:.8}
-  .by-mark{flex:none;display:inline-grid;place-items:center;width:13px;height:13px;border-radius:50%;background:currentColor}
-  .by-mark b{color:#fff;font-size:8.5px;font-weight:600;line-height:1}
-  .by-more{padding:0 7px;border:1px dashed var(--line2);color:var(--muted)}
-  .h-claude{color:#d97757} .h-codex{color:#10a37f} .h-pi{color:#8b5cf6}
+
   .chip{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;background:var(--surface2);color:var(--muted);border-radius:999px;padding:0 7px;white-space:nowrap}
   .chip .x{background:none;border:none;color:transparent;cursor:pointer;font-size:12px;line-height:1;padding:0}
   .chip:hover .x{color:var(--muted)}
@@ -932,9 +890,9 @@ ${strip}
       b.appendChild(ic); b.appendChild(lb);
       b.onclick=function(){
         // Focus goes back to the button that opened the menu before the action
-        // runs — so Move up leaves you on the collection you moved, wherever it
-        // landed — and an action that opens a dialog or the picker takes it from
-        // there, since it focuses its own field synchronously.
+        // runs — so a Move leaves you on the row you moved, wherever it landed —
+        // and an action that opens a dialog or the picker takes it from there,
+        // since it focuses its own field synchronously.
         var owner=popOwner;
         closePop();
         if(owner&&owner.focus) owner.focus();
@@ -1222,29 +1180,23 @@ ${strip}
 
   function collMenu(btn,crow){
     var name=crow.getAttribute('data-c');
-    var items=[];
-    if(crow.previousElementSibling) items.push({icon:'\\u2191',label:'Move up',run:function(){moveColl(crow,-1);}});
-    if(nextNamed(crow)) items.push({icon:'\\u2193',label:'Move down',run:function(){moveColl(crow,1);}});
     // Renaming or deleting a collection is an act on ONE collection, and after
     // projects a name alone does not always identify one: "UI" in two projects
     // is two collections with two memberships. Offered whenever the name IS
     // unambiguous — inside a project, or from All projects when every spec
     // carrying that name sits in the same project, which is every collection in
-    // a store that uses no projects. Reordering is always offered: the order is
-    // a flat list of names, shared across projects by design.
-    if(fproj===null&&projectsUsing(name).length>1){ openMenu(btn,items); return; }
-    if(items.length) items.push({sep:true});
-    openMenu(btn,items.concat([
+    // a store that uses no projects. Ambiguous there is no action that could
+    // not hit the wrong one, so the menu says why rather than opening empty.
+    if(fproj===null&&projectsUsing(name).length>1){
+      openMenu(btn,[{icon:'',label:'In several projects \\u2014 select one to rename or delete',run:function(){}}]);
+      return;
+    }
+    openMenu(btn,[
       {icon:'\\u270e',label:'Rename\\u2026',run:function(){
         askName({title:'Rename collection',label:'Collection name',value:name,onOk:function(raw){
           var v=normName(raw);
           if(!v||v===name) return;
-          // The order is a list of names, so a rename has to be applied to it too
-          // — and before the reload the move fans out into, or the collection
-          // reappears at the bottom under its new name.
-          putOrderThen(renamedOrder(name,v),function(){
-            setColl(membersOf(name),v,'some are still in "'+name+'"');
-          });
+          setColl(membersOf(name),v,'some are still in "'+name+'"');
         }});
       }},
       {icon:'\\ud83d\\uddd1',label:'Delete collection\\u2026',danger:true,run:function(){
@@ -1257,13 +1209,11 @@ ${strip}
             ?'Its 1 spec is not deleted \\u2014 it becomes uncollected.'
             :'Its '+n+' specs are not deleted \\u2014 they become uncollected.'),
           onOk:function(){
-            putOrderThen(deletedOrder(name),function(){
-              setColl(membersOf(name),'','some are still in "'+name+'"');
-            });
+            setColl(membersOf(name),'','some are still in "'+name+'"');
           },
         });
       }},
-    ]));
+    ]);
   }
   /** The distinct projects holding a spec in a collection of this name. */
   function projectsUsing(name){
@@ -1275,42 +1225,13 @@ ${strip}
     });
     return out;
   }
-  /** True when a collection of this name survives in some OTHER project. */
-  function usedElsewhere(name){
-    return rows.some(function(r){return r.getAttribute('data-c')===name&&!projOk(r);});
-  }
-  /**
-   * The order after renaming this project's collection.
-   *
-   * The order is one flat list of names shared by every project, so a rename
-   * here can only REPLACE the old name if no other project still has a
-   * collection called that. When one does, the new name is inserted beside the
-   * old rather than over it, and both keep a rank.
-   */
-  function renamedOrder(name,v){
-    var keep=usedElsewhere(name), out=[];
-    collOrder().forEach(function(c){
-      if(c!==name){ if(out.indexOf(c)===-1) out.push(c); return; }
-      if(keep) out.push(c);
-      if(out.indexOf(v)===-1) out.push(v);
-    });
-    if(out.indexOf(v)===-1) out.push(v);
-    return out;
-  }
-  /** The order after deleting this project's collection, keeping the name if
-   *  another project still uses it. */
-  function deletedOrder(name){
-    var keep=usedElsewhere(name);
-    return collOrder().filter(function(c){return keep||c!==name;});
-  }
 
   /**
    * A project in the rail: reorder it, rename it, or delete it.
    *
-   * Rename and delete are the collection pair one level up, and deliberately the
-   * same shape: write the name list first, then fan out one PATCH per member,
-   * then reload. Doing the list second would land the project at the bottom
-   * under its new name, which is the reason the collection code gives.
+   * Rename and delete are deliberately the same shape: write the name list
+   * first, then fan out one PATCH per member, then reload. Doing the list
+   * second would land the project at the bottom under its new name.
    */
   function projMenu(btn,prow){
     var name=prow.getAttribute('data-p');
@@ -1377,10 +1298,9 @@ ${strip}
   // disagree, and a move is then a DOM move plus one PUT — no reload, so the
   // scroll position and any open filter survive it.
   //
-  // One controller, two rails. Collections and projects are the same list
-  // problem at two levels: an ordered set of named rows with one unnamed row
-  // (Uncollected, No project) pinned last that is never a passenger and never a
-  // target. Two copies of this would be two places for a fix to land in one of.
+  // The projects rail is the only one left to arrange — collections come out by
+  // recency (lib/collections.mjs) and have no rank to move. The unnamed row
+  // (No project) is pinned last: never a passenger and never a target.
   function makeRail(cfg){
     // cfg: {nav, rowSel, keyAttr, prefKey, failMsg, after}
     var nav=cfg.nav;
@@ -1506,39 +1426,19 @@ ${strip}
     return {order:order,nextNamed:nextNamed,putThen:putThen,move:move};
   }
 
-  var colls=document.getElementById('colls');
   var projs=document.getElementById('projs');
-  var collRail=makeRail({
-    nav:colls, rowSel:'.crow', keyAttr:'data-c', prefKey:'collectionOrder',
-    failMsg:'The collection order could not be saved.', after:syncGroups,
-  });
   var projRail=makeRail({
     nav:projs, rowSel:'.prow[data-p]', keyAttr:'data-p', prefKey:'projects',
     failMsg:'The project order could not be saved.', after:syncProjGroups,
   });
-  var collOrder=collRail.order, nextNamed=collRail.nextNamed;
-  var putOrderThen=collRail.putThen;
-  function moveColl(crow,dir){ collRail.move(crow,dir); }
   function moveProj(prow,dir){ projRail.move(prow,dir); }
   /**
-   * Put the groups in the rail's order. The page's groups are the same order and
-   * the two must never read differently, so this runs after every rail change.
-   * Appending in sequence is the whole algorithm; the unnamed group goes last
-   * because it is the absence of a name, not a position anyone chose.
-   *
-   * Collections are ordered within each project section, since the same name in
-   * two projects is two groups that both take the name's rank.
+   * Put the project sections in the rail's order. The page's sections are the
+   * same order and the two must never read differently, so this runs after
+   * every rail change. Appending in sequence is the whole algorithm; the
+   * unnamed section goes last because it is the absence of a name, not a
+   * position anyone chose.
    */
-  function syncGroups(){
-    pgrps.forEach(function(pg){
-      var mine={};
-      [].slice.call(pg.querySelectorAll('.grp')).forEach(function(g){mine[g.getAttribute('data-coll')]=g;});
-      collOrder().forEach(function(name){ if(mine[name]) pg.appendChild(mine[name]); });
-      if(mine['']) pg.appendChild(mine['']);
-    });
-    // A different collection is first now, so the spacing has to move with it.
-    markLead();
-  }
   function syncProjGroups(){
     var host=document.getElementById('groups');
     if(!host) return;
@@ -1821,7 +1721,7 @@ ${strip}
    * the first section the reader sees under a gap meant to separate two of them.
    *
    * Called after anything that changes which section comes first: a filter pass,
-   * and either rail reorder. The DOM is queried fresh each time rather than
+   * or a project reorder. The DOM is queried fresh each time rather than
    * reusing the load-time list, because a reorder moves the sections and the
    * load-time list keeps its original order.
    */

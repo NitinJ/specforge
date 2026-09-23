@@ -62,7 +62,7 @@ Rendering is entirely server-side. The page gains no browser code, which is what
 
 #### Group order
 
-Groups come out of `groupByCollection`, which moves from `server/index-page.mjs` to `lib/collections.mjs` and is now imported by both pages. Named collections rank by the owner's arranged order (`collectionOrder` in global prefs), then alphabetically for anything unranked; `Uncollected` is always last and appears only when a spec has no collection.
+Groups come out of `groupByCollection`, which moves from `server/index-page.mjs` to `lib/collections.mjs` and is now imported by both pages. Named collections rank by the owner's arranged order (`collectionOrder` in global prefs), then alphabetically for anything unranked; `Uncollected` is always last and appears only when a spec has no collection. (Superseded: collections now order by recency — `lib/collections.mjs` — and the manual order was removed.)
 
 The extraction is 12 lines and exists for one reason: a reader looking at a shared project and the owner looking at that project selected on their own home page must see the same groups in the same order. Two copies of the rule would disagree the first time either was tuned.
 
