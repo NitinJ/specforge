@@ -4,14 +4,24 @@
 
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { renderIndex } from '../server/daemon.mjs';
 import { createSpec } from '../lib/store.mjs';
+import { readMeta } from '../lib/meta.mjs';
+import { specDir } from '../lib/store-paths.mjs';
 import { writeGlobalPrefs } from '../lib/global-prefs.mjs';
 import { useTempStore } from './helpers/temp-store.mjs';
 import { seedProjects } from './helpers/project-store.mjs';
 
 useTempStore({ beforeEach, afterEach }, 'sf-projidx-');
+
+/** Pin a spec's created/updated stamps: writeMeta bumps `updated` to now. */
+function stamp(id, at) {
+  const m = readMeta(id);
+  writeFileSync(join(specDir(id), 'meta.json'), JSON.stringify({ ...m, created: at, updated: at }));
+}
 
 /** The rail's project rows, top to bottom, as [label, count]. */
 function railProjects(html) {
@@ -83,11 +93,16 @@ function railCollections(html) {
 
 test('the collections rail lists each distinct name once, across every project', () => {
   writeGlobalPrefs({ projects: ['figur', 'specforge'] });
-  seedProjects({ figur: { UI: 1, Product: 1 }, specforge: { UI: 1, Engineering: 1 } });
+  const store = seedProjects({ figur: { UI: 1, Product: 1 }, specforge: { UI: 1, Engineering: 1 } });
+  // The stamps are pinned so the assertion is the rule and not the clock: the
+  // rail comes out by recency — Engineering's spec touched last, then Product's,
+  // then the older UI pair — across every project at once.
+  for (const id of [...store.at('figur', 'UI'), ...store.at('specforge', 'UI')]) stamp(id, 1000);
+  for (const id of store.at('figur', 'Product')) stamp(id, 2000);
+  for (const id of store.at('specforge', 'Engineering')) stamp(id, 3000);
 
-  // One row per name, not one per (project, collection) pair: the rail is the
-  // order, and the order is a flat list of names shared across projects, so a
-  // name has one row and one rank wherever it is used.
+  // One row per name, not one per (project, collection) pair: the rail is one
+  // flat list of names, so a name has one row however many projects use it.
   assert.deepEqual(railCollections(renderIndex()).map(([n]) => n), ['Engineering', 'Product', 'UI']);
 });
 

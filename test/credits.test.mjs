@@ -171,23 +171,14 @@ test('credit refuses an unknown role and an unknown spec', async () => {
   await assert.rejects(cmdCredit({ id: 'ffffffffff', role: 'author' }, deps(CLAUDE)), /unknown spec/);
 });
 
-test('the home page row carries the author and the reviewers as chips', async () => {
+test('the home page row carries no credit chips', async () => {
   const r = await cmdCreate({ title: 'Shown on the index', model: 'claude-fable-5-1' }, deps(CLAUDE));
   await cmdCredit({ id: r.id, role: 'reviewer', harness: 'codex', model: 'gpt-6-astra' }, deps(CLAUDE));
   await cmdCredit({ id: r.id, role: 'reviewer', harness: 'pi', model: 'glm-5.3-flash' }, deps(CLAUDE));
-  const html = renderIndex({});
-  assert.match(html, /class="by by-author h-claude" title="Written by Claude · claude-fable-5-1">/);
-  assert.match(html, /class="by by-reviewer h-codex" title="Reviewed by Codex · gpt-6-astra">/);
-  assert.match(html, /class="by by-reviewer h-pi" title="Reviewed by Pi · glm-5.3-flash">/);
-  assert.match(html, /<span class="by-mark"><b>✳<\/b><\/span>Claude<\/span>/, 'each chip wears its harness glyph and name; the model is in the tooltip');
-});
-
-test('a spec with no credit renders no credit chip', async () => {
-  const r = await cmdCreate({ title: 'Uncredited' }, deps(CLAUDE));
-  const meta = readMeta(r.id);
-  delete meta.author;
-  const { writeMeta } = await import('../lib/meta.mjs');
-  writeMeta(r.id, meta);
+  // The credits are recorded on the meta and shown in the spec page header
+  // (server/public/review.js) — never on the list, where a row is for finding
+  // the spec, not for crediting it.
+  assert.equal(readMeta(r.id).reviewers.length, 2, 'the credits are still recorded');
   assert.doesNotMatch(renderIndex({}), /class="by/);
 });
 

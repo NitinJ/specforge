@@ -106,9 +106,12 @@ test('an empty project list is stored, so deleting the last project sticks', () 
   assert.deepEqual(readGlobalPrefs().projects, []);
 });
 
-test('projects and collectionOrder are independent lists', () => {
+test('collectionOrder is dropped on the way in; projects stands alone', () => {
+  // Collections order themselves by recency (lib/collections.mjs), so an old
+  // ui.json may still carry a collectionOrder nobody reads any more — it is
+  // not sanitised in, and falls off the file the next time prefs are written.
   writeGlobalPrefs({ projects: ['figur'], collectionOrder: ['UI', 'Product'] });
   const p = readGlobalPrefs();
   assert.deepEqual(p.projects, ['figur']);
-  assert.deepEqual(p.collectionOrder, ['UI', 'Product']);
+  assert.equal(p.collectionOrder, undefined);
 });

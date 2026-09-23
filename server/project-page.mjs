@@ -10,7 +10,8 @@
 
 import { listSpecs } from '../lib/meta.mjs';
 import { listContributions } from '../lib/store-project-shares.mjs';
-import { readGlobalPrefs } from '../lib/global-prefs.mjs';
+import { loadComments } from '../lib/store-comments.mjs';
+import { newestCommentAt } from '../lib/comments.mjs';
 import { groupByCollection, UNCOLLECTED } from '../lib/collections.mjs';
 import { projectCollaborators } from '../lib/collaborators.mjs';
 import { groupByRoot, layoutTree, treeMarks } from '../lib/spec-rows.mjs';
@@ -83,7 +84,12 @@ export function renderProjectPage(name, token) {
   // A child is grouped by its root's collection, not its own, so it lands in
   // the section its parent is drawn in (lib/spec-rows.mjs, groupByRoot).
   const specs = groupByRoot(projectSpecs(name));
-  const { order, named } = groupByCollection(specs, readGlobalPrefs().collectionOrder);
+  // When each spec was last commented, so the groups come out by recency
+  // (lib/collections.mjs). Read per request from each spec's comment store,
+  // like every other number on this page: a thread that moved an hour ago is
+  // the project being alive, and a cached stamp would be worse than none.
+  const commented = new Map(specs.map((m) => [m.id, newestCommentAt(loadComments(m.id).threads)]));
+  const { order, named } = groupByCollection(specs, commented);
   const local = named.length
     ? order.map(({ key, specs: list }) => `
   <section class="grp">

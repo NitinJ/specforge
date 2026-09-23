@@ -54,8 +54,9 @@ export function injectReviewLayer(html, {
 
   // theme, font and mono are store-wide (global-prefs); width/filter/fit/toc are
   // per-spec. Merge so the client boots with one flat prefs object as before.
-  // Named rather than spread: ui.json also holds the index page's collection
-  // order, and this same layer is what a published spec serves to a stranger.
+  // Named rather than spread: ui.json also holds the index page's project
+  // order and selection, and this same layer is what a published spec serves to
+  // a stranger.
   const { theme, font, mono } = readGlobalPrefs();
   // A frame is painted by whoever opened it, so the parent's theme wins over the
   // store's when one is passed. Validated against the two it can be: this value
